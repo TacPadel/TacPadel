@@ -1,0 +1,95 @@
+import random
+
+# Konstanten für das Spielfeld (Raster-Größe)
+# Ein Padel-Halbfeld wird hier vereinfacht in ein 4x4 Raster unterteilt:
+# Hinten (Reihe 1-2), Vorne/Netz (Reihe 3-4)
+COURT_ZONES = {
+    "A1": "Hinten Links (Glasecke)", "B1": "Hinten Mitte-Links", "C1": "Hinten Mitte-Rechts", "D1": "Hinten Rechts (Glasecke)",
+    "A2": "Mittelplatz Links",       "B2": "Mittelplatz Mitte-L", "C2": "Mittelplatz Mitte-R", "D2": "Mittelplatz Rechts",
+    "A3": "Netz Links (Gitter)",     "B3": "Netz Mitte-Links",    "C3": "Netz Mitte-Rechts",   "D3": "Netz Rechts (Gitter)",
+    "A4": "Direkt am Netz (Links)",  "B4": "Direkt am Netz (M-L)","C4": "Direkt am Netz (M-R)","D4": "Direkt am Netz (Rechts)"
+}
+
+class PadelTacticsTrainer:
+    def __init__(self):
+        self.score = 0
+        self.total_questions = 0
+        
+    def generate_scenario(self):
+        # Mögliche Szenarien, die die "KI" auswählt
+        scenarios = [
+            {
+                "id": 1,
+                "description": "Gegner haben euch nach hinten gedrängt und stehen beide aggressiv am Netz (Zonen B4 und C4). Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst perfekt zum Ball.",
+                "valid_shots": ["LOB", "CHIRURGISCHER LOB"],
+                "best_zones": ["A1", "D1"], # Tiefe Grundlinie der Gegner
+                "explanation": "Da die Gegner das Netz dominieren, ist der hohe Lob die einzige sichere Option, um sie zu vertreiben und selbst das Netz zu erobern. Ein flacher Ball wird am Netz eiskalt abgefangen."
+            },
+            {
+                "id": 2,
+                "description": "Du stehst stabil am Netz (Zone B3). Der Gegner spielt einen verunglückten, zu kurzen Lob, der als hoher Ball auf die Mittellinie (Zone B2) fällt. Du hast viel Zeit, stehst aber relativ weit hinten im Feld.",
+                "valid_shots": ["BANDEJA", "VIBORA"],
+                "best_zones": ["A1", "D1", "A2"], # In die Ecken oder auf die Wände
+                "explanation": "Für einen finalen Smash stehst du zu weit hinten. Die Bandeja oder Víbora hält die Gegner hinten und sichert dir die Netzposition, ohne dass der Ball hoch von der Wand abprallt."
+            },
+            {
+                "id": 3,
+                "description": "Du stehst am Netz (Zone C3). Der Gegner schießt aus der Defensive einen harten, schnellen Passierball direkt auf deinen Körper.",
+                "valid_shots": ["BLOCK", "REFLEX-VOLLEY", "VOLLEY"],
+                "best_zones": ["B2", "C2", "A1"], # Tief vor die Füße oder in die Mitte
+                "explanation": "Bei harten Bällen auf den Körper darfst du nicht ausholen. Schläger kompakt als 'Wand' hinhalten (Block) und den Ball tief in die Mitte oder dem Gegner vor die Füße tropfen lassen."
+            }
+        ]
+        return random.choice(scenarios)
+
+    def play_round(self):
+        scenario = self.generate_scenario()
+        self.total_questions += 1
+        
+        print("\n" + "="*60)
+        print(f"AUFGABE {self.total_questions}:")
+        print("="*60)
+        print(scenario["description"])
+        print("-"*60)
+        
+        # User-Eingabe 1: Welcher Schlag?
+        print("Verfügbare Schläge: Lob, Smash, Bandeja, Vibora, Volley, Block, Bajada")
+        user_shot = input("Dein Schlag: ").strip().upper()
+        
+        # User-Eingabe 2: Wohin?
+        print("\nWohin spielst du den Ball? (Wähle eine gegnerische Zone, z.B. A1 für Ecke hinten links, B2 für Mitte hinten...)")
+        print("[A1] [B1] [C1] [D1]  <- Gegnerische Grundlinie")
+        print("[A2] [B2] [C2] [D2]  <- Gegnerisches Mittelfeld")
+        print("[A3] [B3] [C3] [D3]  <- Gegnerisches Netz")
+        user_zone = input("Ziel-Zone: ").strip().upper()
+        
+        # Auswertung
+        shot_correct = user_shot in scenario["valid_shots"]
+        zone_correct = user_zone in scenario["best_zones"]
+        
+        print("\n" + "-"*60)
+        if shot_correct and zone_correct:
+            print("🎉 BERVORRAGEND! (Richtig entschieden)")
+            self.score += 1
+        elif shot_correct and not zone_correct:
+            print("⚠️ TEILWEISE RICHTIG: Der Schlag war gut, aber die Platzierung suboptimal.")
+        else:
+            print("❌ TAKTISCHER FEHLER: In dieser Situation verlierst du den Punkt.")
+            
+        print(f"\nErklärung: {scenario['explanation']}")
+        print(f"Empfohlene Schläge: {', '.join(scenario['valid_shots'])}")
+        print(f"Empfohlene Zonen: {', '.join(scenario['best_zones'])} ({', '.join([COURT_ZONES.get(z, '') for z in scenario['best_zones']])})")
+        print(f"\nAktueller Score: {self.score}/{self.total_questions}")
+
+# Trainer starten
+if __name__ == "__main__":
+    trainer = PadelTacticsTrainer()
+    print("Willkommen beim Padel-Taktiktrainer v1.0!")
+    print("Trainiere deine Entscheidungsfindung für das nächste Turnier.")
+    
+    while True:
+        trainer.play_round()
+        weiter = input("\nNächste Aufgabe? (ja/nein): ").strip().lower()
+        if weiter != 'ja':
+            print(f"\nTraining beendet! Dein Endstand: {trainer.score}/{trainer.total_questions} gelösten Taktikaufgaben.")
+            break

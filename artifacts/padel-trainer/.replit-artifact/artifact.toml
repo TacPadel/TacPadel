@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Padel Tactics Trainer"
+version = "1.0.0"
+id = "artifacts/padel-trainer"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21304
+
+[services.development]
+run = "pnpm --filter @workspace/padel-trainer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/padel-trainer", "run", "build" ]
+publicDir = "artifacts/padel-trainer/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21304"
+BASE_PATH = "/"
