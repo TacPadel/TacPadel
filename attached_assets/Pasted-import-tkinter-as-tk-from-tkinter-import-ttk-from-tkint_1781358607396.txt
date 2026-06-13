@@ -1,0 +1,127 @@
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import random
+
+# --- RECHTE UND LINKE KOORDINATEN FÜR DIE ZONENANZEIGE ---
+ZONE_COORDS_LEFT = {
+    "A1": (60, 60),   "A2": (160, 60),  "A3": (260, 60),  "A4": (340, 60),
+    "B1": (60, 140),  "B2": (160, 140), "B3": (260, 140), "B4": (340, 140),
+    "C1": (60, 240),  "C2": (160, 240), "C3": (260, 240), "C4": (340, 240),
+    "D1": (60, 320),  "D2": (160, 320), "D3": (260, 320), "D4": (340, 320)
+}
+
+ZONE_COORDS_RIGHT = {
+    "A1": (700, 60),  "A2": (600, 60),  "A3": (500, 60),  "A4": (420, 60),
+    "B1": (700, 140), "B2": (600, 140), "B3": (500, 140), "B4": (420, 140),
+    "C1": (700, 240), "C2": (600, 240), "C3": (500, 240), "C4": (420, 240),
+    "D1": (700, 320), "D2": (600, 320), "D3": (500, 320), "D4": (420, 320)
+}
+
+PADEL_DICTIONARY = {
+    "Schläge": {
+        "Aufschlag": "Der Aufschlag wird im Padel unterhalb der Hüfte ausgeführt und muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden.",
+        "Lob": "Ein hoher, tiefer Ball an die gegnerische Grundlinie, um die Netzposition zu erobern.",
+        "Volley": "Ein Schlag direkt aus der Luft, ohne vorherigen Bodenaufprall, meistens eng am Netz gespielt.",
+        "Bandeja": "Ein kontrollierter Überkopfschlag aus dem Mittelfeld mit Slice, um den Ball flach zu halten.",
+        "Víbora": "Ein aggressiverer Überkopfschlag mit viel Seitwärtsdrall, der extrem flach von den Wänden abprallt.",
+        "Smash": "Ein klassischer Überkopf-Power-Schlag, um den Ball aus dem Platz zu kicken.",
+        "Bajada de Pared": "Ein starker Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der Rückwand abgeprallt ist.",
+        "Chiquita": "Ein kurzer, weicher Ball aus der Defensive genau vor die Füße der Netzspieler.",
+        "Block": "Ein passiver Schlag am Netz, um harte Bälle direkt am Schläger abtropfen zu lassen."
+    },
+    "Positionen": {
+        "Netzposition (Angriff)": "Die dominierende Position im Padel, ca. 2-3 Meter vor dem Netz.",
+        "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Druck, leicht hinter der Aufschlaglinie.",
+        "Die Übergangszone": "Das Niemandsland zwischen Aufschlaglinie und Netz. Hier sollte man nicht stehen bleiben."
+    },
+    "Regeln": {
+        "Zählweise": "15, 30, 40, Spiel. Wie im Tennis. Oft mit Golden Point bei Einstand.",
+        "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er Glas oder Gitter berührt.",
+        "Eigenes Glas nutzen": "In der Defensive darf man den Ball gegen die eigene Glasscheibe ins gegnerische Feld schlagen."
+    }
+}
+
+class FullPadelApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Padel-Tennis Taktik- & Ausbildungszentrum")
+        self.root.geometry("1000x850")
+        self.root.configure(bg="#2c3e50")
+        
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        style = ttk.Style()
+        style.configure("TNotebook", background="#2c3e50")
+        style.configure("TNotebook.Tab", font=("Helvetica", 11, "bold"), padding=[15, 5])
+        
+        self.tab_trainer = tk.Frame(self.notebook, bg="#2c3e50")
+        self.tab_board = tk.Frame(self.notebook, bg="#2c3e50")
+        self.tab_basics = tk.Frame(self.notebook, bg="#2c3e50")
+        
+        self.notebook.add(self.tab_trainer, text=" 🎯 Taktiktrainer ")
+        self.notebook.add(self.tab_board, text=" 📋 Freies Taktikboard ")
+        self.notebook.add(self.tab_basics, text=" 📖 Padel Basics ")
+        
+        self.setup_taktiktrainer()
+        self.setup_taktikboard()
+        self.setup_padel_basics()
+
+    # =========================================================================
+    # TAB 1: TAKTIKTRAINER MIT ROTIERENDEN FRAGEN
+    # =========================================================================
+    def setup_taktiktrainer(self):
+        self.score = 0
+        self.total = 0
+        self.current_scenario = None
+        self.current_level = "Fortgeschrittener"
+        self.current_side_profi = "Vorhand"
+        
+        # Tracker für gemeisterte Schläge
+        self.mastered_shots = set()
+        
+        # Rotations-Pools initialisieren
+        self.init_scenarios_pool()
+        self.refresh_rotation_pool()
+        
+        self.top_trainer_frame = tk.Frame(self.tab_trainer, bg="#2c3e50")
+        self.top_trainer_frame.pack(pady=5, fill="x")
+        
+        self.trainer_title = tk.Label(self.top_trainer_frame, text="Padel Taktik-Schach", font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="#ecf0f1")
+        self.trainer_title.pack()
+        
+        self.level_frame = tk.Frame(self.top_trainer_frame, bg="#2c3e50")
+        self.level_frame.pack(pady=5)
+        
+        self.btn_anfaenger = tk.Button(self.level_frame, text="Anfänger", command=lambda: self.set_level("Anfänger"), font=("Helvetica", 10, "bold"), bg="#34495e", fg="white")
+        self.btn_anfaenger.grid(row=0, column=0, padx=5)
+        self.btn_fortgeschritten = tk.Button(self.level_frame, text="Fortgeschrittener", command=lambda: self.set_level("Fortgeschrittener"), font=("Helvetica", 10, "bold"), bg="#2980b9", fg="white")
+        self.btn_fortgeschritten.grid(row=0, column=1, padx=5)
+        self.btn_profi = tk.Button(self.level_frame, text="Profi", command=lambda: self.set_level("Profi"), font=("Helvetica", 10, "bold"), bg="#34495e", fg="white")
+        self.btn_profi.grid(row=0, column=2, padx=5)
+        
+        self.score_label = tk.Label(self.top_trainer_frame, text="Score: 0 / 0 | Level: Fortgeschrittener", font=("Helvetica", 11), bg="#2c3e50", fg="#bdc3c7")
+        self.score_label.pack(pady=2)
+
+        self.canvas_t = tk.Canvas(self.tab_trainer, width=760, height=360, bg="#2980b9", highlightthickness=2, highlightbackground="#bdc3c7")
+        self.canvas_t.pack(pady=5)
+        
+        self.desc_frame = tk.Frame(self.tab_trainer, bg="#34495e", bd=2, relief="groove")
+        self.desc_frame.pack(pady=5, fill="x", padx=40)
+        
+        self.desc_label = tk.Label(self.desc_frame, text="", font=("Helvetica", 11, "italic"), bg="#34495e", fg="#ffffff", wraplength=700, justify="center", pady=8)
+        self.desc_label.pack()
+
+        self.input_frame = tk.Frame(self.tab_trainer, bg="#2c3e50")
+        self.input_frame.pack(pady=10)
+        
+        self.lbl_lauf = tk.Label(self.input_frame, text="Lauf-Ziel:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white")
+        self.lauf_var = tk.StringVar(value="A1")
+        self.lauf_menu = tk.OptionMenu(self.input_frame, self.lauf_var, "A1","A2","A3","A4","B1","B2","B3","B4","C1","C2","C3","C4","D1","D2","D3","D4")
+        
+        self.lbl_shot = tk.Label(self.input_frame, text="Dein Schlag:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white")
+        self.shot_var = tk.StringVar(value="LOB")
+        self.shot_menu = tk.OptionMenu(self.input_frame, self.shot_var, "LOB", "BANDEJA", "VIBORA", "BLOCK", "VOLLEY", "SMASH", "BAJADA", "CHIQUITA", "AUFSCHLAG")
+        
+        self.lbl

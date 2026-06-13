@@ -267,12 +267,25 @@ function BasicsTab() {
   );
 }
 
+function shuffleIndices(length: number, excludeFirst?: number): number[] {
+  const indices = Array.from({ length }, (_, i) => i);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  if (excludeFirst !== undefined && indices[0] === excludeFirst && indices.length > 1) {
+    [indices[0], indices[1]] = [indices[1], indices[0]];
+  }
+  return indices;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("trainer");
   const [level, setLevel] = useState<Level>("Fortgeschrittener");
-  const [currentScenarioIndex, setCurrentScenarioIndex] = useState(() =>
-    Math.floor(Math.random() * SCENARIOS.length)
-  );
+  const [[currentScenarioIndex, rotationPool], setRotation] = useState<[number, number[]]>(() => {
+    const pool = shuffleIndices(SCENARIOS.length);
+    return [pool[0], pool.slice(1)];
+  });
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [selectedLaufZone, setSelectedLaufZone] = useState<string | null>(null);
@@ -334,11 +347,12 @@ export default function App() {
   };
 
   const nextRound = () => {
-    let nextIndex = currentScenarioIndex;
-    while (nextIndex === currentScenarioIndex) {
-      nextIndex = Math.floor(Math.random() * SCENARIOS.length);
+    let pool = rotationPool;
+    if (pool.length === 0) {
+      pool = shuffleIndices(SCENARIOS.length, currentScenarioIndex);
     }
-    setCurrentScenarioIndex(nextIndex);
+    const nextIndex = pool[0];
+    setRotation([nextIndex, pool.slice(1)]);
     setSelectedShot(null);
     setSelectedZone(null);
     setSelectedLaufZone(null);
