@@ -61,6 +61,86 @@ const SCENARIOS: Scenario[] = [
       ball: { side: "left", zone: "B4" },
     },
   },
+  {
+    id: 4,
+    description:
+      "Der Gegner spielt einen hohen, kurzen Lob, der steil auf Zone B3 fällt. Du stehst in perfekter Schlagposition direkt am Netz — Zeit, Höhe und Winkel stimmen. Die Gegner befinden sich tief an ihrer Grundlinie. Wie beendest du den Punkt?",
+    validShots: ["SMASH"],
+    bestZones: ["A1", "D1"],
+    explanation:
+      "Perfekt! Dies ist die klassische Smash-Situation: optimale Position, hoher Ball, Gegner tief hinten. Ein präziser, harter Smash tief in die Glasecken (A1 oder D1) beendet den Punkt direkt. Hier kein Risiko scheuen — wer zögert, verschenkt den Punkt.",
+    positions: {
+      you: "B4",
+      partner: "C4",
+      opp1: "A1",
+      opp2: "D1",
+      ball: { side: "left", zone: "B3" },
+    },
+  },
+  {
+    id: 5,
+    description:
+      "Der Gegner lobbt hoch an deine Rückwand. Der Ball prallt vom Glas ab und steht nun gut spielbar bei Zone A2. Die Gegner haben das Netz besetzt. Wie spielst du den Glaswand-Ball taktisch klug zurück?",
+    validShots: ["BAJADA", "LOB"],
+    bestZones: ["B4", "C4"],
+    explanation:
+      "Korrekt! Eine Bajada — ein kontrollierter Slice nach dem Glaswandabprall — direkt zu den Füßen der netzstehenden Gegner (B4/C4) ist die technisch anspruchsvollste, aber wirksamste Lösung. Alternativ schützt ein hoher Lob tief in die Ecken die eigene Position.",
+    positions: {
+      you: "A2",
+      partner: "B2",
+      opp1: "B4",
+      opp2: "C4",
+      ball: { side: "left", zone: "A2" },
+    },
+  },
+  {
+    id: 6,
+    description:
+      "Du und dein Partner stehen an der Aufschlaglinie (Zonen B2/C2). Der Gegner spielt einen mittelhohen Ball mittig auf Zone B3. Du hast Zeit und gute Schlagposition. Welcher Schlag bringt euch ans Netz und setzt die Gegner unter Druck?",
+    validShots: ["VIBORA", "BANDEJA"],
+    bestZones: ["A1", "D1", "A2"],
+    explanation:
+      "Genau! Eine offensive Víbora oder Bandeja aus der Mitte treibt die Gegner tief an die Grundlinie und öffnet den Weg ans Netz. Ein defensiver Volley würde die Initiative wieder abgeben — hier muss man aktiv werden.",
+    positions: {
+      you: "B2",
+      partner: "C2",
+      opp1: "A1",
+      opp2: "D1",
+      ball: { side: "left", zone: "B3" },
+    },
+  },
+  {
+    id: 7,
+    description:
+      "Du stehst am Netz (Zone B4), der Ball kommt tief und langsam direkt auf deine Füße. Ein Smash ist unmöglich — der Ball liegt zu tief. Die Gegner stehen mittig und warten. Wie rettest du den Punkt?",
+    validShots: ["VOLLEY", "BLOCK"],
+    bestZones: ["A1", "D1", "A2"],
+    explanation:
+      "Richtig! Bei einem Ball zu den Füßen am Netz muss man den Schläger unter den Ball bringen und einen kontrollierten, tiefen Volley tief in die Grundlinienecken spielen (A1/D1). Zu viel Kraft führt ins Netz — hier zählt Feingefühl über Aggression.",
+    positions: {
+      you: "B4",
+      partner: "C4",
+      opp1: "B2",
+      opp2: "C2",
+      ball: { side: "left", zone: "B4" },
+    },
+  },
+  {
+    id: 8,
+    description:
+      "Beide Gegner sind auf die linke Seite gelaufen (GEG1 & GEG2 bei A4/A3). Die rechte Seite ihres Feldes ist komplett offen. Du stehst stabil am Netz (Zone C4) und hast den Ball gut gespielt bekommen. Was tust du?",
+    validShots: ["VOLLEY", "VIBORA", "SMASH"],
+    bestZones: ["D1", "D2", "D3"],
+    explanation:
+      "Ausgezeichnet! Die offene Seite (D-Zonen) ist der goldene Treffer. Ein präziser Volley, Víbora oder Smash in die rechte Seite (D1–D3) zwingt die Gegner zu einem unmöglichen Sprint und beendet den Punkt. Immer in den offenen Raum spielen!",
+    positions: {
+      you: "C4",
+      partner: "B4",
+      opp1: "A4",
+      opp2: "A3",
+      ball: { side: "left", zone: "C3" },
+    },
+  },
 ];
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA"];
