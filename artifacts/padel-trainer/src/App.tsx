@@ -50,11 +50,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 1,
     description:
-      "Die Gegner haben euch nach hinten gedrängt und besetzen das Netz. Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst stabil zum Ball. Was spielst du?",
+      "SZENARIO (LOB): Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Du stehst stabil zum Ball. Welcher Schlag bringt Entlastung?",
     validShots: ["LOB"],
     bestZones: ["A1", "D1"],
     explanation:
-      "Richtig! Wenn die Gegner das Netz dominieren, ist ein hoher und tiefer Lob das effektivste taktische Mittel, um sie zum Rückzug zu zwingen.",
+      "Ein hoher Lob zwingt die Gegner nach hinten und bricht ihren Netzangriff. Du gewinnst Zeit, um selbst in die Angriffszone (B2) vorzurücken.",
     positions: {
       you: "A1",
       partner: "B1",
@@ -67,11 +67,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 2,
     description:
-      "Du stehst in der Angriffsposition am Netz (Zone B3). Der Gegner spielt unter Druck einen unpräzisen, zu kurzen Lob auf das T-Stück der Mittellinie (Zone B2). Welcher Schlag sichert die Position?",
-    validShots: ["BANDEJA", "VIBORA"],
-    bestZones: ["A1", "D1", "A2"],
+      "SZENARIO (BANDEJA): Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg. Welcher Kontrollschlag sichert deine Position?",
+    validShots: ["BANDEJA"],
+    bestZones: ["A1", "D1"],
     explanation:
-      "Korrekt! Für einen direkten Smash ist die Distanz zum Netz zu groß. Eine kontrollierte Bandeja oder Víbora hält die Gegner hinten.",
+      "Die Bandeja sichert deine Netzposition (B3), indem du den Ball mit Slice kontrolliert flach hältst. Die Gegner bleiben defensiv gebunden.",
     positions: {
       you: "B3",
       partner: "C3",
@@ -84,11 +84,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 3,
     description:
-      "Dein Team steht kompakt am Netz. Der Gegner schlägt aus der Defensive einen harten, flachen Passierball genau durch die Mitte auf die Netzkante (Zone B4/C4). Wie reagierst du?",
-    validShots: ["BLOCK", "VOLLEY"],
-    bestZones: ["B2", "C2", "B1"],
+      "SZENARIO (BLOCK): Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball kommt fliegend durch die Mitte direkt auf dich (B4). Wie reagierst du?",
+    validShots: ["BLOCK"],
+    bestZones: ["B2", "C2"],
     explanation:
-      "Hervorragend. Bei schnellen Bällen durch die Mitte den Schläger kompakt als Wand hinhalten und den Ball flach vor die Füße der Gegner blocken.",
+      "Schläger stabil wie eine Wand reinhalten, um die Wucht zu nehmen und den Ball kurz hinter das Netz abtropfen zu lassen. Keine Ausholbewegung!",
     positions: {
       you: "B4",
       partner: "C4",
@@ -101,11 +101,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 4,
     description:
-      "Ihr habt die Gegner perfekt ausgespielt. Ein hoher Lob des Gegners verhungert mitten im Feld (Zone B3). Du stehst direkt darunter an der Netzkante. Was tust du?",
+      "SZENARIO (SMASH): Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B3) herunter. Du stehst perfekt darunter. Wie beendest du den Punkt?",
     validShots: ["SMASH"],
-    bestZones: ["A1", "D1", "B2"],
+    bestZones: ["A1", "D1"],
     explanation:
-      "Punktgewinn! Aus dieser extrem nahen Position am Netz ist der Power-Smash die richtige Wahl, um den Ball unbrennbar zu machen.",
+      "Hier ist der Power-Smash die einzig richtige Wahl — aus dieser Position direkt am Netz beendest du den Punkt humorlos und direkt.",
     positions: {
       you: "B4",
       partner: "C4",
@@ -118,11 +118,45 @@ const SCENARIOS: Scenario[] = [
   {
     id: 5,
     description:
-      "Ein hoher Lob des Gegners fliegt über dich hinweg, prallt hoch an der linken Rückwand ab und kommt in Zone A2 herunter. Die Gegner rücken sofort aggressiv ans Netz auf (B4, C4). Welcher Schlag bietet sich an?",
-    validShots: ["BAJADA", "LOB"],
+      "SZENARIO (VÍBORA): Du bist am Netz (B3). Gegner spielen wieder einen kurzen Lob auf B2, stehen aber nun tiefer und warten auf die Bandeja. Überrasche sie mit etwas Aggressivem!",
+    validShots: ["VIBORA"],
+    bestZones: ["A1", "D1", "A2"],
+    explanation:
+      "Die Víbora mit extremem Seitwärtsdrall springt unberechenbar flach von der Wand ab und lässt dem Gegner keine Reaktionszeit.",
+    positions: {
+      you: "B3",
+      partner: "C3",
+      opp1: "A1",
+      opp2: "C1",
+      ball: { side: "left", zone: "B2" },
+    },
+    laufZone: "B3",
+  },
+  {
+    id: 6,
+    description:
+      "SZENARIO (VOLLEY): Du stehst dominant am Netz (C4). Der Gegner spielt unter Druck einen weichen, hohen Ball in die Mitte. Ein idealer Flugball wartet auf dich.",
+    validShots: ["VOLLEY"],
+    bestZones: ["B2", "A2", "D2"],
+    explanation:
+      "Aus dieser Position am Netz ist ein platzierter Slice-Volley tief in die Ecken (B2/A2/D2) der perfekte Abschluss — ruhig und präzise.",
+    positions: {
+      you: "C4",
+      partner: "B4",
+      opp1: "B1",
+      opp2: "C2",
+      ball: { side: "left", zone: "C4" },
+    },
+    laufZone: "C4",
+  },
+  {
+    id: 7,
+    description:
+      "SZENARIO (BAJADA): Ein Lob des Gegners fliegt über dich, prallt hoch an deiner Rückwand ab (A2). Die Gegner stürmen sofort aggressiv ans Netz (B4/C4). Was tust du?",
+    validShots: ["BAJADA"],
     bestZones: ["A2", "D2", "A1"],
     explanation:
-      "Sehr gut! Da der Ball hoch von der Wand abspringt, kannst du ihn über Netzhöhe als Bajada (Vorschlag von oben nach unten) aggressiv in die Lücken oder als überraschenden Lob spielen.",
+      "Der hohe Abpraller erlaubt dir die Bajada — einen kraftvollen Schlag von oben nach unten. Spiele in die Lücken, um die Kontrolle zurückzugewinnen.",
     positions: {
       you: "A1",
       partner: "B1",
@@ -133,59 +167,42 @@ const SCENARIOS: Scenario[] = [
     laufZone: "B2",
   },
   {
-    id: 6,
+    id: 8,
     description:
-      "Ihr baut das Spiel geduldig von der Aufschlaglinie auf (Zone B2). Der Ball kommt als halbhoher, mittelschneller Ball in deine Komfortzone. Die Gegner stehen mittig (B3/C3). Wie hältst du den Druck aufrecht?",
-    validShots: ["VIBORA", "BANDEJA"],
-    bestZones: ["A1", "D1", "B2"],
+      "SZENARIO (CHIQUITA): Du stehst tief im Hinterfeld (A2). Die Gegner dominieren kompakt das Netz (B4/C4). Du musst aus der Defensive antworten. Wie bringst du sie in Schwierigkeiten?",
+    validShots: ["CHIQUITA"],
+    bestZones: ["B2", "C2", "B1"],
     explanation:
-      "Genauso. Ein kontrollierter, effetreicher Überkopfschlag aus dem Mittelfeld zwingt die Gegner, hinten zu bleiben, und erlaubt es euch, weiter vorzurücken.",
+      "Die Chiquita — ein kurzer, weicher Chip — landet direkt vor den Füßen der Netzspieler und zwingt sie zu einem unangenehmen Volley von ganz unten.",
     positions: {
-      you: "B2",
-      partner: "C2",
-      opp1: "B3",
-      opp2: "C3",
-      ball: { side: "left", zone: "B2" },
+      you: "A2",
+      partner: "B2",
+      opp1: "B4",
+      opp2: "C4",
+      ball: { side: "left", zone: "A2" },
     },
-    laufZone: "B3",
+    laufZone: "B2",
   },
   {
-    id: 7,
+    id: 9,
     description:
-      "Du stehst vorne am Netz (Zone C3). Der Gegner spielt einen extrem unangenehmen, gechippten Ball, der dir direkt vor die Füße fällt (Zone C3). Wie rettest du den Ball?",
-    validShots: ["VOLLEY", "BLOCK"],
-    bestZones: ["B2", "C2"],
+      "SZENARIO (AUFSCHLAG): Du eröffnest den Punkt mit dem Aufschlag von der rechten Seite (D2). Der Gegner-Rückschläger steht mittig bereit. Wohin zielst du deinen Aufschlag?",
+    validShots: ["AUFSCHLAG"],
+    bestZones: ["B1", "A1"],
     explanation:
-      "Stark gelöst. Wenn der Ball dir vor die Füße fällt, musst du tief in die Knie gehen und den Volley/Block mit extrem weichem Handgelenk kurz hinter das Netz tropfen lassen.",
+      "Ein Aufschlag auf die T-Linie (B1) oder in die Glasecke (A1) bringt den Gegner in eine defensive Position und eröffnet euch einen starken ersten Volley.",
     positions: {
-      you: "C3",
-      partner: "B3",
-      opp1: "B1",
-      opp2: "C1",
-      ball: { side: "left", zone: "C3" },
+      you: "D2",
+      partner: "C2",
+      opp1: "C4",
+      opp2: "D4",
+      ball: { side: "left", zone: "D2" },
     },
     laufZone: "C3",
   },
-  {
-    id: 8,
-    description:
-      "Du bist am Netz (Zone B3). GEG1 ist weit in die Mitte gerückt, wodurch die linke äußere Gitterseite (Zone A2/A1) komplett offen steht. Welcher Schlag nutzt das aus?",
-    validShots: ["VOLLEY", "VIBORA", "SMASH"],
-    bestZones: ["A1", "A2"],
-    explanation:
-      "Chirurgisch präzise! Das Ausnutzen der offenen Seite mit einem platzierten Volley oder einer Víbora in die freie Ecke gewinnt in 90% der Fälle den Punkt.",
-    positions: {
-      you: "B3",
-      partner: "C3",
-      opp1: "C4",
-      opp2: "D4",
-      ball: { side: "left", zone: "B3" },
-    },
-    laufZone: "B3",
-  },
 ];
 
-const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA"];
+const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG"];
 
 type Tab = "trainer" | "board" | "basics";
 
@@ -262,6 +279,7 @@ export default function App() {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [roundsPlayed, setRoundsPlayed] = useState(0);
+  const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
   const scenario = SCENARIOS[currentScenarioIndex];
 
@@ -308,6 +326,9 @@ export default function App() {
     setHasSubmitted(true);
     if (isFullyCorrect) {
       setScore((s) => s + 1);
+      if (level === "Anfänger" && scenario.validShots.length === 1) {
+        setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
+      }
     }
     setRoundsPlayed((r) => r + 1);
   };
@@ -422,6 +443,42 @@ export default function App() {
                     ? "Wähle Schlag und Zielzone auf dem Spielfeld."
                     : "Wähle deine Laufposition, den Schlag und die Zielzone — die volle Profi-Kette."}
                 </p>
+
+                {/* Anfänger Gold Challenge tracker */}
+                {level === "Anfänger" && (
+                  <div className="flex flex-col gap-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                        Gold-Challenge: {masteredShots.size} / {SHOTS.length} Schläge gemeistert
+                      </span>
+                      {masteredShots.size === SHOTS.length && (
+                        <span className="text-xs font-bold text-amber-400 animate-pulse">🏆 GOLD!</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SHOTS.map((shot) => {
+                        const mastered = masteredShots.has(shot);
+                        return (
+                          <span
+                            key={shot}
+                            className={`px-2.5 py-1 rounded text-xs font-bold border transition-all ${
+                              mastered
+                                ? "bg-amber-500/20 border-amber-400 text-amber-300"
+                                : "bg-background border-border text-muted-foreground/50"
+                            }`}
+                          >
+                            {mastered ? "★" : "○"} {shot}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {masteredShots.size === SHOTS.length && (
+                      <p className="text-xs text-amber-400 font-semibold">
+                        🏆 Gold-Challenge gemeistert! Du kennst alle 9 Schläge!
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Scenario description */}
