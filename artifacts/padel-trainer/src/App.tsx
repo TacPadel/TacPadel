@@ -50,7 +50,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 1,
     description:
-      "AUFGABE 1: Die Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Welcher Schlag bringt in dieser Situation Entlastung?",
+      "Die Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Welcher Schlag bringt in dieser Situation Entlastung?",
     validShots: ["LOB"],
     bestZones: ["A1", "D1"],
     explanation:
@@ -67,7 +67,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 2,
     description:
-      "AUFGABE 2: Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg.",
+      "Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg.",
     validShots: ["BANDEJA"],
     bestZones: ["A1", "D1"],
     explanation:
@@ -84,7 +84,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 3,
     description:
-      "AUFGABE 3: Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball wird fliegend durch die Mitte geschlagen (B4). Wie reagierst du?",
+      "Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball wird fliegend durch die Mitte geschlagen (B4). Wie reagierst du?",
     validShots: ["BLOCK"],
     bestZones: ["B2", "C2"],
     explanation:
@@ -101,7 +101,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 4,
     description:
-      "AUFGABE 4: Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B3) herunter. Du stehst perfekt darunter.",
+      "Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B3) herunter. Du stehst perfekt darunter.",
     validShots: ["SMASH"],
     bestZones: ["A1", "D1"],
     explanation:
@@ -118,7 +118,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 5,
     description:
-      "AUFGABE 5: Ein hoher Lob fliegt über dich hinweg, klatscht hoch gegen deine eigene Rückwand und kommt in Zone A2 herunter. Die Gegner rücken aggressiv auf.",
+      "Ein hoher Lob fliegt über dich hinweg, klatscht hoch gegen deine eigene Rückwand und kommt in Zone A2 herunter. Die Gegner rücken aggressiv auf.",
     validShots: ["BAJADA"],
     bestZones: ["A2", "D2"],
     explanation:
@@ -135,7 +135,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 6,
     description:
-      "AUFGABE 6: Du stehst im Halbfeld (B2). Ein halbhoher Ball schwebt heran. Du willst maximalen Schnitt mitgeben, damit der Ball extrem flach aus dem gegnerischen Glas bricht.",
+      "Du stehst im Halbfeld (B2). Ein halbhoher Ball schwebt heran. Du willst maximalen Schnitt mitgeben, damit der Ball extrem flach aus dem gegnerischen Glas bricht.",
     validShots: ["VIBORA"],
     bestZones: ["A1", "A2"],
     explanation:
@@ -152,7 +152,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 7,
     description:
-      "AUFGABE 7: Du stehst stabil in Angriffsstimmung direkt am Netz (C3). Ein harter, aber gut lesbarer Ball kommt auf Brusthöhe angeflogen.",
+      "Du stehst stabil in Angriffsstimmung direkt am Netz (C3). Ein harter, aber gut lesbarer Ball kommt auf Brusthöhe angeflogen.",
     validShots: ["VOLLEY"],
     bestZones: ["B2", "C2"],
     explanation:
@@ -169,7 +169,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 8,
     description:
-      "AUFGABE 8: Du stehst hinten in der Defensive (A1). Die Gegner kleben eng am Netz. Du möchtest sie auskontern und zu einem Volley von ganz weit unten zwingen.",
+      "Du stehst hinten in der Defensive (A1). Die Gegner kleben eng am Netz. Du möchtest sie auskontern und zu einem Volley von ganz weit unten zwingen.",
     validShots: ["CHIQUITA"],
     bestZones: ["B3", "C3"],
     explanation:
@@ -186,7 +186,7 @@ const SCENARIOS: Scenario[] = [
   {
     id: 9,
     description:
-      "AUFGABE 9: Das Spiel beginnt von Null. Du stehst spielbereit hinter der Aufschlaglinie (B1) und musst den Ball ins Spiel bringen. Welcher Schlag startet den Ballwechsel?",
+      "Das Spiel beginnt von Null. Du stehst spielbereit hinter der Aufschlaglinie (B1) und musst den Ball ins Spiel bringen. Welcher Schlag startet den Ballwechsel?",
     validShots: ["AUFSCHLAG"],
     bestZones: ["A2", "B2"],
     explanation:
@@ -292,6 +292,10 @@ export default function App() {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [roundsPlayed, setRoundsPlayed] = useState(0);
+  const [wrongPool, setWrongPool] = useState<number[]>([]);
+  const [isRetryPhase, setIsRetryPhase] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [showRetryBanner, setShowRetryBanner] = useState(false);
   const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
   const scenario = SCENARIOS[currentScenarioIndex];
@@ -342,29 +346,50 @@ export default function App() {
       if (level === "Anfänger" && scenario.validShots.length === 1) {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
+    } else {
+      setWrongPool((prev) => [...prev, currentScenarioIndex]);
     }
     setRoundsPlayed((r) => r + 1);
   };
 
   const nextRound = () => {
-    let pool = rotationPool;
-    if (pool.length === 0) {
-      pool = shuffleIndices(SCENARIOS.length, currentScenarioIndex);
-    }
-    const nextIndex = pool[0];
-    setRotation([nextIndex, pool.slice(1)]);
     setSelectedShot(null);
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+
+    if (rotationPool.length > 0) {
+      setRotation([rotationPool[0], rotationPool.slice(1)]);
+      return;
+    }
+
+    if (wrongPool.length > 0) {
+      const retryIndices = shuffleIndices(wrongPool.length).map((i) => wrongPool[i]);
+      const [next, ...rest] = retryIndices;
+      setRotation([next, rest]);
+      setWrongPool([]);
+      setIsRetryPhase(true);
+      setShowRetryBanner(true);
+      return;
+    }
+
+    setGameOver(true);
   };
 
   const handleLevelChange = (newLevel: Level) => {
     setLevel(newLevel);
+    const pool = shuffleIndices(SCENARIOS.length);
+    setRotation([pool[0], pool.slice(1)]);
     setSelectedShot(null);
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+    setScore(0);
+    setRoundsPlayed(0);
+    setWrongPool([]);
+    setIsRetryPhase(false);
+    setGameOver(false);
+    setShowRetryBanner(false);
   };
 
   return (
@@ -374,8 +399,10 @@ export default function App() {
         <header className="flex items-center justify-between border-b border-border pb-4">
           <h1 className="text-2xl font-bold tracking-tight text-primary">PADEL TACTICS</h1>
           {activeTab === "trainer" && (
-            <div className="text-sm font-medium px-3 py-1 bg-secondary rounded-full">
-              {score} / {roundsPlayed} gelöste Taktikaufgaben
+            <div className={`text-sm font-medium px-3 py-1 rounded-full ${
+              gameOver ? "bg-emerald-600/20 text-emerald-400 border border-emerald-600/30" : "bg-secondary"
+            }`}>
+              {gameOver ? "🏆 " : ""}Erfolgreich gelöst: {score} / {SCENARIOS.length}
             </div>
           )}
         </header>
@@ -495,17 +522,60 @@ export default function App() {
                 )}
               </div>
 
-              {/* Scenario description */}
-              <div className="bg-card border border-card-border p-6 rounded-xl shadow-lg relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+              {/* Game-over completion card */}
+              {gameOver && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-emerald-950/30 border border-emerald-500/50 rounded-xl p-8 flex flex-col items-center gap-4 text-center shadow-2xl"
+                >
+                  <span className="text-5xl">🏆</span>
+                  <h2 className="text-2xl font-bold text-emerald-400">EXZELLENT!</h2>
+                  <p className="text-lg text-foreground">
+                    Du hast alle Szenarien im Level <span className="font-bold text-primary">[{level}]</span> erfolgreich gemeistert!
+                  </p>
+                  <p className="text-muted-foreground text-sm">Erfolgreich gelöst: {score} / {SCENARIOS.length}</p>
+                  <button
+                    onClick={() => handleLevelChange(level)}
+                    className="mt-2 px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 transition-colors shadow-lg"
+                  >
+                    Neue Runde starten
+                  </button>
+                </motion.div>
+              )}
+
+              {/* Retry-phase banner */}
+              <AnimatePresence>
+                {showRetryBanner && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-amber-600/15 border border-amber-500/40 rounded-xl p-4 flex items-start gap-3"
+                  >
+                    <span className="text-2xl">🔄</span>
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-400">Wiederholungsrunde</p>
+                      <p className="text-sm text-muted-foreground">Erste Runde beendet! Jetzt wiederholen wir strukturiert die Szenarien, die noch nicht ganz fehlerfrei waren.</p>
+                    </div>
+                    <button onClick={() => setShowRetryBanner(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Scenario description (hidden when game over) */}
+              <div className={`border p-6 rounded-xl shadow-lg relative overflow-hidden ${gameOver ? "hidden" : ""} ${
+                isRetryPhase ? "bg-amber-950/20 border-amber-600/40" : "bg-card border-card-border"
+              }`}>
+                <div className={`absolute top-0 left-0 w-1 h-full ${isRetryPhase ? "bg-amber-500" : "bg-primary"}`} />
                 <h2 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-2">
-                  Szenario
+                  {isRetryPhase ? "🔄 Wiederholung" : "💡 Szenario"}
                 </h2>
                 <p className="text-lg leading-relaxed">{scenario.description}</p>
               </div>
 
-              {/* Shot selection */}
-              <div className="flex flex-col gap-3">
+              {/* Shot selection (hidden when game over) */}
+              <div className={`flex flex-col gap-3 ${gameOver ? "hidden" : ""}`}>
                 <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
                   {level === "Profi" ? "2. Schlag wählen" : "1. Schlag wählen"}
                 </h3>
@@ -534,8 +604,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Interactive court — only for Fortgeschrittener and Profi */}
-              {level !== "Anfänger" && (
+              {/* Interactive court — only for Fortgeschrittener and Profi, and not game over */}
+              {!gameOver && level !== "Anfänger" && (
                 <div className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
                     {level === "Profi" ? "1. + 3. Laufziel & Zielzone auf dem Spielfeld wählen" : "2. Zielzone auf dem Spielfeld wählen"}
@@ -586,8 +656,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Submit / feedback */}
-              <AnimatePresence>
+              {/* Submit / feedback (hidden when game over) */}
+              {!gameOver && <AnimatePresence>
                 {!hasSubmitted ? (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -657,7 +727,7 @@ export default function App() {
                     </div>
                   </motion.div>
                 )}
-              </AnimatePresence>
+              </AnimatePresence>}
             </motion.div>
           ) : (
             <motion.div
