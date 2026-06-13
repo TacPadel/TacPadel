@@ -1,0 +1,185 @@
+import tkinter as tk
+
+class PadelTacticsBoard:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Padel-Tennis Taktiktrainer v2.0")
+        
+        # Fenstergröße anpassen
+        self.window_width = 900
+        self.window_height = 550
+        self.root.geometry(f"{self.window_width}x{self.window_height}")
+        self.root.configure(bg="#2c3e50")
+        
+        # Titel-Label
+        self.title_label = tk.Label(
+            root, 
+            text="Padel Taktikboard - Ziehe Spieler & Ball mit der Maus", 
+            font=("Helvetica", 14, "bold"), 
+            bg="#2c3e50", 
+            fg="#ecf0f1"
+        )
+        self.title_label.pack(pady=10)
+
+        # Spielfeld-Größe im Fenster (Proportional zum echten 20x10m Court)
+        self.court_width = 760
+        self.court_height = 380
+        
+        # Canvas für das Spielfeld erstellen
+        self.canvas = tk.Canvas(
+            root, 
+            width=self.court_width, 
+            height=self.court_height, 
+            bg="#2980b9",  # Authentisches Padel-Blau
+            highlightthickness=2,
+            highlightbackground="#bdc3c7"
+        )
+        self.canvas.pack(pady=10)
+        
+        # Drag & Drop Variablen
+        self.drag_item = None
+        self.drag_data = {"x": 0, "y": 0}
+        
+        # Spielfeld zeichnen & Objekte erstellen
+        self.draw_court_lines()
+        self.create_players_and_ball()
+        
+        # Maus-Events binden für Drag & Drop
+        self.canvas.bind("<ButtonPress-1>", self.on_item_press)
+        self.canvas.bind("<ButtonRelease-1>", self.on_item_release)
+        self.canvas.bind("<B1-Motion>", self.on_item_motion)
+        
+        # Reset-Button hinzufügen
+        self.reset_button = tk.Button(
+            root, 
+            text="Positionen zurücksetzen", 
+            command=self.reset_positions,
+            font=("Helvetica", 10, "bold"),
+            bg="#e74c3c",
+            fg="white",
+            padx=10,
+            pady=5
+        )
+        self.reset_button.pack(pady=5)
+
+    def draw_court_lines(self):
+        w = self.court_width
+        h = self.court_height
+        
+        # 1. Weiße Außenlinien
+        self.canvas.create_rectangle(10, 10, w-10, h-10, outline="white", width=3)
+        
+        # 2. Das Netz (In der Mitte bei der Hälfte der Breite)
+        net_x = w / 2
+        self.canvas.create_line(net_x, 10, net_x, h-10, fill="#34495e", width=4, dash=(4, 2))
+        # Netz-Pfosten links und rechts
+        self.canvas.create_oval(net_x-4, 6, net_x+4, 14, fill="black")
+        self.canvas.create_oval(net_x-4, h-14, net_x+4, h-6, fill="black")
+        
+        # 3. Aufschlaglinien (Service Lines)
+        # Ein Padelplatz hat die Linien 3 Meter vor der Rückwand
+        # Proportional berechnet: 3m von 20m Gesamtlänge = 15% von jeder Seite
+        offset_x = 10 + (w - 20) * 0.15
+        
+        # Linke Seite Aufschlaglinie
+        self.canvas.create_line(offset_x, 10, offset_x, h-10, fill="white", width=2)
+        # Rechte Seite Aufschlaglinie
+        self.canvas.create_line(w - offset_x, 10, w - offset_x, h-10, fill="white", width=2)
+        
+        # 4. Mittellinie (Verbindet die Aufschlaglinien)
+        self.canvas.create_line(offset_x, h/2, w - offset_x, h/2, fill="white", width=2)
+        
+        # 5. Optische Wände (Schwarz/Grau für Glas und Gitter an den Rändern)
+        # Rückwände (Glas-Indikation)
+        self.canvas.create_line(10, 10, 10, h-10, fill="#7f8c8d", width=6)
+        self.canvas.create_line(w-10, 10, w-10, h-10, fill="#7f8c8d", width=6)
+
+    def create_players_and_ball(self):
+        w = self.court_width
+        h = self.court_height
+        
+        # Startpositionen definieren
+        self.initial_positions = {
+            # Team Rot (Links) - Eines der Teams, z.B. in der Defensive
+            "player_r1": {"x": 100, "y": 120, "color": "#e74c3c", "label": "A1", "tag": "player"},
+            "player_r2": {"x": 100, "y": 260, "color": "#e74c3c", "label": "A2", "tag": "player"},
+            
+            # Team Gelb (Rechts) - Gegner am Netz
+            "player_y1": {"x": w-140, "y": 120, "color": "#f1c40f", "label": "B1", "tag": "player"},
+            "player_y2": {"x": w-140, "y": 260, "color": "#f1c40f", "label": "B2", "tag": "player"},
+            
+            # Der Padel-Ball (Gelb-Grün und kleiner)
+            "ball": {"x": w/2 - 30, "y": h/2, "color": "#2ecc71", "label": "●", "tag": "ball"}
+        }
+        
+        self.interactive_objects = {}
+        
+        for name, data in self.initial_positions.items():
+            size = 14 if data["tag"] == "player" else 8
+            x, y = data["x"], data["y"]
+            
+            # Kreis zeichnen
+            obj_id = self.canvas.create_oval(
+                x - size, y - size, x + size, y + size, 
+                fill=data["color"], outline="white", width=2, tags="draggable"
+            )
+            
+            # Text/Label auf die Figur setzen
+            text_id = self.canvas.create_text(
+                x, y, text=data["label"], 
+                fill="white" if data["color"] != "#f1c40f" else "black", 
+                font=("Helvetica", 9, "bold"), tags="draggable"
+            )
+            
+            # IDs speichern, um beide zusammen zu bewegen
+            self.interactive_objects[obj_id] = text_id
+            self.interactive_objects[text_id] = obj_id
+
+    # --- DRAG AND DROP LOGIK ---
+    def on_item_press(self, event):
+        """Erkennt, welches Objekt angeklickt wurde"""
+        item = self.canvas.find_closest(event.x, event.y)[0]
+        tags = self.canvas.gettags(item)
+        
+        if "draggable" in tags:
+            self.drag_item = item
+            self.drag_data["x"] = event.x
+            self.drag_data["y"] = event.y
+
+    def on_item_release(self, event):
+        """Setzt das Objekt ab"""
+        self.drag_item = None
+
+    def on_item_motion(self, event):
+        """Bewegt das Objekt und das zugehörige Label mit der Maus"""
+        if self.drag_item:
+            # Berechnung der Verschiebung
+            delta_x = event.x - self.drag_data["x"]
+            delta_y = event.y - self.drag_data["y"]
+            
+            # Hauptobjekt bewegen
+            self.canvas.move(self.drag_item, delta_x, delta_y)
+            
+            # Zugehöriges Objekt bewegen (Kreis <-> Text)
+            partner_item = self.interactive_objects.get(self.drag_item)
+            if partner_item:
+                self.canvas.move(partner_item, delta_x, delta_y)
+            
+            # Neue Mausposition speichern
+            self.drag_data["x"] = event.x
+            self.drag_data["y"] = event.y
+
+    def reset_positions(self):
+        """Löscht alle Figuren und setzt sie auf die Startaufstellung zurück"""
+        # Alle verschiebbaren Objekte vom Canvas löschen
+        for obj_id in list(self.interactive_objects.keys()):
+            self.canvas.delete(obj_id)
+        
+        # Neu erstellen
+        self.create_players_and_ball()
+
+# Programm starten
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PadelTacticsBoard(root)
+    root.mainloop()
