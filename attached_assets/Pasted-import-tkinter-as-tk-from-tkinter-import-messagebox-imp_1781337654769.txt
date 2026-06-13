@@ -1,0 +1,191 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+
+# Raster-Koordinaten für das 4x4 Halbfeld (Zentren der Zonen für die Platzierung)
+# Linke Feldhälfte (Team Rot) und Rechte Feldhälfte (Team Gelb)
+ZONE_COORDS_LEFT = {
+    "A1": (60, 60),   "A2": (160, 60),  "A3": (260, 60),  "A4": (340, 60),
+    "B1": (60, 140),  "B2": (160, 140), "B3": (260, 140), "B4": (340, 140),
+    "C1": (60, 240),  "C2": (160, 240), "C3": (260, 240), "C4": (340, 240),
+    "D1": (60, 320),  "D2": (160, 320), "D3": (260, 320), "D4": (340, 320)
+}
+
+ZONE_COORDS_RIGHT = {
+    "A1": (700, 60),  "A2": (600, 60),  "A3": (500, 60),  "A4": (420, 60),
+    "B1": (700, 140), "B2": (600, 140), "B3": (500, 140), "B4": (420, 140),
+    "C1": (700, 240), "C2": (600, 240), "C3": (500, 240), "C4": (420, 240),
+    "D1": (700, 320), "D2": (600, 320), "D3": (500, 320), "D4": (420, 320)
+}
+
+class NeutralPadelTrainer:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Padel Taktiktrainer Pro")
+        self.root.geometry("900x750")
+        self.root.configure(bg="#2c3e50")
+        
+        self.score = 0
+        self.total = 0
+        self.current_scenario = None
+        
+        # --- UI LAYOUT ---
+        # 1. Score & Titel
+        self.top_frame = tk.Frame(root, bg="#2c3e50")
+        self.top_frame.pack(pady=10, fill="x")
+        
+        self.title_label = tk.Label(self.top_frame, text="Padel Taktik-Schach", font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="#ecf0f1")
+        self.title_label.pack()
+        
+        self.score_label = tk.Label(self.top_frame, text="Score: 0 / 0", font=("Helvetica", 12), bg="#2c3e50", fg="#bdc3c7")
+        self.score_label.pack()
+
+        # 2. Das grafische Spielfeld
+        self.court_width = 760
+        self.court_height = 380
+        self.canvas = tk.Canvas(root, width=self.court_width, height=self.court_height, bg="#2980b9", highlightthickness=2, highlightbackground="#bdc3c7")
+        self.canvas.pack(pady=5)
+        
+        # 3. Aufgabenstellung Textbox
+        self.desc_frame = tk.Frame(root, bg="#34495e", bd=2, relief="groove")
+        self.desc_frame.pack(pady=10, fill="x", padx=70)
+        
+        self.desc_label = tk.Label(self.desc_frame, text="", font=("Helvetica", 11, "italic"), bg="#34495e", fg="#ffffff", wraplength=720, justify="center", pady=10)
+        self.desc_label.pack()
+
+        # 4. Interaktions-Bereich (Eingaben)
+        self.input_frame = tk.Frame(root, bg="#2c3e50")
+        self.input_frame.pack(pady=5)
+        
+        # Schlag-Auswahl
+        tk.Label(self.input_frame, text="Wähle deinen Schlag:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white").grid(row=0, column=0, padx=10, pady=5)
+        self.shot_var = tk.StringVar(value="LOB")
+        self.shot_menu = tk.OptionMenu(self.input_frame, self.shot_var, "LOB", "BANDEJA", "VIBORA", "BLOCK", "VOLLEY", "SMASH", "BAJADA")
+        self.shot_menu.config(font=("Helvetica", 10), width=12)
+        self.shot_menu.grid(row=0, column=1, padx=10, pady=5)
+        
+        # Zonen-Auswahl
+        tk.Label(self.input_frame, text="Ziel-Zone (Gegner):", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white").grid(row=0, column=2, padx=10, pady=5)
+        self.zone_var = tk.StringVar(value="A1")
+        self.zone_menu = tk.OptionMenu(self.input_frame, self.zone_var, "A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2", "A3", "B3", "C3", "D3", "A4", "B4", "C4", "D4")
+        self.zone_menu.config(font=("Helvetica", 10), width=8)
+        self.zone_menu.grid(row=0, column=3, padx=10, pady=5)
+        
+        # Bestätigen Button
+        self.submit_btn = tk.Button(self.input_frame, text="Zug ausführen", command=self.check_answer, font=("Helvetica", 11, "bold"), bg="#2ecc71", fg="white", padx=15)
+        self.submit_btn.grid(row=0, column=4, padx=20, pady=5)
+        
+        # Aufgaben-Pool definieren
+        self.init_scenarios()
+        
+        # Erste Aufgabe laden
+        self.next_question()
+
+    def draw_court_infrastructure(self):
+        self.canvas.delete("all")
+        w, h = self.court_width, self.court_height
+        
+        # Außenlinien & Netz
+        self.canvas.create_rectangle(10, 10, w-10, h-10, outline="white", width=3)
+        net_x = w / 2
+        self.canvas.create_line(net_x, 10, net_x, h-10, fill="#2c3e50", width=4, dash=(4, 2))
+        
+        # Aufschlaglinien (Service Lines)
+        offset_x = 10 + (w - 20) * 0.15
+        self.canvas.create_line(offset_x, 10, offset_x, h-10, fill="white", width=2)
+        self.canvas.create_line(w - offset_x, 10, w - offset_x, h-10, fill="white", width=2)
+        self.canvas.create_line(offset_x, h/2, w - offset_x, h/2, fill="white", width=2)
+        
+        # Wände (Graue Balken an den Rückwänden)
+        self.canvas.create_line(10, 10, 10, h-10, fill="#7f8c8d", width=6)
+        self.canvas.create_line(w-10, 10, w-10, h-10, fill="#7f8c8d", width=6)
+        
+        # Zonenmarkierungen für den User auf der gegnerischen (rechten) Seite einblenden
+        for zone, coord in ZONE_COORDS_RIGHT.items():
+            self.canvas.create_text(coord[0], coord[1], text=zone, fill="#34495e", font=("Helvetica", 8, "italic"))
+
+    def init_scenarios(self):
+        self.scenarios = [
+            {
+                "desc": "AUFGABE: Die Gegner haben euch nach hinten gedrängt und besetzen das Netz. Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst stabil zum Ball. Was spielst du, um die gegnerische Netzposition aufzulösen?",
+                "p_du": "A1", "p_partner": "B1", "g1": "B4", "g2": "C4", "ball": "A1", "ball_side": "left",
+                "valid_shots": ["LOB"], "best_zones": ["A1", "D1"],
+                "explanation": "Richtig! Wenn die Gegner das Netz dominieren, ist ein hoher und tiefer Lob das effektivste taktische Mittel. Er zwingt die Gegner zum Rückzug an die Grundlinie (Zonen A1 oder D1) und ermöglicht deinem Team das Aufrücken ans Netz."
+            },
+            {
+                "desc": "AUFGABE: Du stehst in der Angriffsposition am Netz (Zone B3). Der Gegner spielt unter Druck einen unpräzisen, zu kurzen Lob auf das T-Stück der Mittellinie (Zone B2). Du hast ausreichend Zeit, stehst für einen direkten Smash aber etwas zu weit vom Netz entfernt. Welcher Schlag sichert die Position?",
+                "p_du": "B3", "p_partner": "C3", "g1": "B1", "g2": "C1", "ball": "B2", "ball_side": "left",
+                "valid_shots": ["BANDEJA", "VIBORA"], "best_zones": ["A1", "D1", "A2"],
+                "explanation": "Korrekt! Für einen direkten, punktbringenden Smash ist die Distanz zum Netz hier zu groß. Eine kontrollierte Bandeja oder Víbora tief in die Ecken hält die Gegner hinten und bewahrt die eigene Netzposition."
+            },
+            {
+                "desc": "AUFGABE: Dein Team steht kompakt am Netz. Der Gegner schlägt aus der Defensive einen harten, flachen Passierball genau durch die Mitte auf die Netzkante (Zone B4/C4). Wie reagiert man in dieser Netzposition am besten?",
+                "p_du": "B4", "p_partner": "C4", "g1": "B1", "g2": "C2", "ball": "B4", "ball_side": "left",
+                "valid_shots": ["BLOCK", "VOLLEY"], "best_zones": ["B2", "C2", "B1"],
+                "explanation": "Hervorragend. Bei sehr schnellen Bällen durch die Mitte empfiehlt es sich, den Schläger kompakt hinzuhalten (Block oder Volley), ohne weit auszuholen. Der Ball sollte kontrolliert und flach vor die Füße der Gegner platziert werden."
+            }
+        ]
+
+    def draw_scenario_objects(self):
+        s = self.current_scenario
+        
+        # 1. Deine Positionen (Rot)
+        c_du = ZONE_COORDS_LEFT[s["p_du"]]
+        self.canvas.create_oval(c_du[0]-14, c_du[1]-14, c_du[0]+14, c_du[1]+14, fill="#e74c3c", outline="white", width=2)
+        self.canvas.create_text(c_du[0], c_du[1], text="DU", fill="white", font=("Helvetica", 9, "bold"))
+        
+        c_part = ZONE_COORDS_LEFT[s["p_partner"]]
+        self.canvas.create_oval(c_part[0]-14, c_part[1]-14, c_part[0]+14, c_part[1]+14, fill="#c0392b", outline="white", width=2)
+        self.canvas.create_text(c_part[0], c_part[1], text="PTNER", fill="white", font=("Helvetica", 8))
+
+        # 2. Gegner-Positionen (Gelb)
+        c_g1 = ZONE_COORDS_RIGHT[s["g1"]]
+        self.canvas.create_oval(c_g1[0]-14, c_g1[1]-14, c_g1[0]+14, c_g1[1]+14, fill="#f1c40f", outline="black", width=2)
+        self.canvas.create_text(c_g1[0], c_g1[1], text="GEG1", fill="black", font=("Helvetica", 8, "bold"))
+
+        c_g2 = ZONE_COORDS_RIGHT[s["g2"]]
+        self.canvas.create_oval(c_g2[0]-14, c_g2[1]-14, c_g2[0]+14, c_g2[1]+14, fill="#f39c12", outline="black", width=2)
+        self.canvas.create_text(c_g2[0], c_g2[1], text="GEG2", fill="black", font=("Helvetica", 8, "bold"))
+
+        # 3. Der Ball (Leuchtend Grün)
+        ball_coords = ZONE_COORDS_LEFT[s["ball"]] if s["ball_side"] == "left" else ZONE_COORDS_RIGHT[s["ball"]]
+        bx, by = ball_coords[0] + 15, ball_coords[1] + 15
+        self.canvas.create_oval(bx-7, by-7, bx+7, by+7, fill="#2ecc71", outline="black", width=1)
+        self.canvas.create_text(bx, by, text="●", fill="black", font=("Helvetica", 8))
+
+    def next_question(self):
+        self.draw_court_infrastructure()
+        self.current_scenario = random.choice(self.scenarios)
+        self.desc_label.config(text=self.current_scenario["desc"])
+        self.draw_scenario_objects()
+
+    def check_answer(self):
+        user_shot = self.shot_var.get()
+        user_zone = self.zone_var.get()
+        s = self.current_scenario
+        
+        self.total += 1
+        
+        shot_ok = user_shot in s["valid_shots"]
+        zone_ok = user_zone in s["best_zones"]
+        
+        if shot_ok and zone_ok:
+            self.score += 1
+            title = "🎉 Taktisch richtig!"
+            msg = s["explanation"]
+        elif shot_ok and not zone_ok:
+            title = "⚠️ Richtiger Ansatz, ungenaue Platzierung"
+            msg = f"Der gewählte Schlag ({user_shot}) ist strategisch korrekt, aber die Platzierung in Zone {user_zone} ist unvorteilhaft. Effektiver wäre eine Platzierung in folgenden Zonen: {', '.join(s['best_zones'])}."
+        else:
+            title = "❌ Punktverlust"
+            msg = f"Taktischer Fehlentschluss. Ein {user_shot} birgt in dieser Situation ein zu hohes Risiko. \n\nEmpfohlene Spiellösung: {', '.join(s['valid_shots'])} in die Zonen {', '.join(s['best_zones'])}."
+            
+        self.score_label.config(text=f"Score: {self.score} / {self.total}")
+        
+        messagebox.showinfo(title, msg)
+        self.next_question()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = NeutralPadelTrainer(root)
+    root.mainloop()

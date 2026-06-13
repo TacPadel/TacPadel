@@ -16,11 +16,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 1,
     description:
-      "Gegner haben euch nach hinten gedrängt und stehen beide aggressiv am Netz (GEG1 & GEG2). Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst perfekt zum Ball.",
-    validShots: ["LOB", "CHIRURGISCHER LOB"],
+      "Die Gegner haben euch nach hinten gedrängt und besetzen das Netz. Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst stabil zum Ball. Was spielst du, um die gegnerische Netzposition aufzulösen?",
+    validShots: ["LOB"],
     bestZones: ["A1", "D1"],
     explanation:
-      "Da die Gegner das Netz dominieren, ist der hohe Lob die einzige sichere Option, um sie zu vertreiben und selbst das Netz zu erobern. Ein flacher Ball wird am Netz eiskalt abgefangen.",
+      "Richtig! Wenn die Gegner das Netz dominieren, ist ein hoher und tiefer Lob das effektivste taktische Mittel. Er zwingt die Gegner zum Rückzug an die Grundlinie (Zonen A1 oder D1) und ermöglicht deinem Team das Aufrücken ans Netz.",
     positions: {
       you: "A1",
       partner: "B1",
@@ -32,11 +32,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 2,
     description:
-      "Du hast dich ans Netz vorgearbeitet (Zone B3). Der Gegner gerät unter Druck und spielt einen zu kurzen Not-Lob auf die T-Linie (Zone B2). Du hast Zeit, stehst aber nicht nah genug für einen Power-Smash.",
+      "Du stehst in der Angriffsposition am Netz (Zone B3). Der Gegner spielt unter Druck einen unpräzisen, zu kurzen Lob auf das T-Stück der Mittellinie (Zone B2). Du hast ausreichend Zeit, stehst für einen direkten Smash aber etwas zu weit vom Netz entfernt. Welcher Schlag sichert die Position?",
     validShots: ["BANDEJA", "VIBORA"],
     bestZones: ["A1", "D1", "A2"],
     explanation:
-      "Für einen direkten Smash stehst du zu weit hinten. Eine kontrollierte Bandeja oder Víbora tief in die Ecken hält die Gegner hinten und bewahrt deine Netzdominanz.",
+      "Korrekt! Für einen direkten, punktbringenden Smash ist die Distanz zum Netz hier zu groß. Eine kontrollierte Bandeja oder Víbora tief in die Ecken hält die Gegner hinten und bewahrt die eigene Netzposition.",
     positions: {
       you: "B3",
       partner: "C3",
@@ -48,11 +48,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 3,
     description:
-      "Ihr steht beide kompakt am Netz. Der Gegner spielt von hinten einen harten, flachen Passierball genau durch die Mitte auf die Netzkante. Wie reagierst du als Wand?",
-    validShots: ["BLOCK", "REFLEX-VOLLEY", "VOLLEY"],
+      "Dein Team steht kompakt am Netz. Der Gegner schlägt aus der Defensive einen harten, flachen Passierball genau durch die Mitte auf die Netzkante (Zone B4/C4). Wie reagiert man in dieser Netzposition am besten?",
+    validShots: ["BLOCK", "VOLLEY"],
     bestZones: ["B2", "C2", "B1"],
     explanation:
-      "Bei schnellen Bällen durch die Mitte darfst du nicht ausholen. Schläger kompakt hinhalten (Block/Volley) und den Ball flach vor die Füße der Gegner tropfen lassen.",
+      "Hervorragend. Bei sehr schnellen Bällen durch die Mitte empfiehlt es sich, den Schläger kompakt hinzuhalten (Block oder Volley), ohne weit auszuholen. Der Ball sollte kontrolliert und flach vor die Füße der Gegner platziert werden.",
     positions: {
       you: "B4",
       partner: "C4",
