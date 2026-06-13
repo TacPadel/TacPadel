@@ -50,11 +50,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 1,
     description:
-      "SZENARIO (LOB): Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Du stehst stabil zum Ball. Welcher Schlag bringt Entlastung?",
+      "AUFGABE 1: Die Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Welcher Schlag bringt in dieser Situation Entlastung?",
     validShots: ["LOB"],
     bestZones: ["A1", "D1"],
     explanation:
-      "Ein hoher Lob zwingt die Gegner nach hinten und bricht ihren Netzangriff. Du gewinnst Zeit, um selbst in die Angriffszone (B2) vorzurücken.",
+      "Ein hoher Lob zwingt die Gegner nach hinten und bricht ihren Netzangriff.",
     positions: {
       you: "A1",
       partner: "B1",
@@ -67,11 +67,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 2,
     description:
-      "SZENARIO (BANDEJA): Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg. Welcher Kontrollschlag sichert deine Position?",
+      "AUFGABE 2: Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg.",
     validShots: ["BANDEJA"],
     bestZones: ["A1", "D1"],
     explanation:
-      "Die Bandeja sichert deine Netzposition (B3), indem du den Ball mit Slice kontrolliert flach hältst. Die Gegner bleiben defensiv gebunden.",
+      "Die Bandeja sichert deine Netzposition, indem du den Ball mit Slice flach hinten hältst.",
     positions: {
       you: "B3",
       partner: "C3",
@@ -84,11 +84,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 3,
     description:
-      "SZENARIO (BLOCK): Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball kommt fliegend durch die Mitte direkt auf dich (B4). Wie reagierst du?",
+      "AUFGABE 3: Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball wird fliegend durch die Mitte geschlagen (B4). Wie reagierst du?",
     validShots: ["BLOCK"],
     bestZones: ["B2", "C2"],
     explanation:
-      "Schläger stabil wie eine Wand reinhalten, um die Wucht zu nehmen und den Ball kurz hinter das Netz abtropfen zu lassen. Keine Ausholbewegung!",
+      "Schläger stabil wie eine Wand reinhalten, um die Wucht zu nehmen und den Ball kurz abzulegen.",
     positions: {
       you: "B4",
       partner: "C4",
@@ -101,11 +101,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 4,
     description:
-      "SZENARIO (SMASH): Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B3) herunter. Du stehst perfekt darunter. Wie beendest du den Punkt?",
+      "AUFGABE 4: Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B3) herunter. Du stehst perfekt darunter.",
     validShots: ["SMASH"],
     bestZones: ["A1", "D1"],
     explanation:
-      "Hier ist der Power-Smash die einzig richtige Wahl — aus dieser Position direkt am Netz beendest du den Punkt humorlos und direkt.",
+      "Aus nächster Nähe ist der Power-Smash die beste Wahl, um den Punkt direkt und humorlos zu beenden.",
     positions: {
       you: "B4",
       partner: "C4",
@@ -118,45 +118,11 @@ const SCENARIOS: Scenario[] = [
   {
     id: 5,
     description:
-      "SZENARIO (VÍBORA): Du bist am Netz (B3). Gegner spielen wieder einen kurzen Lob auf B2, stehen aber nun tiefer und warten auf die Bandeja. Überrasche sie mit etwas Aggressivem!",
-    validShots: ["VIBORA"],
-    bestZones: ["A1", "D1", "A2"],
-    explanation:
-      "Die Víbora mit extremem Seitwärtsdrall springt unberechenbar flach von der Wand ab und lässt dem Gegner keine Reaktionszeit.",
-    positions: {
-      you: "B3",
-      partner: "C3",
-      opp1: "A1",
-      opp2: "C1",
-      ball: { side: "left", zone: "B2" },
-    },
-    laufZone: "B3",
-  },
-  {
-    id: 6,
-    description:
-      "SZENARIO (VOLLEY): Du stehst dominant am Netz (C4). Der Gegner spielt unter Druck einen weichen, hohen Ball in die Mitte. Ein idealer Flugball wartet auf dich.",
-    validShots: ["VOLLEY"],
-    bestZones: ["B2", "A2", "D2"],
-    explanation:
-      "Aus dieser Position am Netz ist ein platzierter Slice-Volley tief in die Ecken (B2/A2/D2) der perfekte Abschluss — ruhig und präzise.",
-    positions: {
-      you: "C4",
-      partner: "B4",
-      opp1: "B1",
-      opp2: "C2",
-      ball: { side: "left", zone: "C4" },
-    },
-    laufZone: "C4",
-  },
-  {
-    id: 7,
-    description:
-      "SZENARIO (BAJADA): Ein Lob des Gegners fliegt über dich, prallt hoch an deiner Rückwand ab (A2). Die Gegner stürmen sofort aggressiv ans Netz (B4/C4). Was tust du?",
+      "AUFGABE 5: Ein hoher Lob fliegt über dich hinweg, klatscht hoch gegen deine eigene Rückwand und kommt in Zone A2 herunter. Die Gegner rücken aggressiv auf.",
     validShots: ["BAJADA"],
-    bestZones: ["A2", "D2", "A1"],
+    bestZones: ["A2", "D2"],
     explanation:
-      "Der hohe Abpraller erlaubt dir die Bajada — einen kraftvollen Schlag von oben nach unten. Spiele in die Lücken, um die Kontrolle zurückzugewinnen.",
+      "Da der Ball hoch von der Wand abspringt, ziehst du ihn als Bajada de Pared von oben nach unten aggressiv durch.",
     positions: {
       you: "A1",
       partner: "B1",
@@ -167,38 +133,72 @@ const SCENARIOS: Scenario[] = [
     laufZone: "B2",
   },
   {
-    id: 8,
+    id: 6,
     description:
-      "SZENARIO (CHIQUITA): Du stehst tief im Hinterfeld (A2). Die Gegner dominieren kompakt das Netz (B4/C4). Du musst aus der Defensive antworten. Wie bringst du sie in Schwierigkeiten?",
-    validShots: ["CHIQUITA"],
-    bestZones: ["B2", "C2", "B1"],
+      "AUFGABE 6: Du stehst im Halbfeld (B2). Ein halbhoher Ball schwebt heran. Du willst maximalen Schnitt mitgeben, damit der Ball extrem flach aus dem gegnerischen Glas bricht.",
+    validShots: ["VIBORA"],
+    bestZones: ["A1", "A2"],
     explanation:
-      "Die Chiquita — ein kurzer, weicher Chip — landet direkt vor den Füßen der Netzspieler und zwingt sie zu einem unangenehmen Volley von ganz unten.",
+      "Die Víbora wird mit aggressivem Seitwärtsdrall geschlagen, sodass sie nach der Wand unberechenbar flach bleibt.",
     positions: {
-      you: "A2",
-      partner: "B2",
+      you: "B2",
+      partner: "C2",
       opp1: "B4",
       opp2: "C4",
-      ball: { side: "left", zone: "A2" },
+      ball: { side: "left", zone: "B2" },
+    },
+    laufZone: "B3",
+  },
+  {
+    id: 7,
+    description:
+      "AUFGABE 7: Du stehst stabil in Angriffsstimmung direkt am Netz (C3). Ein harter, aber gut lesbarer Ball kommt auf Brusthöhe angeflogen.",
+    validShots: ["VOLLEY"],
+    bestZones: ["B2", "C2"],
+    explanation:
+      "Ein klassischer Volley direkt aus der Luft wird mit Slice tief in die ungemütlichen Zonen gedrückt.",
+    positions: {
+      you: "C3",
+      partner: "B3",
+      opp1: "B1",
+      opp2: "C1",
+      ball: { side: "left", zone: "C3" },
+    },
+    laufZone: "C3",
+  },
+  {
+    id: 8,
+    description:
+      "AUFGABE 8: Du stehst hinten in der Defensive (A1). Die Gegner kleben eng am Netz. Du möchtest sie auskontern und zu einem Volley von ganz weit unten zwingen.",
+    validShots: ["CHIQUITA"],
+    bestZones: ["B3", "C3"],
+    explanation:
+      "Die Chiquita wird weich und kurz genau vor die Füße der Netzspieler gelegt, um einen Gegenangriff einzuleiten.",
+    positions: {
+      you: "A1",
+      partner: "B1",
+      opp1: "B4",
+      opp2: "C4",
+      ball: { side: "left", zone: "A1" },
     },
     laufZone: "B2",
   },
   {
     id: 9,
     description:
-      "SZENARIO (AUFSCHLAG): Du eröffnest den Punkt mit dem Aufschlag von der rechten Seite (D2). Der Gegner-Rückschläger steht mittig bereit. Wohin zielst du deinen Aufschlag?",
+      "AUFGABE 9: Das Spiel beginnt von Null. Du stehst spielbereit hinter der Aufschlaglinie (B1) und musst den Ball ins Spiel bringen. Welcher Schlag startet den Ballwechsel?",
     validShots: ["AUFSCHLAG"],
-    bestZones: ["B1", "A1"],
+    bestZones: ["A2", "B2"],
     explanation:
-      "Ein Aufschlag auf die T-Linie (B1) oder in die Glasecke (A1) bringt den Gegner in eine defensive Position und eröffnet euch einen starken ersten Volley.",
+      "Der Aufschlag wird unterhalb der Hüfte getroffen und startet diagonal den Punkt.",
     positions: {
-      you: "D2",
-      partner: "C2",
-      opp1: "C4",
-      opp2: "D4",
-      ball: { side: "left", zone: "D2" },
+      you: "B1",
+      partner: "C1",
+      opp1: "B2",
+      opp2: "C2",
+      ball: { side: "left", zone: "B1" },
     },
-    laufZone: "C3",
+    laufZone: "B3",
   },
 ];
 
