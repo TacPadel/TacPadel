@@ -1,10 +1,10 @@
 import React from "react";
 
 export interface PlayerPositions {
-  you: string;      // zone id e.g. "A1" on left side
-  partner: string;  // zone id on left side
-  opp1: string;     // zone id on right side
-  opp2: string;     // zone id on right side
+  you: string;
+  partner: string;
+  opp1: string;
+  opp2: string;
   ball: { side: "left" | "right"; zone: string };
 }
 
@@ -14,17 +14,16 @@ interface Props {
   hasSubmitted: boolean;
   bestZones: string[];
   onZoneClick: (id: string) => void;
+  profiMode?: boolean;
+  selectedLaufZone?: string | null;
+  correctLaufZone?: string | null;
+  onLaufZoneClick?: (id: string) => void;
 }
 
 const LETTERS = ["A", "B", "C", "D"];
 const NUMBERS = [1, 2, 3, 4];
 
-function zoneCenter(
-  side: "left" | "right",
-  zoneId: string,
-  w: number,
-  h: number
-) {
+function zoneCenter(side: "left" | "right", zoneId: string, w: number, h: number) {
   const letter = zoneId[0];
   const num = parseInt(zoneId[1]);
   const letterIdx = LETTERS.indexOf(letter);
@@ -43,11 +42,23 @@ function zoneCenter(
   }
 }
 
-function zoneBounds(
-  zoneId: string,
-  w: number,
-  h: number
-) {
+function zoneBoundsLeft(zoneId: string, w: number, h: number) {
+  const letter = zoneId[0];
+  const num = parseInt(zoneId[1]);
+  const letterIdx = LETTERS.indexOf(letter);
+  const netX = w / 2;
+  const innerH = h - 20;
+  const leftWidth = netX - 10;
+
+  const y1 = 10 + innerH * letterIdx / 4;
+  const y2 = 10 + innerH * (letterIdx + 1) / 4;
+  const x1 = 10 + leftWidth * (num - 1) / 4;
+  const x2 = 10 + leftWidth * num / 4;
+
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 };
+}
+
+function zoneBounds(zoneId: string, w: number, h: number) {
   const letter = zoneId[0];
   const num = parseInt(zoneId[1]);
   const letterIdx = LETTERS.indexOf(letter);
@@ -69,6 +80,10 @@ export default function ScenarioCourt({
   hasSubmitted,
   bestZones,
   onZoneClick,
+  profiMode = false,
+  selectedLaufZone = null,
+  correctLaufZone = null,
+  onLaufZoneClick,
 }: Props) {
   const W = 760;
   const H = 380;
@@ -105,24 +120,64 @@ export default function ScenarioCourt({
       <ellipse cx={netX} cy={10} rx={5} ry={5} fill="black" />
       <ellipse cx={netX} cy={H - 10} rx={5} ry={5} fill="black" />
 
-      {/* Left half faint grid (your side — just for visual reference, not clickable) */}
+      {/* Left half — faint grid OR profi clickable zones */}
       {LETTERS.map((l, li) =>
         NUMBERS.map((n) => {
-          const letterIdx = li;
-          const innerH = H - 20;
-          const leftWidth = netX - 10;
-          const y1 = 10 + innerH * letterIdx / 4;
-          const x1 = 10 + leftWidth * (n - 1) / 4;
-          const w = leftWidth / 4;
-          const hh = innerH / 4;
+          const zoneId = `${l}${n}`;
+          const b = zoneBoundsLeft(zoneId, W, H);
+          const isSelected = profiMode && selectedLaufZone === zoneId;
+          const isCorrect = profiMode && hasSubmitted && correctLaufZone === zoneId;
+          const isWrong = profiMode && hasSubmitted && isSelected && correctLaufZone !== zoneId;
+
+          let fill = "rgba(255,255,255,0.04)";
+          let stroke = "rgba(255,255,255,0.08)";
+          let sw = 1;
+
+          if (profiMode) {
+            if (!hasSubmitted) {
+              if (isSelected) {
+                fill = "rgba(139,92,246,0.35)";
+                stroke = "#a78bfa";
+                sw = 2;
+              } else {
+                fill = "rgba(255,255,255,0.07)";
+                stroke = "rgba(255,255,255,0.18)";
+              }
+            } else {
+              if (isCorrect) {
+                fill = "rgba(52,211,153,0.4)";
+                stroke = "#34d399";
+                sw = 2;
+              } else if (isWrong) {
+                fill = "rgba(239,68,68,0.4)";
+                stroke = "#ef4444";
+                sw = 2;
+              } else {
+                fill = "rgba(255,255,255,0.03)";
+                stroke = "rgba(255,255,255,0.08)";
+              }
+            }
+          }
+
           return (
-            <rect
-              key={`left-${l}${n}`}
-              x={x1} y={y1} width={w} height={hh}
-              fill="none"
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth={1}
-            />
+            <g
+              key={`left-${zoneId}`}
+              onClick={() => profiMode && !hasSubmitted && onLaufZoneClick && onLaufZoneClick(zoneId)}
+              style={{ cursor: profiMode && !hasSubmitted ? "pointer" : "default" }}
+            >
+              <rect x={b.x} y={b.y} width={b.width} height={b.height} fill={fill} stroke={stroke} strokeWidth={sw} rx={profiMode ? 3 : 0} />
+              {profiMode && (
+                <text
+                  x={b.cx} y={b.cy}
+                  textAnchor="middle" dominantBaseline="central"
+                  fill={isCorrect ? "#34d399" : isWrong ? "#ef4444" : isSelected ? "#a78bfa" : "rgba(255,255,255,0.35)"}
+                  fontSize={9} fontWeight="bold" fontFamily="monospace"
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >
+                  {zoneId}
+                </text>
+              )}
+            </g>
           );
         })
       )}
@@ -164,12 +219,9 @@ export default function ScenarioCourt({
             <rect x={b.x} y={b.y} width={b.width} height={b.height} fill={fill} stroke={stroke} strokeWidth={strokeWidth} rx={3} />
             <text
               x={b.cx} y={b.cy}
-              textAnchor="middle"
-              dominantBaseline="central"
+              textAnchor="middle" dominantBaseline="central"
               fill={isBest ? "#34d399" : isWrong ? "#ef4444" : "rgba(255,255,255,0.45)"}
-              fontSize={9}
-              fontWeight="bold"
-              fontFamily="monospace"
+              fontSize={9} fontWeight="bold" fontFamily="monospace"
               style={{ pointerEvents: "none", userSelect: "none" }}
             >
               {zoneId}
@@ -178,7 +230,14 @@ export default function ScenarioCourt({
         );
       })}
 
-      {/* "KLICKE HIER" hint on right half when nothing selected */}
+      {/* Profi hints when nothing selected yet */}
+      {profiMode && !selectedLaufZone && !hasSubmitted && (
+        <text x={netX / 2} y={H / 2} textAnchor="middle" dominantBaseline="central"
+          fill="rgba(167,139,250,0.5)" fontSize={11} fontWeight="bold" letterSpacing="1"
+          style={{ pointerEvents: "none", userSelect: "none" }}>
+          LAUFZIEL WÄHLEN
+        </text>
+      )}
       {!selectedZone && !hasSubmitted && (
         <text x={netX + (W - 10 - netX) / 2} y={H / 2} textAnchor="middle" dominantBaseline="central"
           fill="rgba(255,255,255,0.18)" fontSize={13} fontWeight="bold" letterSpacing="2"
@@ -187,14 +246,12 @@ export default function ScenarioCourt({
         </text>
       )}
 
-      {/* "DEINE SEITE" label */}
+      {/* Side labels */}
       <text x={netX / 2} y={H - 16} textAnchor="middle"
         fill="rgba(255,255,255,0.3)" fontSize={9} fontWeight="bold" letterSpacing="2"
         style={{ pointerEvents: "none", userSelect: "none" }}>
-        DEINE SEITE
+        {profiMode ? "LAUFZIEL (DEINE SEITE)" : "DEINE SEITE"}
       </text>
-
-      {/* "GEGNER" label */}
       <text x={netX + (W - 10 - netX) / 2} y={H - 16} textAnchor="middle"
         fill="rgba(255,255,255,0.3)" fontSize={9} fontWeight="bold" letterSpacing="2"
         style={{ pointerEvents: "none", userSelect: "none" }}>
@@ -206,6 +263,12 @@ export default function ScenarioCourt({
         <filter id="sc-shadow" x="-30%" y="-30%" width="160%" height="160%">
           <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.5)" />
         </filter>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="rgba(52,211,153,0.85)" />
+        </marker>
+        <marker id="arrowhead-lauf" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="rgba(167,139,250,0.85)" />
+        </marker>
       </defs>
 
       {/* Ball */}
@@ -279,7 +342,29 @@ export default function ScenarioCourt({
         );
       })()}
 
-      {/* Arrow from ball to selected zone (when selected, before submit) */}
+      {/* Arrow: DU → selected lauf zone (profi mode) */}
+      {profiMode && selectedLaufZone && !hasSubmitted && (() => {
+        const from = zoneCenter("left", positions.you, W, H);
+        const to = zoneBoundsLeft(selectedLaufZone, W, H);
+        const dx = to.cx - from.x;
+        const dy = to.cy - from.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) return null;
+        const ux = dx / len;
+        const uy = dy / len;
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <line
+              x1={from.x + ux * (playerR + 2)} y1={from.y + uy * (playerR + 2)}
+              x2={to.cx - ux * 10} y2={to.cy - uy * 10}
+              stroke="rgba(167,139,250,0.7)" strokeWidth={2.5} strokeDasharray="6 3"
+              markerEnd="url(#arrowhead-lauf)"
+            />
+          </g>
+        );
+      })()}
+
+      {/* Arrow: ball → selected target zone */}
       {selectedZone && !hasSubmitted && (() => {
         const ballPos = zoneCenter(positions.ball.side, positions.ball.zone, W, H);
         const bOffset = positions.ball.side === "left" ? 16 : -16;
@@ -293,22 +378,12 @@ export default function ScenarioCourt({
         const len = Math.sqrt(dx * dx + dy * dy);
         const ux = dx / len;
         const uy = dy / len;
-        const startX = bx + ux * (ballR + 2);
-        const startY = by + uy * (ballR + 2);
-        const endX = tx - ux * 12;
-        const endY = ty - uy * 12;
         return (
           <g style={{ pointerEvents: "none" }}>
-            <defs>
-              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="rgba(52,211,153,0.85)" />
-              </marker>
-            </defs>
             <line
-              x1={startX} y1={startY} x2={endX} y2={endY}
-              stroke="rgba(52,211,153,0.7)"
-              strokeWidth={2.5}
-              strokeDasharray="6 3"
+              x1={bx + ux * (ballR + 2)} y1={by + uy * (ballR + 2)}
+              x2={tx - ux * 12} y2={ty - uy * 12}
+              stroke="rgba(52,211,153,0.7)" strokeWidth={2.5} strokeDasharray="6 3"
               markerEnd="url(#arrowhead)"
             />
           </g>

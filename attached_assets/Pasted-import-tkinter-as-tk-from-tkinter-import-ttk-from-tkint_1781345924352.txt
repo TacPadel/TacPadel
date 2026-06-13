@@ -1,0 +1,286 @@
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import random
+
+# --- RECHTE UND LINKE KOORDINATEN FÜR DIE ZONENANZEIGE ---
+ZONE_COORDS_LEFT = {
+    "A1": (60, 60),   "A2": (160, 60),  "A3": (260, 60),  "A4": (340, 60),
+    "B1": (60, 140),  "B2": (160, 140), "B3": (260, 140), "B4": (340, 140),
+    "C1": (60, 240),  "C2": (160, 240), "C3": (260, 240), "C4": (340, 240),
+    "D1": (60, 320),  "D2": (160, 320), "D3": (260, 320), "D4": (340, 320)
+}
+
+ZONE_COORDS_RIGHT = {
+    "A1": (700, 60),  "A2": (600, 60),  "A3": (500, 60),  "A4": (420, 60),
+    "B1": (700, 140), "B2": (600, 140), "B3": (500, 140), "B4": (420, 140),
+    "C1": (700, 240), "C2": (600, 240), "C3": (500, 240), "C4": (420, 240),
+    "D1": (700, 320), "D2": (600, 320), "D3": (500, 320), "D4": (420, 320)
+}
+
+PADEL_DICTIONARY = {
+    "Schläge": {
+        "Aufschlag": "Der Aufschlag wird im Padel unterhalb der Hüfte ausgeführt und muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden.",
+        "Lob": "Ein hoher, tiefer Ball an die gegnerische Grundlinie, um die Netzposition zu erobern.",
+        "Volley": "Ein Schlag direkt aus der Luft, ohne vorherigen Bodenaufprall, meistens eng am Netz gespielt.",
+        "Bandeja": "Ein kontrollierter Überkopfschlag aus dem Mittelfeld mit Slice, um den Ball flach zu halten.",
+        "Víbora": "Ein aggressiverer Überkopfschlag mit viel Seitwärtsdrall, der extrem flach von den Wänden abprallt.",
+        "Smash": "Ein klassischer Überkopf-Power-Schlag, um den Ball aus dem Platz zu kicken.",
+        "Bajada de Pared": "Ein starker Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der Rückwand abgeprallt ist.",
+        "Chiquita": "Ein kurzer, weicher Ball aus der Defensive genau vor die Füße der Netzspieler.",
+        "Block": "Ein passiver Schlag am Netz, um harte Bälle direkt am Schläger abtropfen zu lassen."
+    },
+    "Positionen": {
+        "Netzposition (Angriff)": "Die dominierende Position im Padel, ca. 2-3 Meter vor dem Netz.",
+        "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Druck, leicht hinter der Aufschlaglinie.",
+        "Die Übergangszone": "Das Niemandsland zwischen Aufschlaglinie und Netz. Hier sollte man nicht stehen bleiben."
+    },
+    "Regeln": {
+        "Zählweise": "15, 30, 40, Spiel. Wie im Tennis. Oft mit Golden Point bei Einstand.",
+        "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er Glas oder Gitter berührt.",
+        "Eigenes Glas nutzen": "In der Defensive darf man den Ball gegen die eigene Glasscheibe ins gegnerische Feld schlagen."
+    }
+}
+
+class FullPadelApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Padel-Tennis Taktik- & Ausbildungszentrum")
+        self.root.geometry("1000x850")
+        self.root.configure(bg="#2c3e50")
+        
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        style = ttk.Style()
+        style.configure("TNotebook", background="#2c3e50")
+        style.configure("TNotebook.Tab", font=("Helvetica", 11, "bold"), padding=[15, 5])
+        
+        self.tab_trainer = tk.Frame(self.notebook, bg="#2c3e50")
+        self.tab_board = tk.Frame(self.notebook, bg="#2c3e50")
+        self.tab_basics = tk.Frame(self.notebook, bg="#2c3e50")
+        
+        self.notebook.add(self.tab_trainer, text=" 🎯 Taktiktrainer ")
+        self.notebook.add(self.tab_board, text=" 📋 Freies Taktikboard ")
+        self.notebook.add(self.tab_basics, text=" 📖 Padel Basics ")
+        
+        self.setup_taktiktrainer()
+        self.setup_taktikboard()
+        self.setup_padel_basics()
+
+    # =========================================================================
+    # TAB 1: TAKTIKTRAINER MIT INTERAKTIVEN LEVELS
+    # =========================================================================
+    def setup_taktiktrainer(self):
+        self.score = 0
+        self.total = 0
+        self.current_scenario = None
+        self.current_level = "Fortgeschrittener"  # Standard-Startlevel
+        self.current_side_profi = "Vorhand"
+        
+        # UI Header & Level-Auswahl
+        self.top_trainer_frame = tk.Frame(self.tab_trainer, bg="#2c3e50")
+        self.top_trainer_frame.pack(pady=5, fill="x")
+        
+        self.trainer_title = tk.Label(self.top_trainer_frame, text="Padel Taktik-Schach", font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="#ecf0f1")
+        self.trainer_title.pack()
+        
+        # Level-Umschalter
+        self.level_frame = tk.Frame(self.top_trainer_frame, bg="#2c3e50")
+        self.level_frame.pack(pady=5)
+        
+        self.btn_anfaenger = tk.Button(self.level_frame, text="Anfänger", command=lambda: self.set_level("Anfänger"), font=("Helvetica", 10, "bold"), bg="#34495e", fg="white")
+        self.btn_anfaenger.grid(row=0, column=0, padx=5)
+        self.btn_fortgeschritten = tk.Button(self.level_frame, text="Fortgeschrittener", command=lambda: self.set_level("Fortgeschrittener"), font=("Helvetica", 10, "bold"), bg="#2980b9", fg="white")
+        self.btn_fortgeschritten.grid(row=0, column=1, padx=5)
+        self.btn_profi = tk.Button(self.level_frame, text="Profi", command=lambda: self.set_level("Profi"), font=("Helvetica", 10, "bold"), bg="#34495e", fg="white")
+        self.btn_profi.grid(row=0, column=2, padx=5)
+        
+        self.score_label = tk.Label(self.top_trainer_frame, text="Score: 0 / 0 | Level: Fortgeschrittener", font=("Helvetica", 11), bg="#2c3e50", fg="#bdc3c7")
+        self.score_label.pack(pady=2)
+
+        # Spielfeld-Schnittstelle
+        self.canvas_t = tk.Canvas(self.tab_trainer, width=760, height=360, bg="#2980b9", highlightthickness=2, highlightbackground="#bdc3c7")
+        self.canvas_t.pack(pady=5)
+        
+        # Szenario-Anzeige
+        self.desc_frame = tk.Frame(self.tab_trainer, bg="#34495e", bd=2, relief="groove")
+        self.desc_frame.pack(pady=5, fill="x", padx=40)
+        
+        self.desc_label = tk.Label(self.desc_frame, text="", font=("Helvetica", 11, "italic"), bg="#34495e", fg="#ffffff", wraplength=700, justify="center", pady=8)
+        self.desc_label.pack()
+
+        # Interaktions-Eingaben
+        self.input_frame = tk.Frame(self.tab_trainer, bg="#2c3e50")
+        self.input_frame.pack(pady=10)
+        
+        # Variable & GUI-Widgets für die Eingaben
+        self.lbl_lauf = tk.Label(self.input_frame, text="Lauf-Ziel:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white")
+        self.lauf_var = tk.StringVar(value="A1")
+        self.lauf_menu = tk.OptionMenu(self.input_frame, self.lauf_var, "A1","A2","A3","A4","B1","B2","B3","B4","C1","C2","C3","C4","D1","D2","D3","D4")
+        
+        self.lbl_shot = tk.Label(self.input_frame, text="Dein Schlag:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white")
+        self.shot_var = tk.StringVar(value="LOB")
+        self.shot_menu = tk.OptionMenu(self.input_frame, self.shot_var, "LOB", "BANDEJA", "VIBORA", "BLOCK", "VOLLEY", "SMASH", "BAJADA", "CHIQUITA")
+        
+        self.lbl_zone = tk.Label(self.input_frame, text="Gegner-Ziel:", font=("Helvetica", 10, "bold"), bg="#2c3e50", fg="white")
+        self.zone_var = tk.StringVar(value="A1")
+        self.zone_menu = tk.OptionMenu(self.input_frame, self.zone_var, "A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2", "A3", "B3", "C3", "D3", "A4", "B4", "C4", "D4")
+        
+        self.submit_btn = tk.Button(self.input_frame, text="Zug ausführen", command=self.check_answer, font=("Helvetica", 11, "bold"), bg="#2ecc71", fg="white", padx=10)
+        
+        self.init_scenarios_pool()
+        self.update_input_fields_visibility()
+        self.next_trainer_question()
+
+    def set_level(self, level):
+        self.current_level = level
+        # Button-Farben anpassen zur optischen Kontrolle
+        self.btn_anfaenger.config(bg="#2980b9" if level == "Anfänger" else "#34495e")
+        self.btn_fortgeschritten.config(bg="#2980b9" if level == "Fortgeschrittener" else "#34495e")
+        self.btn_profi.config(bg="#2980b9" if level == "Profi" else "#34495e")
+        
+        self.score_label.config(text=f"Score: {self.score} / {self.total} | Level: {self.current_level}")
+        self.update_input_fields_visibility()
+        self.next_trainer_question()
+
+    def update_input_fields_visibility(self):
+        # Alle Widgets aus dem Raster entfernen
+        for widget in self.input_frame.winfo_children():
+            widget.grid_forget()
+            
+        # Je nach Level neu anordnen
+        if self.current_level == "Anfänger":
+            self.lbl_shot.grid(row=0, column=0, padx=5)
+            self.shot_menu.grid(row=0, column=1, padx=5)
+        elif self.current_level == "Fortgeschrittener":
+            self.lbl_shot.grid(row=0, column=0, padx=5)
+            self.shot_menu.grid(row=0, column=1, padx=5)
+            self.lbl_zone.grid(row=0, column=2, padx=5)
+            self.zone_menu.grid(row=0, column=3, padx=5)
+        elif self.current_level == "Profi":
+            self.lbl_lauf.grid(row=0, column=0, padx=5)
+            self.lauf_menu.grid(row=0, column=1, padx=5)
+            self.lbl_shot.grid(row=0, column=2, padx=5)
+            self.shot_menu.grid(row=0, column=3, padx=5)
+            self.lbl_zone.grid(row=0, column=4, padx=5)
+            self.zone_menu.grid(row=0, column=5, padx=5)
+            
+        self.submit_btn.grid(row=0, column=6, padx=15)
+
+    def draw_court_base(self, canvas, show_zones=False):
+        canvas.delete("all")
+        w, h = 760, 360
+        canvas.create_rectangle(10, 10, w-10, h-10, outline="white", width=3)
+        net_x = w / 2
+        canvas.create_line(net_x, 10, net_x, h-10, fill="#2c3e50", width=4, dash=(4, 2))
+        offset_x = 10 + (w - 20) * 0.15
+        canvas.create_line(offset_x, 10, offset_x, h-10, fill="white", width=2)
+        canvas.create_line(w - offset_x, 10, w - offset_x, h-10, fill="white", width=2)
+        canvas.create_line(offset_x, h/2, w - offset_x, h/2, fill="white", width=2)
+        canvas.create_line(10, 10, 10, h-10, fill="#7f8c8d", width=6)
+        canvas.create_line(w-10, 10, w-10, h-10, fill="#7f8c8d", width=6)
+        
+        # Kennzeichnung BEIDER Seiten bei Taktiktrainer für alle Stufen
+        if show_zones:
+            # Linke Seite (Deine Seite)
+            for zone, coord in ZONE_COORDS_LEFT.items():
+                canvas.create_text(coord[0], coord[1]-12, text=zone, fill="#bdc3c7", font=("Helvetica", 8, "bold"))
+            # Rechte Seite (Gegner-Seite)
+            for zone, coord in ZONE_COORDS_RIGHT.items():
+                canvas.create_text(coord[0], coord[1]-12, text=zone, fill="#34495e", font=("Helvetica", 8, "italic"))
+
+    def init_scenarios_pool(self):
+        self.scenarios = [
+            {
+                "desc": "SZENARIO 1: Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Welcher Schlag löst die Situation?",
+                "p_du": "A1", "p_partner": "B1", "g1": "B4", "g2": "C4", "ball": "A1", "ball_side": "left",
+                "valid_shots": ["LOB"], "best_zones": ["A1", "D1"], "lauf_profi": "B2",
+                "explanation": "Ein hoher Lob zwingt Gegner nach hinten und erlaubt das Vorrücken in die Angriffszone (z.B. B2)."
+            },
+            {
+                "desc": "SZENARIO 2: Du bist am Netz (B3). Gegner spielt unter Druck einen ungenauen, kurzen Not-Lob auf die Mittellinie (B2). Du bist für den Smash zu weit weg.",
+                "p_du": "B3", "p_partner": "C3", "g1": "B1", "g2": "C1", "ball": "B2", "ball_side": "left",
+                "valid_shots": ["BANDEJA", "VIBORA"], "best_zones": ["A1", "D1", "A2"], "lauf_profi": "B3",
+                "explanation": "Die Bandeja/Víbora hält die Gegner defensiv hinten gefangen. Danach hältst du die Netzposition (B3) besetzt."
+            },
+            {
+                "desc": "SZENARIO 3: Ihr steht kompakt am Netz. Ein harter Passierball kommt flach genau durch die Mitte auf die Netzkante (B4/C4). Wie agierst du?",
+                "p_du": "B4", "p_partner": "C4", "g1": "B1", "g2": "C2", "ball": "B4", "ball_side": "left",
+                "valid_shots": ["BLOCK", "VOLLEY"], "best_zones": ["B2", "C2", "B1"], "lauf_profi": "B4",
+                "explanation": "Kompakter Block/Volley ohne Ausholbewegung, um den Ball flach vor die Füße abtropfen zu lassen."
+            },
+            {
+                "desc": "SZENARIO 4: Ein misslungener Lob des Gegners verhungert als hoher Ball direkt an der Netzkante direkt vor dir (B3). Wie machst du den Punkt?",
+                "p_du": "B4", "p_partner": "C4", "g1": "B1", "g2": "C1", "ball": "B3", "ball_side": "left",
+                "valid_shots": ["SMASH"], "best_zones": ["A1", "D1", "B2"], "lauf_profi": "B4",
+                "explanation": "Aus nächster Nähe ist der Power-Smash die gewinnbringendste und sicherste Angriffsoption."
+            },
+            {
+                "desc": "SZENARIO 5 (BAJADA): Ein Lob fliegt über dich, prallt hoch an deiner Rückwand ab (A2). Die Gegner stürmen sofort aggressiv ans Netz (B4, C4).",
+                "p_du": "A1", "p_partner": "B1", "g1": "B4", "g2": "C4", "ball": "A2", "ball_side": "left",
+                "valid_shots": ["BAJADA", "LOB"], "best_zones": ["A2", "D2", "A1"], "lauf_profi": "B2",
+                "explanation": "Der hohe Abpraller von der Wand erlaubt eine aggressive Bajada nach unten oder einen schnellen, hohen Lob."
+            }
+        ]
+
+    def draw_trainer_objects(self):
+        s = self.current_scenario
+        c_du = ZONE_COORDS_LEFT[s["p_du"]]
+        self.canvas_t.create_oval(c_du[0]-14, c_du[1]-14, c_du[0]+14, c_du[1]+14, fill="#e74c3c", outline="white", width=2)
+        self.canvas_t.create_text(c_du[0], c_du[1], text="DU", fill="white", font=("Helvetica", 9, "bold"))
+        
+        c_part = ZONE_COORDS_LEFT[s["p_partner"]]
+        self.canvas_t.create_oval(c_part[0]-14, c_part[1]-14, c_part[0]+14, c_part[1]+14, fill="#c0392b", outline="white", width=2)
+        self.canvas_t.create_text(c_part[0], c_part[1], text="PTNER", fill="white", font=("Helvetica", 8))
+        
+        c_g1 = ZONE_COORDS_RIGHT[s["g1"]]
+        self.canvas_t.create_oval(c_g1[0]-14, c_g1[1]-14, c_g1[0]+14, c_g1[1]+14, fill="#f1c40f", outline="black", width=2)
+        self.canvas_t.create_text(c_g1[0], c_g1[1], text="GEG1", fill="black", font=("Helvetica", 8, "bold"))
+        
+        c_g2 = ZONE_COORDS_RIGHT[s["g2"]]
+        self.canvas_t.create_oval(c_g2[0]-14, c_g2[1]-14, c_g2[0]+14, c_g2[1]+14, fill="#f39c12", outline="black", width=2)
+        self.canvas_t.create_text(c_g2[0], c_g2[1], text="GEG2", fill="black", font=("Helvetica", 8, "bold"))
+        
+        ball_coords = ZONE_COORDS_LEFT[s["ball"]] if s["ball_side"] == "left" else ZONE_COORDS_RIGHT[s["ball"]]
+        bx, by = ball_coords[0] + 15, ball_coords[1] + 15
+        self.canvas_t.create_oval(bx-7, by-7, bx+7, by+7, fill="#2ecc71", outline="black", width=1)
+
+    def next_trainer_question(self):
+        self.draw_court_base(self.canvas_t, show_zones=True)
+        self.current_scenario = random.choice(self.scenarios)
+        
+        # Bei Profi wird zusätzlich Vor- oder Rückhand ausgewürfelt
+        if self.current_level == "Profi":
+            self.current_side_profi = random.choice(["Vorhand", "Rückhand"])
+            zusatz = f"\n\n[PROFI-MODUS] Du wirst auf deiner {self.current_side_profi.upper()}-Seite angespielt!"
+            self.desc_label.config(text=self.current_scenario["desc"] + zusatz)
+        else:
+            self.desc_label.config(text=self.current_scenario["desc"])
+            
+        self.draw_trainer_objects()
+
+    def check_answer(self):
+        shot = self.shot_var.get()
+        zone = self.zone_var.get()
+        lauf = self.lauf_var.get()
+        s = self.current_scenario
+        
+        self.total += 1
+        
+        # --- AUSWERTUNG NACH LEVEL ---
+        if self.current_level == "Anfänger":
+            if shot in s["valid_shots"]:
+                self.score += 1
+                messagebox.showinfo("✓ Richtig!", f"Korrekt! In dieser Situation spielst du den {shot}.\n\n{s['explanation']}")
+            else:
+                messagebox.showerror("✗ Falscher Schlag", f"Leider nicht optimal. Der gewählte Schlag {shot} erhöht das Risiko. Besser: {', '.join(s['valid_shots'])}.")
+                
+        elif self.current_level == "Fortgeschrittener":
+            if shot in s["valid_shots"] and zone in s["best_zones"]:
+                self.score += 1
+                messagebox.showinfo("🎉 Perfekt!", f"Schlag ({shot}) und Platzierung in Zone {zone} stimmen exakt!\n\n{s['explanation']}")
+            elif shot in s["valid_shots"] and zone not in s["best_zones"]:
+                messagebox.showwarning("⚠️ Ungenaues Ziel", f"Der Schlag {shot} ist richtig! Die Zone {zone} ist jedoch taktisch unvorteilhaft. Empfohlene Zonen: {', '.join(s['best_zones'])}.")
+            else:
+                messagebox.showerror("

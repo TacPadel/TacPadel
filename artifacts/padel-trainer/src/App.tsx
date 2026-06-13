@@ -43,7 +43,7 @@ interface Scenario {
   bestZones: string[];
   explanation: string;
   positions: PlayerPositions;
-  laufPosition: "Netz" | "Hinterfeld";
+  laufZone: string;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -62,7 +62,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C4",
       ball: { side: "left", zone: "A1" },
     },
-    laufPosition: "Hinterfeld",
+    laufZone: "B2",
   },
   {
     id: 2,
@@ -79,7 +79,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "B2" },
     },
-    laufPosition: "Netz",
+    laufZone: "B3",
   },
   {
     id: 3,
@@ -96,7 +96,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C2",
       ball: { side: "left", zone: "B4" },
     },
-    laufPosition: "Netz",
+    laufZone: "B4",
   },
   {
     id: 4,
@@ -113,7 +113,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "B3" },
     },
-    laufPosition: "Netz",
+    laufZone: "B4",
   },
   {
     id: 5,
@@ -130,7 +130,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C4",
       ball: { side: "left", zone: "A2" },
     },
-    laufPosition: "Hinterfeld",
+    laufZone: "B2",
   },
   {
     id: 6,
@@ -147,7 +147,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C3",
       ball: { side: "left", zone: "B2" },
     },
-    laufPosition: "Hinterfeld",
+    laufZone: "B3",
   },
   {
     id: 7,
@@ -164,7 +164,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "C3" },
     },
-    laufPosition: "Netz",
+    laufZone: "C3",
   },
   {
     id: 8,
@@ -181,7 +181,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "D4",
       ball: { side: "left", zone: "B3" },
     },
-    laufPosition: "Netz",
+    laufZone: "B3",
   },
 ];
 
@@ -258,7 +258,7 @@ export default function App() {
   );
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
-  const [selectedPosition, setSelectedPosition] = useState<"Netz" | "Hinterfeld" | null>(null);
+  const [selectedLaufZone, setSelectedLaufZone] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [roundsPlayed, setRoundsPlayed] = useState(0);
@@ -285,23 +285,23 @@ export default function App() {
     )
   );
   const isZoneCorrect = !!(selectedZone && scenario.bestZones.includes(selectedZone));
-  const isPositionCorrect = !!(selectedPosition && selectedPosition === scenario.laufPosition);
+  const isLaufZoneCorrect = !!(selectedLaufZone && selectedLaufZone === scenario.laufZone);
 
   const canSubmit = (() => {
     if (hasSubmitted) return false;
     if (!selectedShot) return false;
     if (level === "Fortgeschrittener" && !selectedZone) return false;
-    if (level === "Profi" && (!selectedZone || !selectedPosition)) return false;
+    if (level === "Profi" && (!selectedZone || !selectedLaufZone)) return false;
     return true;
   })();
 
   const isFullyCorrect = (() => {
     if (level === "Anfänger") return isShotCorrect;
     if (level === "Fortgeschrittener") return isShotCorrect && isZoneCorrect;
-    return isShotCorrect && isZoneCorrect && isPositionCorrect;
+    return isShotCorrect && isZoneCorrect && isLaufZoneCorrect;
   })();
 
-  const isPartiallyCorrect = !isFullyCorrect && (isShotCorrect || isZoneCorrect || isPositionCorrect);
+  const isPartiallyCorrect = !isFullyCorrect && (isShotCorrect || isZoneCorrect || isLaufZoneCorrect);
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -320,7 +320,7 @@ export default function App() {
     setCurrentScenarioIndex(nextIndex);
     setSelectedShot(null);
     setSelectedZone(null);
-    setSelectedPosition(null);
+    setSelectedLaufZone(null);
     setHasSubmitted(false);
   };
 
@@ -328,7 +328,7 @@ export default function App() {
     setLevel(newLevel);
     setSelectedShot(null);
     setSelectedZone(null);
-    setSelectedPosition(null);
+    setSelectedLaufZone(null);
     setHasSubmitted(false);
   };
 
@@ -433,41 +433,6 @@ export default function App() {
                 <p className="text-lg leading-relaxed">{scenario.description}</p>
               </div>
 
-              {/* PROFI: Laufposition */}
-              {level === "Profi" && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                    1. Laufposition wählen
-                  </h3>
-                  <div className="flex gap-2">
-                    {(["Netz", "Hinterfeld"] as const).map((pos) => {
-                      const isSelected = selectedPosition === pos;
-                      let cls = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
-                      if (isSelected) cls = "bg-primary text-primary-foreground shadow-md";
-                      if (hasSubmitted && isSelected) {
-                        cls = isPositionCorrect
-                          ? "bg-emerald-600 text-white"
-                          : "bg-destructive text-destructive-foreground";
-                      }
-                      return (
-                        <button
-                          key={pos}
-                          onClick={() => {
-                            if (hasSubmitted) return;
-                            setSelectedPosition((p) => (p === pos ? null : pos));
-                          }}
-                          className={`px-5 py-2.5 rounded-lg font-semibold transition-all ${cls} ${
-                            hasSubmitted ? "cursor-default" : "cursor-pointer active:scale-95"
-                          }`}
-                        >
-                          {pos === "Netz" ? "🥅 Netz" : "🧱 Hinterfeld"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               {/* Shot selection */}
               <div className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
@@ -502,7 +467,7 @@ export default function App() {
               {level !== "Anfänger" && (
                 <div className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                    {level === "Profi" ? "3. Zielzone auf dem Spielfeld wählen" : "2. Zielzone auf dem Spielfeld wählen"}
+                    {level === "Profi" ? "1. + 3. Laufziel & Zielzone auf dem Spielfeld wählen" : "2. Zielzone auf dem Spielfeld wählen"}
                   </h3>
                   <div className="flex gap-4 text-xs text-muted-foreground mb-1 flex-wrap">
                     <span className="flex items-center gap-1.5">
@@ -521,9 +486,20 @@ export default function App() {
                       <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
                       Ball
                     </span>
-                    <span className="flex items-center gap-1.5 text-muted-foreground/70">
-                      Klicke auf die Gegnerseite (rechts) um Zielzone zu wählen
-                    </span>
+                    {level === "Profi" ? (
+                      <>
+                        <span className="flex items-center gap-1.5 text-violet-400">
+                          Links klicken = Laufziel (DU)
+                        </span>
+                        <span className="flex items-center gap-1.5 text-muted-foreground/70">
+                          Rechts klicken = Zielzone (Gegner)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-muted-foreground/70">
+                        Klicke auf die Gegnerseite (rechts) um Zielzone zu wählen
+                      </span>
+                    )}
                   </div>
                   <ScenarioCourt
                     positions={scenario.positions}
@@ -531,6 +507,10 @@ export default function App() {
                     hasSubmitted={hasSubmitted}
                     bestZones={scenario.bestZones}
                     onZoneClick={handleZoneClick}
+                    profiMode={level === "Profi"}
+                    selectedLaufZone={selectedLaufZone}
+                    correctLaufZone={hasSubmitted ? scenario.laufZone : null}
+                    onLaufZoneClick={(zoneId) => setSelectedLaufZone((z) => (z === zoneId ? null : zoneId))}
                   />
                 </div>
               )}
@@ -581,9 +561,9 @@ export default function App() {
                       </p>
                       <div className="flex flex-wrap gap-3 text-sm font-medium mt-2">
                         {level === "Profi" && (
-                          <div className={`px-4 py-2 rounded-lg border ${isPositionCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
-                            <span className="text-muted-foreground mr-2">Richtige Position:</span>
-                            <span className={isPositionCorrect ? "text-emerald-400" : "text-destructive"}>{scenario.laufPosition}</span>
+                          <div className={`px-4 py-2 rounded-lg border ${isLaufZoneCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
+                            <span className="text-muted-foreground mr-2">Richtiges Laufziel:</span>
+                            <span className={isLaufZoneCorrect ? "text-emerald-400" : "text-destructive"}>{scenario.laufZone}</span>
                           </div>
                         )}
                         <div className={`px-4 py-2 rounded-lg border ${isShotCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
