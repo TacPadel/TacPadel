@@ -1,0 +1,129 @@
+import random
+
+# Taktische Datenbasis für die verschiedenen Level
+TAKTIK_DATEN = {
+    "Netz": {
+        "gegner_tief_mittig": {
+            "beschreibung": "Der Gegner spielt einen weichen, tiefen Ball genau in die Mitte.",
+            "loesung_fortgeschritten": {"schlag": "Volley", "ziel": "Lang in die Ecken"},
+            "loesung_profi": {"lauf_zu": "Netz", "vor_rueckhand": "Zufall", "schlag": "Volley", "ziel": "Lang in die Ecken"}
+        },
+        "gegner_schneller_angriff": {
+            "beschreibung": "Ein harter, schneller Drive kommt direkt auf deinen Körper.",
+            "loesung_fortgeschritten": {"schlag": "Block", "ziel": "Kurz ablegen"},
+            "loesung_profi": {"lauf_zu": "Netz", "vor_rueckhand": "Zufall", "schlag": "Block", "ziel": "Kurz ablegen"}
+        }
+    },
+    "Hinterfeld": {
+        "gegner_angriff_wand": {
+            "beschreibung": "Ein harter Smash des Gegners springt flach von der Rückwand ab.",
+            "loesung_fortgeschritten": {"schlag": "Chiquita", "ziel": "Vor die Füße des Netzspielers"},
+            "loesung_profi": {"lauf_zu": "Hinterfeld", "vor_rueckhand": "Zufall", "schlag": "Chiquita", "ziel": "Vor die Füße des Netzspielers"}
+        },
+        "gegner_schlechter_lob": {
+            "beschreibung": "Ein zu kurzer Lob des Gegners landet als bequemer Ball auf Schulterhöhe.",
+            "loesung_fortgeschritten": {"schlag": "Bandeja", "ziel": "Tief in die Ecke (Gitter)"},
+            "loesung_profi": {"lauf_zu": "Hinterfeld", "vor_rueckhand": "Zufall", "schlag": "Bandeja", "ziel": "Tief in die Ecke (Gitter)"}
+        }
+    }
+}
+
+def waehle_level():
+    print("=== PADEL TAKTIKTRAINER ===")
+    print("1: Anfänger (Nur Schlagwahl aus einer Position)")
+    print("2: Fortgeschrittener (Schlag + Ziel)")
+    print("3: Profi (Laufposition + Vor-/Rückhand + Schlag + Ziel)")
+    
+    while True:
+        wahl = input("Wähle dein Level (1-3): ").strip()
+        if wahl == "1": return "Anfänger"
+        if wahl == "2": return "Fortgeschrittener"
+        if wahl == "3": return "Profi"
+        print("Ungültige Wahl. Bitte 1, 2 oder 3 eingeben.")
+
+def spiele_runde(level):
+    # Zufällige Position und Situation auswählen
+    position = random.choice(list(TAKTIK_DATEN.keys()))
+    situation_key = random.choice(list(TAKTIK_DATEN[position].keys()))
+    situation = TAKTIK_DATEN[position][situation_key]
+    
+    print("\n" + "="*50)
+    print(f"DEINE STARTPOSITION: {position.upper()}")
+    print(f"SITUATION: {situation['beschreibung']}")
+    print("="*50)
+    
+    # --- LEVEL 1: ANFÄNGER ---
+    if level == "Anfänger":
+        # Für Anfänger nehmen wir die Schlag-Lösung aus dem Fortgeschrittenen-Pool
+        korrekter_schlag = situation["loesung_fortgeschritten"]["schlag"]
+        
+        print("\nWelchen Schlag wählst du in dieser Position?")
+        tipp_schlag = input("Dein Schlag (z.B. Volley, Block, Lob, Bandeja): ").strip()
+        
+        if tipp_schlag.lower() == korrekter_schlag.lower():
+            print("\n✓ Richtig gelöst! Genau der richtige Schlag für diese Position.")
+        else:
+            print(f"\n✗ Nicht ganz. In dieser Situation wäre ein '{korrekter_schlag}' besser gewesen.")
+
+    # --- LEVEL 2: FORTGESCHRITTENER ---
+    elif level == "Fortgeschrittener":
+        loesung = situation["loesung_fortgeschritten"]
+        
+        tipp_schlag = input("Dein Schlag: ").strip()
+        tipp_ziel = input("Dein Ziel: ").strip()
+        
+        punkte = 0
+        if tipp_schlag.lower() == loesung["schlag"].lower(): punkte += 1
+        if tipp_ziel.lower() == loesung["ziel"].lower(): punkte += 1
+        
+        if punkte == 2:
+            print("\n✓ Perfekt! Schlag und Platzierung stimmen exakt.")
+        elif punkte == 1:
+            print(f"\n⚠ Teilweise richtig. Richtige Kombination wäre: {loesung['schlag']} -> {loesung['ziel']}.")
+        else:
+            print(f"\n✗ Leider falsch. Empfehlung: {loesung['schlag']} -> {loesung['ziel']}.")
+
+    # --- LEVEL 3: PROFI ---
+    elif level == "Profi":
+        loesung = situation["loesung_profi"]
+        
+        # Zufällige Zuweisung von Vorhand oder Rückhand für diese Runde
+        seite = random.choice(["Vorhand", "Rückhand"])
+        print(f"\n[PROFI-INFO] Du wirst auf der {seite.upper()}-Seite angespielt!")
+        
+        # Abfragen nacheinander
+        tipp_lauf = input("1. Zu welcher Position musst du laufen? (Netz / Hinterfeld): ").strip()
+        tipp_schlag = input(f"2. Welcher Schlag folgt auf deiner {seite}? ").strip()
+        tipp_ziel = input("3. Wohin platzierst du den Ball? ").strip()
+        
+        # Auswertung
+        fehler = []
+        if tipp_lauf.lower() != loesung["lauf_zu"].lower():
+            fehler.append(f"Position (Sollte sein: {loesung['lauf_zu']})")
+        if tipp_schlag.lower() != loesung["schlag"].lower():
+            fehler.append(f"Schlag (Sollte sein: {loesung['schlag']})")
+        if tipp_ziel.lower() != loesung["ziel"].lower():
+            # Hier könnte man später eine kulantere Textprüfung einbauen
+            fehler.append(f"Ziel (Sollte sein: {loesung['ziel']})")
+            
+        if not fehler:
+            print("\n★★★ WELTKLASSE! Du hast die gesamte Kette perfekt vorausgesehen! ★★★")
+        else:
+            print("\n✗ Taktischer Fehler in der Profi-Analyse:")
+            for f in fehler:
+                print(f"  - {f}")
+
+# Hauptschleife des Spiels
+def main():
+    level = waehle_level()
+    print(f"\nTrainer gestartet im Modus: {level}")
+    
+    while True:
+        spiele_runde(level)
+        weiter = input("\nNächste Taktikaufgabe? (j/n): ").strip().lower()
+        if weiter != 'j':
+            print("\nTraining beendet. Ab auf den echten Court!")
+            break
+
+if __name__ == "__main__":
+    main()

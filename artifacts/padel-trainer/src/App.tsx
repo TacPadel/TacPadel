@@ -34,6 +34,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Regeln": "bg-purple-500/10 border-purple-500/30 text-purple-400",
 };
 
+type Level = "Anfänger" | "Fortgeschrittener" | "Profi";
+
 interface Scenario {
   id: number;
   description: string;
@@ -41,6 +43,7 @@ interface Scenario {
   bestZones: string[];
   explanation: string;
   positions: PlayerPositions;
+  laufPosition: "Netz" | "Hinterfeld";
 }
 
 const SCENARIOS: Scenario[] = [
@@ -59,6 +62,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C4",
       ball: { side: "left", zone: "A1" },
     },
+    laufPosition: "Hinterfeld",
   },
   {
     id: 2,
@@ -75,6 +79,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "B2" },
     },
+    laufPosition: "Netz",
   },
   {
     id: 3,
@@ -91,6 +96,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C2",
       ball: { side: "left", zone: "B4" },
     },
+    laufPosition: "Netz",
   },
   {
     id: 4,
@@ -107,6 +113,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "B3" },
     },
+    laufPosition: "Netz",
   },
   {
     id: 5,
@@ -123,6 +130,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C4",
       ball: { side: "left", zone: "A2" },
     },
+    laufPosition: "Hinterfeld",
   },
   {
     id: 6,
@@ -139,6 +147,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C3",
       ball: { side: "left", zone: "B2" },
     },
+    laufPosition: "Hinterfeld",
   },
   {
     id: 7,
@@ -155,6 +164,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "C1",
       ball: { side: "left", zone: "C3" },
     },
+    laufPosition: "Netz",
   },
   {
     id: 8,
@@ -171,6 +181,7 @@ const SCENARIOS: Scenario[] = [
       opp2: "D4",
       ball: { side: "left", zone: "B3" },
     },
+    laufPosition: "Netz",
   },
 ];
 
@@ -241,11 +252,13 @@ function BasicsTab() {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("trainer");
+  const [level, setLevel] = useState<Level>("Fortgeschrittener");
   const [currentScenarioIndex, setCurrentScenarioIndex] = useState(() =>
     Math.floor(Math.random() * SCENARIOS.length)
   );
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<"Netz" | "Hinterfeld" | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [roundsPlayed, setRoundsPlayed] = useState(0);
@@ -262,20 +275,38 @@ export default function App() {
     setSelectedZone((prev) => (prev === zoneId ? null : zoneId));
   };
 
-  const isShotCorrect =
+  const isShotCorrect = !!(
     selectedShot &&
     scenario.validShots.some(
       (valid) =>
         valid === selectedShot ||
         (selectedShot === "LOB" && valid.includes("LOB")) ||
         (selectedShot === "VOLLEY" && valid.includes("VOLLEY"))
-    );
-  const isZoneCorrect = selectedZone && scenario.bestZones.includes(selectedZone);
+    )
+  );
+  const isZoneCorrect = !!(selectedZone && scenario.bestZones.includes(selectedZone));
+  const isPositionCorrect = !!(selectedPosition && selectedPosition === scenario.laufPosition);
+
+  const canSubmit = (() => {
+    if (hasSubmitted) return false;
+    if (!selectedShot) return false;
+    if (level === "Fortgeschrittener" && !selectedZone) return false;
+    if (level === "Profi" && (!selectedZone || !selectedPosition)) return false;
+    return true;
+  })();
+
+  const isFullyCorrect = (() => {
+    if (level === "Anfänger") return isShotCorrect;
+    if (level === "Fortgeschrittener") return isShotCorrect && isZoneCorrect;
+    return isShotCorrect && isZoneCorrect && isPositionCorrect;
+  })();
+
+  const isPartiallyCorrect = !isFullyCorrect && (isShotCorrect || isZoneCorrect || isPositionCorrect);
 
   const handleSubmit = () => {
-    if (!selectedShot || !selectedZone || hasSubmitted) return;
+    if (!canSubmit) return;
     setHasSubmitted(true);
-    if (isShotCorrect && isZoneCorrect) {
+    if (isFullyCorrect) {
       setScore((s) => s + 1);
     }
     setRoundsPlayed((r) => r + 1);
@@ -289,6 +320,15 @@ export default function App() {
     setCurrentScenarioIndex(nextIndex);
     setSelectedShot(null);
     setSelectedZone(null);
+    setSelectedPosition(null);
+    setHasSubmitted(false);
+  };
+
+  const handleLevelChange = (newLevel: Level) => {
+    setLevel(newLevel);
+    setSelectedShot(null);
+    setSelectedZone(null);
+    setSelectedPosition(null);
     setHasSubmitted(false);
   };
 
@@ -351,6 +391,39 @@ export default function App() {
               transition={{ duration: 0.18 }}
               className="flex flex-col gap-6"
             >
+              {/* Level picker */}
+              <div className="flex flex-col gap-2">
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                  Schwierigkeitsstufe
+                </h3>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["Anfänger", "Fortgeschrittener", "Profi"] as Level[]).map((lvl) => (
+                    <button
+                      key={lvl}
+                      onClick={() => handleLevelChange(lvl)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                        level === lvl
+                          ? lvl === "Anfänger"
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow"
+                            : lvl === "Fortgeschrittener"
+                            ? "bg-amber-500 text-white border-amber-500 shadow"
+                            : "bg-red-600 text-white border-red-600 shadow"
+                          : "bg-transparent text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                    >
+                      {lvl === "Anfänger" ? "⚡ Anfänger" : lvl === "Fortgeschrittener" ? "🎯 Fortgeschrittener" : "★ Profi"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {level === "Anfänger"
+                    ? "Wähle nur den richtigen Schlag."
+                    : level === "Fortgeschrittener"
+                    ? "Wähle Schlag und Zielzone auf dem Spielfeld."
+                    : "Wähle deine Laufposition, den Schlag und die Zielzone — die volle Profi-Kette."}
+                </p>
+              </div>
+
               {/* Scenario description */}
               <div className="bg-card border border-card-border p-6 rounded-xl shadow-lg relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
@@ -360,10 +433,45 @@ export default function App() {
                 <p className="text-lg leading-relaxed">{scenario.description}</p>
               </div>
 
+              {/* PROFI: Laufposition */}
+              {level === "Profi" && (
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
+                    1. Laufposition wählen
+                  </h3>
+                  <div className="flex gap-2">
+                    {(["Netz", "Hinterfeld"] as const).map((pos) => {
+                      const isSelected = selectedPosition === pos;
+                      let cls = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
+                      if (isSelected) cls = "bg-primary text-primary-foreground shadow-md";
+                      if (hasSubmitted && isSelected) {
+                        cls = isPositionCorrect
+                          ? "bg-emerald-600 text-white"
+                          : "bg-destructive text-destructive-foreground";
+                      }
+                      return (
+                        <button
+                          key={pos}
+                          onClick={() => {
+                            if (hasSubmitted) return;
+                            setSelectedPosition((p) => (p === pos ? null : pos));
+                          }}
+                          className={`px-5 py-2.5 rounded-lg font-semibold transition-all ${cls} ${
+                            hasSubmitted ? "cursor-default" : "cursor-pointer active:scale-95"
+                          }`}
+                        >
+                          {pos === "Netz" ? "🥅 Netz" : "🧱 Hinterfeld"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Shot selection */}
               <div className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                  1. Schlag wählen
+                  {level === "Profi" ? "2. Schlag wählen" : "1. Schlag wählen"}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {SHOTS.map((shot) => {
@@ -372,7 +480,7 @@ export default function App() {
                     if (isSelected) bgClass = "bg-primary text-primary-foreground shadow-md";
                     if (hasSubmitted && isSelected) {
                       bgClass = isShotCorrect
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-emerald-600 text-white"
                         : "bg-destructive text-destructive-foreground";
                     }
                     return (
@@ -390,40 +498,42 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Interactive court */}
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                  2. Zielzone auf dem Spielfeld wählen
-                </h3>
-                <div className="flex gap-4 text-xs text-muted-foreground mb-1 flex-wrap">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
-                    DU
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-red-800 inline-block" />
-                    Partner
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" />
-                    Gegner
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
-                    Ball
-                  </span>
-                  <span className="flex items-center gap-1.5 text-muted-foreground/70">
-                    Klicke auf die Gegnerseite (rechts) um Zielzone zu wählen
-                  </span>
+              {/* Interactive court — only for Fortgeschrittener and Profi */}
+              {level !== "Anfänger" && (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
+                    {level === "Profi" ? "3. Zielzone auf dem Spielfeld wählen" : "2. Zielzone auf dem Spielfeld wählen"}
+                  </h3>
+                  <div className="flex gap-4 text-xs text-muted-foreground mb-1 flex-wrap">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+                      DU
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-red-800 inline-block" />
+                      Partner
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" />
+                      Gegner
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
+                      Ball
+                    </span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground/70">
+                      Klicke auf die Gegnerseite (rechts) um Zielzone zu wählen
+                    </span>
+                  </div>
+                  <ScenarioCourt
+                    positions={scenario.positions}
+                    selectedZone={selectedZone}
+                    hasSubmitted={hasSubmitted}
+                    bestZones={scenario.bestZones}
+                    onZoneClick={handleZoneClick}
+                  />
                 </div>
-                <ScenarioCourt
-                  positions={scenario.positions}
-                  selectedZone={selectedZone}
-                  hasSubmitted={hasSubmitted}
-                  bestZones={scenario.bestZones}
-                  onZoneClick={handleZoneClick}
-                />
-              </div>
+              )}
 
               {/* Submit / feedback */}
               <AnimatePresence>
@@ -436,7 +546,7 @@ export default function App() {
                   >
                     <button
                       onClick={handleSubmit}
-                      disabled={!selectedShot || !selectedZone}
+                      disabled={!canSubmit}
                       className="w-full sm:w-auto px-8 py-4 bg-primary text-primary-foreground font-bold text-lg rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                     >
                       Bestätigen
@@ -451,31 +561,41 @@ export default function App() {
                     <div className="flex flex-col gap-4">
                       <h3
                         className={`text-2xl font-bold ${
-                          isShotCorrect && isZoneCorrect
+                          isFullyCorrect
                             ? "text-primary"
-                            : isShotCorrect || isZoneCorrect
+                            : isPartiallyCorrect
                             ? "text-yellow-500"
                             : "text-destructive"
                         }`}
                       >
-                        {isShotCorrect && isZoneCorrect
-                          ? "Ausgezeichnet! Richtig entschieden."
-                          : isShotCorrect
-                          ? "Teilweise richtig: Der Schlag war gut, aber die Platzierung suboptimal."
+                        {isFullyCorrect
+                          ? level === "Profi"
+                            ? "★★★ Weltklasse! Die gesamte Kette perfekt vorausgesehen."
+                            : "Ausgezeichnet! Richtig entschieden."
+                          : isPartiallyCorrect
+                          ? "Teilweise richtig — nicht ganz optimal."
                           : "Taktischer Fehler: In dieser Situation verlierst du den Punkt."}
                       </h3>
                       <p className="text-muted-foreground text-lg leading-relaxed">
                         {scenario.explanation}
                       </p>
-                      <div className="flex flex-wrap gap-4 text-sm font-medium mt-2">
-                        <div className="bg-background px-4 py-2 rounded-lg border border-border">
+                      <div className="flex flex-wrap gap-3 text-sm font-medium mt-2">
+                        {level === "Profi" && (
+                          <div className={`px-4 py-2 rounded-lg border ${isPositionCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
+                            <span className="text-muted-foreground mr-2">Richtige Position:</span>
+                            <span className={isPositionCorrect ? "text-emerald-400" : "text-destructive"}>{scenario.laufPosition}</span>
+                          </div>
+                        )}
+                        <div className={`px-4 py-2 rounded-lg border ${isShotCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
                           <span className="text-muted-foreground mr-2">Optimale Schläge:</span>
-                          <span className="text-primary">{scenario.validShots.join(" oder ")}</span>
+                          <span className={isShotCorrect ? "text-emerald-400" : "text-primary"}>{scenario.validShots.join(" oder ")}</span>
                         </div>
-                        <div className="bg-background px-4 py-2 rounded-lg border border-border">
-                          <span className="text-muted-foreground mr-2">Beste Zonen:</span>
-                          <span className="text-primary">{scenario.bestZones.join(", ")}</span>
-                        </div>
+                        {level !== "Anfänger" && (
+                          <div className={`px-4 py-2 rounded-lg border ${isZoneCorrect ? "bg-emerald-600/10 border-emerald-600/40" : "bg-background border-border"}`}>
+                            <span className="text-muted-foreground mr-2">Beste Zonen:</span>
+                            <span className={isZoneCorrect ? "text-emerald-400" : "text-primary"}>{scenario.bestZones.join(", ")}</span>
+                          </div>
+                        )}
                       </div>
                       <button
                         onClick={nextRound}
