@@ -3,6 +3,37 @@ import { motion, AnimatePresence } from "framer-motion";
 import TacticsBoard from "./components/TacticsBoard";
 import ScenarioCourt, { PlayerPositions } from "./components/ScenarioCourt";
 
+const PADEL_DICTIONARY: Record<string, Record<string, string>> = {
+  "Schläge": {
+    "Aufschlag": "Der Aufschlag wird im Padel unterhalb der Hüfte (aus dem Sprung nach einem Bodenaufprall) ausgeführt und muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden. Berührt der Ball danach das Gitter, ist es ein Aufschlagfehler; berührt er die Glaswand, ist er gültig.",
+    "Lob": "Der wichtigste Defensivschlag im Padel. Ein hoher, tiefer Ball an die gegnerische Grundlinie. Ziel ist es, die Gegner von der Netzposition nach hinten zu zwingen, um selbst das Netz zu erobern.",
+    "Volley": "Ein Schlag direkt aus der Luft, ohne vorherigen Bodenaufprall, meistens eng am Netz gespielt. Volleys werden idealerweise mit viel Slice (Rückwärtsdrall) tief in die Ecken platziert.",
+    "Bandeja": "Ein defensiver/kontrollierter Überkopfschlag, der meistens im Mittelfeld angewendet wird. Getroffen wird der Ball seitlich auf Kopfhöhe mit Slice, um den Ball flach zu halten und die Netzposition zu verteidigen.",
+    "Víbora": "Ein aggressiverer Überkopfschlag mit viel Seitwärtsdrall (Schnitt). Der Ball prallt unberechenbar und extrem flach von den gegnerischen Wänden ab.",
+    "Smash": "Ein klassischer Überkopf-Power-Schlag. Wird genutzt, um den Ball so hart zu treffen, dass er nach der gegnerischen Wand über die 3- oder 4-Meter-Außenwand springt (Por Tres / Por Cuatro) oder unerreichbar zurück ins eigene Feld fliegt.",
+    "Bajada de Pared": "Ein Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der eigenen Rückwand abgesprungen ist. Man \"schlägt den Ball von der Wand nach unten\", oft sehr kraftvoll und offensiv.",
+    "Chiquita": "Ein kurzer, weicher Ball aus der Defensive genau vor die Füße der am Netz stehenden Gegner. Zwingt den Gegner zu einem unangenehmen Volley von weit unten und öffnet Chancen zum Konter.",
+    "Block": "Ein rein passiver Schlag am Netz. Man hält den Schläger wie eine Wand hin, um extrem harte, gerade Passierbälle des Gegners abzufangen und kurz hinter dem Netz abtropfen zu lassen.",
+  },
+  "Positionen": {
+    "Netzposition (Angriff)": "Die dominierende Position im Padel. Beide Spieler stehen ca. 2–3 Meter vor dem Netz. Von hier aus wird der Druck per Volley und Überkopfschlägen aufgebaut. Punkte werden fast nur hier gewonnen.",
+    "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Aufschlag oder Druck. Spieler stehen leicht hinter der Aufschlaglinie. Fokus liegt auf dem Nutzen der Glaswände und dem Spielen von Lobs.",
+    "Die Übergangszone (Niemandsland)": "Der Bereich zwischen Aufschlaglinie und Netz. Hier sollte man sich niemals freiwillig aufhalten, da man leicht vor die Füße angespielt werden kann. Diese Zone wird nur schnell durchschritten.",
+    "Die T-Linie": "Der Kreuzungspunkt der Aufschlaglinien in der Mitte des Feldes. Ein wichtiger Orientierungspunkt für das Stellungsspiel bei kurzen Bällen.",
+  },
+  "Regeln": {
+    "Zählweise": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird entweder traditionell über Vorteil gespielt oder mit der \"Golden Point\"-Regel (der nächste Punkt entscheidet das Spiel). Ein Satz geht bis 6, ein Match über 2 Gewinnsätze.",
+    "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er im Aus. Nach dem Bodenaufprall darf er beliebig oft an die Wände ditschen.",
+    "Eigenes Glas nutzen": "In der Defensive darf man den Ball mit voller Kraft gegen die eigene Glasscheibe schlagen, damit er über das Netz ins gegnerische Feld fliegt. Das Nutzen des eigenen Metallgitters ist hingegen verboten.",
+  },
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  "Schläge": "bg-blue-500/10 border-blue-500/30 text-blue-400",
+  "Positionen": "bg-amber-500/10 border-amber-500/30 text-amber-400",
+  "Regeln": "bg-purple-500/10 border-purple-500/30 text-purple-400",
+};
+
 interface Scenario {
   id: number;
   description: string;
@@ -145,7 +176,68 @@ const SCENARIOS: Scenario[] = [
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA"];
 
-type Tab = "trainer" | "board";
+type Tab = "trainer" | "board" | "basics";
+
+function BasicsTab() {
+  const [openEntry, setOpenEntry] = useState<string | null>(null);
+
+  const toggle = (key: string) =>
+    setOpenEntry((prev) => (prev === key ? null : key));
+
+  return (
+    <motion.div
+      key="basics"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.18 }}
+      className="flex flex-col gap-6"
+    >
+      {Object.entries(PADEL_DICTIONARY).map(([category, entries]) => {
+        const colorClass = CATEGORY_COLORS[category] ?? "bg-secondary/20 border-border text-muted-foreground";
+        return (
+          <div key={category} className="flex flex-col gap-2">
+            <div className={`inline-flex items-center self-start px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-widest ${colorClass}`}>
+              {category}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {Object.entries(entries).map(([term, definition]) => {
+                const entryKey = `${category}__${term}`;
+                const isOpen = openEntry === entryKey;
+                return (
+                  <div key={term} className="bg-card border border-card-border rounded-xl overflow-hidden shadow-sm">
+                    <button
+                      onClick={() => toggle(entryKey)}
+                      className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-secondary/30 transition-colors"
+                    >
+                      <span className="font-semibold text-base">{term}</span>
+                      <span className={`text-muted-foreground text-lg leading-none transition-transform duration-200 ${isOpen ? "rotate-45" : ""}`}>+</span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <p className="px-5 pb-4 pt-0 text-muted-foreground leading-relaxed border-t border-card-border">
+                            {definition}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </motion.div>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("trainer");
@@ -214,7 +306,7 @@ export default function App() {
         </header>
 
         {/* Tab switcher */}
-        <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl self-start">
+        <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl self-start flex-wrap">
           <button
             onClick={() => setActiveTab("trainer")}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -235,10 +327,22 @@ export default function App() {
           >
             Taktik-Board
           </button>
+          <button
+            onClick={() => setActiveTab("basics")}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === "basics"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Padel Basics
+          </button>
         </div>
 
         <AnimatePresence mode="wait">
-          {activeTab === "trainer" ? (
+          {activeTab === "basics" ? (
+            <BasicsTab key="basics" />
+          ) : activeTab === "trainer" ? (
             <motion.div
               key="trainer"
               initial={{ opacity: 0, y: 8 }}
