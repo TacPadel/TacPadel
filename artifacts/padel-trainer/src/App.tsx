@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import TacticsBoard from "./components/TacticsBoard";
+import ScenarioCourt, { PlayerPositions } from "./components/ScenarioCourt";
 
 interface Scenario {
   id: number;
@@ -8,58 +9,61 @@ interface Scenario {
   validShots: string[];
   bestZones: string[];
   explanation: string;
+  positions: PlayerPositions;
 }
 
 const SCENARIOS: Scenario[] = [
   {
     id: 1,
     description:
-      "Gegner haben euch nach hinten gedrängt und stehen beide aggressiv am Netz (Zonen B4 und C4). Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst perfekt zum Ball.",
+      "Gegner haben euch nach hinten gedrängt und stehen beide aggressiv am Netz (GEG1 & GEG2). Ein schneller, flacher Ball kommt tief in deine linke Glasecke (Zone A1). Du stehst perfekt zum Ball.",
     validShots: ["LOB", "CHIRURGISCHER LOB"],
     bestZones: ["A1", "D1"],
     explanation:
       "Da die Gegner das Netz dominieren, ist der hohe Lob die einzige sichere Option, um sie zu vertreiben und selbst das Netz zu erobern. Ein flacher Ball wird am Netz eiskalt abgefangen.",
+    positions: {
+      you: "A1",
+      partner: "B1",
+      opp1: "B4",
+      opp2: "C4",
+      ball: { side: "left", zone: "A1" },
+    },
   },
   {
     id: 2,
     description:
-      "Du stehst stabil am Netz (Zone B3). Der Gegner spielt einen verunglückten, zu kurzen Lob, der als hoher Ball auf die Mittellinie (Zone B2) fällt. Du hast viel Zeit, stehst aber relativ weit hinten im Feld.",
+      "Du hast dich ans Netz vorgearbeitet (Zone B3). Der Gegner gerät unter Druck und spielt einen zu kurzen Not-Lob auf die T-Linie (Zone B2). Du hast Zeit, stehst aber nicht nah genug für einen Power-Smash.",
     validShots: ["BANDEJA", "VIBORA"],
     bestZones: ["A1", "D1", "A2"],
     explanation:
-      "Für einen finalen Smash stehst du zu weit hinten. Die Bandeja oder Víbora hält die Gegner hinten und sichert dir die Netzposition, ohne dass der Ball hoch von der Wand abprallt.",
+      "Für einen direkten Smash stehst du zu weit hinten. Eine kontrollierte Bandeja oder Víbora tief in die Ecken hält die Gegner hinten und bewahrt deine Netzdominanz.",
+    positions: {
+      you: "B3",
+      partner: "C3",
+      opp1: "B1",
+      opp2: "C1",
+      ball: { side: "left", zone: "B2" },
+    },
   },
   {
     id: 3,
     description:
-      "Du stehst am Netz (Zone C3). Der Gegner schießt aus der Defensive einen harten, schnellen Passierball direkt auf deinen Körper.",
+      "Ihr steht beide kompakt am Netz. Der Gegner spielt von hinten einen harten, flachen Passierball genau durch die Mitte auf die Netzkante. Wie reagierst du als Wand?",
     validShots: ["BLOCK", "REFLEX-VOLLEY", "VOLLEY"],
-    bestZones: ["B2", "C2", "A1"],
+    bestZones: ["B2", "C2", "B1"],
     explanation:
-      "Bei harten Bällen auf den Körper darfst du nicht ausholen. Schläger kompakt als 'Wand' hinhalten (Block) und den Ball tief in die Mitte oder dem Gegner vor die Füße tropfen lassen.",
+      "Bei schnellen Bällen durch die Mitte darfst du nicht ausholen. Schläger kompakt hinhalten (Block/Volley) und den Ball flach vor die Füße der Gegner tropfen lassen.",
+    positions: {
+      you: "B4",
+      partner: "C4",
+      opp1: "B1",
+      opp2: "C2",
+      ball: { side: "left", zone: "B4" },
+    },
   },
 ];
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA"];
-
-const COURT_ZONES = [
-  { id: "A1", label: "Glass Corner L" },
-  { id: "B1", label: "Back C-L" },
-  { id: "C1", label: "Back C-R" },
-  { id: "D1", label: "Glass Corner R" },
-  { id: "A2", label: "Mid L" },
-  { id: "B2", label: "Mid C-L" },
-  { id: "C2", label: "Mid C-R" },
-  { id: "D2", label: "Mid R" },
-  { id: "A3", label: "Net Fence L" },
-  { id: "B3", label: "Net C-L" },
-  { id: "C3", label: "Net C-R" },
-  { id: "D3", label: "Net Fence R" },
-  { id: "A4", label: "At Net L" },
-  { id: "B4", label: "At Net C-L" },
-  { id: "C4", label: "At Net C-R" },
-  { id: "D4", label: "At Net R" },
-];
 
 type Tab = "trainer" | "board";
 
@@ -163,104 +167,88 @@ export default function App() {
               transition={{ duration: 0.18 }}
               className="flex flex-col gap-6"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="flex flex-col gap-6">
-                  <div className="bg-card border border-card-border p-6 rounded-xl shadow-lg relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
-                    <h2 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-2">
-                      Szenario
-                    </h2>
-                    <p className="text-lg leading-relaxed">{scenario.description}</p>
-                  </div>
+              {/* Scenario description */}
+              <div className="bg-card border border-card-border p-6 rounded-xl shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+                <h2 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-2">
+                  Szenario
+                </h2>
+                <p className="text-lg leading-relaxed">{scenario.description}</p>
+              </div>
 
-                  <div className="flex flex-col gap-3">
-                    <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                      1. Schlag wählen
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {SHOTS.map((shot) => {
-                        const isSelected = selectedShot === shot;
-                        let bgClass = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
-                        if (isSelected) bgClass = "bg-primary text-primary-foreground shadow-md";
-                        if (hasSubmitted && isSelected) {
-                          bgClass = isShotCorrect
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-destructive text-destructive-foreground";
-                        }
-                        return (
-                          <button
-                            key={shot}
-                            onClick={() => handleShotClick(shot)}
-                            className={`px-4 py-2 rounded-lg font-medium transition-all ${bgClass} ${
-                              hasSubmitted ? "cursor-default" : "cursor-pointer active:scale-95"
-                            }`}
-                          >
-                            {shot}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                    2. Zielzone wählen
-                  </h3>
-                  <div className="relative aspect-[3/4] w-full max-w-[400px] mx-auto border-4 border-primary rounded-xl overflow-hidden bg-emerald-900/10 p-2 shadow-2xl">
-                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-                      <div className="w-full h-full bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    </div>
-                    <div className="grid grid-cols-4 grid-rows-4 h-full w-full gap-1">
-                      {COURT_ZONES.map((zone) => {
-                        const isSelected = selectedZone === zone.id;
-                        const isBest = hasSubmitted && scenario.bestZones.includes(zone.id);
-                        let zoneClass =
-                          "border border-primary/20 bg-background/50 hover:bg-primary/20 transition-colors";
-                        if (isSelected && !hasSubmitted) {
-                          zoneClass = "border-primary bg-primary/40 shadow-[0_0_15px_rgba(0,255,150,0.4)]";
-                        } else if (hasSubmitted) {
-                          if (isBest) {
-                            zoneClass = "border-primary bg-primary/60 shadow-[0_0_15px_rgba(0,255,150,0.6)]";
-                          } else if (isSelected && !isBest) {
-                            zoneClass = "border-destructive bg-destructive/60";
-                          } else {
-                            zoneClass = "border-primary/10 bg-background/20 opacity-50";
-                          }
-                        }
-                        return (
-                          <button
-                            key={zone.id}
-                            onClick={() => handleZoneClick(zone.id)}
-                            className={`relative flex flex-col items-center justify-center rounded-md group ${zoneClass} ${
-                              hasSubmitted ? "cursor-default" : "cursor-pointer"
-                            }`}
-                          >
-                            <span className="font-mono font-bold text-lg opacity-80 group-hover:opacity-100">
-                              {zone.id}
-                            </span>
-                            <span className="text-[0.65rem] uppercase tracking-wider opacity-60 text-center px-1 hidden sm:block">
-                              {zone.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="absolute bottom-0 left-0 w-full h-1 bg-white/20" />
-                  </div>
-                  <div className="text-center text-xs text-muted-foreground mt-1 uppercase tracking-widest">
-                    Netz (Gegnerseite)
-                  </div>
+              {/* Shot selection */}
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
+                  1. Schlag wählen
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {SHOTS.map((shot) => {
+                    const isSelected = selectedShot === shot;
+                    let bgClass = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
+                    if (isSelected) bgClass = "bg-primary text-primary-foreground shadow-md";
+                    if (hasSubmitted && isSelected) {
+                      bgClass = isShotCorrect
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground";
+                    }
+                    return (
+                      <button
+                        key={shot}
+                        onClick={() => handleShotClick(shot)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-all ${bgClass} ${
+                          hasSubmitted ? "cursor-default" : "cursor-pointer active:scale-95"
+                        }`}
+                      >
+                        {shot}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
+              {/* Interactive court */}
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
+                  2. Zielzone auf dem Spielfeld wählen
+                </h3>
+                <div className="flex gap-4 text-xs text-muted-foreground mb-1 flex-wrap">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+                    DU
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-red-800 inline-block" />
+                    Partner
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" />
+                    Gegner
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-emerald-400 inline-block" />
+                    Ball
+                  </span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground/70">
+                    Klicke auf die Gegnerseite (rechts) um Zielzone zu wählen
+                  </span>
+                </div>
+                <ScenarioCourt
+                  positions={scenario.positions}
+                  selectedZone={selectedZone}
+                  hasSubmitted={hasSubmitted}
+                  bestZones={scenario.bestZones}
+                  onZoneClick={handleZoneClick}
+                />
+              </div>
+
+              {/* Submit / feedback */}
               <AnimatePresence>
                 {!hasSubmitted ? (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="flex justify-center mt-4"
+                    className="flex justify-center mt-2"
                   >
                     <button
                       onClick={handleSubmit}
@@ -274,7 +262,7 @@ export default function App() {
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-card border border-card-border p-6 rounded-xl shadow-2xl mt-4"
+                    className="bg-card border border-card-border p-6 rounded-xl shadow-2xl"
                   >
                     <div className="flex flex-col gap-4">
                       <h3
@@ -309,7 +297,7 @@ export default function App() {
                         onClick={nextRound}
                         className="mt-4 w-full sm:w-auto self-start px-6 py-3 bg-secondary text-secondary-foreground font-bold rounded-lg hover:bg-secondary/80 transition-colors"
                       >
-                        Nächste Aufgabe
+                        Nächste Aufgabe →
                       </button>
                     </div>
                   </motion.div>
