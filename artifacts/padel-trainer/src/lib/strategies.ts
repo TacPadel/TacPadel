@@ -104,10 +104,10 @@ export const STRATEGIES: StrategySequence[] = [
           partner: "D1", 
           opp1: "B4", 
           opp2: "D4", 
-          ball: { side: "right", zone: "D4", type: "VOLLEY" } // RIGHT = Kommt vom Gegner am Netz
+          ball: { side: "left", zone: "A1", type: "Vorbereitung" } // RIGHT = Kommt vom Gegner am Netz
         },
         validShots: ["LOB"],
-        bestZones: ["E1", "E2"], 
+        bestZones: ["E1"], 
         laufZone: "C4", 
         stepExplanation: "Super! Der Lob ist in der Luft. Rücke sofort ans Netz vor."
       },
@@ -117,7 +117,7 @@ export const STRATEGIES: StrategySequence[] = [
         description: "Dein Lob war gut! Gegner 2 muss in die Ecke zurückrennen und einen Verzweiflungs-Ball (Bajada) spielen.",
         positions: {
           you: "C4", // Du bist am Netz
-          partner: "E4", 
+          partner: "E5", 
           opp1: "C2", 
           opp2: "E1", // Gegner ist in die Ecke gerannt
           ball: { side: "right", zone: "E1", type: "LOB" } // RIGHT = Ball ist beim Gegner hinten

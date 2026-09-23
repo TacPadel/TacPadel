@@ -77,7 +77,6 @@ const MOCK_TOURNAMENTS: Tournament[] = [
   }
 ];
 
-// --- NEU: onStartMatch übergibt jetzt difficulty und reward ---
 interface TourScreenProps {
   onClose: () => void;
   onStartMatch?: (tournamentId: string, currentRound: number, baseDifficulty: number, reward: number) => void;
@@ -86,39 +85,61 @@ interface TourScreenProps {
 export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [selectedTour, setSelectedTour] = useState<Tournament | null>(null);
   
-  // -- SUPABASE STATES --
+  // -- SUPABASE & STATS STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
+  const [tacPoints, setTacPoints] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // Lade Turnier-Fortschritt aus der Datenbank
+  // Lade Turnier-Fortschritt UND TacPoints aus der Datenbank
   useEffect(() => {
-    const fetchProgress = async () => {
+    const fetchData = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return;
+        
+        if (!session?.user) {
+          // Fallback für LocalStorage (falls nicht eingeloggt)
+          const savedScore = localStorage.getItem("tacpadel_score");
+          if (savedScore) setTacPoints(parseInt(savedScore, 10));
+          setLoading(false);
+          return;
+        }
 
-        const { data, error } = await supabase
+        // 1. Turnier-Fortschritt laden
+        const { data: tourData, error: tourError } = await supabase
           .from("tour_progress")
           .select("*")
           .eq("user_id", session.user.id);
 
-        if (error) throw error;
-
-        if (data) {
+        if (tourData && !tourError) {
           const progressMap: Record<string, TourProgress> = {};
-          data.forEach((row) => {
+          tourData.forEach((row) => {
             progressMap[row.tournament_id] = row;
           });
           setProgress(progressMap);
         }
+
+        // 2. TacPoints laden
+        const { data: statsData, error: statsError } = await supabase
+          .from("user_stats")
+          .select("points")
+          .eq("id", session.user.id)
+          .single();
+
+        if (statsData && !statsError) {
+          setTacPoints(statsData.points);
+        } else {
+          const savedScore = localStorage.getItem("tacpadel_score");
+          if (savedScore) setTacPoints(parseInt(savedScore, 10));
+        }
+
       } catch (err) {
-        console.error("Fehler beim Laden des Turnier-Fortschritts:", err);
+        console.error("Fehler beim Laden der Daten:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProgress();
+    fetchData();
   }, []);
 
   const getTypeColor = (type: TourType) => {
@@ -241,6 +262,14 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           Pro Tour
         </h1>
         
+        {/* NEU: TacPoints Anzeige */}
+        <div className="mt-4 flex items-center gap-2 px-5 py-2 bg-amber-950/30 border border-amber-500/50 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+          <span className="text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.8)] text-sm leading-none">⭐</span>
+          <span className="text-[12px] font-black tracking-widest text-amber-400 uppercase leading-none mt-0.5">
+            {tacPoints} TacPoints
+          </span>
+        </div>
+
         {/* GLOBAL TIMER */}
         <div className="mt-3 flex items-center gap-2 px-4 py-1.5 bg-red-950/30 border border-red-500/30 rounded-full">
           <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,1)]"></div>

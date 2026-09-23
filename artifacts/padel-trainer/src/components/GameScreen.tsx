@@ -61,9 +61,10 @@ export default function GameScreen() {
   
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
   
-  // --- NEU: Turnier States ---
+  // --- TURNIER STATES ---
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
+  const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
   const [introTrigger, setIntroTrigger] = useState(0); 
@@ -96,7 +97,8 @@ export default function GameScreen() {
     }
   }, []);
 
-  const isProfi = tacScore >= 4000;
+  // --- NEU: Profi-Modus ist NUR in Turnieren mit >= 4000 Voraussetzung aktiv ---
+  const isProfi = activeTournamentId !== null && activeTournamentDifficulty >= 4000;
   const [showProfiBanner, setShowProfiBanner] = useState<boolean>(false);
 
   const [showNameTags, setShowNameTags] = useState(() => {
@@ -104,7 +106,7 @@ export default function GameScreen() {
   });
 
   const triggerProfiBanner = () => {
-    if (tacScore >= 4000) {
+    if (activeTournamentId !== null && activeTournamentDifficulty >= 4000) {
       setShowProfiBanner(true);
       setTimeout(() => setShowProfiBanner(false), 4000);
     }
@@ -246,6 +248,7 @@ export default function GameScreen() {
       
       setActiveTournamentId(parsed.tournamentId || null);
       setActiveTournamentRound(parsed.tournamentRound || 1);
+      setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
 
       setPlayerScore(parsed.playerScore);
       setAiScore(parsed.aiScore);
@@ -261,7 +264,7 @@ export default function GameScreen() {
 
       if (staminaModeEnabled) {
         if (parsed.stamina) setStamina(parsed.stamina);
-        else setStamina({ you: MAX_PLAYER_STAMINA, partner: MAX_PLAYER_STAMINA, opp1: getAiMaxStamina(parsed.tacScore || 3000), opp2: getAiMaxStamina(parsed.tacScore || 3000) });
+        else setStamina({ you: MAX_PLAYER_STAMINA, partner: MAX_PLAYER_STAMINA, opp1: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000), opp2: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000) });
       }
       
       const total = parsed.playerScore + parsed.aiScore;
@@ -288,13 +291,13 @@ export default function GameScreen() {
     return false;
   };
 
-  // --- NEU: Turniermatch Starter ---
-  const handleStartTournamentMatch = (tourId: string, round: number) => {
+  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
     setActiveTournamentId(tourId);
     setActiveTournamentRound(round);
+    setActiveTournamentDifficulty(difficulty);
 
     setPlayerScore(0);
     setAiScore(0);
@@ -303,8 +306,7 @@ export default function GameScreen() {
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
 
-    // Turnier-Gegner werden in höheren Runden schwerer (mehr Ausdauer)
-    const baseDifficulty = tacScore;
+    const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
     const roundDifficultyBonus = (round - 1) * 500; 
     const aiTargetScore = baseDifficulty + roundDifficultyBonus;
     
@@ -332,6 +334,7 @@ export default function GameScreen() {
   const startNewGame = () => {
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
+    setActiveTournamentDifficulty(0);
     
     setPlayerScore(0);
     setAiScore(0);
@@ -384,10 +387,10 @@ export default function GameScreen() {
           }
         }
 
-        // KI Schwierigkeit bei Turnieren anpassen
         let currentAiDifficulty = tacScore;
         if (activeTournamentId) {
-          currentAiDifficulty += ((activeTournamentRound - 1) * 300); // KI wird schlauer in späteren Runden
+          currentAiDifficulty = activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore;
+          currentAiDifficulty += ((activeTournamentRound - 1) * 300);
         }
 
         const brain = calculateSmartAITurn(
@@ -518,7 +521,7 @@ export default function GameScreen() {
       }, delay); 
     }
     return () => clearTimeout(t);
-  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound]);
+  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty]);
 
   useEffect(() => {
     if (phase !== "timer_running") return;
@@ -1054,8 +1057,9 @@ export default function GameScreen() {
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (isNewMatch) {
-         // KI Ausdauer basiert auf Base-TacScore + ggf. Turnier-Bonus
-         const aiTargetScore = tacScore + (activeTournamentId ? ((activeTournamentRound - 1) * 500) : 0);
+         const aiTargetScore = activeTournamentId 
+             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
+             : tacScore;
          newStamina = {
            you: MAX_PLAYER_STAMINA,
            partner: MAX_PLAYER_STAMINA,
@@ -1063,7 +1067,9 @@ export default function GameScreen() {
            opp2: getAiMaxStamina(aiTargetScore)
          };
       } else {
-         const aiTargetScore = tacScore + (activeTournamentId ? ((activeTournamentRound - 1) * 500) : 0);
+         const aiTargetScore = activeTournamentId 
+             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
+             : tacScore;
          newStamina = {
            you: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.you + 1),
            partner: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.partner + 1),
@@ -1082,7 +1088,8 @@ export default function GameScreen() {
       matchStats: stats,
       stamina: staminaModeEnabled ? newStamina : undefined,
       tournamentId: activeTournamentId,
-      tournamentRound: activeTournamentRound
+      tournamentRound: activeTournamentRound,
+      tournamentDifficulty: activeTournamentDifficulty
     };
     localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
   };
@@ -1126,7 +1133,7 @@ export default function GameScreen() {
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
       {/* =================================================== */}
-      {/* HAUPTMENÜ OVERLAY                                     */}
+      {/* HAUPTMENÜ OVERLAY                                   */}
       {/* =================================================== */}
       <AnimatePresence>
         {isMenuOpen && !isTourOpen && (
