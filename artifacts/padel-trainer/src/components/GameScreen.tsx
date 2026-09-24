@@ -97,20 +97,29 @@ export default function GameScreen() {
     }
   }, []);
 
-  // --- NEU: Profi-Modus ist NUR in Turnieren mit >= 4000 Voraussetzung aktiv ---
-  const isProfi = activeTournamentId !== null && activeTournamentDifficulty >= 4000;
+  // --- KORRIGIERTE PROFI-MODUS LOGIK ---
+  // Im Turnier: Nur bei Turnieren mit >= 4000 Difficulty
+  // Im Einzelmatch: Nur wenn dein eigener tacScore >= 4000 ist
+  const isProfi = activeTournamentId !== null 
+    ? activeTournamentDifficulty >= 4000 
+    : tacScore >= 4000;
+    
   const [showProfiBanner, setShowProfiBanner] = useState<boolean>(false);
 
-  const [showNameTags, setShowNameTags] = useState(() => {
-    return localStorage.getItem("tacpadel_show_nametags") !== "false";
-  });
-
   const triggerProfiBanner = () => {
-    if (activeTournamentId !== null && activeTournamentDifficulty >= 4000) {
+    const isProfiMatch = activeTournamentId !== null 
+      ? activeTournamentDifficulty >= 4000 
+      : tacScore >= 4000;
+
+    if (isProfiMatch) {
       setShowProfiBanner(true);
       setTimeout(() => setShowProfiBanner(false), 4000);
     }
   };
+
+  const [showNameTags, setShowNameTags] = useState(() => {
+    return localStorage.getItem("tacpadel_show_nametags") !== "false";
+  });
 
   const bgmRef = useRef<HTMLAudioElement | null>(null);
 

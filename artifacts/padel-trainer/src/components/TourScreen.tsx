@@ -22,10 +22,26 @@ interface Tournament {
   reqScore: number;
   rewardText: string;
   startsIn?: string;
-  
-  // NEU: Feste Schwierigkeit und TacPoints Belohnung
   baseDifficulty: number;
   tacPointsReward: number; 
+}
+
+// Typ für das Season Ranking
+interface LeaderboardEntry {
+  id: string;
+  username: string; 
+  tac_points: number;
+}
+
+// NEU: Typ für die Spieler-Statistiken
+interface PlayerStats {
+  id: string;
+  username: string;
+  tac_points: number;
+  tournaments_played: number;
+  tournaments_won: number;
+  tournaments_eliminated: number;
+  active_runs: number;
 }
 
 const MOCK_TOURNAMENTS: Tournament[] = [
@@ -35,8 +51,8 @@ const MOCK_TOURNAMENTS: Tournament[] = [
     location: "Madrid, ESP",
     type: "challenger",
     status: "active",
-    reqScore: 3500, // Nur Eintrittskarte
-    baseDifficulty: 3500, // So schwer spielt die KI
+    reqScore: 3500,
+    baseDifficulty: 3500,
     tacPointsReward: 300,
     rewardText: "Silber-Pokal + 300 TacPoints",
   },
@@ -85,10 +101,18 @@ interface TourScreenProps {
 export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [selectedTour, setSelectedTour] = useState<Tournament | null>(null);
   
-  // -- SUPABASE & STATS STATES --
+  // -- SUPABASE STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
   const [tacPoints, setTacPoints] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+
+  // -- LEADERBOARD & STATS STATES --
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerStats | null>(null);
+  const [loadingPlayerStats, setLoadingPlayerStats] = useState(false);
 
   // Lade Turnier-Fortschritt UND TacPoints aus der Datenbank
   useEffect(() => {
@@ -97,9 +121,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session?.user) {
-          // Fallback für LocalStorage (falls nicht eingeloggt)
-          const savedScore = localStorage.getItem("tacpadel_score");
-          if (savedScore) setTacPoints(parseInt(savedScore, 10));
+          const savedPoints = localStorage.getItem("tacpadel_tac_points");
+          if (savedPoints) setTacPoints(parseInt(savedPoints, 10));
           setLoading(false);
           return;
         }
@@ -121,15 +144,16 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         // 2. TacPoints laden
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
-          .select("points")
+          .select("tac_points")
           .eq("id", session.user.id)
           .single();
 
         if (statsData && !statsError) {
-          setTacPoints(statsData.points);
+          setTacPoints(statsData.tac_points || 0);
+          localStorage.setItem("tacpadel_tac_points", (statsData.tac_points || 0).toString());
         } else {
-          const savedScore = localStorage.getItem("tacpadel_score");
-          if (savedScore) setTacPoints(parseInt(savedScore, 10));
+          const savedPoints = localStorage.getItem("tacpadel_tac_points");
+          if (savedPoints) setTacPoints(parseInt(savedPoints, 10));
         }
 
       } catch (err) {
@@ -141,6 +165,71 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
     fetchData();
   }, []);
+
+  // Lade Season Ranking Daten
+  const fetchLeaderboard = async () => {
+    setLoadingLeaderboard(true);
+    setShowLeaderboard(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('id, username, tac_points')
+        .order('tac_points', { ascending: false })
+        .limit(10); 
+
+      if (data && !error) {
+        setLeaderboardData(data);
+      } else {
+        console.error("Fehler beim Laden des Rankings:", error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingLeaderboard(false);
+    }
+  };
+
+  // NEU: Lade spezifische Turnier-Statistiken für einen Spieler
+  const handlePlayerClick = async (player: LeaderboardEntry) => {
+    setSelectedPlayer({
+      id: player.id,
+      username: player.username || "Spieler XYZ",
+      tac_points: player.tac_points,
+      tournaments_played: 0,
+      tournaments_won: 0,
+      tournaments_eliminated: 0,
+      active_runs: 0
+    });
+    setLoadingPlayerStats(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('tour_progress')
+        .select('status')
+        .eq('user_id', player.id);
+
+      if (data && !error) {
+        const played = data.length;
+        const won = data.filter(row => row.status === 'won').length;
+        const elim = data.filter(row => row.status === 'eliminated').length;
+        const active = data.filter(row => row.status === 'active').length;
+
+        setSelectedPlayer({
+          id: player.id,
+          username: player.username || "Spieler XYZ",
+          tac_points: player.tac_points,
+          tournaments_played: played,
+          tournaments_won: won,
+          tournaments_eliminated: elim,
+          active_runs: active
+        });
+      }
+    } catch (err) {
+      console.error("Fehler beim Laden der Spieler-Statistiken:", err);
+    } finally {
+      setLoadingPlayerStats(false);
+    }
+  };
 
   const getTypeColor = (type: TourType) => {
     switch (type) {
@@ -192,7 +281,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           [tour.id]: { tournament_id: tour.id, status: "active", current_round: 1 }
         }));
       } else {
-        // Bestehendes Turnier fortsetzen
         startRound = currentStatus.current_round;
       }
 
@@ -206,7 +294,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     }
   };
 
-  // -- HILFSFUNKTION FÜR DEN DYNAMISCHEN BRACKET --
   const getBracketStatus = (tourId: string) => {
     const tourProgress = progress[tourId];
     const currentRound = tourProgress?.current_round || 1;
@@ -262,12 +349,24 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           Pro Tour
         </h1>
         
-        {/* NEU: TacPoints Anzeige */}
-        <div className="mt-4 flex items-center gap-2 px-5 py-2 bg-amber-950/30 border border-amber-500/50 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-          <span className="text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.8)] text-sm leading-none">⭐</span>
-          <span className="text-[12px] font-black tracking-widest text-amber-400 uppercase leading-none mt-0.5">
-            {tacPoints} TacPoints
-          </span>
+        {/* TAC POINTS & RANKING BUTTON */}
+        <div className="mt-4 flex flex-wrap justify-center items-center gap-3 w-full px-4">
+          <div className="flex items-center gap-2 px-5 py-2 bg-amber-950/30 border border-amber-500/50 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <span className="text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.8)] text-sm leading-none">⭐</span>
+            <span className="text-[12px] font-black tracking-widest text-amber-400 uppercase leading-none mt-0.5">
+              {tacPoints} TacPoints
+            </span>
+          </div>
+          
+          <button 
+            onClick={fetchLeaderboard}
+            className="flex items-center gap-2 px-5 py-2 bg-indigo-950/40 border border-indigo-500/50 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.2)] hover:bg-indigo-900/50 transition-colors"
+          >
+            <span className="text-indigo-400 drop-shadow-[0_0_5px_rgba(99,102,241,0.8)] text-sm leading-none">🏆</span>
+            <span className="text-[12px] font-black tracking-widest text-indigo-300 uppercase leading-none mt-0.5">
+              Season Ranking
+            </span>
+          </button>
         </div>
 
         {/* GLOBAL TIMER */}
@@ -447,6 +546,166 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           </>
         )}
       </AnimatePresence>
+
+      {/* ========================================================= */}
+      {/* LEADERBOARD / SEASON RANKING MODAL                          */}
+      {/* ========================================================= */}
+      <AnimatePresence>
+        {showLeaderboard && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md z-[120]"
+            />
+
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="absolute top-[10%] bottom-[10%] left-4 right-4 z-[130] bg-[#050b14] border border-indigo-500/50 p-6 rounded-2xl shadow-[0_0_50px_rgba(99,102,241,0.2)] flex flex-col overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-6 shrink-0 border-b border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-2xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">Season Ranking</h2>
+                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Die besten Spieler der Pro Tour</p>
+                </div>
+                <button 
+                  onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }} 
+                  className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-full hover:bg-slate-800 text-slate-400 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-2 relative">
+                {loadingLeaderboard ? (
+                  <div className="flex justify-center items-center h-32">
+                    <div className="w-6 h-6 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
+                  </div>
+                ) : leaderboardData.length === 0 ? (
+                  <div className="text-center text-slate-500 py-10 font-bold text-sm uppercase tracking-wider">
+                    Noch keine Spieler im Ranking.
+                  </div>
+                ) : (
+                  leaderboardData.map((player, index) => {
+                    const rank = index + 1;
+                    
+                    let rankStyle = "bg-slate-900 border-slate-800 text-slate-400";
+                    let textStyle = "text-slate-300";
+                    if (rank === 1) {
+                      rankStyle = "bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]";
+                      textStyle = "text-amber-400 font-black";
+                    } else if (rank === 2) {
+                      rankStyle = "bg-slate-300/20 border-slate-400 text-slate-300 shadow-[0_0_10px_rgba(203,213,225,0.4)]";
+                      textStyle = "text-slate-200 font-black";
+                    } else if (rank === 3) {
+                      rankStyle = "bg-orange-800/30 border-orange-700 text-orange-500 shadow-[0_0_10px_rgba(194,65,12,0.4)]";
+                      textStyle = "text-orange-400 font-black";
+                    }
+
+                    return (
+                      <div 
+                        key={player.id} 
+                        onClick={() => handlePlayerClick(player)}
+                        className="flex items-center gap-3 p-3 bg-slate-900/40 border border-slate-800/60 rounded-xl hover:bg-indigo-900/30 hover:border-indigo-500/50 cursor-pointer transition-all group"
+                      >
+                        <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-sm shrink-0 transition-colors ${rankStyle}`}>
+                          {rank}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm truncate uppercase tracking-wider group-hover:text-indigo-300 transition-colors ${textStyle}`}>
+                            {player.username || "Spieler XYZ"}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end shrink-0">
+                          <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">TacPoints</span>
+                          <span className="text-sm font-black text-indigo-400 drop-shadow-[0_0_5px_rgba(99,102,241,0.5)]">
+                            {player.tac_points}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* STATISTIKEN OVERLAY (Schiebt sich über die Liste) */}
+              <AnimatePresence>
+                {selectedPlayer && (
+                  <motion.div
+                    initial={{ x: "100%" }}
+                    animate={{ x: 0 }}
+                    exit={{ x: "100%" }}
+                    transition={{ type: "spring", damping: 25, stiffness: 250 }}
+                    className="absolute inset-0 z-20 bg-[#050b14] flex flex-col"
+                  >
+                    <div className="flex items-center gap-4 p-4 border-b border-slate-800 shrink-0">
+                      <button 
+                        onClick={() => setSelectedPlayer(null)}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition-colors"
+                      >
+                        ←
+                      </button>
+                      <div>
+                        <h3 className="text-lg font-black text-white uppercase tracking-widest leading-tight">{selectedPlayer.username}</h3>
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{selectedPlayer.tac_points} TacPoints</span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 p-5 overflow-y-auto custom-scrollbar flex flex-col justify-center">
+                      {loadingPlayerStats ? (
+                        <div className="flex justify-center items-center h-32">
+                          <div className="w-8 h-8 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center text-center">
+                            <span className="text-3xl mb-1 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">🎾</span>
+                            <span className="text-2xl font-black text-white">{selectedPlayer.tournaments_played}</span>
+                            <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Turniere Gespielt</span>
+                          </div>
+
+                          <div className="bg-emerald-950/30 border border-emerald-900/50 p-4 rounded-xl flex flex-col items-center text-center">
+                            <span className="text-3xl mb-1 drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]">🏆</span>
+                            <span className="text-2xl font-black text-emerald-400">{selectedPlayer.tournaments_won}</span>
+                            <span className="text-[9px] text-emerald-500/70 uppercase font-black tracking-widest">Siege</span>
+                          </div>
+
+                          <div className="bg-red-950/30 border border-red-900/50 p-4 rounded-xl flex flex-col items-center text-center">
+                            <span className="text-3xl mb-1 drop-shadow-[0_0_10px_rgba(239,68,68,0.4)]">💀</span>
+                            <span className="text-2xl font-black text-red-400">{selectedPlayer.tournaments_eliminated}</span>
+                            <span className="text-[9px] text-red-500/70 uppercase font-black tracking-widest">Ausgeschieden</span>
+                          </div>
+
+                          <div className="bg-indigo-950/30 border border-indigo-900/50 p-4 rounded-xl flex flex-col items-center text-center">
+                            <span className="text-3xl mb-1 drop-shadow-[0_0_10px_rgba(99,102,241,0.4)]">📊</span>
+                            <span className="text-2xl font-black text-indigo-400">
+                              {selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated > 0 
+                                ? Math.round((selectedPlayer.tournaments_won / (selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated)) * 100) 
+                                : 0}%
+                            </span>
+                            <span className="text-[9px] text-indigo-500/70 uppercase font-black tracking-widest">Win Rate</span>
+                          </div>
+
+                          {selectedPlayer.active_runs > 0 && (
+                            <div className="col-span-2 bg-orange-950/20 border border-orange-900/30 p-3 rounded-xl flex items-center justify-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                              <span className="text-[10px] text-orange-400 font-black uppercase tracking-widest">
+                                {selectedPlayer.active_runs} Aktive Turnier-Runs
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
