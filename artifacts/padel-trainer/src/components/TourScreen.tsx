@@ -26,14 +26,12 @@ interface Tournament {
   tacPointsReward: number; 
 }
 
-// Typ für das Season Ranking
 interface LeaderboardEntry {
   id: string;
   username: string; 
   tac_points: number;
 }
 
-// NEU: Typ für die Spieler-Statistiken
 interface PlayerStats {
   id: string;
   username: string;
@@ -44,6 +42,7 @@ interface PlayerStats {
   active_runs: number;
 }
 
+// ALLE TURNIERE SIND FÜR DIE BETA AUF "ACTIVE" GESETZT
 const MOCK_TOURNAMENTS: Tournament[] = [
   {
     id: "t1",
@@ -61,37 +60,38 @@ const MOCK_TOURNAMENTS: Tournament[] = [
     name: "Paris Premier Major",
     location: "Paris, FRA",
     type: "major",
-    status: "upcoming",
+    status: "active", // Beta Unlock
     reqScore: 4000,
     baseDifficulty: 4500, 
     tacPointsReward: 600,
     rewardText: "Gold-Pokal + 600 TacPoints",
-    startsIn: "12d 04h",
   },
   {
     id: "t3",
     name: "Berlin FIP Rise",
     location: "Berlin, GER",
     type: "fip",
-    status: "upcoming",
+    status: "active", // Beta Unlock
     reqScore: 0,
     baseDifficulty: 2500, 
     tacPointsReward: 150,
     rewardText: "Bronze-Badge + 150 TacPoints",
-    startsIn: "2d 10h",
   },
   {
     id: "t4",
     name: "Doha Premier Major",
     location: "Doha, QAT",
     type: "major",
-    status: "completed",
+    status: "active", // Beta Unlock
     reqScore: 4000,
     baseDifficulty: 4500,
     tacPointsReward: 600,
-    rewardText: "Trophäe erhalten",
+    rewardText: "Gold-Pokal + 600 TacPoints",
   }
 ];
+
+// 30-Tage Beta Enddatum (z.B. 24. Oktober 2026)
+const BETA_END_DATE = new Date("2026-10-24T23:59:59").getTime();
 
 interface TourScreenProps {
   onClose: () => void;
@@ -106,6 +106,9 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [tacPoints, setTacPoints] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
+  // -- TIMER STATE --
+  const [timeLeft, setTimeLeft] = useState<string>("Berechne...");
+
   // -- LEADERBOARD & STATS STATES --
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
@@ -114,7 +117,29 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerStats | null>(null);
   const [loadingPlayerStats, setLoadingPlayerStats] = useState(false);
 
-  // Lade Turnier-Fortschritt UND TacPoints aus der Datenbank
+  // Dynamischer Countdown-Timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = BETA_END_DATE - now;
+
+      if (distance < 0) {
+        setTimeLeft("BETA BEENDET");
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+
+      setTimeLeft(`${days}d ${hours}h ${minutes}m`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Lade Turnier-Fortschritt UND TacPoints
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -127,7 +152,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           return;
         }
 
-        // 1. Turnier-Fortschritt laden
         const { data: tourData, error: tourError } = await supabase
           .from("tour_progress")
           .select("*")
@@ -141,7 +165,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setProgress(progressMap);
         }
 
-        // 2. TacPoints laden
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
           .select("tac_points")
@@ -179,8 +202,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
       if (data && !error) {
         setLeaderboardData(data);
-      } else {
-        console.error("Fehler beim Laden des Rankings:", error);
       }
     } catch (err) {
       console.error(err);
@@ -189,7 +210,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     }
   };
 
-  // NEU: Lade spezifische Turnier-Statistiken für einen Spieler
+  // Spieler-Statistiken laden
   const handlePlayerClick = async (player: LeaderboardEntry) => {
     setSelectedPlayer({
       id: player.id,
@@ -247,12 +268,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     }
   };
 
-  // -- MATCH STARTEN LOGIK --
   const handleStartTournament = async (tour: Tournament) => {
     const currentStatus = progress[tour.id];
 
     if (currentStatus?.status === "eliminated" || currentStatus?.status === "won") {
-      alert("Du hast dieses Turnier bereits beendet (Gewonnen oder Ausgeschieden).");
+      alert("Du hast dieses Turnier in der Beta bereits beendet.");
       return;
     }
 
@@ -266,7 +286,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       let startRound = 1;
 
       if (!currentStatus) {
-        // Neues Turnier starten
         const { error } = await supabase.from("tour_progress").insert({
           user_id: session.user.id,
           tournament_id: tour.id,
@@ -345,9 +364,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           <span className="text-slate-300 font-bold text-lg leading-none">✕</span>
         </button>
 
-        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-[0.3em] uppercase drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-          Pro Tour
+        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-[0.3em] uppercase drop-shadow-[0_0_15px_rgba(56,189,248,0.4)]">
+          Beta Season <span className="text-sky-400">1</span>
         </h1>
+        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Alle Events für Tester freigeschaltet</p>
         
         {/* TAC POINTS & RANKING BUTTON */}
         <div className="mt-4 flex flex-wrap justify-center items-center gap-3 w-full px-4">
@@ -364,15 +384,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           >
             <span className="text-indigo-400 drop-shadow-[0_0_5px_rgba(99,102,241,0.8)] text-sm leading-none">🏆</span>
             <span className="text-[12px] font-black tracking-widest text-indigo-300 uppercase leading-none mt-0.5">
-              Season Ranking
+              Beta Ranking
             </span>
           </button>
         </div>
 
-        {/* GLOBAL TIMER */}
+        {/* DYNAMISCHER GLOBAL TIMER */}
         <div className="mt-3 flex items-center gap-2 px-4 py-1.5 bg-red-950/30 border border-red-500/30 rounded-full">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,1)]"></div>
-          <span className="text-[10px] font-black tracking-widest text-red-400 uppercase">Season Ends: 14d 08h 42m</span>
+          {timeLeft !== "BETA BEENDET" && <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,1)]"></div>}
+          <span className="text-[10px] font-black tracking-widest text-red-400 uppercase">
+            {timeLeft === "BETA BEENDET" ? timeLeft : `Beta Ends In: ${timeLeft}`}
+          </span>
         </div>
       </div>
 
@@ -385,7 +407,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         ) : (
           MOCK_TOURNAMENTS.map((tour) => {
             const dbProg = progress[tour.id];
-            const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated' || tour.status === 'completed';
+            const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
 
             return (
               <motion.div 
@@ -393,7 +415,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setSelectedTour(tour)}
-                className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${tour.status === 'active' && !isCompleted ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${isCompleted ? 'opacity-50 grayscale-[0.3]' : ''}`}
+                className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${!isCompleted ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${isCompleted ? 'opacity-50 grayscale-[0.3]' : ''}`}
               >
                 <div className={`w-full h-full bg-gradient-to-br ${getTypeBg(tour.type)} p-4 rounded-xl flex flex-col bg-[#050b14]`}>
                   
@@ -406,14 +428,9 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     </div>
                     
                     {/* STATUS BADGE */}
-                    {tour.status === "active" && !isCompleted && (
-                      <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse">
+                    {!isCompleted && (
+                      <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.3)]">
                         LIVE
-                      </span>
-                    )}
-                    {tour.status === "upcoming" && !isCompleted && (
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-900/80 border border-slate-700 px-2 py-1 rounded">
-                        In {tour.startsIn}
                       </span>
                     )}
                     {dbProg?.status === "won" && (
@@ -431,8 +448,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex flex-col">
                       <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Entry TacScore</span>
-                      <span className={`text-sm font-black ${tour.reqScore > 3000 ? 'text-red-400' : 'text-slate-300'}`}>
-                        {tour.reqScore === 0 ? "Offen" : `${tour.reqScore}`}
+                      <span className={`text-sm font-black text-sky-400 drop-shadow-[0_0_5px_rgba(56,189,248,0.5)]`}>
+                        BETA UNLOCKED
                       </span>
                     </div>
                     <div className="w-[1px] h-6 bg-slate-700"></div>
@@ -474,8 +491,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 </span>
                 <h2 className="text-2xl font-black text-white uppercase tracking-widest">{selectedTour.name}</h2>
                 <p className="text-slate-400 text-sm mt-1">{selectedTour.location}</p>
-                <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400">
+                <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-2 items-center">
                   KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span>
+                  <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                  <span className="text-sky-400 font-black text-[10px] uppercase tracking-widest">Beta Access</span>
                 </div>
               </div>
 
@@ -526,10 +545,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
               {/* ACTION BUTTON */}
               <button 
-                disabled={selectedTour.status !== 'active' || progress[selectedTour.id]?.status === 'won' || progress[selectedTour.id]?.status === 'eliminated'}
+                disabled={progress[selectedTour.id]?.status === 'won' || progress[selectedTour.id]?.status === 'eliminated'}
                 onClick={() => handleStartTournament(selectedTour)}
                 className={`w-full py-5 font-black tracking-[0.2em] uppercase rounded-xl transition-all shrink-0 ${
-                  selectedTour.status === 'active' && progress[selectedTour.id]?.status !== 'won' && progress[selectedTour.id]?.status !== 'eliminated'
+                  progress[selectedTour.id]?.status !== 'won' && progress[selectedTour.id]?.status !== 'eliminated'
                     ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
                     : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                 }`}
@@ -538,7 +557,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   ? 'Turnier Beendet (Sieger)' 
                   : (progress[selectedTour.id]?.status === 'eliminated' 
                       ? 'Turnier Beendet (Raus)' 
-                      : (selectedTour.status === 'active' ? 'Turnier-Run Starten' : 'Noch nicht verfügbar')
+                      : 'Beta-Run Starten'
                     )
                 }
               </button>
@@ -565,8 +584,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             >
               <div className="flex justify-between items-center mb-6 shrink-0 border-b border-slate-800 pb-4">
                 <div>
-                  <h2 className="text-2xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">Season Ranking</h2>
-                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Die besten Spieler der Pro Tour</p>
+                  <h2 className="text-2xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">Beta Ranking</h2>
+                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Die Top Tester der Pro Tour</p>
                 </div>
                 <button 
                   onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }} 
@@ -583,7 +602,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </div>
                 ) : leaderboardData.length === 0 ? (
                   <div className="text-center text-slate-500 py-10 font-bold text-sm uppercase tracking-wider">
-                    Noch keine Spieler im Ranking.
+                    Noch keine Tester im Ranking.
                   </div>
                 ) : (
                   leaderboardData.map((player, index) => {
@@ -628,7 +647,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 )}
               </div>
 
-              {/* STATISTIKEN OVERLAY (Schiebt sich über die Liste) */}
+              {/* STATISTIKEN OVERLAY */}
               <AnimatePresence>
                 {selectedPlayer && (
                   <motion.div
