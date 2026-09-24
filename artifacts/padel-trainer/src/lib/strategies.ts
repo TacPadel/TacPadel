@@ -137,7 +137,7 @@ export const STRATEGIES: StrategySequence[] = [
           partner: "E4", 
           opp1: "C2", 
           opp2: "D2", 
-          ball: { side: "right", zone: "E1", type: "BAJADA" } 
+          ball: { side: "left", zone: "C4" } 
         },
         validShots: ["SMASH", "BANDEJA", "VIBORA"], 
         bestZones: ["B2", "B3"], 
