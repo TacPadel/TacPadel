@@ -3,6 +3,9 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Text } from "@react-three/drei";
 
+// --- NEU: Import für das KI Profil ---
+import { AiProfile } from "../../engine/AiProfiles"; 
+
 // --- Die offiziellen weißen Padel-Linien als 3D-Objekte ---
 function OfficialCourtLines() {
   const thickness = 0.05; 
@@ -98,8 +101,8 @@ function HologramBanner() {
   );
 }
 
-// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER ---
-function TribuneBanners({ playerName = "SPIELER" }: { playerName?: string }) {
+// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Angepasst für KI Namen) ---
+function TribuneBanners({ playerName = "SPIELER", aiTeamName = "TEAM KI" }: { playerName?: string, aiTeamName?: string }) {
   const leftRef = useRef<THREE.Group>(null);
   const rightRef = useRef<THREE.Group>(null);
 
@@ -137,14 +140,14 @@ function TribuneBanners({ playerName = "SPIELER" }: { playerName?: string }) {
           strokeColor="#00f0ff" // Cyan
           material-toneMapped={false}
         >
-          TEAM TACPADEL-AI
+          {aiTeamName.toUpperCase()}
         </Text>
       </group>
     </group>
   );
 }
 
-// --- NEU: ANIMIERTE 3D-MEEPLE-ZUSCHAUER (Jubeln beim Start & bei Punkten!) ---
+// --- ANIMIERTE 3D-MEEPLE-ZUSCHAUER ---
 function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string, aiScore: number | string }) {
   const count = 450; 
   
@@ -155,21 +158,18 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
   const lLegRef = useRef<THREE.InstancedMesh>(null);
   const rLegRef = useRef<THREE.InstancedMesh>(null);
 
-  // Der Jubel-Pegel: Startet extrem hoch (2.5) für den Kameraflug!
   const cheerIntensity = useRef(2.5); 
   const prevPlayerScore = useRef(playerScore);
   const prevAiScore = useRef(aiScore);
 
-  // Löst Jubel aus, sobald sich ein Punktestand ändert
   useEffect(() => {
     if (playerScore !== prevPlayerScore.current || aiScore !== prevAiScore.current) {
-      cheerIntensity.current = 1.5; // Pegel wieder hochsetzen
+      cheerIntensity.current = 1.5; 
       prevPlayerScore.current = playerScore;
       prevAiScore.current = aiScore;
     }
   }, [playerScore, aiScore]);
 
-  // 1. GRUNDDATEN BERECHNEN (Einmalig, um Leistung zu sparen)
   const crowdData = useMemo(() => {
     const data = [];
     const rowsCount = 4.5; 
@@ -212,7 +212,6 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     return data;
   }, []);
 
-  // 2. FARBEN EINMALIG ZUWEISEN
   useEffect(() => {
     const refs = [headRef, torsoRef, lArmRef, rArmRef, lLegRef, rLegRef];
     if (refs.some(ref => !ref.current)) return;
@@ -225,7 +224,6 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     refs.forEach(ref => { if (ref.current!.instanceColor) ref.current!.instanceColor.needsUpdate = true; });
   }, [crowdData]);
 
-  // 3. DAS DUMMY-SKELETT FÜR DIE ANIMATION
   const dummyGroup = useMemo(() => {
     const g = new THREE.Group();
     const head = new THREE.Object3D(); head.name = "head"; head.position.set(0, 0.55, 0);
@@ -238,38 +236,29 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     return g;
   }, []);
 
-  // 4. DER ANIMATIONS-LOOP (60 FPS)
   useFrame((state, delta) => {
     const refs = [headRef, torsoRef, lArmRef, rArmRef, lLegRef, rLegRef];
     if (refs.some(ref => !ref.current)) return;
 
-    // Jubel langsam ausschleichen lassen (multiplizieren wirkt weicher als subtrahieren)
     if (cheerIntensity.current > 0.01) {
-      cheerIntensity.current -= delta * 0.3; // Bestimmt, wie schnell sie sich beruhigen
+      cheerIntensity.current -= delta * 0.3; 
     } else {
       cheerIntensity.current = 0;
     }
 
     const t = state.clock.elapsedTime;
-    const head = dummyGroup.getObjectByName("head")!;
     const lArm = dummyGroup.getObjectByName("lArm")!;
     const rArm = dummyGroup.getObjectByName("rArm")!;
 
     for (let i = 0; i < count; i++) {
       const data = crowdData[i];
-
-      // Leichtes Grund-Wippen (Atmen), damit sie niemals komplett einfrieren
       const idle = Math.sin(t * 2 + i) * 0.02; 
-      
-      // Jubel-Sprung (Nur aktiv, wenn Intensity > 0 ist)
-      // Wir addieren "+ i", damit sie asynchron durcheinander springen!
       const jump = cheerIntensity.current > 0 
         ? Math.max(0, Math.sin(t * 15 + i)) * 0.25 * Math.min(1, cheerIntensity.current) 
         : 0;
 
       dummyGroup.position.set(data.x, data.y + idle + jump, data.z);
       
-      // Blickrichtung wiederherstellen
       if (data.isBackStand) {
         dummyGroup.lookAt(data.x, dummyGroup.position.y, 0);
       } else {
@@ -279,19 +268,15 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
       dummyGroup.rotation.y += data.rotY;
       dummyGroup.scale.set(data.scale, data.scale, data.scale);
 
-      // Arme hochreißen!
       const armRaise = cheerIntensity.current > 0 
         ? (Math.sin(t * 12 + i) * 0.5 + 0.5) * Math.PI * 0.8 * Math.min(1, cheerIntensity.current)
         : 0;
 
-      // Arme drehen sich nach oben vorne (-X Achse)
       lArm.rotation.x = -armRaise;
       rArm.rotation.x = -armRaise;
-      // Leichtes Winken nach außen
       lArm.rotation.z = armRaise * 0.15;
       rArm.rotation.z = -armRaise * 0.15;
 
-      // Matrix berechnen und zuweisen
       dummyGroup.updateMatrixWorld(true);
       refs.forEach(ref => {
         const part = dummyGroup.getObjectByName(ref.current!.name);
@@ -299,7 +284,6 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
       });
     }
 
-    // Engine mitteilen, dass sich die Positionen im Frame geändert haben
     refs.forEach(ref => { ref.current!.instanceMatrix.needsUpdate = true; });
   });
 
@@ -309,27 +293,22 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
         <sphereGeometry args={[0.15, 12, 12]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      
       <instancedMesh ref={torsoRef} name="torso" args={[undefined, undefined, count]} frustumCulled={false}>
         <capsuleGeometry args={[0.12, 0.3, 4, 8]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-
       <instancedMesh ref={lArmRef} name="lArm" args={[undefined, undefined, count]} frustumCulled={false}>
         <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-
       <instancedMesh ref={rArmRef} name="rArm" args={[undefined, undefined, count]} frustumCulled={false}>
         <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-
       <instancedMesh ref={lLegRef} name="lLeg" args={[undefined, undefined, count]} frustumCulled={false}>
         <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-
       <instancedMesh ref={rLegRef} name="rLeg" args={[undefined, undefined, count]} frustumCulled={false}>
         <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
@@ -338,6 +317,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
   );
 }
 
+// --- Props aktualisiert um activeAiProfile ---
 export interface ScoreboardProps {
   serverId?: string;
   playerScore?: number | string;
@@ -347,37 +327,30 @@ export interface ScoreboardProps {
   isTimerPhase?: boolean;
   isPlayerTeamServe?: boolean;
   playerName?: string; 
-  isSimulationMode?: boolean; // <-- NEU: Prop für den "TacPadel Simulation" Screen
+  isSimulationMode?: boolean; 
+  activeAiProfile?: AiProfile; // <-- NEU
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
   const { scene } = useGLTF("/TacPadel.glb");
 
-  // --- NEU: AAA MATERIAL-UPGRADE (Mit originalem blauen Court!) ---
+  // --- AAA MATERIAL-UPGRADE ---
   useEffect(() => {
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
-        
         const name = child.name.toLowerCase();
-        // Wir suchen wieder nach den Namen des Spielfelds in deiner Blender-Datei
         const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
 
         if (!isCourt) {
-          // 1. Das restliche Stadion: Tiefschwarz und spiegelnd (AAA-Gloss)
           child.material.color = new THREE.Color("#020308"); 
           child.material.roughness = 0.15; 
           child.material.metalness = 0.85; 
           child.material.envMapIntensity = 2.0; 
         } else {
-          // 2. Das Padel-Feld: 
-          // Wir lassen die Farb-Überschreibung hier komplett weg! 
-          // Dadurch nutzt Three.js automatisch dein originales Blau aus der .glb Datei.
-          // Wir geben dem Blau nur ein leichtes, edles Glänzen:
-          child.material.roughness = 0.3; // Leichter Glanz wie ein Hallenboden
-          child.material.metalness = 0.1; // Kaum Metall, damit das Blau richtig leuchtet
+          child.material.roughness = 0.3; 
+          child.material.metalness = 0.1; 
           child.material.envMapIntensity = 1.0; 
         }
-        
         child.material.needsUpdate = true;
       }
     });
@@ -392,9 +365,15 @@ export default function CourtFloor(props: ScoreboardProps) {
     isTimerPhase = false,
     isPlayerTeamServe = true,
     playerName = "Gast",
-    isSimulationMode = false // <-- NEU: Standardmäßig ist das normale Scoreboard aktiv
+    isSimulationMode = false,
+    activeAiProfile
   } = props;
   
+  // --- NEU: Extrahierte KI-Namen für das Scoreboard ---
+  const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
+  const opp1Name = activeAiProfile?.p1 || "KI 1";
+  const opp2Name = activeAiProfile?.p2 || "KI 2";
+
   return (
     <group name="Environment">
       {/* 1. Dein Blender Stadion */}
@@ -407,7 +386,7 @@ export default function CourtFloor(props: ScoreboardProps) {
       <HologramBanner />
 
       {/* 4. Die seitlichen Hologramm-Banner über den Tribünen */}
-      <TribuneBanners playerName={playerName} />
+      <TribuneBanners playerName={playerName} aiTeamName={aiTeamName} />
 
       {/* 5. Die 3D-Meeple-Zuschauer (Animiert) */}
       <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} />
@@ -429,11 +408,8 @@ export default function CourtFloor(props: ScoreboardProps) {
           {isSimulationMode ? (
             // --- DAS NEUE SIMULATIONS-BRANDING FÜR ScenarioCourt4D ---
             <div className="w-[400px] h-[200px] flex flex-col items-center justify-center bg-[#040914] border border-cyan-900/50 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden">
-              {/* Oben: Sanfter Cyan-Glow */}
               <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/80 to-transparent" />
-              {/* Animierter Scanline-Effekt */}
               <div className="absolute inset-0 bg-[linear-gradient(rgba(0,240,255,0.03)_1px,transparent_1px)] bg-[size:100%_4px] opacity-30 mix-blend-overlay" />
-              
               <div className="z-10 flex flex-col items-center">
                 <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600 drop-shadow-[0_0_15px_rgba(0,240,255,0.5)] tracking-[0.2em] mb-1">
                   TACPADEL
@@ -463,7 +439,10 @@ export default function CourtFloor(props: ScoreboardProps) {
                 </div>
                 
                 <div className="text-right flex flex-col items-end w-1/3">
-                  <p className="text-sm text-slate-400 font-bold tracking-widest uppercase mb-2">{!isPlayerTeamServe && "🎾"} KI {serverId === "opp1" && "(KI 1)"} {serverId === "opp2" && "(KI 2)"}</p>
+                  {/* HIER WIRD DER KI NAMEN ANGEZEIGT */}
+                  <p className="text-[11px] text-slate-400 font-bold tracking-widest uppercase mb-2">
+                    {!isPlayerTeamServe && "🎾"} {aiTeamName} <br/> {serverId === "opp1" && <span className="text-cyan-300">({opp1Name})</span>} {serverId === "opp2" && <span className="text-cyan-300">({opp2Name})</span>}
+                  </p>
                   <p className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">{aiScore}</p>
                 </div>
                 

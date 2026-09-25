@@ -8,6 +8,7 @@ import { supabase } from "../../lib/supabase";
 import Effects from "./Effects";
 import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
+import { AiProfile } from "../../engine/AiProfiles"; // <-- NEU
 
 // =========================================================
 // 1. CINEMATIC INTRO KAMERA (Drohnen-Flug mit Pause)
@@ -272,6 +273,8 @@ export interface Props {
   timerDuration?: number;
   playIntro?: boolean;
   onIntroFinished?: () => void;
+  
+  activeAiProfile?: AiProfile; // <--- NEU: Gegner-Team Infos
 }
 
 export default function ScenarioCourt3D(props: Props) {
@@ -395,6 +398,7 @@ export default function ScenarioCourt3D(props: Props) {
               isTimerPhase={props.isTimerPhase}
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
+              activeAiProfile={props.activeAiProfile} // <--- NEU
             /> 
             <TacticalData {...props} />
           </Suspense>

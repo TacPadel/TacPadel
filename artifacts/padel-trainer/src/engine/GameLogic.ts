@@ -1,3 +1,5 @@
+import { AiStyle } from "./AiProfiles";
+
 export const SHOT_TYPES = [
   "AUFSCHLAG", "DRIVE", "VOLLEY", "BLOCK", 
   "LOB", "CHIQUITA", "BAJADA", 
@@ -95,8 +97,9 @@ export const calculateSmartAITurn = (
   incomingShot: string = "",
   aiShotHistory: string[] = [],
   serveNumber: 1 | 2 = 1, 
-  staminaYou: number = 50,       // NEU: KI sieht deine Ausdauer
-  staminaPartner: number = 50    // NEU: KI sieht Ausdauer vom Partner
+  staminaYou: number = 50,       
+  staminaPartner: number = 50,    
+  aiStyle: AiStyle = "balanced" // <-- KI STYLE
 ) => {
   const allCols = ["A", "B", "C", "D", "E"];
   const aiHitCol = aiHitZone[0];
@@ -115,6 +118,22 @@ export const calculateSmartAITurn = (
   const bothAtBack = youRow <= 2 && partnerRow <= 2;
   const openCols = allCols.filter(col => col !== youCol && col !== partnerCol);
   
+  // Hilfsfunktion für Zielauswahl basierend auf Profil
+  const getStyleTarget = (options: string[]) => {
+      if (options.length === 0) return "C";
+      if (aiStyle === "defensive") {
+          // Defensive Teams spielen lieber sicher durch die Mitte
+          if (options.includes("C") && Math.random() < 0.7) return "C";
+          if (options.includes("B") && Math.random() < 0.5) return "B";
+          if (options.includes("D") && Math.random() < 0.5) return "D";
+      } else if (aiStyle === "aggressive") {
+          // Aggressive Teams spielen auf die Linien
+          const edges = options.filter(c => c === "A" || c === "E");
+          if (edges.length > 0 && Math.random() < 0.6) return edges[Math.floor(Math.random() * edges.length)];
+      }
+      return options[Math.floor(Math.random() * options.length)];
+  };
+
   if (isAiServe) {
     shot = "AUFSCHLAG";
     const isRightSide = aiHitCol === "D" || aiHitCol === "E";
@@ -123,16 +142,20 @@ export const calculateSmartAITurn = (
     if (serveNumber === 1) {
         targetRow = 2; 
         if (isRightSide) {
-            if (rand < 0.4) targetCol = "A"; else if (rand < 0.8) targetCol = "C"; else targetCol = "B"; 
+            if (aiStyle === "aggressive") targetCol = rand < 0.5 ? "A" : (rand < 0.7 ? "C" : "B");
+            else if (aiStyle === "defensive") targetCol = rand < 0.5 ? "B" : "C";
+            else targetCol = rand < 0.4 ? "A" : (rand < 0.8 ? "C" : "B");
         } else {
-            if (rand < 0.4) targetCol = "E"; else if (rand < 0.8) targetCol = "C"; else targetCol = "D"; 
+            if (aiStyle === "aggressive") targetCol = rand < 0.5 ? "E" : (rand < 0.7 ? "C" : "D");
+            else if (aiStyle === "defensive") targetCol = rand < 0.5 ? "D" : "C";
+            else targetCol = rand < 0.4 ? "E" : (rand < 0.8 ? "C" : "D");
         }
     } else {
         targetRow = 3; 
         if (isRightSide) {
-            if (rand < 0.8) targetCol = "B"; else targetCol = "C"; 
+            targetCol = rand < (aiStyle === "aggressive" ? 0.6 : 0.9) ? "B" : "C"; 
         } else {
-            if (rand < 0.8) targetCol = "D"; else targetCol = "C"; 
+            targetCol = rand < (aiStyle === "aggressive" ? 0.6 : 0.9) ? "D" : "C"; 
         }
     }
   } else {
@@ -140,23 +163,30 @@ export const calculateSmartAITurn = (
 
     if (isReturn) {
         const roll = Math.random();
+        let lobChance = 0.6;
+        if (aiStyle === "defensive") lobChance = 0.8;
+        if (aiStyle === "aggressive") lobChance = 0.3;
+
         if (bothAtNet) {
-            if (roll < 0.6) { shot = "LOB"; targetRow = 1; } else { shot = "CHIQUITA"; targetRow = 4; }
+            if (roll < lobChance) { shot = "LOB"; targetRow = 1; } else { shot = "CHIQUITA"; targetRow = 4; }
         } else {
-            if (roll < 0.5) { shot = "LOB"; targetRow = 1; } else { shot = "DRIVE"; targetRow = 2; }
+            if (roll < lobChance - 0.1) { shot = "LOB"; targetRow = 1; } else { shot = "DRIVE"; targetRow = 2; }
         }
-        targetCol = openCols.length > 0 ? openCols[Math.floor(Math.random() * openCols.length)] : "C";
+        targetCol = getStyleTarget(openCols);
     } 
     else if (incomingQuality === "recovery") {
         if (aiHitRow >= 3) {
-            if (incomingShot === "LOB") { shot = Math.random() > 0.4 ? "SMASH" : "VIBORA"; } 
-            else { shot = "VOLLEY"; }
+            if (incomingShot === "LOB") { 
+                shot = (aiStyle === "defensive" && Math.random() < 0.4) ? "BANDEJA" : (Math.random() > 0.3 ? "SMASH" : "VIBORA"); 
+            } else { 
+                shot = "VOLLEY"; 
+            }
             targetRow = 1; 
-            targetCol = openCols.length > 0 ? openCols[Math.floor(Math.random() * openCols.length)] : "C";
+            targetCol = getStyleTarget(openCols);
         } else {
             shot = aiHitRow === 1 ? "BAJADA" : "DRIVE"; 
             targetRow = 1;
-            targetCol = openCols.includes("C") ? "C" : (openCols[0] || "C");
+            targetCol = getStyleTarget(openCols);
         }
     } else if (aiHitRow >= 3) {
       const possibleShots = bothAtBack 
@@ -166,7 +196,18 @@ export const calculateSmartAITurn = (
       const filteredShots = possibleShots.filter(s => !aiShotHistory.slice(0, 2).includes(s));
       const shotPool = filteredShots.length > 0 ? filteredShots : possibleShots;
       
-      shot = shotPool[Math.floor(Math.random() * shotPool.length)];
+      // AI STYLE EINGRIFF AM NETZ
+      if (aiStyle === "aggressive" && shotPool.includes("SMASH") && Math.random() < 0.5) {
+          shot = "SMASH";
+      } else if (aiStyle === "aggressive" && shotPool.includes("VIBORA") && Math.random() < 0.4) {
+          shot = "VIBORA";
+      } else if (aiStyle === "defensive" && shotPool.includes("BANDEJA") && Math.random() < 0.6) {
+          shot = "BANDEJA";
+      } else if (aiStyle === "defensive" && shotPool.includes("LOB") && Math.random() < 0.4) {
+          shot = "LOB";
+      } else {
+          shot = shotPool[Math.floor(Math.random() * shotPool.length)];
+      }
 
       if (shot === "VOLLEY") targetRow = bothAtNet ? 4 : 1;
       else if (shot === "BANDEJA") targetRow = 2;
@@ -174,42 +215,45 @@ export const calculateSmartAITurn = (
 
       const nonLastCols = openCols.filter(col => col !== targetCol);
       const targetColPool = nonLastCols.length > 0 ? nonLastCols : openCols;
-      targetCol = targetColPool.length > 0 ? targetColPool[Math.floor(Math.random() * targetColPool.length)] : "C";
+      targetCol = getStyleTarget(targetColPool);
 
     } else {
       if (bothAtNet) {
         const roll = Math.random();
-        if (roll < 0.6) {
+        let lobChance = aiStyle === "defensive" ? 0.75 : (aiStyle === "aggressive" ? 0.4 : 0.6);
+        
+        if (roll < lobChance) {
             shot = "LOB"; targetRow = 1; 
             targetCol = openCols.includes("C") ? "C" : (Math.random() > 0.5 ? "A" : "E");
         } else {
             shot = "CHIQUITA"; targetRow = 4;
             const chiquitaCols = openCols.length > 0 ? openCols : ["A", "B", "C"];
-            targetCol = chiquitaCols[Math.floor(Math.random() * chiquitaCols.length)];
+            targetCol = getStyleTarget(chiquitaCols);
         }
       } else {
         const roll = Math.random();
-        if (aiHitRow === 1 && roll < 0.25) { shot = "BAJADA"; targetRow = 2; } 
-        else if (roll < 0.4) { shot = "LOB"; targetRow = 1; } 
+        let bajadaChance = aiStyle === "aggressive" ? 0.4 : 0.15;
+        let lobChance = aiStyle === "defensive" ? 0.6 : (aiStyle === "aggressive" ? 0.2 : 0.4);
+
+        if (aiHitRow === 1 && roll < bajadaChance) { shot = "BAJADA"; targetRow = 2; } 
+        else if (roll < lobChance + bajadaChance) { shot = "LOB"; targetRow = 1; } 
         else { shot = "DRIVE"; targetRow = 2; }
-        targetCol = openCols.length > 0 ? openCols[Math.floor(Math.random() * openCols.length)] : "C";
+        targetCol = getStyleTarget(openCols);
       }
     }
   }
+
 // --- 🧊 KÜHLSCHRANK-TAKTIK (Ab 4500 TacScore) ---
   if (tacScore >= 4500 && !isAiServe) {
       const staminaDiff = staminaYou - staminaPartner;
       
       // Wenn ein Spieler deutlich erschöpfter ist (Differenz > 10)
       if (Math.abs(staminaDiff) > 10) {
-          const weakCol = staminaDiff > 0 ? partnerCol : youCol; // Derjenige mit weniger Stamina
+          const weakCol = staminaDiff > 0 ? partnerCol : youCol; 
           const isWeakLeft = weakCol === "A" || weakCol === "B" || (weakCol === "C" && Math.random() > 0.5);
           
-          // Zu 80% spielt die KI den Ball gezielt auf den erschöpften Spieler
           if (Math.random() < 0.8) {
               const weakSideCols = isWeakLeft ? ["A", "B"] : ["D", "E"];
-              
-              // Richtig fies: Sie spielt in die Spalte seiner Seite, wo er gerade NICHT steht, um ihn hetzen zu lassen!
               const runTarget = weakSideCols.find(c => c !== weakCol) || weakCol;
               targetCol = Math.random() > 0.3 ? runTarget : "C"; 
           }
@@ -217,17 +261,27 @@ export const calculateSmartAITurn = (
   }
 
   // --- FINALE KI-STATS BALANCE ---
-  let hitChance = 71;      // Niedriger, provoziert mehr Unforced Errors
+  let hitChance = 71;      
   let perfectChance = 5;   
-  let recoveryChance = 14; // Mehr "Wackler", dynamischere Rallies
+  let recoveryChance = 14; 
   let aiTitle = `KI SPIELT: ${shot}`;
   let aiMsg = `Die KI spielt einen platzierten ${shot}.`;
+
+  // --- AI STYLE STAT-MODIFIKATOREN ---
+  if (aiStyle === "aggressive") {
+      perfectChance += 8;  // Viel gefährlicher
+      hitChance -= 10;     // Macht mehr unforced errors
+  } else if (aiStyle === "defensive") {
+      perfectChance = Math.max(1, perfectChance - 3); // Kaum Winner
+      hitChance += 12;     // Fast fehlerfrei (Mauer)
+      recoveryChance += 5; // Spielt öfter ungefährliche Bälle rüber
+  }
 
   if (shot === "AUFSCHLAG") {
       const isRisky = targetRow === 2 || targetCol === "A" || targetCol === "C" || targetCol === "E";
       if (serveNumber === 1) {
           if (isRisky) {
-              perfectChance = 15; // Realistische Ass-Chance (15%)
+              perfectChance = 15; 
               hitChance = 65;     
               recoveryChance = 0; 
           } else {
@@ -249,7 +303,7 @@ export const calculateSmartAITurn = (
   }
 
   if (incomingQuality === "recovery") {
-    perfectChance += 22; // KI nutzt deine Wackler konsequent als Winner
+    perfectChance += 22; 
     hitChance += 5;      
     aiTitle = `KI ATTACKIERT!`; 
     aiMsg = `Die KI nutzt deinen schwachen Ball gnadenlos aus und attackiert mit einem ${shot}!`;
@@ -409,7 +463,7 @@ export const evaluatePlayerShot = (
   const oppsAtBack = o1Row <= 2 && o2Row <= 2;
 
   // --- FINALE PLAYER-STATS BALANCE ---
-  let hitChance = 68;      // Etwas niedriger -> Normale Drives können Fehler provozieren
+  let hitChance = 68;      
   let perfectChance = 4;   
   let recoveryChance = 16; 
   let title = "GUTE IDEE"; 
@@ -499,7 +553,6 @@ export const evaluatePlayerShot = (
       }
 
       if (isPerfectCounter) {
-        // Taktisch kluges Spiel belohnt direkt mit starken Winnern!
         perfectChance += 22; 
         hitChance += 10;
         title = counterTitle;
@@ -664,7 +717,7 @@ export const evaluatePlayerShot = (
         
         if (isTacticallySound && activeRallyHistory.length >= 2) {
             if (!activeRallyHistory.includes(shot)) {
-                perfectChance += 6; // Angepasst auf +6
+                perfectChance += 6; 
                 hitChance += 5;     
             }
         }

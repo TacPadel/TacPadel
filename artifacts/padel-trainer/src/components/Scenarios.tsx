@@ -12,116 +12,103 @@ export interface Scenario {
 }
 
 export const SCENARIOS: Scenario[] = [
-  {
+  
+    {
     id: 1,
-    description:
-      "Die Gegner besetzen das Netz. Ein flacher Ball kommt tief in deine linke Glasecke (A1). Welcher Schlag bringt in dieser Situation Entlastung?",
+    description: "Du stehst ganz hinten in der Ecke und bist unter Druck. Die Gegner warten angriffslustig vorne am Netz. Mit welchem Schlag kannst du den Ball in einem hohen Bogen über sie hinwegspielen, um Zeit zu gewinnen?",
     validShots: ["LOB"],
     bestZones: ["A1", "E1"],
-    explanation:
-      "Ein hoher Lob zwingt die Gegner nach hinten und bricht ihren Netzangriff.",
+    explanation: "Der Lob (Bogenlampe) ist der wichtigste Befreiungsschlag im Padel. Er zwingt die Gegner zum Rückzug an die Wand und gibt dir Zeit, selbst wieder anzugreifen.",
     positions: {
       you: "A1",
       partner: "D1",
       opp1: "A4",
-      opp2: "C3",
+      opp2: "C4",
       ball: { side: "left", zone: "A1" },
     },
     laufZone: "B4",
   },
   {
     id: 2,
-    description:
-      "Du stehst am Netz (B3). Ein ungenauer, mittellanger Not-Lob kommt auf die Mittellinie (B2). Für einen Smash bist du zu weit weg.",
+    description: "Du stehst vorne am Netz. Der Gegner spielt den Ball hoch in die Luft, aber nicht weit genug, um dich ganz nach hinten zu treiben. Für einen harten Schmetterball bist du jedoch zu weit weg.",
     validShots: ["BANDEJA"],
     bestZones: ["A1", "E1"],
-    explanation:
-      "Die Bandeja sichert deine Netzposition, indem du den Ball mit Slice flach hinten hältst.",
+    explanation: "Die Bandeja (spanisch für 'Tablett') ist ein typischer Padel-Schlag. Du triffst den Ball auf Kopfhöhe und 'schiebst' ihn wie auf einem Tablett kontrolliert zurück, um deine Netzposition nicht zu verlieren.",
     positions: {
-      you: "B3",
-      partner: "D3",
+      you: "B4",
+      partner: "D4",
       opp1: "B1",
       opp2: "D1",
-      ball: { side: "left", zone: "B2" },
+      ball: { side: "left", zone: "C3" },
     },
     laufZone: "B4",
   },
   {
     id: 3,
-    description:
-      "Ihr steht kompakt am Netz. Ein extrem harter, flacher Passierball wird fliegend durch die Mitte geschlagen (B4). Wie reagierst du?",
+    description: "Du stehst direkt am Netz. Plötzlich feuert der Gegner einen extrem harten, flachen Ball genau auf dich ab. Du hast absolut keine Zeit auszuholen.",
     validShots: ["BLOCK"],
     bestZones: ["B2", "C2"],
-    explanation:
-      "Schläger stabil wie eine Wand reinhalten, um die Wucht zu nehmen und den Ball kurz abzulegen.",
-    positions: {
-      you: "B4",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D2",
-      ball: { side: "left", zone: "B4" },
-    },
-    laufZone: "B4",
-  },
-  {
-    id: 4,
-    description:
-      "Ein verunglückter, sehr hoher Lob des Gegners fällt direkt an der Netzkante (B4) herunter. Du stehst perfekt darunter.",
-    validShots: ["SMASH"],
-    bestZones: ["A1", "E1"],
-    explanation:
-      "Aus nächster Nähe ist der Power-Smash die beste Wahl, um den Punkt direkt und humorlos zu beenden.",
+    explanation: "Beim Block hältst du den Schläger einfach nur stabil wie eine Wand hin. Du nutzt die Geschwindigkeit des gegnerischen Balles, um ihn kurz und flach abtropfen zu lassen.",
     positions: {
       you: "B4",
       partner: "D4",
       opp1: "B1",
       opp2: "D1",
-      ball: { side: "left", zone: "B4" },
+      ball: { side: "left", zone: "C4" },
     },
     laufZone: "B4",
   },
   {
+    id: 4,
+    description: "Ein schwacher, sehr hoher Ball des Gegners fällt direkt vor dir nahe am Netz vom Himmel. Du stehst perfekt darunter und willst den Punkt jetzt endgültig mit purer Kraft gewinnen.",
+    validShots: ["SMASH"],
+    bestZones: ["A1", "E1"],
+    explanation: "Der Smash (Schmetterball) wird mit maximaler Kraft von oben nach unten geschlagen. Aus so kurzer Distanz ist er ein sicherer Punktgewinn.",
+    positions: {
+      you: "B5",
+      partner: "D4",
+      opp1: "B1",
+      opp2: "D1",
+      ball: { side: "left", zone: "B5" },
+    },
+    laufZone: "B5",
+  },
+  {
     id: 5,
-    description:
-      "Ein hoher Lob fliegt über dich hinweg, klatscht hoch gegen deine eigene Rückwand und kommt in Zone A2 herunter. Die Gegner rücken aggressiv auf.",
+    description: "Ein gegnerischer Ball prallt hoch gegen deine hintere Glaswand und springt von dort bequem auf Kopfhöhe zu dir zurück. Wie nennst du den Schlag, bei dem du diesen Wandabpraller von oben nach unten schlägst?",
     validShots: ["BAJADA"],
     bestZones: ["B2", "C2"],
-    explanation:
-      "Da der Ball hoch von der Wand abspringt, ziehst du ihn als Bajada de Pared von oben nach unten aggressiv durch.",
+    explanation: "Die Bajada (de Pared) bedeutet 'Wand-Abstieg'. Du nutzt den hohen Abpraller von der Glasscheibe, um den Ball aggressiv von oben nach unten ins Feld zu peitschen.",
     positions: {
       you: "A2",
-      partner: "C1",
+      partner: "D1",
       opp1: "A4",
       opp2: "C4",
       ball: { side: "left", zone: "A2" },
     },
-    laufZone: "B3",
+    laufZone: "B4",
   },
   {
     id: 6,
-    description:
-      "Du stehst im Halbfeld (B3). Ein halbhoher Ball schwebt heran. Du willst maximalen Schnitt mitgeben, damit der Ball extrem flach aus dem gegnerischen Glas bricht.",
+    description: "Ein halbhoher Ball schwebt auf dich zu. Du greifst ihn seitlich auf Kopfhöhe an, um ihm einen starken seitlichen Drall (Spin) zu geben, damit er nach dem Bodenaufprall flach am Boden bleibt.",
     validShots: ["VIBORA"],
     bestZones: ["A1", "A2"],
-    explanation:
-      "Die Víbora wird mit aggressivem Seitwärtsdrall geschlagen, sodass sie nach der Wand unberechenbar flach bleibt.",
+    explanation: "Die Víbora (spanisch für 'Viper') ist ein aggressiver Angriffsschlag. Durch den starken seitlichen Schnitt rutscht der Ball giftig flach weg und prallt kaum noch von der gegnerischen Wand ab.",
     positions: {
       you: "B3",
       partner: "D4",
-      opp1: "B3",
-      opp2: "D3",
+      opp1: "B2",
+      opp2: "D2",
       ball: { side: "left", zone: "B3" },
     },
     laufZone: "B4",
   },
   {
     id: 7,
-    description:
-      "Du stehst stabil in Angriffsstimmung direkt am Netz (B4). Ein harter, aber gut lesbarer Ball kommt auf Brusthöhe angeflogen.",
+    description: "Du stehst angriffslustig am Netz. Ein Ball kommt auf Brusthöhe auf dich zu. Welchen Schlag nutzt du, um den Ball direkt aus der Luft zu nehmen, bevor er überhaupt den Boden berührt?",
     validShots: ["VOLLEY"],
     bestZones: ["B2", "C2", "D2"],
-    explanation:
-      "Ein klassischer Volley direkt aus der Luft wird mit Slice tief in die ungemütlichen Zonen gedrückt.",
+    explanation: "Der Volley (Flugball) wird direkt aus der Luft gespielt. Am Netz ist er deine wichtigste Waffe, um die Gegner unter Druck zu setzen und keine Zeit zum Reagieren zu lassen.",
     positions: {
       you: "B4",
       partner: "D4",
@@ -133,15 +120,13 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 8,
-    description:
-      "Du stehst hinten in der Defensive (A1). Die Gegner kleben eng am Netz. Du möchtest sie auskontern und zu einem Volley von ganz weit unten zwingen.",
+    description: "Du stehst ganz hinten. Die Gegner stehen bedrohlich nah am Netz und warten auf einen harten Ball von dir. Statt fest draufzuhauen, streichelst du den Ball extrem kurz und weich genau vor ihre Füße.",
     validShots: ["CHIQUITA"],
     bestZones: ["B3", "C3", "D3"],
-    explanation:
-      "Die Chiquita wird weich und kurz genau vor die Füße der Netzspieler gelegt, um einen Gegenangriff einzuleiten.",
+    explanation: "Die Chiquita (spanisch für 'die Kleine') ist ein weicher, gefühlvoller Ball. Er fällt direkt hinter dem Netz ab und zwingt die Gegner dazu, den Ball mühsam von ganz unten heben zu müssen.",
     positions: {
       you: "A1",
-      partner: "C1",
+      partner: "D1",
       opp1: "A4",
       opp2: "C4",
       ball: { side: "left", zone: "A1" },
@@ -150,37 +135,33 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 9,
-    description:
-      "Das Spiel beginnt von Null. Du stehst spielbereit hinter der Aufschlaglinie (C2) und musst den Ball ins Spiel bringen. Welcher Schlag startet den Ballwechsel?",
+    description: "Ein neuer Punkt beginnt. Du stehst rechts hinten hinter der Linie und musst den Ball ins Spiel bringen. Der Ball darf beim Schlagen maximal auf Hüfthöhe getroffen werden.",
     validShots: ["AUFSCHLAG"],
-    bestZones: ["A3", "C3"],
-    explanation:
-      "Der Aufschlag wird unterhalb der Hüfte getroffen und startet diagonal den Punkt.",
+    bestZones: ["A2", "C2"],
+    explanation: "Der Aufschlag eröffnet jeden Ballwechsel. Im Gegensatz zum Tennis wird er beim Padel nach dem Bodenaufprall 'von unten' geschlagen und muss diagonal ins gegnerische Feld fliegen.",
     positions: {
       you: "D1",
-      partner: "D4",
+      partner: "A4",
       opp1: "B1",
-      opp2: "D2",
+      opp2: "D4",
       ball: { side: "left", zone: "D1" },
     },
-    laufZone: "B4",
+    laufZone: "D4",
   },
- {
+  {
     id: 10,
-    description:
-      "Du stehst hinten in der Ecke (A2). Ein gegnerischer Cross-Volley reißt eine riesige Lücke auf der Longline-Seite auf. Welcher flache Passierball nutzt das?",
+    description: "Du stehst hinten. Die Gegner am Netz haben eine große Lücke gelassen. Welchen klassischen, flachen Grundschlag (wie beim Tennis) nutzt du, um den Ball nach einem Bodenaufprall an ihnen vorbeizuspielen?",
     validShots: ["DRIVE"],
     bestZones: ["A4", "A5"],
-    explanation:
-      "Ein präziser, flacher Schlag die Linie entlang (Longline) passidert den Netzspieler eiskalt.",
+    explanation: "Der Drive ist der klassische Vorhand- oder Rückhandschlag, nachdem der Ball einmal auf dem Boden aufgetippt ist. Man spielt ihn meist flach, um das Netz zu passieren.",
     positions: {
       you: "A2",
-      partner: "C2",
+      partner: "D2",
       opp1: "B4",
       opp2: "D4",
       ball: { side: "left", zone: "A2" },
     },
-    laufZone: "A3",
+    laufZone: "B3",
   },
   
   // ==========================================

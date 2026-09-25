@@ -11,6 +11,9 @@ import { soundManager } from '../lib/SoundManager';
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen"; 
 
+// --- NEU: Importiere die ausgelagerten KI Profile ---
+import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
+
 type Stats = { 
   winners: number; 
   aces: number; 
@@ -68,6 +71,9 @@ export default function GameScreen() {
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
+
+  // --- NEU: Aktives KI Profil State ---
+  const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
 
   const [introTrigger, setIntroTrigger] = useState(0); 
   const [playIntro, setPlayIntro] = useState<boolean>(false);
@@ -258,6 +264,9 @@ export default function GameScreen() {
       setActiveTournamentRound(parsed.tournamentRound || 1);
       setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
 
+      // --- NEU: KI Profil laden ---
+      if (parsed.activeAiProfile) setActiveAiProfile(parsed.activeAiProfile);
+
       setPlayerScore(parsed.playerScore);
       setAiScore(parsed.aiScore);
       setCourtState(parsed.courtState);
@@ -308,6 +317,11 @@ export default function GameScreen() {
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
 
+    // --- NEU: Zufällige Auswahl eines Gegners für jede Turnierrunde ---
+    const randomIndex = Math.floor(Math.random() * AI_PROFILES.length);
+    const selectedProfile = AI_PROFILES[randomIndex];
+    setActiveAiProfile(selectedProfile);
+
     setPlayerScore(0);
     setAiScore(0);
     setGameOver(false);
@@ -342,8 +356,9 @@ export default function GameScreen() {
       setStamina({ 
         you: startYou, 
         partner: startPartner, 
-        opp1: getAiMaxStamina(aiTargetScore), // KI startet immer voll, da frisches Team
-        opp2: getAiMaxStamina(aiTargetScore) 
+        // Gegner Ausdauer wird mit dem Profil-Multiplikator berechnet!
+        opp1: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult), 
+        opp2: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult) 
       });
     }
 
@@ -357,6 +372,10 @@ export default function GameScreen() {
     if (round === 2) roundName = "Halbfinale";
     if (round === 3) roundName = "Finale";
     
+    setTimeout(() => {
+        showFlash(`Gegner: ${selectedProfile.teamName} (${selectedProfile.p1} & ${selectedProfile.p2})`, "text-cyan-400", 4000);
+    }, 3500);
+
     // Kleiner Hinweis für den Spieler, dass die Ausdauer übernommen wurde
     if (round > 1 && staminaModeEnabled) {
         showFlash(`🏆 ${roundName} gestartet! (Stamina teilweise regeneriert)`, "text-amber-400", 4000);
@@ -370,6 +389,10 @@ export default function GameScreen() {
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
     
+    // --- NEU: Zufälliges Team für Einzelmatch ---
+    const randomProfile = AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
+    setActiveAiProfile(randomProfile);
+
     setPlayerScore(0);
     setAiScore(0);
     setGameOver(false);
@@ -379,7 +402,12 @@ export default function GameScreen() {
     setAiShotHistory([]);
     
     if (staminaModeEnabled) {
-      setStamina({ you: MAX_PLAYER_STAMINA, partner: MAX_PLAYER_STAMINA, opp1: getAiMaxStamina(tacScore), opp2: getAiMaxStamina(tacScore) });
+      setStamina({ 
+        you: MAX_PLAYER_STAMINA, 
+        partner: MAX_PLAYER_STAMINA, 
+        opp1: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult), 
+        opp2: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult) 
+      });
     }
     
     resetForNextPoint(0, 0, 0, initialStatsData, true); 
@@ -387,6 +415,10 @@ export default function GameScreen() {
     setIntroTrigger(prev => prev + 1); 
     setPlayIntro(true);
     setIsIntroPlaying(true); 
+
+    setTimeout(() => {
+        showFlash(`Gegner: ${randomProfile.teamName} (${randomProfile.p1} & ${randomProfile.p2})`, "text-cyan-400", 4000);
+    }, 3500);
   };
 
   useEffect(() => {
@@ -431,7 +463,8 @@ export default function GameScreen() {
           ballLandedAt, courtState.you, courtState.partner, 
           isAiServing, lastShotQuality, currentAiDifficulty, 
           courtState.ball.type, aiShotHistory, serveNumber,
-          staminaRef.current.you, staminaRef.current.partner
+          staminaRef.current.you, staminaRef.current.partner,
+          activeAiProfile.style // --- NEU: Style wird übergeben ---
         );
         
         setAiShotHistory(prev => [brain.shot, ...prev].slice(0, 3));
@@ -449,8 +482,9 @@ export default function GameScreen() {
                  finalAiResult = "recovery";
              } else if (finalAiResult === "recovery" || (finalAiResult && !finalAiResult.startsWith("error"))) {
                  finalAiResult = "error_net";
-                 finalAiTitle = "🤖 KI ERSCHÖPFT";
-                 finalAiMessage = "Die KI pfeift aus dem letzten Loch und schlägt den Ball kraftlos ins Netz!";
+                 // --- NEU: Nutzt die KI Namen ---
+                 finalAiTitle = `🤖 ${currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2} ERSCHÖPFT`;
+                 finalAiMessage = `${currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2} pfeift aus dem letzten Loch und schlägt den Ball kraftlos ins Netz!`;
              }
           }
         }
@@ -472,6 +506,14 @@ export default function GameScreen() {
       const GLOBAL_SPEED_FACTOR = 0.75; 
         let calcDuration = brain.flightTimeMs * GLOBAL_SPEED_FACTOR;
         
+        // --- NEU: Anpassung der Reaktionszeit basierend auf dem KI Style ---
+        if (activeAiProfile.style === "aggressive" && finalAiResult !== "error_net" && finalAiResult !== "error_out") {
+            calcDuration *= 0.85; 
+        }
+        if (activeAiProfile.style === "defensive" && finalAiResult !== "error_net" && finalAiResult !== "error_out") {
+            calcDuration *= 1.15;
+        }
+
         if (finalAiResult === "error_net" || finalAiResult === "error_wall_direct" || finalAiResult === "error_out") {
           calcDuration = 3600; 
         } else if (finalAiResult === "perfect") {
@@ -555,7 +597,7 @@ export default function GameScreen() {
       }, delay); 
     }
     return () => clearTimeout(t);
-  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty]);
+  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty, activeAiProfile]); // activeAiProfile im Dependency-Array!
 
   useEffect(() => {
     if (phase !== "timer_running") return;
@@ -945,32 +987,50 @@ export default function GameScreen() {
             if (session?.user) {
               
               let scoreChange = 0;
-              let matchResult = playerWon ? "win" : "loss";
-
+              const matchResult = playerWon ? "win" : "loss";
+              
               if (playerWon) {
-                // Spieler hat gewonnen
+                if (activeTournamentRound < 3 && staminaModeEnabled) {
+                  const currentStamina = staminaRef.current;
+                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  savedTourStamina[activeTournamentId] = {
+                    you: currentStamina.you,
+                    partner: currentStamina.partner
+                  };
+                  localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                }
+
                 if (activeTournamentRound === 3) {
-                  // Finale gewonnen!
+                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  if (savedTourStamina[activeTournamentId]) {
+                    delete savedTourStamina[activeTournamentId];
+                    localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                  }
+
                   await supabase.from("tour_progress").update({ status: "won" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                  scoreChange = 500; // Final-Bonus
+                  scoreChange = 500; 
                 } else {
-                  // Eine Runde weiter
                   await supabase.from("tour_progress").update({ current_round: activeTournamentRound + 1 }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                  scoreChange = 100; // Runden-Bonus
+                  scoreChange = 100; 
                 }
               } else {
-                // Spieler hat verloren = Ausgeschieden
+                const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                if (savedTourStamina[activeTournamentId]) {
+                  delete savedTourStamina[activeTournamentId];
+                  localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                }
+
                 await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                scoreChange = -50;
+                scoreChange = -50; 
               }
 
               const finalScore = Math.max(0, tacScore + scoreChange);
               setTacScore(finalScore);
-              await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
               setLastScoreChange(scoreChange);
               localStorage.setItem("tacpadel_score", finalScore.toString());
 
-              // NEU: Match-Statistiken auch beim Turnier-Spiel speichern!
+              await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
+              
               await supabase.from("match_history").insert({ 
                 user_id: session.user.id, 
                 points: finalScore, 
@@ -981,6 +1041,7 @@ export default function GameScreen() {
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect
               });
+
             }
           } catch (err) {
             console.error("Fehler beim Speichern des Turnier-Ergebnisses:", err);
@@ -1102,18 +1163,16 @@ export default function GameScreen() {
     let newStamina = staminaRef.current;
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
-      if (isNewMatch) {
-         // Wir fassen die Ausdauer beim ersten Punkt nicht mehr komplett an, da
-         // handleStartTournamentMatch() das bereits basierend auf Carry-Over geregelt hat.
-      } else {
+      if (!isNewMatch) {
          const aiTargetScore = activeTournamentId 
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
              : tacScore;
          newStamina = {
            you: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.you + 1),
            partner: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.partner + 1),
-           opp1: Math.min(getAiMaxStamina(aiTargetScore), staminaRef.current.opp1 + 1),
-           opp2: Math.min(getAiMaxStamina(aiTargetScore), staminaRef.current.opp2 + 1)
+           // Beachte den Profil-Multiplikator beim Cap!
+           opp1: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp1 + 1),
+           opp2: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp2 + 1)
          };
          setStamina(newStamina);
       }
@@ -1128,7 +1187,8 @@ export default function GameScreen() {
       stamina: staminaModeEnabled ? newStamina : undefined,
       tournamentId: activeTournamentId,
       tournamentRound: activeTournamentRound,
-      tournamentDifficulty: activeTournamentDifficulty
+      tournamentDifficulty: activeTournamentDifficulty,
+      activeAiProfile // WICHTIG: KI speichern
     };
     localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
   };
@@ -1269,7 +1329,7 @@ export default function GameScreen() {
           
           const firstChar = rawText.charAt(0);
           if (["⭐", "❌", "⚠️", "✓", "🏆"].includes(firstChar)) { icon = firstChar; rawText = rawText.slice(1).trim(); } 
-          else if (rawText.includes("KI ")) { icon = "🤖"; }
+          else if (rawText.includes("KI ") || rawText.includes("Gegner:")) { icon = "🤖"; }
 
           const words = rawText.split(" ");
           const mid = Math.ceil(words.length / 2);
@@ -1327,7 +1387,7 @@ export default function GameScreen() {
 
                 <div className="text-center">
                   <h2 className="text-4xl sm:text-5xl font-black mb-2 uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
-                    {playerScore > aiScore ? <span className="text-emerald-400">🏆 Du Gewinnst!</span> : <span className="text-red-500">💀 Team TacPadel-AI Gewinnt!</span>}
+                    {playerScore > aiScore ? <span className="text-emerald-400">🏆 Du Gewinnst!</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} Gewinnt!</span>}
                   </h2>
                   <p className="text-slate-300 text-lg font-bold">Endstand im Tiebreak: {playerScore} : {aiScore}</p>
                 </div>
@@ -1346,7 +1406,7 @@ export default function GameScreen() {
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
                       <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Dein Team</span></div>
                       <div className="py-2 flex flex-col justify-center bg-slate-900/20"><span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Metrik</span></div>
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest">KI Team</span></div>
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest">{activeAiProfile.teamName}</span></div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.aces}</div>
                       <div className="py-2.5 text-orange-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">Asse</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.aces}</div>
@@ -1408,13 +1468,15 @@ export default function GameScreen() {
               {/* KI 1 */}
               <div className="absolute top-4 left-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80">
                  <div className="flex justify-between items-end">
-                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">KI 1</span>
-                   {stamina.opp1 <= getAiMaxStamina(tacScore) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
+                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
+                     {activeAiProfile.p1}
+                   </span>
+                   {stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
                  </div>
-                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp1 <= getAiMaxStamina(tacScore) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
+                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
                    <div 
-                     className={`h-full transition-[width] duration-500 ease-out ${stamina.opp1 <= getAiMaxStamina(tacScore) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-r from-red-600 to-red-400'}`} 
-                     style={{ width: `${(stamina.opp1 / getAiMaxStamina(tacScore)) * 100}%` }} 
+                     className={`h-full transition-[width] duration-500 ease-out ${stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-r from-red-600 to-red-400'}`} 
+                     style={{ width: `${(stamina.opp1 / (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) * 100}%` }} 
                    />
                  </div>
               </div>
@@ -1422,13 +1484,15 @@ export default function GameScreen() {
               {/* KI 2 */}
               <div className="absolute top-4 right-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80 items-end">
                  <div className="flex justify-between items-end w-full flex-row-reverse">
-                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">KI 2</span>
-                   {stamina.opp2 <= getAiMaxStamina(tacScore) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
+                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
+                     {activeAiProfile.p2}
+                   </span>
+                   {stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
                  </div>
-                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp2 <= getAiMaxStamina(tacScore) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
+                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
                    <div 
-                     className={`h-full transition-[width] duration-500 ease-out ml-auto ${stamina.opp2 <= getAiMaxStamina(tacScore) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-l from-red-600 to-red-400'}`} 
-                     style={{ width: `${(stamina.opp2 / getAiMaxStamina(tacScore)) * 100}%` }} 
+                     className={`h-full transition-[width] duration-500 ease-out ml-auto ${stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-l from-red-600 to-red-400'}`} 
+                     style={{ width: `${(stamina.opp2 / (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) * 100}%` }} 
                    />
                  </div>
               </div>
@@ -1466,53 +1530,56 @@ export default function GameScreen() {
 
         <div className="absolute inset-0 z-10">
           <ScenarioCourt3D 
-          key={`court-${introTrigger}`} 
-          playIntro={playIntro}  
-          gameOver={gameOver} 
-          
-          onIntroFinished={() => {
-            setPlayIntro(false);
-            setIsIntroPlaying(false);
-            if (!isMenuOpen && !gameOver) { 
-              triggerProfiBanner(); 
-              
-              const info = getServerInfo(playerScore + aiScore);
-              if (info.serverId === "you") {
-                 showFlash("DU HAST AUFSCHLAG!", "text-purple-400", 3000);
-              } else if (info.serverId === "partner") {
-                 showFlash("PARTNER SCHLÄGT AUF!", "text-cyan-400", 3000);
-              } else {
-                 showFlash("GEGNER SCHLÄGT AUF!", "text-red-400", 3000);
+            key={`court-${introTrigger}`} 
+            playIntro={playIntro}  
+            gameOver={gameOver} 
+            
+            onIntroFinished={() => {
+              setPlayIntro(false);
+              setIsIntroPlaying(false);
+              if (!isMenuOpen && !gameOver) { 
+                triggerProfiBanner(); 
+                
+                const info = getServerInfo(playerScore + aiScore);
+                if (info.serverId === "you") {
+                   showFlash("DU HAST AUFSCHLAG!", "text-purple-400", 3000);
+                } else if (info.serverId === "partner") {
+                   showFlash("PARTNER SCHLÄGT AUF!", "text-cyan-400", 3000);
+                } else {
+                   showFlash(`${activeAiProfile.teamName.toUpperCase()} SCHLÄGT AUF!`, "text-red-400", 3000);
+                }
               }
-            }
-          }} 
-          
-          level="Spielzug" 
-          positions={courtState} 
-          hasSubmitted={isAnimPhase}
-          bestZones={activeScenario ? activeScenario.bestZones : []} 
-          acceptableZones={activeScenario ? [activeScenario.laufZone] : []}
-          
-          profiMode={isProfi}
-          
-          selectedZone={phase === "ai_prepare" ? null : (isAiActive ? aiTarget : commands[hitterId].target)}
-          selectedLaufZone={commands.you.run} selectedPartnerZone={commands.partner.run}
-          activeChar={isAiActive ? aiHitterId : activeChar} hitterId={isAiActive ? aiHitterId : hitterId}
-          isTimerActive={isTimerPhase} turnResult={turnResult}
-          previewShot={phase === "player_planning" ? commands[hitterId].shot : null}
-          timerDuration={timerDuration}
-          
-          onZoneClick={(id) => { if (phase === "player_planning" && activeChar === hitterId) updateCommand(activeChar, { target: id }); }}
-          
-          onLaufZoneClick={(id) => { if (phase === "player_planning" || isTimerPhase) updateCommand(activeChar, { run: id }); }}
-          onPlayerClick={(char) => { if (phase === "player_planning" || isTimerPhase) setActiveChar(char as "you" | "partner"); }}
-          
-          playerScore={playerScore} aiScore={aiScore}
-          isAiActive={isAiActive} phase={phase} isTimerPhase={isTimerPhase}
-          isPlayerTeamServe={isPlayerTeamServe}
+            }} 
+            
+            level="Spielzug" 
+            positions={courtState} 
+            hasSubmitted={isAnimPhase}
+            bestZones={activeScenario ? activeScenario.bestZones : []} 
+            acceptableZones={activeScenario ? [activeScenario.laufZone] : []}
+            
+            profiMode={isProfi}
+            
+            selectedZone={phase === "ai_prepare" ? null : (isAiActive ? aiTarget : commands[hitterId].target)}
+            selectedLaufZone={commands.you.run} selectedPartnerZone={commands.partner.run}
+            activeChar={isAiActive ? aiHitterId : activeChar} hitterId={isAiActive ? aiHitterId : hitterId}
+            isTimerActive={isTimerPhase} turnResult={turnResult}
+            previewShot={phase === "player_planning" ? commands[hitterId].shot : null}
+            timerDuration={timerDuration}
+            
+            onZoneClick={(id) => { if (phase === "player_planning" && activeChar === hitterId) updateCommand(activeChar, { target: id }); }}
+            
+            onLaufZoneClick={(id) => { if (phase === "player_planning" || isTimerPhase) updateCommand(activeChar, { run: id }); }}
+            onPlayerClick={(char) => { if (phase === "player_planning" || isTimerPhase) setActiveChar(char as "you" | "partner"); }}
+            
+            playerScore={playerScore} aiScore={aiScore}
+            isAiActive={isAiActive} phase={phase} isTimerPhase={isTimerPhase}
+            isPlayerTeamServe={isPlayerTeamServe}
 
-          hidePlayerLabels={!showNameTags}
-        />
+            hidePlayerLabels={!showNameTags}
+            
+            // --- HIER IST DIE KORRIGIERTE ZEILE (ohne Anführungszeichen) ---
+            activeAiProfile={activeAiProfile}
+          />
         </div>
       </div>
 
@@ -1522,7 +1589,7 @@ export default function GameScreen() {
           <div className="flex items-center justify-center gap-2 py-2">
             <div className="w-4 h-4 rounded-full border-t-2 border-red-500 animate-spin" />
             <h3 className="text-red-400 font-black tracking-widest uppercase text-[10px]">
-              🤖 KI {courtState.ball.type === "PREPARE_SERVE" ? "schlägt auf" : "checkt Lücken"}...
+              🤖 {activeAiProfile.teamName} {courtState.ball.type === "PREPARE_SERVE" ? "schlägt auf" : "checkt Lücken"}...
             </h3>
           </div>
         )}

@@ -2,28 +2,14 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from '../lib/supabase'; 
 
-// --- Typen & Mock-Daten ---
-type TourStatus = "active" | "upcoming" | "completed";
-type TourType = "fip" | "challenger" | "major";
+// --- NEUER IMPORT: Die ausgelagerten Turniere ---
+import { Tournament, TourType, TOURNAMENTS } from '../engine/Tournaments';
 
 type DBTourStatus = "active" | "won" | "eliminated";
 interface TourProgress {
   tournament_id: string;
   status: DBTourStatus;
   current_round: number;
-}
-
-interface Tournament {
-  id: string;
-  name: string;
-  location: string;
-  type: TourType;
-  status: TourStatus;
-  reqScore: number;
-  rewardText: string;
-  startsIn?: string;
-  baseDifficulty: number;
-  tacPointsReward: number; 
 }
 
 interface LeaderboardEntry {
@@ -42,55 +28,7 @@ interface PlayerStats {
   active_runs: number;
 }
 
-// ALLE TURNIERE SIND FÜR DIE BETA AUF "ACTIVE" GESETZT
-const MOCK_TOURNAMENTS: Tournament[] = [
-  {
-    id: "t1",
-    name: "Madrid Challenger",
-    location: "Madrid, ESP",
-    type: "challenger",
-    status: "active",
-    reqScore: 3500,
-    baseDifficulty: 3500,
-    tacPointsReward: 300,
-    rewardText: "Silber-Pokal + 300 TacPoints",
-  },
-  {
-    id: "t2",
-    name: "Paris Premier Major",
-    location: "Paris, FRA",
-    type: "major",
-    status: "active", 
-    reqScore: 4000,
-    baseDifficulty: 4500, 
-    tacPointsReward: 600,
-    rewardText: "Gold-Pokal + 600 TacPoints",
-  },
-  {
-    id: "t3",
-    name: "Berlin FIP Rise",
-    location: "Berlin, GER",
-    type: "fip",
-    status: "active", 
-    reqScore: 0,
-    baseDifficulty: 2500, 
-    tacPointsReward: 150,
-    rewardText: "Bronze-Badge + 150 TacPoints",
-  },
-  {
-    id: "t4",
-    name: "Doha Premier Major",
-    location: "Doha, QAT",
-    type: "major",
-    status: "active", 
-    reqScore: 4000,
-    baseDifficulty: 4500,
-    tacPointsReward: 600,
-    rewardText: "Gold-Pokal + 600 TacPoints",
-  }
-];
-
-// 30-Tage Beta Enddatum (z.B. 24. Oktober 2026)
+// 30-Tage Beta Enddatum
 const BETA_END_DATE = new Date("2026-10-24T23:59:59").getTime();
 
 interface TourScreenProps {
@@ -103,7 +41,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   
   // -- SUPABASE STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
-  const [tacPoints, setTacPoints] = useState<number>(0); // Die Währung (Saison Ranking)
+  const [tacPoints, setTacPoints] = useState<number>(0); // Die Währung (Saison Ranking / Startgeld)
   const [tacScore, setTacScore] = useState<number>(0);   // Das Skill-Level (für die Eintrittsbedingung)
   const [loading, setLoading] = useState(true);
 
@@ -171,7 +109,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setProgress(progressMap);
         }
 
-        // 2. Stats (tac_points für Währung, points für Entry Requirement)
+        // 2. Stats
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
           .select("tac_points, points")
@@ -201,7 +139,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     fetchData();
   }, []);
 
-  // Lade Season Ranking Daten
   const fetchLeaderboard = async () => {
     setLoadingLeaderboard(true);
     setShowLeaderboard(true);
@@ -222,7 +159,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     }
   };
 
-  // Spieler-Statistiken laden
   const handlePlayerClick = async (player: LeaderboardEntry) => {
     setSelectedPlayer({
       id: player.id,
@@ -266,17 +202,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
   const getTypeColor = (type: TourType) => {
     switch (type) {
-      case "major": return "text-fuchsia-400 border-fuchsia-500 shadow-[0_0_15px_rgba(217,70,239,0.4)]";
-      case "challenger": return "text-cyan-400 border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]";
-      case "fip": return "text-emerald-400 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]";
+      case "master": return "text-fuchsia-400 border-fuchsia-500 shadow-[0_0_15px_rgba(217,70,239,0.4)]";
+      case "pro": return "text-cyan-400 border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]";
+      case "open": return "text-emerald-400 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]";
     }
   };
 
   const getTypeBg = (type: TourType) => {
     switch (type) {
-      case "major": return "from-fuchsia-900/40 to-fuchsia-950/20";
-      case "challenger": return "from-cyan-900/40 to-cyan-950/20";
-      case "fip": return "from-emerald-900/40 to-emerald-950/20";
+      case "master": return "from-fuchsia-900/40 to-fuchsia-950/20";
+      case "pro": return "from-cyan-900/40 to-cyan-950/20";
+      case "open": return "from-emerald-900/40 to-emerald-950/20";
     }
   };
 
@@ -290,34 +226,53 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        alert("Bitte melde dich an, um die Tour zu spielen!");
-        return;
-      }
-
-      let startRound = 1;
-
+      
+      // Nur bei einem NEUEN Turnier (Runde 1) das Startgeld abziehen
       if (!currentStatus) {
-        const { error } = await supabase.from("tour_progress").insert({
-          user_id: session.user.id,
-          tournament_id: tour.id,
-          status: "active",
-          current_round: 1
-        });
         
-        if (error) throw error;
+        // 1. Hat der Spieler genug Geld für den Buy-In?
+        if (tacPoints < tour.entryFee) {
+           alert(`Zu wenig TacPoints! Du brauchst ${tour.entryFee} TP Startgeld.`);
+           return;
+        }
+
+        // 2. Startgeld abziehen
+        if (tour.entryFee > 0) {
+           const newTacPoints = tacPoints - tour.entryFee;
+           setTacPoints(newTacPoints);
+           localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+           
+           if (session?.user) {
+             await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
+           }
+        }
+
+        // 3. Turnier in der DB starten
+        if (session?.user) {
+            const { error } = await supabase.from("tour_progress").insert({
+            user_id: session.user.id,
+            tournament_id: tour.id,
+            status: "active",
+            current_round: 1
+            });
+            if (error) throw error;
+        }
         
         setProgress(prev => ({
           ...prev,
           [tour.id]: { tournament_id: tour.id, status: "active", current_round: 1 }
         }));
-      } else {
-        startRound = currentStatus.current_round;
-      }
 
-      if (onStartMatch) {
-        onStartMatch(tour.id, startRound, tour.baseDifficulty, tour.tacPointsReward);
-      } 
+        if (onStartMatch) {
+            onStartMatch(tour.id, 1, tour.baseDifficulty, tour.tacPointsReward);
+        }
+
+      } else {
+        // Turnier läuft bereits (z.B. Runde 2), Startgeld wurde schon bezahlt!
+        if (onStartMatch) {
+          onStartMatch(tour.id, currentStatus.current_round, tour.baseDifficulty, tour.tacPointsReward);
+        } 
+      }
 
     } catch (err) {
       console.error("Fehler beim Starten des Turniers:", err);
@@ -365,7 +320,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       {/* HINTERGRUND GRID */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none"></div>
 
-      {/* HEADER & RADAR */}
+      {/* HEADER */}
       <div className="relative pt-6 pb-4 px-4 flex flex-col items-center border-b border-slate-800/50 bg-[#050b18]/80 backdrop-blur-sm z-10 shrink-0">
         
         {/* ZURÜCK BUTTON */}
@@ -379,10 +334,20 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         <h1 className="text-2xl sm:text-3xl font-black text-white tracking-[0.3em] uppercase drop-shadow-[0_0_15px_rgba(56,189,248,0.4)]">
           Beta Season <span className="text-sky-400">1</span>
         </h1>
-        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Alle Events für Tester freigeschaltet</p>
+        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Sammle TacPoints und klettere im Ranking</p>
         
-        {/* TAC POINTS & RANKING BUTTON */}
+        {/* TAC POINTS, SCORE & RANKING BUTTON */}
         <div className="mt-4 flex flex-wrap justify-center items-center gap-3 w-full px-4">
+          
+          {/* TACSCORE (Skill Level) */}
+          <div className="flex items-center gap-2 px-5 py-2 bg-emerald-950/30 border border-emerald-500/50 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+            <span className="text-emerald-500 drop-shadow-[0_0_5px_rgba(16,185,129,0.8)] text-sm leading-none">⚡</span>
+            <span className="text-[12px] font-black tracking-widest text-emerald-400 uppercase leading-none mt-0.5">
+              {tacScore} TacScore
+            </span>
+          </div>
+
+          {/* TACPOINTS (Währung) */}
           <div className="flex items-center gap-2 px-5 py-2 bg-amber-950/30 border border-amber-500/50 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.2)]">
             <span className="text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.8)] text-sm leading-none">⭐</span>
             <span className="text-[12px] font-black tracking-widest text-amber-400 uppercase leading-none mt-0.5">
@@ -417,10 +382,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             <div className="w-8 h-8 rounded-full border-t-2 border-fuchsia-500 animate-spin"></div>
           </div>
         ) : (
-          MOCK_TOURNAMENTS.map((tour) => {
+          TOURNAMENTS.map((tour) => {
             const dbProg = progress[tour.id];
             const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
-            const isLocked = tacScore < tour.reqScore; // CHECK: Genügend Skill-Punkte?
+            
+            // NEU: Doppel-Check (Skill oder Geld fehlt)
+            const isLockedByScore = tacScore < tour.reqScore;
+            const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; // Wenn Turnier läuft, ist Geld egal
 
             return (
               <motion.div 
@@ -435,15 +403,15 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <span className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full border ${getTypeColor(tour.type)} bg-black/50`}>
-                        {tour.type === "major" ? "⭐ Premier Major" : tour.type === "challenger" ? "🏆 Challenger" : "🥉 FIP Rise"}
+                        {tour.type === "master" ? "Premier Master" : tour.type === "pro" ? "Pro" : "Open"}
                       </span>
                       <h3 className="text-lg font-black text-white uppercase tracking-wider mt-2 drop-shadow-lg">{tour.name}</h3>
                     </div>
                     
                     {/* STATUS BADGE */}
-                    {!isCompleted && (
+                    {!isCompleted && dbProg?.status === "active" && (
                       <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.3)]">
-                        LIVE
+                        LÄUFT (Runde {dbProg.current_round})
                       </span>
                     )}
                     {dbProg?.status === "won" && (
@@ -458,21 +426,40 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                    {/* TacScore Req */}
                     <div className="flex flex-col">
                       <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Entry TacScore</span>
-                      {/* ROT / GRÜN LOGIK FÜR DEN SCORE */}
                       <span className={`text-sm font-black ${
                         tour.reqScore === 0 
                           ? 'text-slate-300' 
-                          : !isLocked 
+                          : !isLockedByScore 
                             ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]' 
                             : 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
                       }`}>
                         {tour.reqScore === 0 ? "Offen" : `${tour.reqScore}`}
                       </span>
                     </div>
+                    
                     <div className="w-[1px] h-6 bg-slate-700"></div>
+                    
+                    {/* Startgeld (Buy-In) */}
+                    <div className="flex flex-col">
+                      <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Startgeld</span>
+                      <span className={`text-sm font-black flex items-center gap-1 ${
+                        tour.entryFee === 0 
+                          ? 'text-emerald-400' 
+                          : !isLockedByFunds 
+                            ? 'text-amber-400'
+                            : 'text-red-500 line-through'
+                      }`}>
+                        {tour.entryFee === 0 ? "Frei" : `${tour.entryFee} TP`}
+                      </span>
+                    </div>
+
+                    <div className="w-[1px] h-6 bg-slate-700"></div>
+                    
+                    {/* Belohnung */}
                     <div className="flex flex-col">
                       <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Rewards</span>
                       <span className="text-sm font-bold text-amber-400">{tour.rewardText}</span>
@@ -491,8 +478,24 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       {/* ========================================================= */}
       <AnimatePresence>
         {selectedTour && (() => {
-          const isLocked = tacScore < selectedTour.reqScore;
+          const dbProg = progress[selectedTour.id];
+          const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
           
+          const isLockedByScore = tacScore < selectedTour.reqScore;
+          // Prüfen ob pleite, ABER nur wenn das Turnier nicht schon im Gange ist!
+          const isLockedByFunds = tacPoints < selectedTour.entryFee && !dbProg;
+          
+          const isLocked = isLockedByScore || isLockedByFunds;
+
+          // Dynamischer Button-Text
+          let btnText = "Beta-Run Starten";
+          if (dbProg?.status === 'won') btnText = 'Turnier Beendet (Sieger)';
+          else if (dbProg?.status === 'eliminated') btnText = 'Turnier Beendet (Raus)';
+          else if (isLockedByScore) btnText = `Gesperrt: ${selectedTour.reqScore} TacScore nötig`;
+          else if (isLockedByFunds) btnText = `Gesperrt: Zu wenig TacPoints (${selectedTour.entryFee} nötig)`;
+          else if (!dbProg && selectedTour.entryFee > 0) btnText = `Buy-In zahlen (${selectedTour.entryFee} TP) & Starten`;
+          else if (dbProg) btnText = `Weiter spielen (Runde ${dbProg.current_round})`;
+
           return (
             <>
               <motion.div 
@@ -514,10 +517,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </span>
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest">{selectedTour.name}</h2>
                   <p className="text-slate-400 text-sm mt-1">{selectedTour.location}</p>
-                  <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-2 items-center">
-                    KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span>
+                  
+                  <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-4 items-center">
+                    <span>KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span></span>
                     <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                    <span className="text-sky-400 font-black text-[10px] uppercase tracking-widest">Beta Access</span>
+                    <span className="text-amber-400 font-black">Buy-In: {selectedTour.entryFee === 0 ? "Frei" : `${selectedTour.entryFee} TP`}</span>
                   </div>
                 </div>
 
@@ -568,21 +572,15 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
                 {/* ACTION BUTTON MIT LOCK-STATUS */}
                 <button 
-                  disabled={progress[selectedTour.id]?.status === 'won' || progress[selectedTour.id]?.status === 'eliminated' || isLocked}
+                  disabled={isCompleted || isLocked}
                   onClick={() => handleStartTournament(selectedTour)}
-                  className={`w-full py-5 font-black tracking-[0.2em] uppercase rounded-xl transition-all shrink-0 ${
-                    !isLocked && progress[selectedTour.id]?.status !== 'won' && progress[selectedTour.id]?.status !== 'eliminated'
+                  className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
+                    !isLocked && !isCompleted
                       ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                   }`}
                 >
-                  {progress[selectedTour.id]?.status === 'won' 
-                    ? 'Turnier Beendet (Sieger)' 
-                    : (progress[selectedTour.id]?.status === 'eliminated' 
-                        ? 'Turnier Beendet (Raus)' 
-                        : (isLocked ? `Gesperrt: ${selectedTour.reqScore} TacScore nötig` : 'Beta-Run Starten')
-                      )
-                  }
+                  {btnText}
                 </button>
               </motion.div>
             </>
