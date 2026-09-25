@@ -532,6 +532,37 @@ export default function App(): React.JSX.Element {
     }
   };
 
+  const handleAppleLogin = async () => {
+    const isNativeApp = Capacitor.isNativePlatform();
+    
+    const redirectUrl = isNativeApp 
+      ? 'tacpadel://callback/' 
+      : window.location.origin;
+
+    console.log("Starte Apple OAuth mit Redirect zu:", redirectUrl);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'apple', // Hier ist der einzige Unterschied
+      options: {
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: isNativeApp 
+      }
+    });
+
+    if (error) {
+      console.log("Apple OAuth Fehler: " + error.message);
+      return;
+    }
+
+    if (data?.url) {
+      if (isNativeApp) {
+        await Browser.open({ url: data.url });
+      } else {
+        window.location.href = data.url;
+      }
+    }
+};
+
   const filteredScenarios = useMemo(() => {
     if (level === "Schlag") return SCENARIOS.filter(s => s.id <= 10);
     if (level === "Schlagrichtung") return SCENARIOS.filter(s => s.id >= 1 && s.id <= 30);

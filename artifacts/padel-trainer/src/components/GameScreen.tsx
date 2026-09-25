@@ -28,6 +28,8 @@ const initialStatsData: { player: Stats, ai: Stats } = {
 };
 
 const MAX_PLAYER_STAMINA = 50; 
+const STAMINA_REGEN_BETWEEN_ROUNDS = 20; // PUNKT 1: Wie viel Ausdauer zwischen Matches regeneriert wird
+
 const getAiMaxStamina = (score: number) => score >= 4000 ? 60 : (score < 2000 ? 35 : 50);
 
 const getZoneDist = (z1: string, z2: string) => {
@@ -65,7 +67,6 @@ export default function GameScreen() {
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
-  const [activeTournamentReward, setActiveTournamentReward] = useState<number>(0); // NEU: Gesamt-Reward
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
   const [introTrigger, setIntroTrigger] = useState(0); 
@@ -74,9 +75,7 @@ export default function GameScreen() {
   const [isIntroPlaying, setIsIntroPlaying] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState(!document.hidden);
 
-  const [tacScore, setTacScore] = useState<number>(3000); // Skill Score (points)
-  const [tacPoints, setTacPoints] = useState<number>(0);  // Season Währung (tac_points)
-  
+  const [tacScore, setTacScore] = useState<number>(3000);
   const [lastScoreChange, setLastScoreChange] = useState<number>(0);
   const [matchStats, setMatchStats] = useState<{player: Stats, ai: Stats}>(initialStatsData);
   const [shotHistory, setShotHistory] = useState<string[]>([]);
@@ -129,7 +128,6 @@ export default function GameScreen() {
     }
   };
 
-  // --- LADE BEIDE SCORES (TacScore & TacPoints) ---
   useEffect(() => {
     const fetchUserScore = async () => {
       try {
@@ -137,27 +135,21 @@ export default function GameScreen() {
         if (session?.user) {
           const { data, error } = await supabase
             .from("user_stats") 
-            .select("points, tac_points") 
+            .select("points") 
             .eq("id", session.user.id)
             .single();
 
           if (data && !error) {
             setTacScore(data.points);
-            setTacPoints(data.tac_points || 0);
             localStorage.setItem("tacpadel_score", data.points.toString());
-            localStorage.setItem("tacpadel_tac_points", (data.tac_points || 0).toString());
             return; 
           }
         }
       } catch (err) {
         console.log("Konnte Score nicht von Supabase laden, nutze lokalen Speicher.");
       }
-      
-      const savedScore = localStorage.getItem("tacpadel_score");
-      if (savedScore) setTacScore(parseInt(savedScore, 10));
-      
-      const savedPoints = localStorage.getItem("tacpadel_tac_points");
-      if (savedPoints) setTacPoints(parseInt(savedPoints, 10));
+      const saved = localStorage.getItem("tacpadel_score");
+      if (saved) setTacScore(parseInt(saved, 10));
     };
     fetchUserScore();
   }, []);
@@ -265,7 +257,6 @@ export default function GameScreen() {
       setActiveTournamentId(parsed.tournamentId || null);
       setActiveTournamentRound(parsed.tournamentRound || 1);
       setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
-      setActiveTournamentReward(parsed.tournamentReward || 0); // Reward laden
 
       setPlayerScore(parsed.playerScore);
       setAiScore(parsed.aiScore);
@@ -308,15 +299,14 @@ export default function GameScreen() {
     return false;
   };
 
-  // --- NEU: reward-Parameter empfangen und speichern ---
-  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0, reward: number = 0) => {
+  // PUNKT 1: Stamina Carry-Over beim Starten eines Turniers
+  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
     setActiveTournamentId(tourId);
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
-    setActiveTournamentReward(reward);
 
     setPlayerScore(0);
     setAiScore(0);
@@ -330,10 +320,29 @@ export default function GameScreen() {
     const aiTargetScore = baseDifficulty + roundDifficultyBonus;
     
     if (staminaModeEnabled) {
+      let startYou = MAX_PLAYER_STAMINA;
+      let startPartner = MAX_PLAYER_STAMINA;
+
+      if (round > 1) {
+        // Lade Ausdauer aus vorheriger Runde und wende Regeneration an
+        const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+        const prevStamina = savedTourStamina[tourId];
+        
+        if (prevStamina) {
+          startYou = Math.min(MAX_PLAYER_STAMINA, prevStamina.you + STAMINA_REGEN_BETWEEN_ROUNDS);
+          startPartner = Math.min(MAX_PLAYER_STAMINA, prevStamina.partner + STAMINA_REGEN_BETWEEN_ROUNDS);
+        }
+      } else {
+        // Starte bei 100% in Runde 1 -> Lösche alte Werte falls vorhanden
+        const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+        delete savedTourStamina[tourId];
+        localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+      }
+
       setStamina({ 
-        you: MAX_PLAYER_STAMINA, 
-        partner: MAX_PLAYER_STAMINA, 
-        opp1: getAiMaxStamina(aiTargetScore), 
+        you: startYou, 
+        partner: startPartner, 
+        opp1: getAiMaxStamina(aiTargetScore), // KI startet immer voll, da frisches Team
         opp2: getAiMaxStamina(aiTargetScore) 
       });
     }
@@ -347,14 +356,19 @@ export default function GameScreen() {
     let roundName = "Viertelfinale";
     if (round === 2) roundName = "Halbfinale";
     if (round === 3) roundName = "Finale";
-    showFlash(`🏆 ${roundName} gestartet!`, "text-orange-400", 3500);
+    
+    // Kleiner Hinweis für den Spieler, dass die Ausdauer übernommen wurde
+    if (round > 1 && staminaModeEnabled) {
+        showFlash(`🏆 ${roundName} gestartet! (Stamina teilweise regeneriert)`, "text-amber-400", 4000);
+    } else {
+        showFlash(`🏆 ${roundName} gestartet!`, "text-orange-400", 3500);
+    }
   };
 
   const startNewGame = () => {
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
-    setActiveTournamentReward(0);
     
     setPlayerScore(0);
     setAiScore(0);
@@ -923,49 +937,57 @@ export default function GameScreen() {
 
       const playerWon = newPlayerScore > newAiScore;
 
-      // --- KORRIGIERTE TURNIER LOGIK (Dynamische TacPoints Rewards) ---
+      // --- TURNIER LOGIK BEIM SPIELENDE ---
       if (activeTournamentId) {
         (async () => {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
               
+              let scoreChange = 0;
+              let matchResult = playerWon ? "win" : "loss";
+
               if (playerWon) {
                 // Spieler hat gewonnen
                 if (activeTournamentRound === 3) {
-                  // Finale gewonnen -> 50% der TacPoints 
+                  // Finale gewonnen!
                   await supabase.from("tour_progress").update({ status: "won" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                  
-                  const bonusPoints = Math.round((activeTournamentReward || 500) * 0.5);
-                  const newTacPoints = tacPoints + bonusPoints;
-                  
-                  setTacPoints(newTacPoints);
-                  await supabase.from("user_stats").update({ tac_points: newTacPoints }).eq("id", session.user.id);
-                  setLastScoreChange(bonusPoints);
+                  scoreChange = 500; // Final-Bonus
                 } else {
-                  // Eine Runde weiter -> VF: 20%, HF: 30% der TacPoints
+                  // Eine Runde weiter
                   await supabase.from("tour_progress").update({ current_round: activeTournamentRound + 1 }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                  
-                  const prozent = activeTournamentRound === 1 ? 0.2 : 0.3;
-                  const roundBonus = Math.round((activeTournamentReward || 500) * prozent);
-                  const newTacPoints = tacPoints + roundBonus;
-
-                  setTacPoints(newTacPoints);
-                  await supabase.from("user_stats").update({ tac_points: newTacPoints }).eq("id", session.user.id);
-                  setLastScoreChange(roundBonus);
+                  scoreChange = 100; // Runden-Bonus
                 }
               } else {
-                // Spieler hat verloren = Ausgeschieden (Es gibt keine Punkte für eine Niederlage im Turnier)
+                // Spieler hat verloren = Ausgeschieden
                 await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
-                setLastScoreChange(0);
+                scoreChange = -50;
               }
+
+              const finalScore = Math.max(0, tacScore + scoreChange);
+              setTacScore(finalScore);
+              await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
+              setLastScoreChange(scoreChange);
+              localStorage.setItem("tacpadel_score", finalScore.toString());
+
+              // NEU: Match-Statistiken auch beim Turnier-Spiel speichern!
+              await supabase.from("match_history").insert({ 
+                user_id: session.user.id, 
+                points: finalScore, 
+                result: matchResult,
+                aces: newStats.player.aces,
+                winners: newStats.player.winners,
+                unforced_errors: newStats.player.unforcedErrors,
+                total_shots: newStats.player.totalShots,
+                shots_perfect: newStats.player.shotsPerfect
+              });
             }
           } catch (err) {
             console.error("Fehler beim Speichern des Turnier-Ergebnisses:", err);
           }
         })();
-      } 
-      // --- NORMALES EINZELMATCH LOGIK (Passt den Skill TacScore an) ---
+      }
+      // --- NORMALES EINZELMATCH LOGIK BEIM SPIELENDE ---
       else {
         const diff = Math.abs(newPlayerScore - newAiScore);
         let scoreChange = 0;
@@ -1081,15 +1103,8 @@ export default function GameScreen() {
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (isNewMatch) {
-         const aiTargetScore = activeTournamentId 
-             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
-             : tacScore;
-         newStamina = {
-           you: MAX_PLAYER_STAMINA,
-           partner: MAX_PLAYER_STAMINA,
-           opp1: getAiMaxStamina(aiTargetScore),
-           opp2: getAiMaxStamina(aiTargetScore)
-         };
+         // Wir fassen die Ausdauer beim ersten Punkt nicht mehr komplett an, da
+         // handleStartTournamentMatch() das bereits basierend auf Carry-Over geregelt hat.
       } else {
          const aiTargetScore = activeTournamentId 
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
@@ -1100,8 +1115,8 @@ export default function GameScreen() {
            opp1: Math.min(getAiMaxStamina(aiTargetScore), staminaRef.current.opp1 + 1),
            opp2: Math.min(getAiMaxStamina(aiTargetScore), staminaRef.current.opp2 + 1)
          };
+         setStamina(newStamina);
       }
-      setStamina(newStamina);
     }
 
     const gameStateToSave = {
@@ -1113,8 +1128,7 @@ export default function GameScreen() {
       stamina: staminaModeEnabled ? newStamina : undefined,
       tournamentId: activeTournamentId,
       tournamentRound: activeTournamentRound,
-      tournamentDifficulty: activeTournamentDifficulty,
-      tournamentReward: activeTournamentReward
+      tournamentDifficulty: activeTournamentDifficulty
     };
     localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
   };
@@ -1319,18 +1333,11 @@ export default function GameScreen() {
                 </div>
                 <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full">
                   <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-slate-700/50 p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] w-full">
-                    {/* HIER WIRD NUN DYNAMISCH TACPOINTS Oder TACSCORE ANGEZEIGT */}
-                    <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">
-                      {activeTournamentId ? "Season TacPoints" : "Dein TacScore"}
-                    </span>
+                    <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">Dein TacScore</span>
                     <div className="flex flex-col items-center gap-3">
-                      <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                        {activeTournamentId ? tacPoints : tacScore}
-                      </span>
-                      <div className={`px-5 py-1.5 rounded-full border ${lastScoreChange > 0 ? "bg-emerald-900/30 border-emerald-500/50 text-emerald-400" : (lastScoreChange < 0 ? "bg-red-900/30 border-red-500/50 text-red-500" : "bg-slate-800 border-slate-600 text-slate-400")}`}>
-                        <span className="text-lg font-black tracking-widest whitespace-nowrap">
-                          {lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange} Punkte
-                        </span>
+                      <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">{tacScore}</span>
+                      <div className={`px-5 py-1.5 rounded-full border ${lastScoreChange > 0 ? "bg-emerald-900/30 border-emerald-500/50 text-emerald-400" : "bg-red-900/30 border-red-500/50 text-red-500"}`}>
+                        <span className="text-lg font-black tracking-widest whitespace-nowrap">{lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange} Punkte</span>
                       </div>
                     </div>
                   </div>
@@ -1372,7 +1379,7 @@ export default function GameScreen() {
                 </div>
                 
                 {activeTournamentId ? (
-                   <button onClick={() => { setIsTourOpen(true); setShowGameOverUI(false); setActiveTournamentId(null); setActiveTournamentReward(0); }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
+                   <button onClick={() => { setIsTourOpen(true); setShowGameOverUI(false); setActiveTournamentId(null); }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
                      Zurück zur Pro Tour
                    </button>
                 ) : (
