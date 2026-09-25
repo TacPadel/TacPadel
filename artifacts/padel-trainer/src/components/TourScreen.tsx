@@ -60,7 +60,7 @@ const MOCK_TOURNAMENTS: Tournament[] = [
     name: "Paris Premier Major",
     location: "Paris, FRA",
     type: "major",
-    status: "active", // Beta Unlock
+    status: "active", 
     reqScore: 4000,
     baseDifficulty: 4500, 
     tacPointsReward: 600,
@@ -71,7 +71,7 @@ const MOCK_TOURNAMENTS: Tournament[] = [
     name: "Berlin FIP Rise",
     location: "Berlin, GER",
     type: "fip",
-    status: "active", // Beta Unlock
+    status: "active", 
     reqScore: 0,
     baseDifficulty: 2500, 
     tacPointsReward: 150,
@@ -82,7 +82,7 @@ const MOCK_TOURNAMENTS: Tournament[] = [
     name: "Doha Premier Major",
     location: "Doha, QAT",
     type: "major",
-    status: "active", // Beta Unlock
+    status: "active", 
     reqScore: 4000,
     baseDifficulty: 4500,
     tacPointsReward: 600,
@@ -103,7 +103,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   
   // -- SUPABASE STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
-  const [tacPoints, setTacPoints] = useState<number>(0);
+  const [tacPoints, setTacPoints] = useState<number>(0); // Die Währung (Saison Ranking)
+  const [tacScore, setTacScore] = useState<number>(0);   // Das Skill-Level (für die Eintrittsbedingung)
   const [loading, setLoading] = useState(true);
 
   // -- TIMER STATE --
@@ -139,19 +140,24 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Lade Turnier-Fortschritt UND TacPoints
+  // Lade Turnier-Fortschritt, TacPoints (Währung) UND TacScore (Skill Level)
   useEffect(() => {
     const fetchData = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session?.user) {
-          const savedPoints = localStorage.getItem("tacpadel_tac_points");
-          if (savedPoints) setTacPoints(parseInt(savedPoints, 10));
+          const savedTacPoints = localStorage.getItem("tacpadel_tac_points");
+          if (savedTacPoints) setTacPoints(parseInt(savedTacPoints, 10));
+          
+          const savedScore = localStorage.getItem("tacpadel_score");
+          if (savedScore) setTacScore(parseInt(savedScore, 10));
+          
           setLoading(false);
           return;
         }
 
+        // 1. Turnier Progress
         const { data: tourData, error: tourError } = await supabase
           .from("tour_progress")
           .select("*")
@@ -165,18 +171,24 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setProgress(progressMap);
         }
 
+        // 2. Stats (tac_points für Währung, points für Entry Requirement)
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
-          .select("tac_points")
+          .select("tac_points, points")
           .eq("id", session.user.id)
           .single();
 
         if (statsData && !statsError) {
           setTacPoints(statsData.tac_points || 0);
+          setTacScore(statsData.points || 0);
           localStorage.setItem("tacpadel_tac_points", (statsData.tac_points || 0).toString());
+          localStorage.setItem("tacpadel_score", (statsData.points || 0).toString());
         } else {
-          const savedPoints = localStorage.getItem("tacpadel_tac_points");
-          if (savedPoints) setTacPoints(parseInt(savedPoints, 10));
+          const savedTacPoints = localStorage.getItem("tacpadel_tac_points");
+          if (savedTacPoints) setTacPoints(parseInt(savedTacPoints, 10));
+          
+          const savedScore = localStorage.getItem("tacpadel_score");
+          if (savedScore) setTacScore(parseInt(savedScore, 10));
         }
 
       } catch (err) {
@@ -408,6 +420,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           MOCK_TOURNAMENTS.map((tour) => {
             const dbProg = progress[tour.id];
             const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
+            const isLocked = tacScore < tour.reqScore; // CHECK: Genügend Skill-Punkte?
 
             return (
               <motion.div 
@@ -448,8 +461,15 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex flex-col">
                       <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Entry TacScore</span>
-                      <span className={`text-sm font-black text-sky-400 drop-shadow-[0_0_5px_rgba(56,189,248,0.5)]`}>
-                        BETA UNLOCKED
+                      {/* ROT / GRÜN LOGIK FÜR DEN SCORE */}
+                      <span className={`text-sm font-black ${
+                        tour.reqScore === 0 
+                          ? 'text-slate-300' 
+                          : !isLocked 
+                            ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]' 
+                            : 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
+                      }`}>
+                        {tour.reqScore === 0 ? "Offen" : `${tour.reqScore}`}
                       </span>
                     </div>
                     <div className="w-[1px] h-6 bg-slate-700"></div>
@@ -470,100 +490,104 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       {/* DETAIL MODAL (DER "TURNIER RUN")                          */}
       {/* ========================================================= */}
       <AnimatePresence>
-        {selectedTour && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setSelectedTour(null)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[100]"
-            />
+        {selectedTour && (() => {
+          const isLocked = tacScore < selectedTour.reqScore;
+          
+          return (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setSelectedTour(null)}
+                className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[100]"
+              />
 
-            <motion.div 
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute bottom-0 left-0 right-0 z-[110] bg-[#050b18] border-t-2 border-slate-700 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] max-h-[90vh] flex flex-col"
-            >
-              <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-6 shrink-0 cursor-grab active:cursor-grabbing" onClick={() => setSelectedTour(null)} />
-              
-              <div className="flex flex-col items-center text-center mb-6 shrink-0">
-                <span className={`text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border mb-3 ${getTypeColor(selectedTour.type)}`}>
-                  {selectedTour.type.toUpperCase()}
-                </span>
-                <h2 className="text-2xl font-black text-white uppercase tracking-widest">{selectedTour.name}</h2>
-                <p className="text-slate-400 text-sm mt-1">{selectedTour.location}</p>
-                <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-2 items-center">
-                  KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span>
-                  <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                  <span className="text-sky-400 font-black text-[10px] uppercase tracking-widest">Beta Access</span>
-                </div>
-              </div>
-
-              {/* DER DYNAMISCHE TURNIER-BAUM (BRACKET) */}
-              <div className="flex-1 overflow-y-auto mb-6 custom-scrollbar">
-                <div className="flex flex-col gap-3">
-                  
-                  {(() => {
-                    const bracket = getBracketStatus(selectedTour.id);
-                    return (
-                      <>
-                        <div className={`flex items-center gap-4 p-3 bg-slate-900/50 border border-slate-700/50 rounded-xl ${bracket.vf.opacity}`}>
-                          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-slate-400 text-xs shrink-0">VF</div>
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-white uppercase tracking-wider">Viertelfinale</p>
-                            <p className="text-[10px] text-slate-500">1 Tiebreak bis 10</p>
-                          </div>
-                          <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.vf.styles}`}>{bracket.vf.text}</div>
-                        </div>
-
-                        <div className="w-0.5 h-4 bg-slate-700 ml-7"></div>
-
-                        <div className={`flex items-center gap-4 p-3 bg-slate-900/30 border border-slate-800/50 rounded-xl ${bracket.hf.opacity}`}>
-                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center font-black text-slate-600 text-xs shrink-0">HF</div>
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-slate-300 uppercase tracking-wider">Halbfinale</p>
-                            <p className="text-[10px] text-slate-500">Gegen Seed #2</p>
-                          </div>
-                          <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.hf.styles}`}>{bracket.hf.text}</div>
-                        </div>
-
-                        <div className="w-0.5 h-4 bg-slate-700 ml-7"></div>
-
-                        <div className={`flex items-center gap-4 p-3 bg-slate-900/30 border border-slate-800/50 rounded-xl ${bracket.f.opacity}`}>
-                          <div className="w-8 h-8 rounded-full bg-amber-900/20 border border-amber-700/30 flex items-center justify-center font-black text-amber-600/50 text-xs shrink-0">F</div>
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-amber-500/50 uppercase tracking-wider">Finale</p>
-                            <p className="text-[10px] text-slate-500">Boss KI Team</p>
-                          </div>
-                          <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.f.styles}`}>{bracket.f.text}</div>
-                        </div>
-                      </>
-                    );
-                  })()}
-
-                </div>
-              </div>
-
-              {/* ACTION BUTTON */}
-              <button 
-                disabled={progress[selectedTour.id]?.status === 'won' || progress[selectedTour.id]?.status === 'eliminated'}
-                onClick={() => handleStartTournament(selectedTour)}
-                className={`w-full py-5 font-black tracking-[0.2em] uppercase rounded-xl transition-all shrink-0 ${
-                  progress[selectedTour.id]?.status !== 'won' && progress[selectedTour.id]?.status !== 'eliminated'
-                    ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
-                    : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                }`}
+              <motion.div 
+                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="absolute bottom-0 left-0 right-0 z-[110] bg-[#050b18] border-t-2 border-slate-700 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] max-h-[90vh] flex flex-col"
               >
-                {progress[selectedTour.id]?.status === 'won' 
-                  ? 'Turnier Beendet (Sieger)' 
-                  : (progress[selectedTour.id]?.status === 'eliminated' 
-                      ? 'Turnier Beendet (Raus)' 
-                      : 'Beta-Run Starten'
-                    )
-                }
-              </button>
-            </motion.div>
-          </>
-        )}
+                <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-6 shrink-0 cursor-grab active:cursor-grabbing" onClick={() => setSelectedTour(null)} />
+                
+                <div className="flex flex-col items-center text-center mb-6 shrink-0">
+                  <span className={`text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border mb-3 ${getTypeColor(selectedTour.type)}`}>
+                    {selectedTour.type.toUpperCase()}
+                  </span>
+                  <h2 className="text-2xl font-black text-white uppercase tracking-widest">{selectedTour.name}</h2>
+                  <p className="text-slate-400 text-sm mt-1">{selectedTour.location}</p>
+                  <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-2 items-center">
+                    KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span>
+                    <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                    <span className="text-sky-400 font-black text-[10px] uppercase tracking-widest">Beta Access</span>
+                  </div>
+                </div>
+
+                {/* DER DYNAMISCHE TURNIER-BAUM (BRACKET) */}
+                <div className="flex-1 overflow-y-auto mb-6 custom-scrollbar">
+                  <div className="flex flex-col gap-3">
+                    
+                    {(() => {
+                      const bracket = getBracketStatus(selectedTour.id);
+                      return (
+                        <>
+                          <div className={`flex items-center gap-4 p-3 bg-slate-900/50 border border-slate-700/50 rounded-xl ${bracket.vf.opacity}`}>
+                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-slate-400 text-xs shrink-0">VF</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-white uppercase tracking-wider">Viertelfinale</p>
+                              <p className="text-[10px] text-slate-500">1 Tiebreak bis 10</p>
+                            </div>
+                            <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.vf.styles}`}>{bracket.vf.text}</div>
+                          </div>
+
+                          <div className="w-0.5 h-4 bg-slate-700 ml-7"></div>
+
+                          <div className={`flex items-center gap-4 p-3 bg-slate-900/30 border border-slate-800/50 rounded-xl ${bracket.hf.opacity}`}>
+                            <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center font-black text-slate-600 text-xs shrink-0">HF</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-300 uppercase tracking-wider">Halbfinale</p>
+                              <p className="text-[10px] text-slate-500">Gegen Seed #2</p>
+                            </div>
+                            <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.hf.styles}`}>{bracket.hf.text}</div>
+                          </div>
+
+                          <div className="w-0.5 h-4 bg-slate-700 ml-7"></div>
+
+                          <div className={`flex items-center gap-4 p-3 bg-slate-900/30 border border-slate-800/50 rounded-xl ${bracket.f.opacity}`}>
+                            <div className="w-8 h-8 rounded-full bg-amber-900/20 border border-amber-700/30 flex items-center justify-center font-black text-amber-600/50 text-xs shrink-0">F</div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-amber-500/50 uppercase tracking-wider">Finale</p>
+                              <p className="text-[10px] text-slate-500">Boss KI Team</p>
+                            </div>
+                            <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.f.styles}`}>{bracket.f.text}</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+
+                  </div>
+                </div>
+
+                {/* ACTION BUTTON MIT LOCK-STATUS */}
+                <button 
+                  disabled={progress[selectedTour.id]?.status === 'won' || progress[selectedTour.id]?.status === 'eliminated' || isLocked}
+                  onClick={() => handleStartTournament(selectedTour)}
+                  className={`w-full py-5 font-black tracking-[0.2em] uppercase rounded-xl transition-all shrink-0 ${
+                    !isLocked && progress[selectedTour.id]?.status !== 'won' && progress[selectedTour.id]?.status !== 'eliminated'
+                      ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  }`}
+                >
+                  {progress[selectedTour.id]?.status === 'won' 
+                    ? 'Turnier Beendet (Sieger)' 
+                    : (progress[selectedTour.id]?.status === 'eliminated' 
+                        ? 'Turnier Beendet (Raus)' 
+                        : (isLocked ? `Gesperrt: ${selectedTour.reqScore} TacScore nötig` : 'Beta-Run Starten')
+                      )
+                  }
+                </button>
+              </motion.div>
+            </>
+          );
+        })()}
       </AnimatePresence>
 
       {/* ========================================================= */}
