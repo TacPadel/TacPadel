@@ -500,12 +500,8 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const handleGoogleLogin = async () => {
-    const isNativeApp = Capacitor.isNativePlatform();
-    
-    // Wir nutzen hier fest deinen echten, ungesperrten Haupt-Link für das Web!
-    const redirectUrl = isNativeApp 
-      ? 'tacpadel://callback/' 
-      : 'https://tac-padel-api-server.vercel.app'; 
+    // Erzwinge testweise den Web-Link, um zu sehen, ob das Handy ihn annimmt
+    const redirectUrl = 'https://tac-padel-api-server.vercel.app';
 
     console.log("Starte Google OAuth mit Redirect zu:", redirectUrl);
 
@@ -513,7 +509,6 @@ export default function App(): React.JSX.Element {
       provider: 'google',
       options: {
         redirectTo: redirectUrl,
-        skipBrowserRedirect: isNativeApp 
       }
     });
 
@@ -523,11 +518,7 @@ export default function App(): React.JSX.Element {
     }
 
     if (data?.url) {
-      if (isNativeApp) {
-        await Browser.open({ url: data.url });
-      } else {
-        window.location.href = data.url;
-      }
+      window.location.href = data.url;
     }
 };
 
