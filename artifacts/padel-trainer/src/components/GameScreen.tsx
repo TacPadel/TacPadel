@@ -1060,7 +1060,8 @@ export default function GameScreen() {
                 unforced_errors: newStats.player.unforcedErrors,
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
-                match_type: "tournament"
+                match_type: "tournament",
+                tac_points: currentTacPoints // <--- DIESE ZEILE HINZUFÜGEN
               });
 
             }

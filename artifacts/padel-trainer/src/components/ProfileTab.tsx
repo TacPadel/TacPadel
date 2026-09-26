@@ -26,7 +26,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_show_explanations", newVal.toString());
   };
 
-  // --- NEU: Filter-State für Statistiken ---
+  // --- Filter-State für Statistiken ---
   const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
   const [allHistory, setAllHistory] = useState<any[]>([]);
 
@@ -86,12 +86,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
       }
 
-      // 2. GESAMTE Match Historie laden (inkl. match_type)
+      // 2. GESAMTE Match Historie laden (JETZT INKLUSIVE tac_points)
       const { data: historyData } = await supabase
         .from('match_history')
-        .select('points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
+        .select('points, tac_points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: true }); // Kompletten Verlauf laden zum Filtern
+        .order('created_at', { ascending: true }); 
 
       if (historyData && historyData.length > 0) {
         setAllHistory(historyData);
@@ -120,10 +120,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     loadUserData();
   }, [user.id]);
 
-  // --- NEU: Effekt, der auf den Stats-Filter reagiert und die Daten neu berechnet ---
+  // --- Effekt, der auf den Stats-Filter reagiert und die Daten neu berechnet ---
   useEffect(() => {
     if (allHistory.length === 0) {
-      setMatchHistory([{ name: 'Start', score: currentScore }]);
+      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
       return;
     }
 
@@ -135,7 +135,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     );
 
     if (filtered.length === 0) {
-      setMatchHistory([{ name: 'Start', score: currentScore }]);
+      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
       setMatchesWithStats(0);
       setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
       return;
@@ -144,12 +144,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     // Letzte 20 Matches DIESES Typs für Chart & Schlag-Analyse
     const recent = filtered.slice(-20);
 
-    // Chart Formatierung
+    // Chart Formatierung: Dynamisch "Wert" zuweisen je nach Modus
     const formattedData = recent.map((match) => {
       const date = new Date(match.created_at);
       return {
         name: `${date.getDate()}.${date.getMonth() + 1}.`,
-        score: match.points,
+        Wert: statsMode === 'tournament' ? (match.tac_points || 0) : match.points,
         result: match.result
       };
     });
@@ -264,7 +264,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_stamina", String(newState));
   };
 
-  // --- NEU: Win/Loss Berechnung basiert nun auf dem aktiven Filter (All-Time Stats) ---
+  // Win/Loss Berechnung basiert nun auf dem aktiven Filter
   const filteredForWins = allHistory.filter(m => 
     statsMode === 'tournament' 
       ? m.match_type === 'tournament' 
@@ -288,69 +288,36 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* 1. KOPFBEREICH: Avatar & Name             */}
       {/* ========================================= */}
       <div className="flex flex-col md:flex-row items-center md:items-start gap-6 w-full">
-        {/* Avatar Upload */}
         <div className="relative flex flex-col items-center shrink-0">
-          <label 
-            htmlFor="avatar-upload" 
-            className={`relative cursor-pointer group ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-          >
+          <label htmlFor="avatar-upload" className={`relative cursor-pointer group ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {avatarUrl ? (
-              <img 
-                src={avatarUrl} 
-                alt="Profilbild" 
-                className="w-28 h-28 rounded-full object-cover border-4 border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:border-cyan-500/50 transition-colors"
-              />
+              <img src={avatarUrl} alt="Profilbild" className="w-28 h-28 rounded-full object-cover border-4 border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:border-cyan-500/50 transition-colors" />
             ) : (
-              <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">
-                👤
-              </div>
+              <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">👤</div>
             )}
-            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">
-              ✏️
-            </div>
+            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏️</div>
           </label>
           <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
-          {isUploading && (
-            <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>
-          )}
+          {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>}
         </div>
 
-        {/* Name & Account Details */}
         <div className="flex flex-col gap-3 w-full">
           <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
-          
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">E-Mail</label>
-              <div className="px-4 py-3 bg-[#030611] border border-slate-800 rounded-xl text-slate-500 text-xs font-semibold cursor-not-allowed">
-                {user?.email}
-              </div>
+              <div className="px-4 py-3 bg-[#030611] border border-slate-800 rounded-xl text-slate-500 text-xs font-semibold cursor-not-allowed">{user?.email}</div>
             </div>
-
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">Benutzername</label>
-              <input 
-                type="text" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Dein Spielername..."
-                className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
-              />
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Dein Spielername..." className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
             </div>
           </div>
-          
-          <button
-            onClick={handleSave}
-            disabled={isSaving || !username.trim()}
-            className="w-full sm:w-auto self-end px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-1"
-          >
+          <button onClick={handleSave} disabled={isSaving || !username.trim()} className="w-full sm:w-auto self-end px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-1">
             {isSaving ? "Speichert..." : "Namen speichern"}
           </button>
-          
           {message && (
-            <div className={`w-full p-2.5 rounded-lg text-xs font-bold text-center ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-              {message.text}
-            </div>
+            <div className={`w-full p-2.5 rounded-lg text-xs font-bold text-center ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{message.text}</div>
           )}
         </div>
       </div>
@@ -362,28 +329,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ======================================================== */}
       <div className="w-full bg-[#050b14] border border-slate-800 rounded-2xl p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col gap-4">
         <div className="flex justify-between items-center">
-          <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase">
-            Dein Spind
-          </h3>
-          <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">
-            3D Ansicht
-          </span>
+          <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase">Dein Spind</h3>
+          <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">3D Ansicht</span>
         </div>
-
-        {/* 3D Canvas Container */}
         <div className="w-full h-64 sm:h-72 bg-[#03060c] rounded-xl border border-slate-800/80 overflow-hidden relative shadow-inner cursor-grab active:cursor-grabbing">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-cyan-500/40 blur-[40px] pointer-events-none" />
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-orange-500/40 blur-[40px] pointer-events-none" />
-
           <Canvas camera={{ position: [0, 1.2, 4], fov: 45 }}>
             <ambientLight intensity={2.5} />
             <directionalLight position={[0, 1.5, 3]} intensity={2.5} color="#ffffff" />
             <spotLight position={[0, 4, 1]} intensity={3.0} angle={0.8} penumbra={1} />
             <pointLight position={[-1.5, 1.5, 1.5]} intensity={15} color="#00f0ff" distance={10} />
             <pointLight position={[1.5, 1.5, 1.5]} intensity={15} color="#ff7700" distance={10} />
-            
             <PlayerShow />
-            
             <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} minPolarAngle={Math.PI / 2.5} maxPolarAngle={Math.PI / 2} />
           </Canvas>
         </div>
@@ -395,12 +353,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* 2. STATS & AUSRÜSTUNG                     */}
       {/* ========================================= */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-        {/* Gamer Card & Stats */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div>
             <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
-              <span>Spielstil & Ausrüstung</span>
-              <span className="text-slate-600">Locker</span>
+              <span>Spielstil & Ausrüstung</span><span className="text-slate-600">Locker</span>
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
@@ -423,26 +379,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </div>
         </div>
 
-        {/* Roadmap */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-black tracking-widest text-purple-400 uppercase">Tournament Roadmap</h3>
               <span className="text-[10px] font-bold text-purple-300 bg-purple-900/30 px-2 py-1 rounded border border-purple-500/30">In Progress</span>
             </div>
-            
             <div className="flex justify-between items-end mb-1">
               <span className="text-xs font-bold text-slate-300">50er</span>
               <span className="text-[10px] font-black tracking-widest text-purple-400">{currentScore} / 5000 Pkt.</span>
               <span className="text-xs font-bold text-slate-300">250er</span>
             </div>
             <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden mb-3">
-              <div 
-                className="h-full bg-gradient-to-r from-purple-600 to-cyan-400 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out" 
-                style={{ width: `${Math.min(100, Math.max(10, (currentScore / 5000) * 100))}%` }} 
-              />
+              <div className="h-full bg-gradient-to-r from-purple-600 to-cyan-400 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out" style={{ width: `${Math.min(100, Math.max(10, (currentScore / 5000) * 100))}%` }} />
             </div>
-            
             <p className="text-[11px] font-medium text-slate-400 leading-relaxed mt-4 bg-[#050b18] p-3 rounded-lg border border-slate-800/50">
               Sammle TacScore-Punkte und Matchpraxis, um das Ticket für die kompetitiven 250er-Klassen zu lösen.
             </p>
@@ -476,16 +426,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
           <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Siegquote & Historie</span>
         </div>
-        
         <div className="flex items-center gap-5 sm:gap-8">
           <div className="flex gap-3 sm:gap-4 text-[10px] font-black tracking-widest uppercase items-center">
             <span className="text-emerald-400 text-xs sm:text-sm">{wins} W</span>
             <span className="text-slate-600">|</span>
             <span className="text-red-400 text-xs sm:text-sm">{losses} L</span>
           </div>
-          
-          <div className="relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full border-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
-               style={{ borderColor: winRate > 50 ? '#10b981' : winRate > 30 ? '#f59e0b' : '#ef4444' }}>
+          <div className="relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full border-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" style={{ borderColor: winRate > 50 ? '#10b981' : winRate > 30 ? '#f59e0b' : '#ef4444' }}>
             <span className="text-xs sm:text-sm font-black text-white">{winRate}%</span>
           </div>
         </div>
@@ -497,9 +444,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Schlag-Analyse ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
-          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
-            Letzte {matchesWithStats} Matches
-          </span>
+          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">Letzte {matchesWithStats} Matches</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
@@ -523,11 +468,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 5. TAC-SCORE CHART                        */}
+      {/* 5. TAC-SCORE / TAC-POINTS CHART           */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 h-[280px] flex flex-col">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">Performance Historie ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
+          <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
+            Performance Historie ({statsMode === 'single' ? 'TacScore' : 'TacPoints'})
+          </h3>
           <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">Max 20</span>
         </div>
         
@@ -542,8 +489,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               />
               <Line 
                 type="monotone" 
-                dataKey="score" 
-                stroke={statsMode === 'single' ? '#06b6d4' : '#a855f7'} // Farbe wechselt mit!
+                dataKey="Wert" 
+                name={statsMode === 'single' ? 'TacScore' : 'TacPoints'}
+                stroke={statsMode === 'single' ? '#06b6d4' : '#a855f7'}
                 strokeWidth={4} 
                 dot={{ r: 4, fill: statsMode === 'single' ? '#06b6d4' : '#a855f7', stroke: '#0f172a', strokeWidth: 2 }} 
                 activeDot={{ r: 6, fill: '#fff', stroke: statsMode === 'single' ? '#06b6d4' : '#a855f7' }}
@@ -594,7 +542,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 7. SPIELMECHANIK SETTINGS                   */}
+      {/* 7. SPIELMECHANIK SETTINGS                 */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
