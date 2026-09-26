@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 
-// --- NEU: 3D Imports für den Spind ---
+// --- 3D Imports für den Spind ---
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import PlayerShow from "./PlayerShow"; // Passe den Pfad an, falls deine Datei anders heißt oder woanders liegt!
+import PlayerShow from "./PlayerShow"; 
 
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
@@ -25,6 +25,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setShowExplanations(newVal);
     localStorage.setItem("tacpadel_show_explanations", newVal.toString());
   };
+
+  // --- NEU: Filter-State für Statistiken ---
+  const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
+  const [allHistory, setAllHistory] = useState<any[]>([]);
 
   // --- States für das Dashboard ---
   const [matchHistory, setMatchHistory] = useState<any[]>([]);
@@ -55,8 +59,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   // --- States für Audio, Musik & Mechanik ---
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("tacpadel_sound") !== "false");
   const [musicEnabled, setMusicEnabled] = useState(() => localStorage.getItem("tacpadel_music") !== "false");
-  
-  // NEU: State für Ausdauer-System
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         .eq('id', user.id)
         .maybeSingle();
 
-      let trueScore = currentScore; // Basis ist erstmal der lokale Score
+      let trueScore = currentScore; 
 
       if (profileData) {
         if (profileData.display_name) setUsername(profileData.display_name);
@@ -79,74 +81,35 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           setPreferredPosition(profileData.preferred_position);
           localStorage.setItem("tacpadel_preferred_position", profileData.preferred_position);
         } else {
-          // Falls in Supabase noch gar kein Wert steht, laden wir unseren lokalen Wert hoch!
           const localPos = localStorage.getItem("tacpadel_preferred_position") || "Rechts";
           await supabase.from('user_stats').update({ preferred_position: localPos }).eq('id', user.id);
         }
       }
 
-      // 2. Match Historie laden (inkl. Schlag-Statistiken)
+      // 2. GESAMTE Match Historie laden (inkl. match_type)
       const { data: historyData } = await supabase
         .from('match_history')
-        .select('points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect')
+        .select('points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: true }) 
-        .limit(20);
+        .order('created_at', { ascending: true }); // Kompletten Verlauf laden zum Filtern
 
       if (historyData && historyData.length > 0) {
-        // --- NEU: Wir nehmen IMMER den Score aus dem absolut letzten Match als Wahrheit! ---
-        // Das verhindert jegliche Asynchronität zwischen user_stats und match_history.
+        setAllHistory(historyData);
+        
+        // Letztes Match bestimmt den wahren globalen TacScore
         const lastMatch = historyData[historyData.length - 1];
         if (lastMatch.points != null) {
           trueScore = lastMatch.points;
         }
-
-        // A) Daten für den Chart formatieren
-        const formattedData = historyData.map((match) => {
-          const date = new Date(match.created_at);
-          return {
-            name: `${date.getDate()}.${date.getMonth() + 1}.`,
-            score: match.points,
-            result: match.result
-          };
-        });
-        setMatchHistory(formattedData);
-
-        // B) Daten für die Tiefenanalyse (Durchschnitt) berechnen
-        let tAces = 0, tWinners = 0, tUfe = 0, tTotalShots = 0, tPerfect = 0;
-        let validMatchCount = 0;
-
-        historyData.forEach((match) => {
-          if (match.total_shots > 0 || match.winners > 0 || match.unforced_errors > 0) {
-             tAces += match.aces || 0;
-             tWinners += match.winners || 0;
-             tUfe += match.unforced_errors || 0;
-             tTotalShots += match.total_shots || 0;
-             tPerfect += match.shots_perfect || 0;
-             validMatchCount++;
-          }
-        });
-
-        if (validMatchCount > 0) {
-           setMatchesWithStats(validMatchCount);
-           setAggStats({
-             avgWinners: Math.round((tWinners / validMatchCount) * 10) / 10,
-             avgAces: Math.round((tAces / validMatchCount) * 10) / 10,
-             avgErrors: Math.round((tUfe / validMatchCount) * 10) / 10,
-             perfectRatio: tTotalShots > 0 ? Math.round((tPerfect / tTotalShots) * 100) : 0
-           });
-        }
       } else {
-        setMatchHistory([{ name: 'Start', score: trueScore }]);
+        setAllHistory([]);
       }
 
       // --- UI & LocalStorage updaten ---
       setCurrentScore(trueScore);
       localStorage.setItem("tacpadel_score", trueScore.toString());
       
-      // --- SELF-HEALING: Datenbank synchronisieren ---
-      // Falls in user_stats gar kein Eintrag war, legen wir ihn an. 
-      // Falls der Score asynchron war, überschreiben wir ihn mit dem korrekten aus der Historie!
+      // --- SELF-HEALING ---
       if (!profileData) {
         await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, preferred_position: preferredPosition });
       } else if (profileData.points !== trueScore) {
@@ -157,23 +120,78 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     loadUserData();
   }, [user.id]);
 
+  // --- NEU: Effekt, der auf den Stats-Filter reagiert und die Daten neu berechnet ---
+  useEffect(() => {
+    if (allHistory.length === 0) {
+      setMatchHistory([{ name: 'Start', score: currentScore }]);
+      return;
+    }
+
+    // Filtern nach Einzel oder Turnier (alte Matches ohne match_type zählen als Single)
+    const filtered = allHistory.filter(m => 
+      statsMode === 'tournament' 
+        ? m.match_type === 'tournament' 
+        : (m.match_type === 'single' || !m.match_type)
+    );
+
+    if (filtered.length === 0) {
+      setMatchHistory([{ name: 'Start', score: currentScore }]);
+      setMatchesWithStats(0);
+      setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
+      return;
+    }
+
+    // Letzte 20 Matches DIESES Typs für Chart & Schlag-Analyse
+    const recent = filtered.slice(-20);
+
+    // Chart Formatierung
+    const formattedData = recent.map((match) => {
+      const date = new Date(match.created_at);
+      return {
+        name: `${date.getDate()}.${date.getMonth() + 1}.`,
+        score: match.points,
+        result: match.result
+      };
+    });
+    setMatchHistory(formattedData);
+
+    // Tiefenanalyse berechnen
+    let tAces = 0, tWinners = 0, tUfe = 0, tTotalShots = 0, tPerfect = 0;
+    let validMatchCount = 0;
+
+    recent.forEach((match) => {
+      if (match.total_shots > 0 || match.winners > 0 || match.unforced_errors > 0) {
+        tAces += match.aces || 0;
+        tWinners += match.winners || 0;
+        tUfe += match.unforced_errors || 0;
+        tTotalShots += match.total_shots || 0;
+        tPerfect += match.shots_perfect || 0;
+        validMatchCount++;
+      }
+    });
+
+    if (validMatchCount > 0) {
+       setMatchesWithStats(validMatchCount);
+       setAggStats({
+         avgWinners: Math.round((tWinners / validMatchCount) * 10) / 10,
+         avgAces: Math.round((tAces / validMatchCount) * 10) / 10,
+         avgErrors: Math.round((tUfe / validMatchCount) * 10) / 10,
+         perfectRatio: tTotalShots > 0 ? Math.round((tPerfect / tTotalShots) * 100) : 0
+       });
+    } else {
+       setMatchesWithStats(0);
+       setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
+    }
+  }, [allHistory, statsMode, currentScore]);
+
   const handlePositionChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newPos = e.target.value;
     setPreferredPosition(newPos);
-    
-    // SOFORT in den lokalen Speicher schreiben!
     localStorage.setItem("tacpadel_preferred_position", newPos);
     
-    // Wieder sicheres update() statt upsert() verwenden!
-    const { error } = await supabase
-      .from('user_stats')
-      .update({ preferred_position: newPos })
-      .eq('id', user.id);
+    const { error } = await supabase.from('user_stats').update({ preferred_position: newPos }).eq('id', user.id);
     
-    if (error) {
-      console.error("Fehler beim Speichern der Position:", error);
-    } else {
-      // Kleines Feedback, dass es erfolgreich war
+    if (!error) {
       setMessage({ type: 'success', text: `Position erfolgreich auf ${newPos} geändert!` });
       setTimeout(() => setMessage(null), 2500);
     }
@@ -184,36 +202,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setIsUploading(true);
       setMessage(null);
 
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('Bitte wähle ein Bild aus.');
-      }
+      if (!event.target.files || event.target.files.length === 0) throw new Error('Bitte wähle ein Bild aus.');
 
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const publicUrl = data.publicUrl;
 
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl }
-      });
-
-      if (updateError) throw updateError;
-
-      const { error: dbError } = await supabase
-        .from('user_stats')
-        .update({ avatar_url: publicUrl }) // <-- UPDATE statt UPSERT
-        .eq('id', user.id);
-
-      if (dbError) throw dbError;
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+      await supabase.from('user_stats').update({ avatar_url: publicUrl }).eq('id', user.id);
 
       setAvatarUrl(publicUrl);
       setMessage({ type: 'success', text: "Profilbild erfolgreich aktualisiert!" });
@@ -231,15 +233,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setMessage(null);
     
     const newName = username.trim();
-
-    const { error: authError } = await supabase.auth.updateUser({
-      data: { display_name: newName }
-    });
-    
-    const { error: dbError } = await supabase
-      .from('user_stats')
-      .update({ display_name: newName }) // <-- UPDATE statt UPSERT
-      .eq('id', user.id);
+    const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
+    const { error: dbError } = await supabase.from('user_stats').update({ display_name: newName }).eq('id', user.id);
     
     setIsSaving(false);
 
@@ -263,16 +258,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_music", String(newState));
   };
   
-  // NEU: Toggle für das Ausdauer-System
   const toggleStamina = () => {
     const newState = !staminaEnabled;
     setStaminaEnabled(newState);
     localStorage.setItem("tacpadel_stamina", String(newState));
   };
 
-  // --- Win/Loss Berechnung ---
-  const wins = matchHistory.filter(m => m.result === 'win').length;
-  const losses = matchHistory.filter(m => m.result === 'loss').length;
+  // --- NEU: Win/Loss Berechnung basiert nun auf dem aktiven Filter (All-Time Stats) ---
+  const filteredForWins = allHistory.filter(m => 
+    statsMode === 'tournament' 
+      ? m.match_type === 'tournament' 
+      : (m.match_type === 'single' || !m.match_type)
+  );
+  const wins = filteredForWins.filter(m => m.result === 'win').length;
+  const losses = filteredForWins.filter(m => m.result === 'loss').length;
   const totalMatches = wins + losses;
   const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
 
@@ -310,18 +309,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               ✏️
             </div>
           </label>
-          <input
-            id="avatar-upload"
-            type="file"
-            accept="image/*"
-            onChange={handleAvatarUpload}
-            disabled={isUploading}
-            className="hidden"
-          />
+          <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
           {isUploading && (
-            <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">
-              Lädt hoch...
-            </span>
+            <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>
           )}
         </div>
 
@@ -382,36 +372,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
         {/* 3D Canvas Container */}
         <div className="w-full h-64 sm:h-72 bg-[#03060c] rounded-xl border border-slate-800/80 overflow-hidden relative shadow-inner cursor-grab active:cursor-grabbing">
-          
-          {/* Atmosphärische Neon-Beleuchtung im Hintergrund (CSS) */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-cyan-500/40 blur-[40px] pointer-events-none" />
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-orange-500/40 blur-[40px] pointer-events-none" />
 
           <Canvas camera={{ position: [0, 1.2, 4], fov: 45 }}>
             <ambientLight intensity={2.5} />
-            
             <directionalLight position={[0, 1.5, 3]} intensity={2.5} color="#ffffff" />
-            
-            <spotLight 
-              position={[0, 4, 1]} 
-              intensity={3.0} 
-              angle={0.8} 
-              penumbra={1} 
-            />
-            
+            <spotLight position={[0, 4, 1]} intensity={3.0} angle={0.8} penumbra={1} />
             <pointLight position={[-1.5, 1.5, 1.5]} intensity={15} color="#00f0ff" distance={10} />
             <pointLight position={[1.5, 1.5, 1.5]} intensity={15} color="#ff7700" distance={10} />
-
+            
             <PlayerShow />
-
-            <OrbitControls 
-              enableZoom={false} 
-              enablePan={false} 
-              autoRotate 
-              autoRotateSpeed={0.5}
-              minPolarAngle={Math.PI / 2.5} 
-              maxPolarAngle={Math.PI / 2} 
-            />
+            
+            <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} minPolarAngle={Math.PI / 2.5} maxPolarAngle={Math.PI / 2} />
           </Canvas>
         </div>
       </div>
@@ -422,7 +395,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* 2. STATS & AUSRÜSTUNG                     */}
       {/* ========================================= */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-        
         {/* Gamer Card & Stats */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div>
@@ -431,22 +403,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <span className="text-slate-600">Locker</span>
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              {/* Position */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
                 <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Position</span>
                 <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
               </div>
-              {/* Schläger */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
                 <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Schläger</span>
                 <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
               </div>
-              {/* Ausrüstung */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
                 <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Ausrüstung</span>
                 <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
               </div>
-              {/* Powerschlag */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
                 <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Powerschlag</span>
                 <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
@@ -483,11 +451,29 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 2.5 MATCH BILANZ                            */}
+      {/* 2.5 STATISTIK-FILTER (EINZEL / TURNIER)   */}
+      {/* ========================================= */}
+      <div className="flex bg-[#030611]/80 border border-slate-800/80 rounded-xl p-1.5 w-full mt-4 shadow-lg">
+        <button 
+          onClick={() => setStatsMode('single')}
+          className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Einzel-Matches
+        </button>
+        <button 
+          onClick={() => setStatsMode('tournament')}
+          className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Turniere
+        </button>
+      </div>
+
+      {/* ========================================= */}
+      {/* 3. MATCH BILANZ                           */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-row justify-between items-center">
         <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz</h3>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
           <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Siegquote & Historie</span>
         </div>
         
@@ -506,32 +492,28 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 3. TIEFENANALYSE (SCHLAG-STATS)           */}
+      {/* 4. TIEFENANALYSE (SCHLAG-STATS)           */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Schlag-Analyse (Avg. pro Match)</h3>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Schlag-Analyse ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
           <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
             Letzte {matchesWithStats} Matches
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* Winner */}
           <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
             <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgWinners}</span>
             <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">Winner</span>
           </div>
-          {/* Asse */}
           <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
             <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgAces}</span>
             <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">Asse</span>
           </div>
-          {/* Fehler */}
           <div className="bg-[#050b18] py-4 rounded-lg border border-red-900/20 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
             <span className="text-2xl font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">{aggStats.avgErrors}</span>
             <span className="text-[9px] text-red-900/80 uppercase tracking-widest font-bold mt-1">Fehler (UFE)</span>
           </div>
-          {/* Perfekte Schläge */}
           <div className="bg-[#050b18] py-4 rounded-lg border border-emerald-500/30 flex flex-col items-center justify-center text-center shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
             <span className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">{aggStats.perfectRatio}%</span>
@@ -541,12 +523,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 4. TAC-SCORE CHART                        */}
+      {/* 5. TAC-SCORE CHART                        */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 h-[280px] flex flex-col">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">Performance Historie</h3>
-          <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">Letzte 20 Matches</span>
+          <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">Performance Historie ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
+          <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">Max 20</span>
         </div>
         
         <div className="flex-1 w-full min-h-0">
@@ -561,10 +543,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <Line 
                 type="monotone" 
                 dataKey="score" 
-                stroke="#06b6d4" 
+                stroke={statsMode === 'single' ? '#06b6d4' : '#a855f7'} // Farbe wechselt mit!
                 strokeWidth={4} 
-                dot={{ r: 4, fill: '#06b6d4', stroke: '#0f172a', strokeWidth: 2 }} 
-                activeDot={{ r: 6, fill: '#fff', stroke: '#06b6d4' }}
+                dot={{ r: 4, fill: statsMode === 'single' ? '#06b6d4' : '#a855f7', stroke: '#0f172a', strokeWidth: 2 }} 
+                activeDot={{ r: 6, fill: '#fff', stroke: statsMode === 'single' ? '#06b6d4' : '#a855f7' }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -572,7 +554,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 5. AUDIO & UI SETTINGS                      */}
+      {/* 6. AUDIO & UI SETTINGS                    */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
@@ -581,46 +563,30 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
         
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
-          {/* SFX Toggle */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SFX</span>
-            <button 
-              onClick={toggleSound}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${soundEnabled ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-700'}`}
-            >
+            <button onClick={toggleSound} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${soundEnabled ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: soundEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
 
-          {/* Music Toggle */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
-            <button 
-              onClick={toggleMusic}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}
-            >
+            <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
 
-          {/* Text Toggle */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Texte</span>
-            <button 
-              onClick={toggleExplanations}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}
-            >
+            <button onClick={toggleExplanations} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showExplanations ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
 
-          {/* Name Tags Toggle (JETZT HIER IN BLOCK 5) */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Namen</span>
-            <button 
-              onClick={toggleNameTags}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}
-            >
+            <button onClick={toggleNameTags} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showNameTags ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
@@ -628,7 +594,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 6. SPIELMECHANIK SETTINGS                   */}
+      {/* 7. SPIELMECHANIK SETTINGS                   */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
@@ -637,23 +603,16 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
         
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
-          {/* Stamina Toggle */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ausdauer</span>
-            <button 
-              onClick={toggleStamina}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${staminaEnabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}
-            >
+            <button onClick={toggleStamina} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${staminaEnabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: staminaEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
         </div>
       </div>
 
-      <button
-        onClick={() => setActiveTab("home")}
-        className="text-[10px] text-slate-500 hover:text-slate-300 font-bold uppercase tracking-widest transition-colors mt-2"
-      >
+      <button onClick={() => setActiveTab("home")} className="text-[10px] text-slate-500 hover:text-slate-300 font-bold uppercase tracking-widest transition-colors mt-2">
         ← Zurück zum Menü
       </button>
 
