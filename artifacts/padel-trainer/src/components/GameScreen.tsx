@@ -13,7 +13,7 @@ import TourScreen from "./TourScreen";
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
-import { TOURNAMENTS } from "../engine/Tournaments"; // WICHTIG: Für das Preisgeld benötigt
+import { TOURNAMENTS } from "../engine/Tournaments";
 
 type Stats = { 
   winners: number; 
@@ -72,10 +72,13 @@ export default function GameScreen() {
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
-  // --- NEU: State für gewonnenes Preisgeld ---
   const [earnedTP, setEarnedTP] = useState<number>(0);
 
   const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
+
+  // --- NEU: Team & Partner States ---
+  const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
+  const [partnerName, setPartnerName] = useState<string>("Partner");
 
   const [introTrigger, setIntroTrigger] = useState(0); 
   const [playIntro, setPlayIntro] = useState<boolean>(false);
@@ -142,22 +145,38 @@ export default function GameScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           const { data, error } = await supabase
-            .from("user_stats") 
-            .select("points") 
+            .from("user_stats")
+            .select("points, team_name, partner_id") 
             .eq("id", session.user.id)
             .single();
 
           if (data && !error) {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
+            
+            // Partner & Team Daten setzen
+            if (data.team_name) setUserTeamName(data.team_name);
+            if (data.partner_id) {
+              const [pId, pNum] = data.partner_id.split('-');
+              const prof = AI_PROFILES.find(p => p.id === pId);
+              if (prof) setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
+            }
             return; 
           }
         }
       } catch (err) {
-        console.log("Konnte Score nicht von Supabase laden, nutze lokalen Speicher.");
+        console.log("Konnte Daten nicht von Supabase laden, nutze lokalen Speicher.");
       }
+      // Fallback
       const saved = localStorage.getItem("tacpadel_score");
       if (saved) setTacScore(parseInt(saved, 10));
+      
+      const localPartner = localStorage.getItem("tacpadel_partner_id");
+      if (localPartner) {
+        const [pId, pNum] = localPartner.split('-');
+        const prof = AI_PROFILES.find(p => p.id === pId);
+        if (prof) setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
+      }
     };
     fetchUserScore();
   }, []);
@@ -327,7 +346,7 @@ export default function GameScreen() {
     setShowGameOverUI(false);
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
-    setEarnedTP(0); // NEU: Preisgeld Reset
+    setEarnedTP(0);
 
     const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
     const roundDifficultyBonus = (round - 1) * 500; 
@@ -392,7 +411,7 @@ export default function GameScreen() {
     setAiScore(0);
     setGameOver(false);
     setShowGameOverUI(false);
-    setEarnedTP(0); // NEU: Preisgeld Reset
+    setEarnedTP(0);
     
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
@@ -541,16 +560,16 @@ export default function GameScreen() {
           
           if (!isAiServing) {
             nextState[currentAiHitter] = ballLandedAt;
-            const partnerId = currentAiHitter === "opp1" ? "opp2" : "opp1";
+            const pId = currentAiHitter === "opp1" ? "opp2" : "opp1";
             let pTarget = brain.opp2Target || "C2"; 
             const targetRow = pTarget[1]; 
             const hitterCol = ballLandedAt[0]; 
 
             if (hitterCol === "A" || hitterCol === "B") pTarget = "D" + targetRow; 
             else if (hitterCol === "D" || hitterCol === "E") pTarget = "B" + targetRow; 
-            else pTarget = partnerId === "opp1" ? "B" + targetRow : "D" + targetRow; 
+            else pTarget = pId === "opp1" ? "B" + targetRow : "D" + targetRow; 
             
-            nextState[partnerId] = pTarget;
+            nextState[pId] = pTarget;
 
             if (staminaModeEnabled) {
               const opp1Dist = getZoneDist(prev.opp1, nextState.opp1);
@@ -809,7 +828,7 @@ export default function GameScreen() {
     if (isPlayerServingTurn && hitterId !== serverId) {
       currentTurnResult = "error_wrong_zone";
       tTitle = "❌ FALSCHER AUFSCHLÄGER!";
-      message = `Regelfehler! Falscher Aufschläger. Laut Rotation ${serverId === "you" ? "bist DU" : "ist dein PARTNER"} an der Reihe!`;
+      message = `Regelfehler! Falscher Aufschläger. Laut Rotation ${serverId === "you" ? "bist DU" : `ist ${partnerName}`} an der Reihe!`;
     } 
     else if (isPlayerServingTurn) {
       const hCol = hitFromPos.charAt(0).toUpperCase();
@@ -833,7 +852,7 @@ export default function GameScreen() {
       if (hitterId !== expectedReturner) {
          currentTurnResult = "error_wrong_zone";
          tTitle = "❌ FALSCHER RETURNER!";
-         message = `Regelfehler! Der Aufschlag kam diagonal auf ${expectedReturner === "you" ? "dich" : "deinen Partner"}. Abfangen ist beim Return verboten!`;
+         message = `Regelfehler! Der Aufschlag kam diagonal auf ${expectedReturner === "you" ? "dich" : partnerName}. Abfangen ist beim Return verboten!`;
       }
     }
 
@@ -959,17 +978,13 @@ export default function GameScreen() {
     setAiScore(newAiScore);
     setMatchStats(newStats); 
 
-    // =========================================================================
-    // NEU: ZIELSCORE BERECHNEN (Turnier Runden sind kürzer!)
-    // =========================================================================
-    let targetScore = 10; // Standard Einzelmatch
+    let targetScore = 10; 
     if (activeTournamentId) {
       if (activeTournamentRound === 1) targetScore = 6;
       else if (activeTournamentRound === 2) targetScore = 8;
       else if (activeTournamentRound === 3) targetScore = 10;
     }
 
-    // SPIELENDE (TIEBREAK ENTSCHIEDEN - Dynamisch auf 6, 8 oder 10)
     if ((newPlayerScore >= targetScore && newPlayerScore - newAiScore >= 2) || (newAiScore >= targetScore && newAiScore - newPlayerScore >= 2)) {
       
       setGameOver(true); 
@@ -984,7 +999,6 @@ export default function GameScreen() {
       const playerWon = newPlayerScore > newAiScore;
       const diff = Math.abs(newPlayerScore - newAiScore);
 
-      // --- TURNIER LOGIK BEIM SPIELENDE ---
       if (activeTournamentId) {
         let scoreChange = 0;
         let tpReward = 0;
@@ -1050,7 +1064,6 @@ export default function GameScreen() {
 
               await supabase.from("user_stats").update({ points: finalScore, tac_points: currentTacPoints }).eq("id", session.user.id);
               
-              // WICHTIG: match_type "tournament" hinzugefügt
               await supabase.from("match_history").insert({ 
                 user_id: session.user.id, 
                 points: finalScore, 
@@ -1061,7 +1074,7 @@ export default function GameScreen() {
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
                 match_type: "tournament",
-                tac_points: currentTacPoints // <--- DIESE ZEILE HINZUFÜGEN
+                tac_points: currentTacPoints 
               });
 
             }
@@ -1070,7 +1083,6 @@ export default function GameScreen() {
           }
         })();
       } 
-      // --- NORMALES EINZELMATCH LOGIK BEIM SPIELENDE ---
       else {
         let scoreChange = 0;
         if (playerWon) scoreChange = 100 + (diff * 15);
@@ -1090,7 +1102,6 @@ export default function GameScreen() {
               await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
               const matchResult = playerWon ? "win" : "loss";
               
-              // WICHTIG: match_type "single" hinzugefügt
               await supabase.from("match_history").insert({ 
                 user_id: session.user.id, 
                 points: finalScore, 
@@ -1149,7 +1160,7 @@ export default function GameScreen() {
       if (isRightCourt) { pPartner = "D1"; pYou = "B4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
       else { pPartner = "B1"; pYou = "B4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
       ballSide = "left"; nextPhase = "player_planning"; receiverId = "partner"; 
-      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ 2. AUFSCHLAG (PARTNER)!" : "PARTNER SCHLÄGT AUF!", isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? `⚠️ 2. AUFSCHLAG (${partnerName.toUpperCase()})!` : `${partnerName.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
     } 
     else if (serverId === "opp1") {
       if (isRightCourt) { pOpp1 = "B1"; pOpp2 = "D4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
@@ -1293,7 +1304,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* PRO TOUR SCREEN OVERLAY                               */}
+      {/* PRO TOUR SCREEN OVERLAY                             */}
       {/* =================================================== */}
       <AnimatePresence>
         {isTourOpen && (
@@ -1408,7 +1419,7 @@ export default function GameScreen() {
 
                 <div className="text-center">
                   <h2 className="text-4xl sm:text-5xl font-black mb-2 uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
-                    {playerScore > aiScore ? <span className="text-emerald-400">🏆 Du Gewinnst!</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} Gewinnt!</span>}
+                    {playerScore > aiScore ? <span className="text-emerald-400">🏆 Ihr Gewinnt!</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} Gewinnt!</span>}
                   </h2>
                   <p className="text-slate-300 text-lg font-bold">Endstand im Tiebreak: {playerScore} : {aiScore}</p>
                 </div>
@@ -1444,7 +1455,7 @@ export default function GameScreen() {
                   <div className="flex-[1.5] w-full bg-[#050b14] border border-slate-700/50 rounded-2xl overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col">
                     <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Match Ausgang</span></div>
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Dein Team</span></div>
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">{userTeamName}</span></div>
                       <div className="py-2 flex flex-col justify-center bg-slate-900/20"><span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Metrik</span></div>
                       <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest">{activeAiProfile.teamName}</span></div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.aces}</div>
@@ -1554,7 +1565,7 @@ export default function GameScreen() {
               {/* PARTNER */}
               <div className="absolute bottom-4 right-4 flex flex-col gap-1 w-28 sm:w-36 items-end">
                  <div className="flex justify-between items-end w-full flex-row-reverse">
-                   <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">Partner</span>
+                   <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{partnerName}</span>
                    {stamina.partner <= MAX_PLAYER_STAMINA * 0.3 && <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
                  </div>
                  <div className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${stamina.partner <= MAX_PLAYER_STAMINA * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
@@ -1584,7 +1595,7 @@ export default function GameScreen() {
                 if (info.serverId === "you") {
                    showFlash("DU HAST AUFSCHLAG!", "text-purple-400", 3000);
                 } else if (info.serverId === "partner") {
-                   showFlash("PARTNER SCHLÄGT AUF!", "text-cyan-400", 3000);
+                   showFlash(`${partnerName.toUpperCase()} SCHLÄGT AUF!`, "text-cyan-400", 3000);
                 } else {
                    showFlash(`${activeAiProfile.teamName.toUpperCase()} SCHLÄGT AUF!`, "text-red-400", 3000);
                 }
@@ -1645,7 +1656,7 @@ export default function GameScreen() {
           <>
             <div className="flex items-center justify-between px-1 mb-2 mt-1">
               <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
-                {activeChar === "you" ? "DU" : "PARTNER"} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
+                {activeChar === "you" ? "DU" : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
               </span>
               <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
                 <div ref={progressBarRef} className={`h-full ${isTimerPhase ? 'bg-emerald-500 w-full' : 'w-0 opacity-0'}`} />
@@ -1658,7 +1669,7 @@ export default function GameScreen() {
                   <span className="text-sm">DU</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
                 </button>
                 <button onClick={() => setActiveChar("partner")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "partner" ? 'bg-cyan-900/40 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm">PARTNER</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
+                  <span className="text-sm truncate w-full text-center px-1">{partnerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
                 </button>
               </div>
             ) : (
@@ -1682,7 +1693,7 @@ export default function GameScreen() {
                 <div className="col-span-2 flex flex-col items-center justify-center border border-dashed border-slate-700/50 bg-slate-800/20 rounded p-1.5 pointer-events-none opacity-60">
                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">🛡️ Raumabdeckung</span>
                   <span className="text-[7px] font-bold text-slate-600">
-                    {hitterId === "you" ? "Du" : "Partner"} {hitterId === "you" ? "hast" : "hat"} den Ball
+                    {hitterId === "you" ? "Du hast" : `${partnerName} hat`} den Ball
                   </span>
                 </div>
               )}

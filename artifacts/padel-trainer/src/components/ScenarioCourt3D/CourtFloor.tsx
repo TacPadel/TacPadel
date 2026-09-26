@@ -3,7 +3,6 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Text } from "@react-three/drei";
 
-// --- NEU: Import für das KI Profil ---
 import { AiProfile } from "../../engine/AiProfiles"; 
 
 // --- Die offiziellen weißen Padel-Linien als 3D-Objekte ---
@@ -101,8 +100,8 @@ function HologramBanner() {
   );
 }
 
-// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Angepasst für KI Namen) ---
-function TribuneBanners({ playerName = "SPIELER", aiTeamName = "TEAM KI" }: { playerName?: string, aiTeamName?: string }) {
+// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Mit Spieler, Partner & KI Namen) ---
+function TribuneBanners({ playerName = "SPIELER", partnerName = "PARTNER", aiTeamName = "TEAM KI" }: { playerName?: string, partnerName?: string, aiTeamName?: string }) {
   const leftRef = useRef<THREE.Group>(null);
   const rightRef = useRef<THREE.Group>(null);
 
@@ -114,27 +113,27 @@ function TribuneBanners({ playerName = "SPIELER", aiTeamName = "TEAM KI" }: { pl
 
   return (
     <group>
-      {/* LINKES BANNER (TEAM DU) */}
+      {/* LINKES BANNER (DEIN TEAM: SPIELER & PARTNER) */}
       <group ref={leftRef} position={[-14, 5.5, 2]} rotation={[0, Math.PI / 2, 0]}>
         <Text
-          fontSize={1.2}
+          fontSize={1.0}
           fontWeight="bold"
-          letterSpacing={0.1}
+          letterSpacing={0.08}
           fillOpacity={0}
           strokeWidth={0.03}
           strokeColor="#f97316" // Orange
           material-toneMapped={false}
         >
-          TEAM {playerName.toUpperCase()}
+          {playerName.toUpperCase()} & {partnerName.toUpperCase()}
         </Text>
       </group>
 
-      {/* RECHTES BANNER (TEAM KI) */}
+      {/* RECHTES BANNER (GEGNER TEAM) */}
       <group ref={rightRef} position={[14, 5.5, 2]} rotation={[0, -Math.PI / 2, 0]}>
         <Text
-          fontSize={1.2}
+          fontSize={1.0}
           fontWeight="bold"
-          letterSpacing={0.1}
+          letterSpacing={0.08}
           fillOpacity={0}
           strokeWidth={0.03}
           strokeColor="#00f0ff" // Cyan
@@ -175,7 +174,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     const rowsCount = 4.5; 
     const startOffset = 11.6; 
     const stepDepth = 0.6;    
-    const startY = -0.6;       
+    const startY = -0.6;      
     const stepY = 0.3;        
     const fansPerStand = count / 3; 
 
@@ -317,7 +316,6 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
   );
 }
 
-// --- Props aktualisiert um activeAiProfile ---
 export interface ScoreboardProps {
   serverId?: string;
   playerScore?: number | string;
@@ -327,14 +325,14 @@ export interface ScoreboardProps {
   isTimerPhase?: boolean;
   isPlayerTeamServe?: boolean;
   playerName?: string; 
+  partnerName?: string; // NEU
   isSimulationMode?: boolean; 
-  activeAiProfile?: AiProfile; // <-- NEU
+  activeAiProfile?: AiProfile; 
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
   const { scene } = useGLTF("/TacPadel.glb");
 
-  // --- AAA MATERIAL-UPGRADE ---
   useEffect(() => {
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
@@ -365,36 +363,25 @@ export default function CourtFloor(props: ScoreboardProps) {
     isTimerPhase = false,
     isPlayerTeamServe = true,
     playerName = "Gast",
+    partnerName = "Partner",
     isSimulationMode = false,
     activeAiProfile
   } = props;
   
-  // --- NEU: Extrahierte KI-Namen für das Scoreboard ---
   const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
   const opp1Name = activeAiProfile?.p1 || "KI 1";
   const opp2Name = activeAiProfile?.p2 || "KI 2";
 
   return (
     <group name="Environment">
-      {/* 1. Dein Blender Stadion */}
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
-      
-      {/* 2. Die weißen Feld-Linien */}
       <OfficialCourtLines />
-
-      {/* 3. Der drehende Hologramm-Ring */}
       <HologramBanner />
-
-      {/* 4. Die seitlichen Hologramm-Banner über den Tribünen */}
-      <TribuneBanners playerName={playerName} aiTeamName={aiTeamName} />
-
-      {/* 5. Die 3D-Meeple-Zuschauer (Animiert) */}
+      <TribuneBanners playerName={playerName} partnerName={partnerName} aiTeamName={aiTeamName} />
       <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} />
 
-      {/* 6. DIE GROSSE LED-SCOREBOARD-WAND IM HINTERGRUND */}
+      {/* DIE GROSSE LED-SCOREBOARD-WAND IM HINTERGRUND */}
       <group position={[0.25, 6.38, -11.7]} rotation={[0, 0, 0]}>
-        
-        {/* Das physische 3D-Gehäuse */}
         <mesh position={[0, 0, -0.05]}>
           <boxGeometry args={[3.1, 1.6, 0.1]} />
           <meshStandardMaterial color="#020308" roughness={0.8} />
@@ -406,7 +393,6 @@ export default function CourtFloor(props: ScoreboardProps) {
           className="pointer-events-none select-none"
         >
           {isSimulationMode ? (
-            // --- DAS NEUE SIMULATIONS-BRANDING FÜR ScenarioCourt4D ---
             <div className="w-[400px] h-[200px] flex flex-col items-center justify-center bg-[#040914] border border-cyan-900/50 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/80 to-transparent" />
               <div className="absolute inset-0 bg-[linear-gradient(rgba(0,240,255,0.03)_1px,transparent_1px)] bg-[size:100%_4px] opacity-30 mix-blend-overlay" />
@@ -420,14 +406,15 @@ export default function CourtFloor(props: ScoreboardProps) {
               </div>
             </div>
           ) : (
-            // --- DAS NORMALE MATCH-SCOREBOARD FÜR ScenarioCourt3D ---
             <div className="w-[400px] h-[200px] flex flex-col justify-center bg-[#040914] border border-cyan-900/50 p-8 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/80 to-transparent" />
               
               <div className="flex flex-row justify-between items-center w-full px-4">
                 
                 <div className="text-left flex flex-col items-start w-1/3">
-                  <p className="text-sm text-orange-400 font-bold tracking-widest uppercase mb-2">Team {serverId === "you" && "(Du)"} {serverId === "partner" && "🎾(Partner)"}</p>
+                  <p className="text-[11px] text-orange-400 font-bold tracking-widest uppercase mb-2">
+                    {serverId === "you" && "🎾(Du)"} {serverId === "partner" && `🎾(${partnerName})`}
+                  </p>
                   <p className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,119,0,0.6)]">{playerScore}</p>
                 </div>
                 
@@ -439,7 +426,6 @@ export default function CourtFloor(props: ScoreboardProps) {
                 </div>
                 
                 <div className="text-right flex flex-col items-end w-1/3">
-                  {/* HIER WIRD DER KI NAMEN ANGEZEIGT */}
                   <p className="text-[11px] text-slate-400 font-bold tracking-widest uppercase mb-2">
                     {!isPlayerTeamServe && "🎾"} {aiTeamName} <br/> {serverId === "opp1" && <span className="text-cyan-300">({opp1Name})</span>} {serverId === "opp2" && <span className="text-cyan-300">({opp2Name})</span>}
                   </p>

@@ -8,7 +8,7 @@ import { supabase } from "../../lib/supabase";
 import Effects from "./Effects";
 import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
-import { AiProfile } from "../../engine/AiProfiles"; // <-- NEU
+import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles"; // AI_PROFILES hinzugefügt
 
 // =========================================================
 // 1. CINEMATIC INTRO KAMERA (Drohnen-Flug mit Pause)
@@ -89,11 +89,9 @@ function OutroCamera({ onCrash }: { onCrash: () => void }) {
   ]), []);
 
   useFrame((state, delta) => {
-    // Geschwindigkeit auf 0.35 reduziert (ca. 2.8 Sekunden Flugzeit), um die Lücke zu füllen
     const speed = 0.35; 
     progressRef.current += delta * speed;
 
-    // MAGIE: Wenn der Flug zu 90% durch ist, triggern wir die Blende, bevor wir ankommen!
     if (progressRef.current >= 0.90 && !hasCrashed.current) {
       hasCrashed.current = true;
       onCrash();
@@ -274,14 +272,14 @@ export interface Props {
   playIntro?: boolean;
   onIntroFinished?: () => void;
   
-  activeAiProfile?: AiProfile; // <--- NEU: Gegner-Team Infos
+  activeAiProfile?: AiProfile; 
 }
 
 export default function ScenarioCourt3D(props: Props) {
   const [introFinished, setIntroFinished] = useState(false);
   const [playerName, setPlayerName] = useState("Gast");
+  const [partnerName, setPartnerName] = useState("Partner"); // NEU: Partner-Name State
   
-  // HIER FEHLTE DER STATE IM VORHERIGEN CODE!
   const [blackout, setBlackout] = useState(false);
   
   const controlsRef = useRef<any>(null);
@@ -294,7 +292,7 @@ export default function ScenarioCourt3D(props: Props) {
   }, [props.playIntro]);
 
   useEffect(() => {
-    const fetchName = async () => {
+    const fetchUserData = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -303,20 +301,29 @@ export default function ScenarioCourt3D(props: Props) {
         
         const { data: profileData } = await supabase
           .from('user_stats')
-          .select('display_name')
+          .select('display_name, partner_id')
           .eq('id', user.id)
           .maybeSingle();
 
-        if (profileData?.display_name) {
-          name = profileData.display_name;
+        if (profileData) {
+          if (profileData.display_name) {
+            name = profileData.display_name;
+          }
+          if (profileData.partner_id) {
+            const [pId, pNum] = profileData.partner_id.split('-');
+            const prof = AI_PROFILES.find(p => p.id === pId);
+            if (prof) {
+              setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
+            }
+          }
         }
 
         setPlayerName(name);
       } catch (error) {
-        console.error("Fehler beim Laden des Spielernamens:", error);
+        console.error("Fehler beim Laden der Profildaten:", error);
       }
     };
-    fetchName();
+    fetchUserData();
   }, []);
 
   return (
@@ -346,8 +353,8 @@ export default function ScenarioCourt3D(props: Props) {
             {/* 1. INTRO KAMERA */}
             {!introFinished && !props.gameOver && (
               <IntroCamera onFinished={() => {
-                  setIntroFinished(true);
-                  if (props.onIntroFinished) props.onIntroFinished();
+                setIntroFinished(true);
+                if (props.onIntroFinished) props.onIntroFinished();
               }} />
             )}
 
@@ -383,7 +390,7 @@ export default function ScenarioCourt3D(props: Props) {
               />
             )}
 
-            {/* 4. OUTRO KAMERA (Mit Übergabe-Funktion an den Fade) */}
+            {/* 4. OUTRO KAMERA */}
             {props.gameOver && (
               <OutroCamera onCrash={() => setBlackout(true)} />
             )}
@@ -398,21 +405,15 @@ export default function ScenarioCourt3D(props: Props) {
               isTimerPhase={props.isTimerPhase}
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
-              activeAiProfile={props.activeAiProfile} // <--- NEU
+              partnerName={partnerName} // NEU: Partner-Name an CourtFloor übergeben
+              activeAiProfile={props.activeAiProfile} 
             /> 
             <TacticalData {...props} />
           </Suspense>
         </Canvas>
       </div>
 
-      {/* =========================================================
-          HTML OVERLAY: SCHWARZER BLENDE-EFFEKT
-          ========================================================= */}
-      {/* 
-        Das Overlay startet bei 0% Deckkraft (opacity-0).
-        Wenn die OutroCamera "onCrash()" aufruft, wird blackout true 
-        und es blendet sanft auf opacity-100 (komplett schwarz).
-      */}
+      {/* HTML OVERLAY: SCHWARZER BLENDE-EFFEKT */}
       {props.gameOver && (
         <div 
           className={`absolute inset-0 z-40 bg-black pointer-events-none transition-opacity duration-[400ms] ${
