@@ -502,9 +502,10 @@ export default function App(): React.JSX.Element {
   const handleGoogleLogin = async () => {
     const isNativeApp = Capacitor.isNativePlatform();
     
+    // Wir nutzen hier fest deinen echten, ungesperrten Haupt-Link für das Web!
     const redirectUrl = isNativeApp 
       ? 'tacpadel://callback/' 
-      : window.location.origin;
+      : 'https://tac-padel-api-server.vercel.app'; 
 
     console.log("Starte Google OAuth mit Redirect zu:", redirectUrl);
 
@@ -523,14 +524,12 @@ export default function App(): React.JSX.Element {
 
     if (data?.url) {
       if (isNativeApp) {
-        console.log("Öffne sicheren In-App-Browser für die App...");
         await Browser.open({ url: data.url });
       } else {
-        console.log("Nutze normalen Tab für PC-Browser...");
         window.location.href = data.url;
       }
     }
-  };
+};
 
   const handleAppleLogin = async () => {
     const isNativeApp = Capacitor.isNativePlatform();
