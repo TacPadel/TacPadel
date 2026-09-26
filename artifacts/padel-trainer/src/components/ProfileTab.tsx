@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 
-// --- 3D Imports für den Spind ---
+// --- Imports für KI-Profile & 3D ---
+import { AI_PROFILES } from '../engine/AiProfiles'; 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
@@ -11,32 +12,30 @@ import PlayerShow from "./PlayerShow";
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
+  
+  // --- NEU: Team & Partner States ---
+  const [teamName, setTeamName] = useState("TacPadel Rookies");
+  const [partnerId, setPartnerId] = useState("pro_1-1"); 
+  
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
   
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.user_metadata?.avatar_url || null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const [showExplanations, setShowExplanations] = useState(() => {
-    return localStorage.getItem("tacpadel_show_explanations") !== "false";
-  });
+  const [showExplanations, setShowExplanations] = useState(() => localStorage.getItem("tacpadel_show_explanations") !== "false");
   const toggleExplanations = () => {
     const newVal = !showExplanations;
     setShowExplanations(newVal);
     localStorage.setItem("tacpadel_show_explanations", newVal.toString());
   };
 
-  // --- Filter-State für Statistiken ---
   const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
   const [allHistory, setAllHistory] = useState<any[]>([]);
-
-  // --- States für das Dashboard ---
+  const [wonTrophies, setWonTrophies] = useState<string[]>([]);
   const [matchHistory, setMatchHistory] = useState<any[]>([]);
 
-  const [showNameTags, setShowNameTags] = useState(() => {
-    return localStorage.getItem("tacpadel_show_nametags") !== "false";
-  });
-
+  const [showNameTags, setShowNameTags] = useState(() => localStorage.getItem("tacpadel_show_nametags") !== "false");
   const toggleNameTags = () => {
     const newVal = !showNameTags;
     setShowNameTags(newVal);
@@ -48,25 +47,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     return saved ? parseInt(saved, 10) : 0;
   });
 
-  const [preferredPosition, setPreferredPosition] = useState<string>(() => {
-    return localStorage.getItem("tacpadel_preferred_position") || "Rechts";
-  });
-  
-  // --- State für die aggregierten Schlag-Daten ---
+  const [preferredPosition, setPreferredPosition] = useState<string>(() => localStorage.getItem("tacpadel_preferred_position") || "Rechts");
   const [aggStats, setAggStats] = useState({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
   const [matchesWithStats, setMatchesWithStats] = useState(0);
 
-  // --- States für Audio, Musik & Mechanik ---
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("tacpadel_sound") !== "false");
   const [musicEnabled, setMusicEnabled] = useState(() => localStorage.getItem("tacpadel_music") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
   useEffect(() => {
     const loadUserData = async () => {
-      // 1. Profil & aktuellen Score laden
+      // 1. Profil, Team & Score laden
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points, preferred_position')
+        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id') // NEU: team_name & partner_id hinzugefügt
         .eq('id', user.id)
         .maybeSingle();
 
@@ -76,6 +70,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         if (profileData.display_name) setUsername(profileData.display_name);
         if (profileData.avatar_url) setAvatarUrl(profileData.avatar_url);
         if (profileData.points != null) trueScore = profileData.points;
+        if (profileData.team_name) setTeamName(profileData.team_name);
+        
+        if (profileData.partner_id) {
+          setPartnerId(profileData.partner_id);
+          localStorage.setItem("tacpadel_partner_id", profileData.partner_id);
+        }
         
         if (profileData.preferred_position) {
           setPreferredPosition(profileData.preferred_position);
@@ -86,7 +86,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
       }
 
-      // 2. GESAMTE Match Historie laden (JETZT INKLUSIVE tac_points)
+      // 2. Match Historie laden 
       const { data: historyData } = await supabase
         .from('match_history')
         .select('points, tac_points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
@@ -95,23 +95,28 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       if (historyData && historyData.length > 0) {
         setAllHistory(historyData);
-        
-        // Letztes Match bestimmt den wahren globalen TacScore
         const lastMatch = historyData[historyData.length - 1];
-        if (lastMatch.points != null) {
-          trueScore = lastMatch.points;
-        }
+        if (lastMatch.points != null) trueScore = lastMatch.points;
       } else {
         setAllHistory([]);
       }
 
-      // --- UI & LocalStorage updaten ---
+      // 3. Trophäen laden
+      const { data: trophiesData } = await supabase
+        .from('tour_progress')
+        .select('tournament_id')
+        .eq('user_id', user.id)
+        .eq('status', 'won');
+
+      if (trophiesData) {
+        setWonTrophies(trophiesData.map(t => t.tournament_id));
+      }
+
       setCurrentScore(trueScore);
       localStorage.setItem("tacpadel_score", trueScore.toString());
       
-      // --- SELF-HEALING ---
       if (!profileData) {
-        await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, preferred_position: preferredPosition });
+        await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, preferred_position: preferredPosition, team_name: teamName, partner_id: partnerId });
       } else if (profileData.points !== trueScore) {
         await supabase.from('user_stats').update({ points: trueScore }).eq('id', user.id);
       }
@@ -120,19 +125,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     loadUserData();
   }, [user.id]);
 
-  // --- Effekt, der auf den Stats-Filter reagiert und die Daten neu berechnet ---
   useEffect(() => {
     if (allHistory.length === 0) {
       setMatchHistory([{ name: 'Start', Wert: currentScore }]);
       return;
     }
-
-    // Filtern nach Einzel oder Turnier (alte Matches ohne match_type zählen als Single)
-    const filtered = allHistory.filter(m => 
-      statsMode === 'tournament' 
-        ? m.match_type === 'tournament' 
-        : (m.match_type === 'single' || !m.match_type)
-    );
+    const filtered = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
 
     if (filtered.length === 0) {
       setMatchHistory([{ name: 'Start', Wert: currentScore }]);
@@ -141,10 +139,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       return;
     }
 
-    // Letzte 20 Matches DIESES Typs für Chart & Schlag-Analyse
     const recent = filtered.slice(-20);
-
-    // Chart Formatierung: Dynamisch "Wert" zuweisen je nach Modus
     const formattedData = recent.map((match) => {
       const date = new Date(match.created_at);
       return {
@@ -155,7 +150,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     });
     setMatchHistory(formattedData);
 
-    // Tiefenanalyse berechnen
     let tAces = 0, tWinners = 0, tUfe = 0, tTotalShots = 0, tPerfect = 0;
     let validMatchCount = 0;
 
@@ -184,15 +178,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
-  const handlePositionChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newPos = e.target.value;
-    setPreferredPosition(newPos);
-    localStorage.setItem("tacpadel_preferred_position", newPos);
+  const handlePartnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPartner = e.target.value;
+    setPartnerId(newPartner);
+    localStorage.setItem("tacpadel_partner_id", newPartner);
     
-    const { error } = await supabase.from('user_stats').update({ preferred_position: newPos }).eq('id', user.id);
-    
+    const { error } = await supabase.from('user_stats').update({ partner_id: newPartner }).eq('id', user.id);
     if (!error) {
-      setMessage({ type: 'success', text: `Position erfolgreich auf ${newPos} geändert!` });
+      setMessage({ type: 'success', text: `Partner erfolgreich gewählt!` });
       setTimeout(() => setMessage(null), 2500);
     }
   };
@@ -201,26 +194,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     try {
       setIsUploading(true);
       setMessage(null);
-
       if (!event.target.files || event.target.files.length === 0) throw new Error('Bitte wähle ein Bild aus.');
-
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-
       const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
       if (uploadError) throw uploadError;
-
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const publicUrl = data.publicUrl;
-
       await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
       await supabase.from('user_stats').update({ avatar_url: publicUrl }).eq('id', user.id);
-
       setAvatarUrl(publicUrl);
       setMessage({ type: 'success', text: "Profilbild erfolgreich aktualisiert!" });
       setTimeout(() => setMessage(null), 3000);
-
     } catch (error: any) {
       setMessage({ type: 'error', text: "Fehler beim Hochladen: " + error.message });
     } finally {
@@ -231,17 +217,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const handleSave = async () => {
     setIsSaving(true);
     setMessage(null);
-    
     const newName = username.trim();
+    const newTeam = teamName.trim();
+    
     const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
-    const { error: dbError } = await supabase.from('user_stats').update({ display_name: newName }).eq('id', user.id);
+    
+    // BEIDES SPEICHERN: Name und Team-Name
+    const { error: dbError } = await supabase.from('user_stats').update({ 
+      display_name: newName,
+      team_name: newTeam 
+    }).eq('id', user.id);
     
     setIsSaving(false);
-
     if (authError || dbError) {
       setMessage({ type: 'error', text: "Fehler beim Speichern: " + (authError?.message || dbError?.message) });
     } else {
-      setMessage({ type: 'success', text: "Benutzername erfolgreich aktualisiert!" });
+      setMessage({ type: 'success', text: "Profil & Team erfolgreich aktualisiert!" });
       setTimeout(() => setMessage(null), 3000); 
     }
   };
@@ -251,29 +242,24 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setSoundEnabled(newState);
     localStorage.setItem("tacpadel_sound", String(newState));
   };
-
   const toggleMusic = () => {
     const newState = !musicEnabled;
     setMusicEnabled(newState);
     localStorage.setItem("tacpadel_music", String(newState));
   };
-  
   const toggleStamina = () => {
     const newState = !staminaEnabled;
     setStaminaEnabled(newState);
     localStorage.setItem("tacpadel_stamina", String(newState));
   };
 
-  // Win/Loss Berechnung basiert nun auf dem aktiven Filter
-  const filteredForWins = allHistory.filter(m => 
-    statsMode === 'tournament' 
-      ? m.match_type === 'tournament' 
-      : (m.match_type === 'single' || !m.match_type)
-  );
+  const filteredForWins = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
   const wins = filteredForWins.filter(m => m.result === 'win').length;
   const losses = filteredForWins.filter(m => m.result === 'loss').length;
   const totalMatches = wins + losses;
   const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+
+  const formatTourName = (id: string) => id.replace(/-/g, ' ').toUpperCase();
 
   return (
     <motion.div
@@ -303,18 +289,41 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
         <div className="flex flex-col gap-3 w-full">
           <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">E-Mail</label>
               <div className="px-4 py-3 bg-[#030611] border border-slate-800 rounded-xl text-slate-500 text-xs font-semibold cursor-not-allowed">{user?.email}</div>
             </div>
             <div className="flex flex-col gap-1.5 text-left">
-              <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">Benutzername</label>
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Dein Spielername..." className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
+              <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">Dein Spielername</label>
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Name..." className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
             </div>
           </div>
-          <button onClick={handleSave} disabled={isSaving || !username.trim()} className="w-full sm:w-auto self-end px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-1">
-            {isSaving ? "Speichert..." : "Namen speichern"}
+
+          {/* NEU: Team-Name & Partner Auswahl */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-1">
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Turnier Team-Name</label>
+              <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="z.B. TacPadel Bros" className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
+            </div>
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Dein Partner (KI)</label>
+              <select 
+                value={partnerId} 
+                onChange={handlePartnerChange} 
+                className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] appearance-none cursor-pointer"
+              >
+                {AI_PROFILES.flatMap(p => [
+                  <option key={`${p.id}-1`} value={`${p.id}-1`}>{p.p1} ({p.style})</option>,
+                  <option key={`${p.id}-2`} value={`${p.id}-2`}>{p.p2} ({p.style})</option>
+                ])}
+              </select>
+            </div>
+          </div>
+
+          <button onClick={handleSave} disabled={isSaving || !username.trim() || !teamName.trim()} className="w-full sm:w-auto self-end px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-1">
+            {isSaving ? "Speichert..." : "Profil speichern"}
           </button>
           {message && (
             <div className={`w-full p-2.5 rounded-lg text-xs font-bold text-center ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{message.text}</div>
@@ -350,9 +359,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
       {/* ========================================= */}
-      {/* 2. STATS & AUSRÜSTUNG                     */}
+      {/* 2. STATS, AUSRÜSTUNG & ROADMAP/TROPHÄEN   */}
       {/* ========================================= */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+        
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div>
             <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
@@ -382,20 +392,48 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[10px] font-black tracking-widest text-purple-400 uppercase">Tournament Roadmap</h3>
-              <span className="text-[10px] font-bold text-purple-300 bg-purple-900/30 px-2 py-1 rounded border border-purple-500/30">In Progress</span>
+              <h3 className="text-[10px] font-black tracking-widest text-purple-400 uppercase">Tour Ranking & Trophäen</h3>
+              <span className="text-[10px] font-bold text-purple-300 bg-purple-900/30 px-2 py-1 rounded border border-purple-500/30">
+                {wonTrophies.length} Titel
+              </span>
             </div>
+            
             <div className="flex justify-between items-end mb-1">
-              <span className="text-xs font-bold text-slate-300">50er</span>
-              <span className="text-[10px] font-black tracking-widest text-purple-400">{currentScore} / 5000 Pkt.</span>
-              <span className="text-xs font-bold text-slate-300">250er</span>
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Open</span>
+              <span className="text-[11px] font-black tracking-widest text-purple-400">{currentScore} TacScore</span>
+              <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Major</span>
             </div>
-            <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden mb-3">
-              <div className="h-full bg-gradient-to-r from-purple-600 to-cyan-400 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out" style={{ width: `${Math.min(100, Math.max(10, (currentScore / 5000) * 100))}%` }} />
+            
+            <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden mb-4 relative">
+              <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
+              <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
+              <div className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
+                   style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
             </div>
-            <p className="text-[11px] font-medium text-slate-400 leading-relaxed mt-4 bg-[#050b18] p-3 rounded-lg border border-slate-800/50">
-              Sammle TacScore-Punkte und Matchpraxis, um das Ticket für die kompetitiven 250er-Klassen zu lösen.
-            </p>
+
+            <div className="w-full bg-[#050b18] rounded-lg border border-slate-800/50 p-3 min-h-[85px] relative overflow-hidden shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+              <span className="text-[8px] text-slate-500 uppercase tracking-widest font-black mb-2 block">Trophäenschrank</span>
+              {wonTrophies.length === 0 ? (
+                <div className="flex items-center justify-center h-10 text-[9px] text-slate-600 font-bold uppercase tracking-widest text-center px-2">Noch keine Turniere gewonnen</div>
+              ) : (
+                <div className="flex flex-wrap gap-2.5">
+                  {wonTrophies.map((tourId, idx) => {
+                    const isMajor = tourId.toLowerCase().includes('major');
+                    const isMaster = tourId.toLowerCase().includes('master');
+                    const trophyStyle = isMajor ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : isMaster ? 'text-slate-300 drop-shadow-[0_0_6px_rgba(203,213,225,0.8)]' : 'text-orange-600 drop-shadow-[0_0_6px_rgba(234,88,12,0.8)]'; 
+                    return (
+                      <div key={idx} className="relative group cursor-help flex items-center justify-center">
+                        <div className={`text-2xl transition-transform group-hover:scale-110 ${trophyStyle}`}>🏆</div>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max bg-slate-900 border border-slate-700 text-white text-[9px] px-2.5 py-1 rounded shadow-lg z-20 font-black uppercase tracking-widest pointer-events-none">
+                          {formatTourName(tourId)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            
           </div>
         </div>
       </div>
@@ -404,18 +442,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* 2.5 STATISTIK-FILTER (EINZEL / TURNIER)   */}
       {/* ========================================= */}
       <div className="flex bg-[#030611]/80 border border-slate-800/80 rounded-xl p-1.5 w-full mt-4 shadow-lg">
-        <button 
-          onClick={() => setStatsMode('single')}
-          className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          Einzel-Matches
-        </button>
-        <button 
-          onClick={() => setStatsMode('tournament')}
-          className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          Turniere
-        </button>
+        <button onClick={() => setStatsMode('single')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>Einzel-Matches</button>
+        <button onClick={() => setStatsMode('tournament')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>Turniere</button>
       </div>
 
       {/* ========================================= */}
@@ -509,7 +537,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio & UI</h3>
           <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX und Texte/Namen steuern</span>
         </div>
-        
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SFX</span>
@@ -517,21 +544,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: soundEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
-
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
             <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
-
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Texte</span>
             <button onClick={toggleExplanations} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showExplanations ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
-
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Namen</span>
             <button onClick={toggleNameTags} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}>
@@ -549,7 +573,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik</h3>
           <span className="text-[9px] text-slate-600 font-bold mt-1">Simulations-Limits und Mechaniken steuern</span>
         </div>
-        
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ausdauer</span>
