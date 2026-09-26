@@ -100,8 +100,8 @@ function HologramBanner() {
   );
 }
 
-// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Mit Spieler, Partner & KI Namen) ---
-function TribuneBanners({ playerName = "SPIELER", partnerName = "PARTNER", aiTeamName = "TEAM KI" }: { playerName?: string, partnerName?: string, aiTeamName?: string }) {
+// --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Mit Team-Name) ---
+function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { userTeamName?: string, aiTeamName?: string }) {
   const leftRef = useRef<THREE.Group>(null);
   const rightRef = useRef<THREE.Group>(null);
 
@@ -113,27 +113,27 @@ function TribuneBanners({ playerName = "SPIELER", partnerName = "PARTNER", aiTea
 
   return (
     <group>
-      {/* LINKES BANNER (DEIN TEAM: SPIELER & PARTNER) */}
+      {/* LINKES BANNER (DEIN TEAM-NAME) */}
       <group ref={leftRef} position={[-14, 5.5, 2]} rotation={[0, Math.PI / 2, 0]}>
         <Text
-          fontSize={1.0}
+          fontSize={1.2}
           fontWeight="bold"
-          letterSpacing={0.08}
+          letterSpacing={0.1}
           fillOpacity={0}
           strokeWidth={0.03}
           strokeColor="#f97316" // Orange
           material-toneMapped={false}
         >
-          {playerName.toUpperCase()} & {partnerName.toUpperCase()}
+          {userTeamName.toUpperCase()}
         </Text>
       </group>
 
       {/* RECHTES BANNER (GEGNER TEAM) */}
       <group ref={rightRef} position={[14, 5.5, 2]} rotation={[0, -Math.PI / 2, 0]}>
         <Text
-          fontSize={1.0}
+          fontSize={1.2}
           fontWeight="bold"
-          letterSpacing={0.08}
+          letterSpacing={0.1}
           fillOpacity={0}
           strokeWidth={0.03}
           strokeColor="#00f0ff" // Cyan
@@ -230,7 +230,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     const lArm = new THREE.Object3D(); lArm.name = "lArm"; lArm.position.set(-0.22, 0.05, 0);
     const rArm = new THREE.Object3D(); rArm.name = "rArm"; rArm.position.set(0.22, 0.05, 0);
     const lLeg = new THREE.Object3D(); lLeg.name = "lLeg"; lLeg.position.set(-0.08, -0.35, 0);
-    const rLeg = new THREE.Object3D(); rLeg.name = "rLeg"; rLeg.position.set(0.08, -0.35, 0);
+    const rLeg = new THREE.Object3D(); lLeg.name = "rLeg"; lLeg.position.set(0.08, -0.35, 0);
     g.add(head, torso, lArm, rArm, lLeg, rLeg);
     return g;
   }, []);
@@ -325,7 +325,8 @@ export interface ScoreboardProps {
   isTimerPhase?: boolean;
   isPlayerTeamServe?: boolean;
   playerName?: string; 
-  partnerName?: string; // NEU
+  partnerName?: string; 
+  userTeamName?: string; // NEU
   isSimulationMode?: boolean; 
   activeAiProfile?: AiProfile; 
 }
@@ -364,6 +365,7 @@ export default function CourtFloor(props: ScoreboardProps) {
     isPlayerTeamServe = true,
     playerName = "Gast",
     partnerName = "Partner",
+    userTeamName = "Dein Team",
     isSimulationMode = false,
     activeAiProfile
   } = props;
@@ -377,7 +379,7 @@ export default function CourtFloor(props: ScoreboardProps) {
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
       <OfficialCourtLines />
       <HologramBanner />
-      <TribuneBanners playerName={playerName} partnerName={partnerName} aiTeamName={aiTeamName} />
+      <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
       <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} />
 
       {/* DIE GROSSE LED-SCOREBOARD-WAND IM HINTERGRUND */}

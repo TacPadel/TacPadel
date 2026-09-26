@@ -245,6 +245,7 @@ export interface Props {
   acceptableLaufZones?: string[];
   onLaufZoneClick?: (id: string) => void;
   previewShot?: string | null;
+  userTeamName?: string; // <-- HIER HINZUFÜGEN
 
   activeChar: "you" | "partner" | "opp1" | "opp2";
   hitterId: "you" | "partner" | "opp1" | "opp2";
@@ -406,7 +407,9 @@ export default function ScenarioCourt3D(props: Props) {
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
               partnerName={partnerName} // NEU: Partner-Name an CourtFloor übergeben
+              userTeamName={props.userTeamName} // <-- HIER MITÜBERGEBEN
               activeAiProfile={props.activeAiProfile} 
+              
             /> 
             <TacticalData {...props} />
           </Suspense>

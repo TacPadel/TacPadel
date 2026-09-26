@@ -1627,7 +1627,7 @@ export default function GameScreen() {
             isPlayerTeamServe={isPlayerTeamServe}
 
             hidePlayerLabels={!showNameTags}
-            
+            userTeamName={userTeamName} // <-- HIER ERGÄNZEN
             activeAiProfile={activeAiProfile}
           />
         </div>
