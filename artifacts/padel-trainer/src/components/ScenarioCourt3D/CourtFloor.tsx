@@ -329,7 +329,6 @@ export interface ScoreboardProps {
   userTeamName?: string; 
   isSimulationMode?: boolean; 
   activeAiProfile?: AiProfile; 
-  // --- NEU FÜR DYNAMISCHES SCOREBOARD ---
   targetScore?: number; 
   matchTitle?: string;
 }
@@ -371,7 +370,6 @@ export default function CourtFloor(props: ScoreboardProps) {
     userTeamName = "Dein Team",
     isSimulationMode = false,
     activeAiProfile,
-    // --- NEU ---
     targetScore = 10,
     matchTitle = "Match-Tiebreak"
   } = props;
@@ -419,27 +417,33 @@ export default function CourtFloor(props: ScoreboardProps) {
               
               <div className="flex flex-row justify-between items-center w-full px-4">
                 
+                {/* LINKE SEITE (DEIN TEAM) */}
                 <div className="text-left flex flex-col items-start w-1/3">
                   <p className="text-[11px] text-orange-400 font-bold tracking-widest uppercase mb-2">
-                    {serverId === "you" && "🎾(Du)"} {serverId === "partner" && `🎾(${partnerName})`}
+                    {isPlayerTeamServe && "🎾"} {userTeamName} <br/> 
+                    {serverId === "you" && <span className="text-purple-300">(Du)</span>} 
+                    {serverId === "partner" && <span className="text-purple-300">({partnerName})</span>}
                   </p>
                   <p className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,119,0,0.6)]">{playerScore}</p>
                 </div>
                 
+                {/* MITTE (STATUS & TURNIERINFO) */}
                 <div className="text-center flex flex-col items-center flex-1 px-6 border-x border-slate-700/50">
                   <p className={`text-sm uppercase tracking-widest font-black mb-3 ${isAiActive ? "text-red-400" : "text-emerald-400"}`}>
                     {phase === "ai_prepare" ? "🔴 Gegner bereitet vor..." : (isTimerPhase ? "🔴 Ball fliegt!" : "🟢 Dein Zug")}
                   </p>
-                  {/* --- HIER WERDEN TARGET SCORE UND TITEL EINGESETZT --- */}
                   <p className="text-lg font-semibold text-slate-300 leading-snug">
                     {matchTitle}<br/>
                     <span className="text-sm font-normal text-slate-500">(bis {targetScore} Punkte)</span>
                   </p>
                 </div>
                 
+                {/* RECHTE SEITE (GEGNER TEAM) */}
                 <div className="text-right flex flex-col items-end w-1/3">
                   <p className="text-[11px] text-slate-400 font-bold tracking-widest uppercase mb-2">
-                    {!isPlayerTeamServe && "🎾"} {aiTeamName} <br/> {serverId === "opp1" && <span className="text-cyan-300">({opp1Name})</span>} {serverId === "opp2" && <span className="text-cyan-300">({opp2Name})</span>}
+                    {!isPlayerTeamServe && "🎾"} {aiTeamName} <br/> 
+                    {serverId === "opp1" && <span className="text-cyan-300">({opp1Name})</span>} 
+                    {serverId === "opp2" && <span className="text-cyan-300">({opp2Name})</span>}
                   </p>
                   <p className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">{aiScore}</p>
                 </div>
