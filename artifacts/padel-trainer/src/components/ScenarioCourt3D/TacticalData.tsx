@@ -538,7 +538,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
   return (
     <group name="TacticalData">
       <Text position={[0, 0.03, 11]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
-        {currentUserName !== "DU" ? `${currentUserName.toUpperCase()}S SEITE` : "DEINE SEITE"}
+        DEINE SEITE
       </Text>
       <Text position={[0, 0.03, -11]} rotation={[-Math.PI / 2, 0, Math.PI]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
         GEGNERISCHE SEITE

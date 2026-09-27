@@ -79,6 +79,7 @@ export default function GameScreen() {
   // --- NEU: Team & Partner States ---
   const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
   const [partnerName, setPartnerName] = useState<string>("Partner");
+  const [playerName, setPlayerName] = useState<string>("Du");
 
   const [introTrigger, setIntroTrigger] = useState(0); 
   const [playIntro, setPlayIntro] = useState<boolean>(false);
@@ -146,15 +147,20 @@ export default function GameScreen() {
         if (session?.user) {
           const { data, error } = await supabase
             .from("user_stats")
-            .select("points, team_name, partner_id") 
+            .select("points, team_name, partner_id, display_name") 
             .eq("id", session.user.id)
             .single();
+
+          let defaultName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || "Spieler";
 
           if (data && !error) {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
             
-            // Partner & Team Daten setzen
+            // Name, Partner & Team Daten setzen
+            if (data.display_name) setPlayerName(data.display_name);
+            else setPlayerName(defaultName);
+
             if (data.team_name) setUserTeamName(data.team_name);
             if (data.partner_id) {
               const [pId, pNum] = data.partner_id.split('-');
@@ -1154,7 +1160,7 @@ export default function GameScreen() {
       if (isRightCourt) { pYou = "D1"; pPartner = "D4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
       else { pYou = "B1"; pPartner = "D4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
       ballSide = "left"; nextPhase = "player_planning"; receiverId = "you"; 
-      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ 2. AUFSCHLAG!" : "DU HAST AUFSCHLAG!", isSecondServe ? "text-amber-400" : "text-purple-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ 2. AUFSCHLAG!" : `${playerName.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-purple-400", 3000); 
     } 
     else if (serverId === "partner") {
       if (isRightCourt) { pPartner = "D1"; pYou = "B4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
@@ -1551,7 +1557,7 @@ export default function GameScreen() {
               {/* DU */}
               <div className="absolute bottom-4 left-4 flex flex-col gap-1 w-28 sm:w-36">
                  <div className="flex justify-between items-end">
-                   <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)]">DU</span>
+                   <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] truncate max-w-[80px]">{playerName}</span>
                    {stamina.you <= MAX_PLAYER_STAMINA * 0.3 && <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
                  </div>
                  <div className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${stamina.you <= MAX_PLAYER_STAMINA * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
@@ -1593,7 +1599,7 @@ export default function GameScreen() {
                 
                 const info = getServerInfo(playerScore + aiScore);
                 if (info.serverId === "you") {
-                   showFlash("DU HAST AUFSCHLAG!", "text-purple-400", 3000);
+                   showFlash(`${playerName.toUpperCase()} SCHLÄGT AUF!`, "text-purple-400", 3000);
                 } else if (info.serverId === "partner") {
                    showFlash(`${partnerName.toUpperCase()} SCHLÄGT AUF!`, "text-cyan-400", 3000);
                 } else {
@@ -1656,7 +1662,7 @@ export default function GameScreen() {
           <>
             <div className="flex items-center justify-between px-1 mb-2 mt-1">
               <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
-                {activeChar === "you" ? "DU" : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
+                {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
               </span>
               <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
                 <div ref={progressBarRef} className={`h-full ${isTimerPhase ? 'bg-emerald-500 w-full' : 'w-0 opacity-0'}`} />
@@ -1666,7 +1672,7 @@ export default function GameScreen() {
             {isTimerPhase ? (
               <div className="flex gap-3 w-full mb-2 h-14">
                 <button onClick={() => setActiveChar("you")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "you" ? 'bg-purple-900/40 border-purple-500 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm">DU</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
+                  <span className="text-sm truncate w-full text-center px-1">{playerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
                 </button>
                 <button onClick={() => setActiveChar("partner")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "partner" ? 'bg-cyan-900/40 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
                   <span className="text-sm truncate w-full text-center px-1">{partnerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
@@ -1693,7 +1699,7 @@ export default function GameScreen() {
                 <div className="col-span-2 flex flex-col items-center justify-center border border-dashed border-slate-700/50 bg-slate-800/20 rounded p-1.5 pointer-events-none opacity-60">
                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">🛡️ Raumabdeckung</span>
                   <span className="text-[7px] font-bold text-slate-600">
-                    {hitterId === "you" ? "Du hast" : `${partnerName} hat`} den Ball
+                    {hitterId === "you" ? `${playerName} hat` : `${partnerName} hat`} den Ball
                   </span>
                 </div>
               )}
