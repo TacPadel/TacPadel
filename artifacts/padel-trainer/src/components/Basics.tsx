@@ -5,52 +5,68 @@ interface BasicsViewProps {
   setActiveTab?: (tab: "home" | "trainer" | "board" | "basics") => void;
 }
 
-// Erweitertes Dictionary mit allen neuen Spielmechaniken
+// Erweitertes Dictionary mit allen neuen Spielmechaniken, Regeln und Taktiken
 export const PADEL_DICTIONARY: Record<string, Record<string, string>> = {
   "Schläge": {
-    "Aufschlag": "Der Aufschlag wird im Padel unterhalb der Hüfte (aus dem Sprung nach einem Bodenaufprall) ausgeführt und muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden. Berührt der Ball danach das Gitter, ist es ein Aufschlagfehler; berührt er die Glaswand, ist er gültig.",
+    "Aufschlag": "Der Aufschlag wird im Padel nach einem Bodenaufprall unterhalb der Hüfte ausgeführt. Er muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden. Berührt der Ball danach das Gitter, ist es ein Fehler; berührt er die Glaswand, ist er gültig.",
+    "Return": "Der Rückschlag auf den Aufschlag des Gegners. Die oberste Regel beim Return lautet: Den Ball sicher im Spiel halten. Oft wird ein tiefer Ball (Chiquita) oder ein Lob gespielt, um ans Netz zu kommen.",
     "Lob": "Der wichtigste Defensivschlag im Padel. Ein hoher, tiefer Ball an die gegnerische Grundlinie. Ziel ist es, die Gegner von der Netzposition nach hinten zu zwingen, um selbst das Netz zu erobern.",
     "Volley": "Ein Schlag direkt aus der Luft, ohne vorherigen Bodenaufprall, meistens eng am Netz gespielt. Volleys werden idealerweise mit viel Slice (Rückwärtsdrall) tief in die Ecken platziert.",
     "Bandeja": "Ein defensiver/kontrollierter Überkopfschlag, der meistens im Mittelfeld angewendet wird. Getroffen wird der Ball seitlich auf Kopfhöhe mit Slice, um den Ball flach zu halten und die Netzposition zu verteidigen.",
     "Víbora": "Ein aggressiverer Überkopfschlag mit viel Seitwärtsdrall (Schnitt). Der Ball prallt unberechenbar und extrem flach von den gegnerischen Wänden ab.",
-    "Smash": "Ein klassischer Überkopf-Power-Schlag. Wird genutzt, um den Ball so hart zu treffen, dass er nach der gegnerischen Wand über die 3- oder 4-Meter-Außenwand springt (Por Tres / Por Cuatro) oder unerreichbar zurück ins eigene Feld fliegt.",
+    "Smash (Por Tres / Por Cuatro)": "Ein klassischer Überkopf-Power-Schlag. Wird genutzt, um den Ball so hart zu treffen, dass er nach der gegnerischen Wand über die 3-Meter (Por Tres) oder 4-Meter (Por Cuatro) Außenwand springt oder hoch ins eigene Feld zurückkehrt.",
     "Bajada de Pared": "Ein Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der eigenen Rückwand abgesprungen ist. Man \"schlägt den Ball von der Wand nach unten\", oft sehr kraftvoll und offensiv.",
     "Chiquita": "Ein kurzer, weicher Ball aus der Defensive genau vor die Füße der am Netz stehenden Gegner. Zwingt den Gegner zu einem unangenehmen Volley von weit unten und öffnet Chancen zum Konter.",
     "Block": "Ein rein passiver Schlag am Netz. Man hält den Schläger wie eine Wand hin, um extrem harte, gerade Passierbälle des Gegners abzufangen und kurz hinter dem Netz abtropfen zu lassen.",
-    "Drive": "Der Drive ist ein kraftvoller, flacher Grundschlag im Padel, der sowohl mit der Vorhand als auch mit der Rückhand gespielt werden kann. Er dient dazu, einen Ballwechsel zu eröffnen oder den Gegner aggressiv unter Druck zu setzen.",
+    "Drive": "Ein flacher Grundschlag, der sowohl mit der Vorhand als auch mit der Rückhand gespielt wird. Er dient dazu, den Ballwechsel zu eröffnen oder den Gegner von der Grundlinie aus unter Druck zu setzen.",
   },
   "Positionen": {
+    "Vorhand-Seite (Rechts)": "Der Spieler auf der rechten Seite (bei Rechtshändern). Traditionell der strategischere, aufbauende Spieler, der den Rhythmus bestimmt und den Ball sicher im Spiel hält, um dem Partner Chancen vorzubereiten.",
+    "Rückhand-Seite (Links)": "Der Spieler auf der linken Seite. Hat den Ball bei hohen Bällen in der Mitte oft auf der starken Vorhand (für Smashes). Traditionell der offensivere Spieler, der viele Punkte abschließt.",
     "Netzposition (Angriff)": "Die dominierende Position im Padel. Beide Spieler stehen ca. 2–3 Meter vor dem Netz. Von hier aus wird der Druck per Volley und Überkopfschlägen aufgebaut. Punkte werden fast nur hier gewonnen.",
     "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Aufschlag oder Druck. Spieler stehen leicht hinter der Aufschlaglinie. Fokus liegt auf dem Nutzen der Glaswände und dem Spielen von Lobs.",
+    "Australische Aufstellung": "Eine Taktik beim Aufschlag: Die Spieler wechseln nach dem Aufschlag nicht die Seiten (links/rechts), sondern bleiben immer auf ihrer Spezial-Seite. Der Netzspieler duckt sich oft, damit der Partner diagonal über ihn aufschlagen kann.",
     "Übergangszone (Niemandsland)": "Der Bereich zwischen Aufschlaglinie und Netz. Hier sollte man sich niemals freiwillig aufhalten, da man leicht vor die Füße angespielt werden kann. Diese Zone wird nur schnell durchschritten.",
-    "Die T-Linie": "Der Kreuzungspunkt der Aufschlaglinien in der Mitte des Feldes. Ein wichtiger Orientierungspunkt für das Stellungsspiel bei kurzen Bällen.",
   },
   "Regeln": {
-    "Zählweise": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird oft mit der \"Golden Point\"-Regel gespielt (der nächste Punkt entscheidet das Spiel). Ein Satz geht bis 6.",
-    "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er im Aus.",
-    "Eigenes Glas nutzen": "In der Defensive darf man den Ball mit voller Kraft gegen die eigene Glasscheibe schlagen, damit er über das Netz ins gegnerische Feld fliegt. Das Nutzen des eigenen Metallgitters ist hingegen verboten.",
+    "Zählweise & Tie-Break": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird oft mit der \"Golden Point\"-Regel (nächster Punkt entscheidet) gespielt. Ein normaler Satz geht bis 6. Bei 6:6 gibt es einen Tie-Break bis 7 Punkte.",
+    "Match-Tiebreak": "Wird oft anstelle eines dritten Satzes gespielt (oder wie hier in der App als komplettes Match). Wer zuerst 10 Punkte erreicht (mit 2 Punkten Vorsprung), gewinnt das Match.",
+    "Aufschlag-Regeln": "Der Ball muss hinter der Aufschlaglinie auf den Boden geprellt und unterhalb der Hüfte getroffen werden. Mindestens ein Fuß muss den Boden berühren und kein Fuß darf die Aufschlaglinie übertreten.",
+    "Let (Netzaufschlag)": "Berührt der Ball beim Aufschlag die Netzkante und landet danach korrekt im diagonalen Aufschlagfeld, wird der Aufschlag wiederholt (\"Let\"). Berührt er danach das Gitter, ist es ein Fehler.",
+    "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er sofort im Aus.",
+    "Eigenes Glas nutzen": "In der Defensive darf man den Ball mit voller Kraft gegen die eigene Glasscheibe schlagen, damit er über das Netz ins gegnerische Feld fliegt. Das Nutzen des eigenen Metallgitters ist hingegen streng verboten.",
+    "Netzberührung": "Weder der Spieler noch sein Schläger dürfen das Netz, die Netzpfosten oder das gegnerische Spielfeld berühren, solange der Ball im Spiel ist. Passiert dies, gehört der Punkt sofort den Gegnern.",
+    "Übergreifen (Invasion)": "Den Ball auf der gegnerischen Seite des Netzes zu treffen, ist verboten. Ausnahme: Der Ball ist im eigenen Feld aufgesprungen, an die eigene Wand geprallt und fliegt von selbst wieder zurück übers Netz. Dann darf man übergreifen.",
+  },
+  "Taktik & Jargon": {
+    "La Nevera (Der Kühlschrank)": "Eine Taktik, bei der man den stärkeren der beiden gegnerischen Spieler komplett aus dem Spiel nimmt, indem man fast jeden Ball gezielt auf den schwächeren Partner spielt. Der starke Spieler \"kühlt ab\".",
+    "Split Step": "Ein kleiner Sprung, den man exakt in dem Moment ausführt, wenn der Gegner den Ball trifft. So ist man reaktionsbereit und kann explosiv in jede Richtung starten.",
+    "Glaswand lesen": "Die Fähigkeit, den Winkel und die Geschwindigkeit des anfliegenden Balls richtig einzuschätzen, um zu wissen, wie er von der Rückwand oder Seitenwand abprallen wird.",
+    "Pacing (Zeitspiel)": "Die Geschwindigkeit des Ballwechsels zu kontrollieren. Aggressive KIs hassen langsame, hohe Lobs, während defensive Teams oft Probleme mit extrem schnellen Volley-Duellen haben.",
   },
   "TacScore & Fortschritt": {
     "TacScore (Skill-Level)": "Dein MMR (Matchmaking Rating). Er steigt bei Siegen und sinkt bei Niederlagen. Dein TacScore bestimmt die Stärke der KI im freien Spiel und schaltet höhere Turniere frei.",
     "TacPoints (Währung)": "Die In-Game Währung. Du verdienst TacPoints durch Siege (besonders in Turnieren) und benötigst sie als Startgeld (Buy-In) für Pro Tour Events.",
-    "Profi-Liga Modus": "Erreichst du einen TacScore von 4000 (oder spielst ein entsprechend schweres Turnier), wechselt das Spiel in den Profi-Modus. Die hilfreichen Taktik-Linien auf dem Boden verschwinden – du musst Laufwege und Schläge nun komplett frei einschätzen.",
+    "Profi-Liga Modus": "Erreichst du einen TacScore von 4000, wechselt das Spiel in den Profi-Modus. Die hilfreichen Taktik-Linien auf dem Boden verschwinden – du musst Laufwege und Schläge nun komplett frei einschätzen.",
   },
   "Pro Tour & Turniere": {
-    "Turnier-Struktur": "Ein Pro Tour Event besteht aus Viertelfinale, Halbfinale und Finale. Je weiter du kommst, desto länger werden die Match-Tiebreaks (z. B. bis 6 im Viertelfinale, bis 10 im Finale).",
-    "Buy-In & Preisgeld": "Die Teilnahme kostet TacPoints. Verlierst du, bist du ausgeschieden und dein Startgeld ist weg. Gewinnst du das Turnier, erwartet dich ein massiver TacPoints-Gewinn.",
-    "Turnier-Speicherung": "Dein Turnier-Fortschritt (inklusive verbleibender Ausdauer) wird gespeichert. Du kannst ein Turnier pausieren und später genau dort fortsetzen, wo du aufgehört hast.",
+    "Open Events": "Die Einstiegsklasse der Pro Tour. Kosten wenig bis gar kein Startgeld und erfordern einen niedrigen TacScore. Perfekt, um erste Erfahrungen im K.o.-System zu sammeln und das Konto aufzufüllen.",
+    "Pro Events": "Mittleres Schwierigkeitslevel. Hier treffen starke KIs aufeinander. Das Buy-In ist spürbar, aber die Belohnung für einen Turniersieg bringt dich in der Weltrangliste enorm nach vorne.",
+    "Premier Master Events": "Die Königsklasse. Nur zugänglich für Spieler mit extrem hohem TacScore und großem Geldbeutel. Wer ein Master gewinnt, hat die absolute KI-Elite im Padel geschlagen.",
+    "Turnier-Struktur": "Ein Event besteht aus Viertelfinale, Halbfinale und Finale. Je weiter du kommst, desto länger werden die Match-Tiebreaks (z. B. bis 6 im Viertelfinale, bis 10 im Finale).",
+    "Turnier-Speicherung": "Dein Turnier-Fortschritt (inklusive verbleibender Ausdauer) wird nach jedem Match gespeichert. Verlierst du, bist du ausgeschieden und das Startgeld ist weg.",
   },
   "Ausdauer & Spielmechanik": {
     "Stamina (Ausdauer)": "Jeder Sprint und jeder harte Schlag kostet dich und deinen Partner Ausdauer. Sinkt der Wert auf 0, fehlt die Kraft für saubere Schläge und der Ball landet oft im Netz.",
-    "Regeneration durch Taktik": "Zwischen Turnierrunden erholst du dich leicht. Während eines Ballwechsels kannst du Ausdauer regenerieren, indem du taktisch clevere Schläge spielst (z. B. einen kontrollierten Lob aus der tiefen Defensive oder einen Volley vorne am Netz).",
-    "Zonen & Laufwege": "Das Spielfeld ist in ein Raster (A-E, 1-4) unterteilt. Du musst rechtzeitig in die Zielzone des gegnerischen Balls laufen, sonst machst du ein Luftloch. Achte darauf, Smash-Bälle nicht zu überlaufen!",
+    "Regeneration durch Taktik": "Während eines Ballwechsels kannst du Ausdauer regenerieren, indem du taktisch clevere Schläge spielst (z. B. einen kontrollierten Lob aus der tiefen Defensive oder einen Volley vorne am Netz).",
+    "Zonen & Laufwege": "Das Spielfeld ist in ein Raster (A-E, 1-5) unterteilt. Du musst rechtzeitig in die Zielzone des gegnerischen Balls laufen, sonst machst du ein Luftloch. Achte darauf, Smash-Bälle nicht zu überlaufen!",
     "Wer nimmt den Ball?": "Du und dein Partner müsst euch absprechen. Wenn du in die Zone läufst, sollte dein Partner absichern. Läuft dein Partner zum Ball, überlass ihm den Schlag. Die KI bestraft Deckungslücken gnadenlos.",
   },
   "KI-Gegner": {
-    "Gegner-Profile": "Du spielst nicht gegen anonyme KIs, sondern gegen feste Teams mit eigenen Stärken. Jedes Team hat einen bevorzugten Spielstil (Aggressiv, Defensiv, Balanced).",
+    "Gegner-Profile": "Du spielst gegen feste KI-Teams mit eigenen Stärken und einem bevorzugten Spielstil (Aggressiv, Defensiv, Balanced).",
     "Aggressive KI": "Spielt schnelle Bälle, rückt aggressiv ans Netz auf und zwingt dich zu schnellen Reaktionen. Dafür verbrauchen sie ihre Ausdauer wesentlich schneller.",
     "Defensive KI": "Spielt lange, sichere Bälle (oft Lobs) und macht kaum Eigenfehler (Unforced Errors). Sie haben einen extrem hohen Ausdauer-Multiplikator und sind schwer müde zu spielen.",
-    "KI-Ausdauer": "Auch die Gegner haben einen Ausdauerbalken. Wenn du sie viel laufen lässt und den Ball im Spiel hältst, brechen sie irgendwann ein und machen leichte Fehler.",
+    "KI-Ausdauer": "Auch die Gegner haben einen Ausdauerbalken. Wenn du sie viel laufen lässt und den Ball im Spiel hältst (lange Ballwechsel), brechen sie irgendwann ein und machen leichte Fehler.",
   }
 };
 
@@ -58,17 +74,18 @@ export const CATEGORY_COLORS: Record<string, string> = {
   "Schläge": "bg-blue-500/10 border-blue-500/30 text-blue-400",
   "Positionen": "bg-amber-500/10 border-amber-500/30 text-amber-400",
   "Regeln": "bg-purple-500/10 border-purple-500/30 text-purple-400",
+  "Taktik & Jargon": "bg-yellow-500/10 border-yellow-500/30 text-yellow-400",
   "TacScore & Fortschritt": "bg-indigo-500/10 border-indigo-500/30 text-indigo-400",
   "Pro Tour & Turniere": "bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-400",
   "Ausdauer & Spielmechanik": "bg-rose-500/10 border-rose-500/30 text-rose-400",
   "KI-Gegner": "bg-cyan-500/10 border-cyan-500/30 text-cyan-400",
 };
 
-// Hilfs-Mapping für den leuchtenden Seitenstreifen
 const STRIPE_COLORS: Record<string, string> = {
   "Schläge": "bg-blue-500",
   "Positionen": "bg-amber-500",
   "Regeln": "bg-purple-500",
+  "Taktik & Jargon": "bg-yellow-500",
   "TacScore & Fortschritt": "bg-indigo-500",
   "Pro Tour & Turniere": "bg-fuchsia-500",
   "Ausdauer & Spielmechanik": "bg-rose-500",
@@ -170,8 +187,8 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
               47623 Kevelaer<br/>
               <br/>
               <strong className="text-slate-200">Kontakt:</strong><br/>
-              Telefon: Deine Telefonnummer, z.B. +49 123 456789<br/>
-              E-Mail: [dmin@tacpadel.de<br/>
+              Telefon: +49 123 456789<br/>
+              E-Mail: admin@tacpadel.de<br/>
               <br/>
               <strong className="text-slate-200">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV:</strong><br/>
               Boris Sredojevic<br/>
