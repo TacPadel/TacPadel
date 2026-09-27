@@ -456,10 +456,17 @@ function Real3DPlayer({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
+      {/* --- DAS NEUE STYLISCHE NAMENSSCHILD --- */}
       {!hidePlayerLabels && (
         <Html position={[0, 2.8, 0]} center style={{ pointerEvents: 'none' }}>
-          <div className={`whitespace-nowrap px-2 py-0.5 rounded border text-[10px] font-bold tracking-wider backdrop-blur-md transition-all shadow-[0_0_10px_rgba(0,0,0,0.5)] ${isGlowing ? 'bg-black/90 scale-110' : 'bg-black/60'} ${type === 'DU' ? 'text-purple-400 border-purple-500' : type === 'PTNER' ? 'text-cyan-400 border-cyan-500' : 'text-orange-400 border-orange-500/50'}`}>
-            {label}
+          <div className={`px-2 py-0.5 rounded-md border flex items-center justify-center whitespace-nowrap shadow-lg backdrop-blur-md transition-all ${isGlowing ? 'scale-110' : 'scale-100'} ${
+            type === "DU" ? "bg-purple-900/80 border-purple-500 text-purple-200" :
+            type === "PTNER" ? "bg-cyan-900/80 border-cyan-500 text-cyan-200" :
+            "bg-red-900/80 border-red-500 text-red-200"
+          }`}>
+            <span className="text-[10px] font-black tracking-widest uppercase drop-shadow-[0_0_5px_rgba(0,0,0,0.8)]">
+              {label}
+            </span>
           </div>
         </Html>
       )}
@@ -475,7 +482,7 @@ function Real3DPlayer({
   );
 }
 
-export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean }) {
+export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; partnerName?: string; }) {
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
 
@@ -508,6 +515,22 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         return runRow <= 2;
     }
     return false;
+  };
+
+  // --- HILFSFUNKTION FÜR DIE NAMENSANZEIGE ---
+  const getPlayerDisplayLabel = (playerId: string) => {
+    switch (playerId) {
+      case "you":
+        return props.playerName ? props.playerName : "DU";
+      case "partner":
+        return props.partnerName ? props.partnerName : "PARTNER";
+      case "opp1":
+        return props.activeAiProfile?.p1 ? props.activeAiProfile.p1 : "KI 1";
+      case "opp2":
+        return props.activeAiProfile?.p2 ? props.activeAiProfile.p2 : "KI 2";
+      default:
+        return playerId.toUpperCase();
+    }
   };
 
   return (
@@ -610,7 +633,8 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         modelUrl="/Player1.glb"
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.you)} 
-        type="DU" label="DU" 
+        type="DU" 
+        label={getPlayerDisplayLabel("you")} // <-- Hier dynamisch 
         isGlowing={props.activeChar === "you"} 
         isHitter={props.hitterId === "you"}
         onClick={() => props.onPlayerClick && props.onPlayerClick("you")}
@@ -622,7 +646,8 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         modelUrl="/Player2.glb"
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.partner)} 
-        type="PTNER" label="PARTNER" 
+        type="PTNER" 
+        label={getPlayerDisplayLabel("partner")} // <-- Hier dynamisch
         isGlowing={props.activeChar === "partner"}
         isHitter={props.hitterId === "partner"}
         onClick={() => props.onPlayerClick && props.onPlayerClick("partner")}
@@ -634,7 +659,8 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         modelUrl="/Player3.glb"
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp1)} 
-        type="GEG1" label="KI 1" 
+        type="GEG1" 
+        label={getPlayerDisplayLabel("opp1")} // <-- Hier dynamisch
         isGlowing={props.activeChar === "opp1"} 
         isHitter={props.hitterId === "opp1"} 
         hidePlayerLabels={props.hidePlayerLabels} 
@@ -644,7 +670,8 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         modelUrl="/Player4.glb"
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp2)} 
-        type="GEG2" label="KI 2" 
+        type="GEG2" 
+        label={getPlayerDisplayLabel("opp2")} // <-- Hier dynamisch
         isGlowing={props.activeChar === "opp2"} 
         isHitter={props.hitterId === "opp2"} 
         hidePlayerLabels={props.hidePlayerLabels} 
@@ -662,8 +689,6 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         if (props.hasSubmitted && props.selectedZone) {
           ballTargetPos = getZoneCenter3D(targetSide, props.selectedZone);
           isAnimating = true;
-          // Magnet-Bug Logic entfernt. Die Ball-Physik ist jetzt komplett an die 
-          // Timer-Phase aus der GameScreen gebunden und klebt nicht mehr!
         }
 
         return (
@@ -722,7 +747,6 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
 
       {/* --- VORSCHAU FLUGKURVE --- */}
       {(() => {
-        // FIX: Sicheres Fallback, damit die gestrichelte Vorschau-Linie nicht während der eigenen Animation verschwindet
         const targetZoneId = (isLocked && props.bestZones && props.bestZones.length > 0) 
             ? props.bestZones[0] 
             : props.selectedZone;

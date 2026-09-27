@@ -415,7 +415,11 @@ export default function ScenarioCourt3D(props: Props) {
               matchTitle={props.matchTitle}
               
             /> 
-            <TacticalData {...props} />
+            {/* HIER DIE BEIDEN PROPS HINZUFÜGEN: */}
+            <TacticalData 
+              {...props} 
+              playerName={playerName} 
+              partnerName={partnerName}/>
           </Suspense>
         </Canvas>
       </div>
