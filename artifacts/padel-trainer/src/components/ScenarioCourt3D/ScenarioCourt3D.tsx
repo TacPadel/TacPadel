@@ -274,6 +274,8 @@ export interface Props {
   onIntroFinished?: () => void;
   
   activeAiProfile?: AiProfile; 
+  targetScore?: number;
+  matchTitle?: string;
 }
 
 export default function ScenarioCourt3D(props: Props) {
@@ -409,6 +411,8 @@ export default function ScenarioCourt3D(props: Props) {
               partnerName={partnerName} // NEU: Partner-Name an CourtFloor übergeben
               userTeamName={props.userTeamName} // <-- HIER MITÜBERGEBEN
               activeAiProfile={props.activeAiProfile} 
+              targetScore={props.targetScore}
+              matchTitle={props.matchTitle}
               
             /> 
             <TacticalData {...props} />

@@ -5,7 +5,7 @@ interface BasicsViewProps {
   setActiveTab?: (tab: "home" | "trainer" | "board" | "basics") => void;
 }
 
-// Deine bereitgestellten Daten
+// Erweitertes Dictionary mit allen neuen Spielmechaniken
 export const PADEL_DICTIONARY: Record<string, Record<string, string>> = {
   "Schläge": {
     "Aufschlag": "Der Aufschlag wird im Padel unterhalb der Hüfte (aus dem Sprung nach einem Bodenaufprall) ausgeführt und muss diagonal in das gegenüberliegende Aufschlagfeld gespielt werden. Berührt der Ball danach das Gitter, ist es ein Aufschlagfehler; berührt er die Glaswand, ist er gültig.",
@@ -22,20 +22,46 @@ export const PADEL_DICTIONARY: Record<string, Record<string, string>> = {
   "Positionen": {
     "Netzposition (Angriff)": "Die dominierende Position im Padel. Beide Spieler stehen ca. 2–3 Meter vor dem Netz. Von hier aus wird der Druck per Volley und Überkopfschlägen aufgebaut. Punkte werden fast nur hier gewonnen.",
     "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Aufschlag oder Druck. Spieler stehen leicht hinter der Aufschlaglinie. Fokus liegt auf dem Nutzen der Glaswände und dem Spielen von Lobs.",
-    "Die Übergangszone (Niemandsland)": "Der Bereich zwischen Aufschlaglinie und Netz. Hier sollte man sich niemals freiwillig aufhalten, da man leicht vor die Füße angespielt werden kann. Diese Zone wird nur schnell durchschritten.",
+    "Übergangszone (Niemandsland)": "Der Bereich zwischen Aufschlaglinie und Netz. Hier sollte man sich niemals freiwillig aufhalten, da man leicht vor die Füße angespielt werden kann. Diese Zone wird nur schnell durchschritten.",
     "Die T-Linie": "Der Kreuzungspunkt der Aufschlaglinien in der Mitte des Feldes. Ein wichtiger Orientierungspunkt für das Stellungsspiel bei kurzen Bällen.",
   },
   "Regeln": {
-    "Zählweise": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird entweder traditionell über Vorteil gespielt oder mit der \"Golden Point\"-Regel (der nächste Punkt entscheidet das Spiel). Ein Satz geht bis 6, ein Match über 2 Gewinnsätze.",
-    "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er im Aus. Nach dem Bodenaufprall darf er beliebig oft an die Wände ditschen.",
+    "Zählweise": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird oft mit der \"Golden Point\"-Regel gespielt (der nächste Punkt entscheidet das Spiel). Ein Satz geht bis 6.",
+    "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er im Aus.",
     "Eigenes Glas nutzen": "In der Defensive darf man den Ball mit voller Kraft gegen die eigene Glasscheibe schlagen, damit er über das Netz ins gegnerische Feld fliegt. Das Nutzen des eigenen Metallgitters ist hingegen verboten.",
   },
+  "TacScore & Fortschritt": {
+    "TacScore (Skill-Level)": "Dein MMR (Matchmaking Rating). Er steigt bei Siegen und sinkt bei Niederlagen. Dein TacScore bestimmt die Stärke der KI im freien Spiel und schaltet höhere Turniere frei.",
+    "TacPoints (Währung)": "Die In-Game Währung. Du verdienst TacPoints durch Siege (besonders in Turnieren) und benötigst sie als Startgeld (Buy-In) für Pro Tour Events.",
+    "Profi-Liga Modus": "Erreichst du einen TacScore von 4000 (oder spielst ein entsprechend schweres Turnier), wechselt das Spiel in den Profi-Modus. Die hilfreichen Taktik-Linien auf dem Boden verschwinden – du musst Laufwege und Schläge nun komplett frei einschätzen.",
+  },
+  "Pro Tour & Turniere": {
+    "Turnier-Struktur": "Ein Pro Tour Event besteht aus Viertelfinale, Halbfinale und Finale. Je weiter du kommst, desto länger werden die Match-Tiebreaks (z. B. bis 6 im Viertelfinale, bis 10 im Finale).",
+    "Buy-In & Preisgeld": "Die Teilnahme kostet TacPoints. Verlierst du, bist du ausgeschieden und dein Startgeld ist weg. Gewinnst du das Turnier, erwartet dich ein massiver TacPoints-Gewinn.",
+    "Turnier-Speicherung": "Dein Turnier-Fortschritt (inklusive verbleibender Ausdauer) wird gespeichert. Du kannst ein Turnier pausieren und später genau dort fortsetzen, wo du aufgehört hast.",
+  },
+  "Ausdauer & Spielmechanik": {
+    "Stamina (Ausdauer)": "Jeder Sprint und jeder harte Schlag kostet dich und deinen Partner Ausdauer. Sinkt der Wert auf 0, fehlt die Kraft für saubere Schläge und der Ball landet oft im Netz.",
+    "Regeneration durch Taktik": "Zwischen Turnierrunden erholst du dich leicht. Während eines Ballwechsels kannst du Ausdauer regenerieren, indem du taktisch clevere Schläge spielst (z. B. einen kontrollierten Lob aus der tiefen Defensive oder einen Volley vorne am Netz).",
+    "Zonen & Laufwege": "Das Spielfeld ist in ein Raster (A-E, 1-4) unterteilt. Du musst rechtzeitig in die Zielzone des gegnerischen Balls laufen, sonst machst du ein Luftloch. Achte darauf, Smash-Bälle nicht zu überlaufen!",
+    "Wer nimmt den Ball?": "Du und dein Partner müsst euch absprechen. Wenn du in die Zone läufst, sollte dein Partner absichern. Läuft dein Partner zum Ball, überlass ihm den Schlag. Die KI bestraft Deckungslücken gnadenlos.",
+  },
+  "KI-Gegner": {
+    "Gegner-Profile": "Du spielst nicht gegen anonyme KIs, sondern gegen feste Teams mit eigenen Stärken. Jedes Team hat einen bevorzugten Spielstil (Aggressiv, Defensiv, Balanced).",
+    "Aggressive KI": "Spielt schnelle Bälle, rückt aggressiv ans Netz auf und zwingt dich zu schnellen Reaktionen. Dafür verbrauchen sie ihre Ausdauer wesentlich schneller.",
+    "Defensive KI": "Spielt lange, sichere Bälle (oft Lobs) und macht kaum Eigenfehler (Unforced Errors). Sie haben einen extrem hohen Ausdauer-Multiplikator und sind schwer müde zu spielen.",
+    "KI-Ausdauer": "Auch die Gegner haben einen Ausdauerbalken. Wenn du sie viel laufen lässt und den Ball im Spiel hältst, brechen sie irgendwann ein und machen leichte Fehler.",
+  }
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
   "Schläge": "bg-blue-500/10 border-blue-500/30 text-blue-400",
   "Positionen": "bg-amber-500/10 border-amber-500/30 text-amber-400",
   "Regeln": "bg-purple-500/10 border-purple-500/30 text-purple-400",
+  "TacScore & Fortschritt": "bg-indigo-500/10 border-indigo-500/30 text-indigo-400",
+  "Pro Tour & Turniere": "bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-400",
+  "Ausdauer & Spielmechanik": "bg-rose-500/10 border-rose-500/30 text-rose-400",
+  "KI-Gegner": "bg-cyan-500/10 border-cyan-500/30 text-cyan-400",
 };
 
 // Hilfs-Mapping für den leuchtenden Seitenstreifen
@@ -43,6 +69,10 @@ const STRIPE_COLORS: Record<string, string> = {
   "Schläge": "bg-blue-500",
   "Positionen": "bg-amber-500",
   "Regeln": "bg-purple-500",
+  "TacScore & Fortschritt": "bg-indigo-500",
+  "Pro Tour & Turniere": "bg-fuchsia-500",
+  "Ausdauer & Spielmechanik": "bg-rose-500",
+  "KI-Gegner": "bg-cyan-500",
 };
 
 interface LexikonItem {
@@ -57,7 +87,6 @@ interface LexikonItem {
 export default function BasicsView({ setActiveTab }: BasicsViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Alle");
-  // --- NEUER STATE für die Anzeige des Disclaimers ---
   const [showLegal, setShowLegal] = useState<boolean>(false);
 
   // Dynamische Kategorien aus dem Dictionary ziehen
@@ -136,18 +165,18 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
               <p>Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz)<br/><br/>
               <strong className="text-slate-200">Betreiber der App:</strong><br/>
               TacPadel<br/>
-              [Boris] [Sredojevic]<br/>
-              [Brunnenstr. 26]<br/>
-              [47623] [Kevelaer]<br/>
+              Boris Sredojevic<br/>
+              Brunnenstr. 26<br/>
+              47623 Kevelaer<br/>
               <br/>
               <strong className="text-slate-200">Kontakt:</strong><br/>
-              Telefon: [Deine Telefonnummer, z.B. +49 123 456789]<br/>
-              E-Mail: [admin@tacpadel.de]<br/>
+              Telefon: Deine Telefonnummer, z.B. +49 123 456789<br/>
+              E-Mail: [dmin@tacpadel.de<br/>
               <br/>
               <strong className="text-slate-200">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV:</strong><br/>
-              [Boris] [Sredojevic]<br/>
-              [Brunnenstr. 26]<br/>
-              [47623] [Kevelaer]<br/>
+              Boris Sredojevic<br/>
+              Brunnenstr. 26<br/>
+              47623 Kevelaer<br/>
               <br/>
               <strong className="text-slate-200">EU-Streitschlichtung:</strong><br/>
               Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit: https://ec.europa.eu/consumers/odr/.

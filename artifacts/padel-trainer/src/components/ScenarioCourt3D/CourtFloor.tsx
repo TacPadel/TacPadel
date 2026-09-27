@@ -326,9 +326,12 @@ export interface ScoreboardProps {
   isPlayerTeamServe?: boolean;
   playerName?: string; 
   partnerName?: string; 
-  userTeamName?: string; // NEU
+  userTeamName?: string; 
   isSimulationMode?: boolean; 
   activeAiProfile?: AiProfile; 
+  // --- NEU FÜR DYNAMISCHES SCOREBOARD ---
+  targetScore?: number; 
+  matchTitle?: string;
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
@@ -367,7 +370,10 @@ export default function CourtFloor(props: ScoreboardProps) {
     partnerName = "Partner",
     userTeamName = "Dein Team",
     isSimulationMode = false,
-    activeAiProfile
+    activeAiProfile,
+    // --- NEU ---
+    targetScore = 10,
+    matchTitle = "Match-Tiebreak"
   } = props;
   
   const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
@@ -424,7 +430,11 @@ export default function CourtFloor(props: ScoreboardProps) {
                   <p className={`text-sm uppercase tracking-widest font-black mb-3 ${isAiActive ? "text-red-400" : "text-emerald-400"}`}>
                     {phase === "ai_prepare" ? "🔴 Gegner bereitet vor..." : (isTimerPhase ? "🔴 Ball fliegt!" : "🟢 Dein Zug")}
                   </p>
-                  <p className="text-lg font-semibold text-slate-300 leading-snug">Match-Tiebreak<br/><span className="text-sm font-normal text-slate-500">(bis 10 Punkte)</span></p>
+                  {/* --- HIER WERDEN TARGET SCORE UND TITEL EINGESETZT --- */}
+                  <p className="text-lg font-semibold text-slate-300 leading-snug">
+                    {matchTitle}<br/>
+                    <span className="text-sm font-normal text-slate-500">(bis {targetScore} Punkte)</span>
+                  </p>
                 </div>
                 
                 <div className="text-right flex flex-col items-end w-1/3">

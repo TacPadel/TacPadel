@@ -320,63 +320,64 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       {/* HINTERGRUND GRID */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none"></div>
 
-      {/* HEADER */}
-      <div className="relative pt-6 pb-4 px-4 flex flex-col items-center border-b border-slate-800/50 bg-[#050b18]/80 backdrop-blur-sm z-10 shrink-0">
+      {/* --- NEUER KOMPAKTER HEADER (2x2 Grid) --- */}
+      <div className="flex flex-col items-center w-full px-4 pt-6 pb-4 shrink-0 relative border-b border-slate-800/50 bg-[#050b18]/90 backdrop-blur-md z-10">
         
-        {/* ZURÜCK BUTTON */}
+        {/* Schließen Button (X) */}
         <button 
-          onClick={onClose} 
-          className="absolute left-4 top-6 w-10 h-10 flex items-center justify-center bg-slate-900/80 border border-slate-700 rounded-full hover:bg-slate-800 transition-colors shadow-lg z-20"
+          onClick={onClose}
+          className="absolute left-4 top-6 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors z-20 shadow-md"
         >
-          <span className="text-slate-300 font-bold text-lg leading-none">✕</span>
+          ✕
         </button>
 
-        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-[0.3em] uppercase drop-shadow-[0_0_15px_rgba(56,189,248,0.4)]">
+        {/* Titel & Subtitel */}
+        <h1 className="text-xl sm:text-2xl font-black text-white tracking-[0.2em] uppercase mt-1 drop-shadow-[0_0_10px_rgba(56,189,248,0.4)]">
           Beta Season <span className="text-sky-400">1</span>
         </h1>
-        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Sammle TacPoints und klettere im Ranking</p>
-        
-        {/* TAC POINTS, SCORE & RANKING BUTTON */}
-        <div className="mt-4 flex flex-wrap justify-center items-center gap-3 w-full px-4">
+        <p className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1 mb-4 text-center">
+          Sammle TacPoints und klettere im Ranking
+        </p>
+
+        {/* 2x2 Grid für Stats und Actions - Spart enorm Platz! */}
+        <div className="grid grid-cols-2 gap-3 w-full max-w-sm px-2">
           
-          {/* TACSCORE (Skill Level) */}
-          <div className="flex items-center gap-2 px-5 py-2 bg-emerald-950/30 border border-emerald-500/50 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-            <span className="text-emerald-500 drop-shadow-[0_0_5px_rgba(16,185,129,0.8)] text-sm leading-none">⚡</span>
-            <span className="text-[12px] font-black tracking-widest text-emerald-400 uppercase leading-none mt-0.5">
-              {tacScore} TacScore
-            </span>
+          {/* TacScore */}
+          <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-emerald-500/30 bg-emerald-950/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.1)]">
+            <span className="text-emerald-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]">⚡ {tacScore}</span>
+            <span className="text-[7px] text-emerald-500/70 uppercase tracking-widest font-bold mt-0.5">TacScore</span>
           </div>
 
-          {/* TACPOINTS (Währung) */}
-          <div className="flex items-center gap-2 px-5 py-2 bg-amber-950/30 border border-amber-500/50 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-            <span className="text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.8)] text-sm leading-none">⭐</span>
-            <span className="text-[12px] font-black tracking-widest text-amber-400 uppercase leading-none mt-0.5">
-              {tacPoints} TacPoints
-            </span>
+          {/* TacPoints */}
+          <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-amber-500/30 bg-amber-950/30 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]">
+            <span className="text-amber-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(245,158,11,0.8)]">⭐ {tacPoints}</span>
+            <span className="text-[7px] text-amber-500/70 uppercase tracking-widest font-bold mt-0.5">TacPoints</span>
           </div>
-          
+
+          {/* Ranking Button */}
           <button 
             onClick={fetchLeaderboard}
-            className="flex items-center gap-2 px-5 py-2 bg-indigo-950/40 border border-indigo-500/50 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.2)] hover:bg-indigo-900/50 transition-colors"
+            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-indigo-500/40 bg-indigo-900/20 hover:bg-indigo-900/40 transition-colors shadow-[inset_0_0_10px_rgba(99,102,241,0.15)] active:scale-95"
           >
-            <span className="text-indigo-400 drop-shadow-[0_0_5px_rgba(99,102,241,0.8)] text-sm leading-none">🏆</span>
-            <span className="text-[12px] font-black tracking-widest text-indigo-300 uppercase leading-none mt-0.5">
-              Beta Ranking
-            </span>
+            <span className="text-indigo-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(99,102,241,0.8)]">🏆 Ranking</span>
+            <span className="text-[7px] text-indigo-500/70 uppercase tracking-widest font-bold mt-0.5">Beta Leaderboard</span>
           </button>
-        </div>
 
-        {/* DYNAMISCHER GLOBAL TIMER */}
-        <div className="mt-3 flex items-center gap-2 px-4 py-1.5 bg-red-950/30 border border-red-500/30 rounded-full">
-          {timeLeft !== "BETA BEENDET" && <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,1)]"></div>}
-          <span className="text-[10px] font-black tracking-widest text-red-400 uppercase">
-            {timeLeft === "BETA BEENDET" ? timeLeft : `Beta Ends In: ${timeLeft}`}
-          </span>
+          {/* Timer */}
+          <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-red-500/30 bg-red-950/30 shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
+            <span className="text-red-400 font-black text-xs tracking-wider">{timeLeft === "BETA BEENDET" ? "BEENDET" : timeLeft}</span>
+            <div className="flex items-center gap-1 mt-0.5">
+              {timeLeft !== "BETA BEENDET" && <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>}
+              <span className="text-[7px] text-red-500/70 uppercase tracking-widest font-bold">Beta Ends</span>
+            </div>
+          </div>
+
         </div>
       </div>
+      {/* --- ENDE HEADER --- */}
 
       {/* TURNIER-LISTE (SCROLLBAR) */}
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar z-10 flex flex-col gap-4 pb-20">
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar z-10 flex flex-col gap-4 pb-20 pt-2">
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-8 h-8 rounded-full border-t-2 border-fuchsia-500 animate-spin"></div>
