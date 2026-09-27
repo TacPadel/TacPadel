@@ -456,7 +456,6 @@ function Real3DPlayer({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* --- DAS NEUE STYLISCHE NAMENSSCHILD --- */}
       {!hidePlayerLabels && (
         <Html position={[0, 2.8, 0]} center style={{ pointerEvents: 'none' }}>
           <div className={`px-2 py-0.5 rounded-md border flex items-center justify-center whitespace-nowrap shadow-lg backdrop-blur-md transition-all ${isGlowing ? 'scale-110' : 'scale-100'} ${
@@ -482,7 +481,11 @@ function Real3DPlayer({
   );
 }
 
-export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; partnerName?: string; }) {
+export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; }) {
+  
+  // Nutze entweder playerName, userName (wie in HomeView) oder als Fallback "DU"
+  const currentUserName = props.playerName || props.userName || "DU";
+
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
 
@@ -517,11 +520,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
     return false;
   };
 
-  // --- HILFSFUNKTION FÜR DIE NAMENSANZEIGE ---
   const getPlayerDisplayLabel = (playerId: string) => {
     switch (playerId) {
       case "you":
-        return props.playerName ? props.playerName : "DU";
+        return currentUserName; 
       case "partner":
         return props.partnerName ? props.partnerName : "PARTNER";
       case "opp1":
@@ -536,7 +538,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
   return (
     <group name="TacticalData">
       <Text position={[0, 0.03, 11]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
-        DEINE SEITE
+        {currentUserName !== "DU" ? `${currentUserName.toUpperCase()}S SEITE` : "DEINE SEITE"}
       </Text>
       <Text position={[0, 0.03, -11]} rotation={[-Math.PI / 2, 0, Math.PI]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
         GEGNERISCHE SEITE
@@ -634,7 +636,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.you)} 
         type="DU" 
-        label={getPlayerDisplayLabel("you")} // <-- Hier dynamisch 
+        label={getPlayerDisplayLabel("you")} 
         isGlowing={props.activeChar === "you"} 
         isHitter={props.hitterId === "you"}
         onClick={() => props.onPlayerClick && props.onPlayerClick("you")}
@@ -647,7 +649,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.partner)} 
         type="PTNER" 
-        label={getPlayerDisplayLabel("partner")} // <-- Hier dynamisch
+        label={getPlayerDisplayLabel("partner")}
         isGlowing={props.activeChar === "partner"}
         isHitter={props.hitterId === "partner"}
         onClick={() => props.onPlayerClick && props.onPlayerClick("partner")}
@@ -660,7 +662,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp1)} 
         type="GEG1" 
-        label={getPlayerDisplayLabel("opp1")} // <-- Hier dynamisch
+        label={getPlayerDisplayLabel("opp1")}
         isGlowing={props.activeChar === "opp1"} 
         isHitter={props.hitterId === "opp1"} 
         hidePlayerLabels={props.hidePlayerLabels} 
@@ -671,13 +673,12 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp2)} 
         type="GEG2" 
-        label={getPlayerDisplayLabel("opp2")} // <-- Hier dynamisch
+        label={getPlayerDisplayLabel("opp2")} 
         isGlowing={props.activeChar === "opp2"} 
         isHitter={props.hitterId === "opp2"} 
         hidePlayerLabels={props.hidePlayerLabels} 
       />
 
-      {/* --- BALL ANIMATION --- */}
       {(() => {
         const startSide = props.positions.ball.side || "left";
         const targetSide = startSide === "left" ? "right" : "left"; 
@@ -706,7 +707,6 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         );
       })()}
 
-      {/* --- LINIEN MIT ECHTZEIT-FEEDBACK --- */}
       {props.selectedLaufZone && (() => {
          const origin = isLocked ? runOriginsRef.current.you : props.positions.you;
          if (origin === props.selectedLaufZone) return null;
@@ -745,7 +745,6 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
          return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={5} dashed dashScale={5} />;
       })()}
 
-      {/* --- VORSCHAU FLUGKURVE --- */}
       {(() => {
         const targetZoneId = (isLocked && props.bestZones && props.bestZones.length > 0) 
             ? props.bestZones[0] 

@@ -34,16 +34,15 @@ export interface DBPlayer {
 }
 
 interface HomeViewProps {
-  // "game" wurde als valider Tab hinzugefügt
   setActiveTab: (tab: "home" | "trainer" | "taktik" | "basics" | "game") => void;
   onQuickStart: (scenarioIndex?: number) => void;
   currentScore?: number; 
-  currentTacPoints?: number; // NEU: TacPoints für die Season
+  currentTacPoints?: number; 
   userName?: string; 
   userEmail?: string; 
   userAvatar?: string;
   dbLeaderboard?: DBPlayer[];
-  dbSeasonLeaderboard?: DBPlayer[]; // NEU: Leaderboard für die Season TacPoints
+  dbSeasonLeaderboard?: DBPlayer[]; 
   onPlayerClick?: (id: string) => void;
 }
 
@@ -159,7 +158,7 @@ export default function HomeView({
     >
       
       {/* ======================================================== */}
-      {/* 1. HERO SECTION (mit TacPoints Erweiteung)               */}
+      {/* 1. HERO SECTION (ANGEPASSTE REIHENFOLGE)                 */}
       {/* ======================================================== */}
       <div className="w-full bg-[#040914]/90 border border-cyan-900/50 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-600 via-cyan-400 to-transparent" />
@@ -178,7 +177,7 @@ export default function HomeView({
           </div>
 
           <div className="flex items-center gap-4 md:gap-6 bg-[#030611] border border-slate-800 p-4 rounded-xl shadow-inner w-full md:w-auto">
-            {/* TacScore */}
+            {/* 1. TacScore */}
             <div className="flex flex-col items-start md:items-end">
               <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacScore</span>
               <div className="text-2xl font-black text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] leading-none mt-1">
@@ -188,21 +187,21 @@ export default function HomeView({
             
             <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
             
-            {/* TacPoints */}
-            <div className="flex flex-col items-start md:items-end">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints</span>
-              <div className="text-2xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none mt-1">
-                {displayTacPoints}
+            {/* 2. Rank (Gehört zu TacScore) */}
+            <div className="flex flex-col items-start md:items-center">
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Rang</span>
+              <div className="text-xl font-bold text-white mt-1">
+                {currentUserRank > 0 ? `#${currentUserRank}` : "-"}
               </div>
             </div>
 
             <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
             
-            {/* Rank */}
-            <div className="flex flex-col">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Rang</span>
-              <div className="text-xl font-bold text-white mt-1">
-                {currentUserRank > 0 ? `#${currentUserRank}` : "-"}
+            {/* 3. TacPoints (Season) */}
+            <div className="flex flex-col items-start md:items-end">
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints</span>
+              <div className="text-2xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none mt-1">
+                {displayTacPoints}
               </div>
             </div>
           </div>
@@ -228,7 +227,7 @@ export default function HomeView({
         
       <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-5 mt-2">
         {/* ======================================================== */}
-        {/* 3. TRAINER FORTSETZEN (Ehemals Blitzstart)               */}
+        {/* 3. TRAINER FORTSETZEN                                    */}
         {/* ======================================================== */}
         <div className="lg:col-span-7 flex flex-col gap-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">
@@ -238,7 +237,7 @@ export default function HomeView({
           <motion.div 
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => onQuickStart()} // Ohne ID = Fortsetzen
+            onClick={() => onQuickStart()} 
             className="w-full h-full min-h-[220px] relative group overflow-hidden rounded-2xl bg-[#050b18] border border-cyan-900/50 p-1 transition-all duration-300 hover:shadow-[0_0_30px_rgba(6,182,212,0.2)] cursor-pointer flex flex-col"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/10 to-blue-600/10 group-hover:from-cyan-500/30 group-hover:to-blue-500/30 transition-colors z-10" />
@@ -257,7 +256,6 @@ export default function HomeView({
                 </div>
               </div>
 
-              {/* Court Hintergrund-Visuals für den Vibe */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[110%] h-[150%] opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none blur-[2px] z-10 flex items-center justify-center pt-10 scale-110">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[150%] opacity-60 group-hover:opacity-90 brightness-125 contrast-125 transition-all duration-500 pointer-events-none blur-[1px] group-hover:blur-0 z-10 flex items-center justify-center pt-4 scale-90">
                   <ScenarioCourt3D
@@ -279,7 +277,7 @@ export default function HomeView({
         </div>
 
         {/* ======================================================== */}
-        {/* 4. LEADERBOARD (Mit Tabs für All-Time & Season)          */}
+        {/* 4. LEADERBOARD (All-Time & Season)                       */}
         {/* ======================================================== */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           <div className="flex justify-between items-end px-1">
@@ -304,7 +302,6 @@ export default function HomeView({
             
             {top5Players.map((player, index) => {
               const isUser = player.name === userName; 
-              // Farbsteuerung für die aktuelle Ansicht
               const highlightColor = lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400';
               const activeBg = lbTab === 'alltime' ? 'bg-cyan-950/30 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/30 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]';
               const tagColor = lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300';
@@ -371,9 +368,9 @@ export default function HomeView({
       {/* ======================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
         
-        {/* Game / Match Starten Card (Ehemals Trainer) */}
+        {/* Game / Match Starten Card */}
         <div 
-          onClick={() => setActiveTab("game")} // Führt nun in den Game-Bereich
+          onClick={() => setActiveTab("game")} 
           className="bg-[#040914] border border-orange-500/30 hover:border-orange-400 rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 shadow-[0_0_15px_rgba(255,119,0,0.05)] hover:shadow-[0_0_25px_rgba(255,119,0,0.15)]"
         >
           <div className="w-16 h-16 rounded-2xl bg-orange-950/40 border border-orange-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(255,119,0,0.2)] group-hover:scale-105 transition-transform duration-300">
