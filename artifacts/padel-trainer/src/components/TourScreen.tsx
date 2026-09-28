@@ -16,6 +16,7 @@ interface LeaderboardEntry {
   id: string;
   username: string; 
   tac_points: number;
+  points: number; // <-- NEU: TacScore für die Liste
 }
 
 interface PlayerStats {
@@ -145,7 +146,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data, error } = await supabase
         .from('user_stats')
-        .select('id, username, tac_points')
+        .select('id, username, tac_points, points') // <-- NEU: points mitladen
         .order('tac_points', { ascending: false })
         .limit(10); 
 
@@ -658,12 +659,30 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             {player.username || "Spieler XYZ"}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end shrink-0">
-                          <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">TacPoints</span>
-                          <span className="text-sm font-black text-indigo-400 drop-shadow-[0_0_5px_rgba(99,102,241,0.5)]">
-                            {player.tac_points}
-                          </span>
+                        
+                        {/* --- NEU: Punkte Anzeige (Beide Werte nebeneinander) --- */}
+                        <div className="flex items-center gap-3 shrink-0">
+                          
+                          {/* TacScore Anzeige (Skill) */}
+                          <div className="flex flex-col items-end">
+                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">TacScore</span>
+                            <span className="text-xs font-black text-slate-300">
+                              {player.points || 0}
+                            </span>
+                          </div>
+
+                          <div className="w-px h-6 bg-slate-700/50"></div>
+                          
+                          {/* TacPoints Anzeige (Ranking Metrik) */}
+                          <div className="flex flex-col items-end w-14">
+                            <span className="text-[9px] font-black uppercase text-indigo-500/70 tracking-widest leading-none">TacPoints</span>
+                            <span className="text-sm font-black text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]">
+                              {player.tac_points}
+                            </span>
+                          </div>
+                          
                         </div>
+                        {/* -------------------------------------------------------- */}
                       </div>
                     );
                   })
