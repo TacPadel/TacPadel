@@ -215,19 +215,19 @@ export default function App(): React.JSX.Element {
   }, [activeTab]);
   
   const [dbLeaderboard, setDbLeaderboard] = useState<DBPlayer[]>([]);
+  const [dbSeasonLeaderboard, setDbSeasonLeaderboard] = useState<DBPlayer[]>([]);
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
-      const { data, error } = await supabase
+    const fetchLeaderboards = async () => {
+      // 1. All-Time Leaderboard (nach points sortiert)
+      const { data: allData, error: errAll } = await supabase
         .from('user_stats')
-        .select('id, email, points, display_name, avatar_url')
+        .select('id, email, points, tac_points, display_name, avatar_url')
         .order('points', { ascending: false })
         .limit(20);
 
-      if (error) {
-        console.error("Supabase Ladefehler:", error.message);
-      } else if (data) {
-        const formattedData = data.map((user: any) => {
+      if (!errAll && allData) {
+        const formattedAll = allData.map((user: any) => {
           const emailFallback = user.email ? user.email.split('@')[0] : "Spieler";
           const finalName = user.display_name && user.display_name.trim() !== "" 
             ? user.display_name 
@@ -237,27 +237,53 @@ export default function App(): React.JSX.Element {
             id: user.id,
             name: finalName,
             score: user.points || 0,
+            tacPoints: user.tac_points || 0,
             avatar_url: user.avatar_url 
           };
         });
-        setDbLeaderboard(formattedData);
+        setDbLeaderboard(formattedAll);
+      }
+
+      // 2. Season Leaderboard (nach tac_points sortiert)
+      const { data: seasonData, error: errSeason } = await supabase
+        .from('user_stats')
+        .select('id, email, points, tac_points, display_name, avatar_url')
+        .order('tac_points', { ascending: false })
+        .limit(20);
+
+      if (!errSeason && seasonData) {
+        const formattedSeason = seasonData.map((user: any) => {
+          const emailFallback = user.email ? user.email.split('@')[0] : "Spieler";
+          const finalName = user.display_name && user.display_name.trim() !== "" 
+            ? user.display_name 
+            : emailFallback;
+
+          return {
+            id: user.id,
+            name: finalName,
+            score: user.tac_points || 0, // Für das Leaderboard auf 'score' gemappt
+            tacPoints: user.tac_points || 0,
+            avatar_url: user.avatar_url 
+          };
+        });
+        setDbSeasonLeaderboard(formattedSeason);
       }
     };
 
-    fetchLeaderboard();
-  }, []); 
+    fetchLeaderboards();
+  }, []);
 
   const { points: totalPoints, addPoints } = usePoints();
   const { user, signOut } = useAuth();
   
-  const [dbProfile, setDbProfile] = useState<{ display_name?: string, avatar_url?: string } | null>(null);
+  const [dbProfile, setDbProfile] = useState<{ display_name?: string, avatar_url?: string, tac_points?: number } | null>(null);
 
   useEffect(() => {
     if (user?.id) {
       const fetchDbProfile = async () => {
         const { data } = await supabase
           .from('user_stats')
-          .select('display_name, avatar_url')
+          .select('display_name, avatar_url, tac_points')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -901,10 +927,12 @@ export default function App(): React.JSX.Element {
                 <HomeView 
                   setActiveTab={setActiveTab} 
                   currentScore={totalPoints}
+                  currentTacPoints={dbProfile?.tac_points || 0} // Die eigenen TacPoints aus der DB
                   userName={finalUserName}
                   userEmail={user?.email || ""}
                   userAvatar={finalAvatarUrl} 
                   dbLeaderboard={dbLeaderboard.length > 0 ? dbLeaderboard : undefined}
+                  dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} // Das Season Leaderboard
                   onPlayerClick={(id) => setSelectedPublicUserId(id)}
                   onQuickStart={(specificIndex?: number) => {
                     // --- NEU: Wenn Simulation frei ist, direkt dorthin routen ---

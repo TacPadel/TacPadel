@@ -355,7 +355,7 @@ export default function GameScreen() {
     setEarnedTP(0);
 
     const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
-    const roundDifficultyBonus = (round - 1) * 500; 
+    const roundDifficultyBonus = (round - 1) * 200; 
     const aiTargetScore = baseDifficulty + roundDifficultyBonus;
     
     if (staminaModeEnabled) {
@@ -477,7 +477,7 @@ export default function GameScreen() {
         let currentAiDifficulty = tacScore;
         if (activeTournamentId) {
           currentAiDifficulty = activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore;
-          currentAiDifficulty += ((activeTournamentRound - 1) * 500);
+          currentAiDifficulty += ((activeTournamentRound - 1) * 200);
         }
 
         const brain = calculateSmartAITurn(

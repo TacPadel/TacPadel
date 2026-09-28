@@ -386,6 +386,7 @@ export const calculateSmartAITurn = (
     for (let r = minRow; r <= maxRow; r++) { finalInterceptZones.add(`${targetCol}${r}`); }
   }
 
+  // ... (Dein Code darüber bleibt gleich: isWallHit / colIdx) ...
   const colIdx = ["A", "B", "C", "D", "E"].indexOf(targetCol);
   Array.from(finalInterceptZones).forEach(zone => {
       if (traj.isWallHit || shot === "SMASH") {
@@ -395,23 +396,42 @@ export const calculateSmartAITurn = (
       }
   });
 
-  if (shot === "SMASH") {
-    finalInterceptZones.add(`${targetCol}3`);
-    finalInterceptZones.add(`${targetCol}4`);
-  } else if (!traj.isWallHit) {
-    if (targetRow > 1) finalInterceptZones.add(`${targetCol}${targetRow - 1}`); 
-    if (targetRow < 4) finalInterceptZones.add(`${targetCol}${targetRow + 1}`); 
-  }
-  // --- NEUE ERWEITERUNG: FLACHE BÄLLE VORNE ABFANGEN ---
-  // Wir verlängern die Abfangzone vom Endpunkt bis zum Netz (Reihe 5),
-  // aber nur bei flachen Bällen (kein Lob, kein Aufschlag).
+  // --- NEU: DER "LASERSTRAHL" FÜR EXAKTE (AUCH DIAGONALE) FLUGBAHNEN ---
   if (shot !== "LOB" && shot !== "AUFSCHLAG") {
+      // 1. Koordinaten in Zahlen umwandeln (1 = A, 5 = E)
+      const hColNum = ["A", "B", "C", "D", "E"].indexOf(aiHitCol) + 1; 
+      const tColNum = ["A", "B", "C", "D", "E"].indexOf(targetCol) + 1; 
+
+      // 2. Y-Achse (Entfernung über den gesamten Platz) definieren
+      const yHitter = aiHitRow;        // KI-Seite (1 = Hinten, 5 = Netz)
+      const yTarget = 11 - targetRow;  // Deine Seite (6 = Netz, 10 = Hinten)
+
+      // 3. Wir verfolgen den Ball für jede deiner Reihen vom Netz (5) bis zum Ziel
       for (let r = 5; r > targetRow; r--) {
-          finalInterceptZones.add(`${targetCol}${r}`);
+          const y = 11 - r; // Die Y-Position der abzufragenden Reihe
+          const t = (y - yHitter) / (yTarget - yHitter); // Prozentuale Strecke des Balls
+          const x = hColNum + t * (tColNum - hColNum);   // Die exakte X-Position (Spalte)
+
+          // 4. Wenn der Ball genau über der Mittellinie zweier Spalten fliegt (Toleranz > 0.25)
+          if (Math.abs(x - Math.round(x)) > 0.25) {
+              const col1 = Math.max(1, Math.floor(x)) - 1;
+              const col2 = Math.min(5, Math.ceil(x)) - 1;
+              finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col1]}${r}`);
+              finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col2]}${r}`);
+          } else {
+              // Ball ist eindeutig in einer bestimmten Spalte
+              const col = Math.max(1, Math.min(5, Math.round(x))) - 1;
+              finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col]}${r}`);
+          }
       }
+  } else if (!traj.isWallHit) {
+      // Lob und Aufschlag bleiben unangetastet: nur den Aufprall-Bereich freigeben
+      if (targetRow > 1) finalInterceptZones.add(`${targetCol}${targetRow - 1}`); 
+      if (targetRow < 4) finalInterceptZones.add(`${targetCol}${targetRow + 1}`); 
   }
 
   const uniqueInterceptZones = Array.from(finalInterceptZones);
+  // ... (Ab hier geht dein bestehender Code weiter) ...
 
   let speedMulti = 1.0;
   if (tacScore < 3000) { speedMulti = tacScore / 3000; } 
@@ -561,8 +581,9 @@ export const evaluatePlayerShot = (
       }
 
       if (isPerfectCounter) {
-        perfectChance += 22; 
-        hitChance += 10;
+        perfectChance += 30; 
+        hitChance += 15;
+        recoveryChance = 0;
         title = counterTitle;
         msg = counterMsg;
       } else if (counterTitle !== "") {

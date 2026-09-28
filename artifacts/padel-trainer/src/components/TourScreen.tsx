@@ -146,12 +146,28 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data, error } = await supabase
         .from('user_stats')
-        .select('id, username, tac_points, points') // <-- NEU: points mitladen
+        // HIER ANGEPASST: display_name und email statt username laden
+        .select('id, email, display_name, tac_points, points') 
         .order('tac_points', { ascending: false })
         .limit(10); 
 
       if (data && !error) {
-        setLeaderboardData(data);
+        // HIER ANGEPASST: Den Namen formatieren, genau wie in der App.tsx
+        const formattedData = data.map((user: any) => {
+          const emailFallback = user.email ? user.email.split('@')[0] : "Spieler XYZ";
+          const finalName = user.display_name && user.display_name.trim() !== "" 
+            ? user.display_name 
+            : emailFallback;
+
+          return {
+            id: user.id,
+            username: finalName, // Gemappt auf 'username' für dein Interface
+            tac_points: user.tac_points || 0,
+            points: user.points || 0
+          };
+        });
+        
+        setLeaderboardData(formattedData);
       }
     } catch (err) {
       console.error(err);
