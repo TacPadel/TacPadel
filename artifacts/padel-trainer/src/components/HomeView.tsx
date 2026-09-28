@@ -26,10 +26,12 @@ const TACTIC_TIPS = [
   }
 ];
 
+// --- NEU: Interface angepasst ---
 export interface DBPlayer {
   id: string;
   name: string;
-  score: number; // Nutze dieses Feld für TacScore (All-Time) oder TacPoints (Season)
+  score: number;       // TacScore
+  tacPoints?: number;  // NEU: TacPoints für das Leaderboard (optional, falls noch nicht jeder welche hat)
   avatar_url?: string;
 }
 
@@ -84,14 +86,15 @@ export default function HomeView({
         ...playersList[userIndex],
         name: userName,
         score: Math.max(playersList[userIndex].score, displayScore),
+        tacPoints: Math.max(playersList[userIndex].tacPoints || 0, displayTacPoints), // User TacPoints aktualisieren
         avatar_url: userAvatar || playersList[userIndex].avatar_url
       };
     } else {
-      playersList.push({ id: "user", name: userName, score: displayScore, avatar_url: userAvatar });
+      playersList.push({ id: "user", name: userName, score: displayScore, tacPoints: displayTacPoints, avatar_url: userAvatar });
     }
 
     return playersList.sort((a, b) => b.score - a.score);
-  }, [dbLeaderboard, userName, userEmail, userAvatar, displayScore]);
+  }, [dbLeaderboard, userName, userEmail, userAvatar, displayScore, displayTacPoints]);
 
   // --- SEASON LEADERBOARD LOGIK ---
   const sortedSeasonLeaderboard = useMemo(() => {
@@ -106,15 +109,17 @@ export default function HomeView({
       playersList[userIndex] = {
         ...playersList[userIndex],
         name: userName,
-        score: Math.max(playersList[userIndex].score, displayTacPoints),
+        score: Math.max(playersList[userIndex].score, displayScore), // User Score aktualisieren
+        tacPoints: Math.max(playersList[userIndex].tacPoints || 0, displayTacPoints), // User TacPoints aktualisieren
         avatar_url: userAvatar || playersList[userIndex].avatar_url
       };
     } else {
-      playersList.push({ id: "user", name: userName, score: displayTacPoints, avatar_url: userAvatar });
+      playersList.push({ id: "user", name: userName, score: displayScore, tacPoints: displayTacPoints, avatar_url: userAvatar });
     }
 
-    return playersList.sort((a, b) => b.score - a.score);
-  }, [dbSeasonLeaderboard, userName, userEmail, userAvatar, displayTacPoints]);
+    // Sortierung nach TacPoints für Season
+    return playersList.sort((a, b) => (b.tacPoints || 0) - (a.tacPoints || 0));
+  }, [dbSeasonLeaderboard, userName, userEmail, userAvatar, displayScore, displayTacPoints]);
 
   // --- AKTIVES LEADERBOARD BERECHNEN ---
   const activeLeaderboard = lbTab === "alltime" ? sortedLeaderboard : sortedSeasonLeaderboard;
@@ -176,34 +181,33 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 md:gap-6 bg-[#030611] border border-slate-800 p-4 rounded-xl shadow-inner w-full md:w-auto">
+          {/* --- NEUES HUD DESIGN FÜR SCORE & POINTS --- */}
+          <div className="flex items-center gap-3 bg-[#030611] border border-slate-800 p-3 rounded-xl shadow-inner w-full md:w-auto">
+            
             {/* 1. TacScore */}
-            <div className="flex flex-col items-start md:items-end">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacScore</span>
-              <div className="text-2xl font-black text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] leading-none mt-1">
+            <div className="flex flex-col items-center justify-center px-3 py-1 bg-cyan-950/20 border border-cyan-900/50 rounded-lg">
+              <span className="text-[8px] font-black tracking-widest text-cyan-500/70 uppercase">TacScore</span>
+              <div className="text-xl font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.4)] leading-none mt-0.5">
                 {displayScore}
               </div>
             </div>
             
-            <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
-            
-            {/* 2. Rank (Gehört zu TacScore) */}
-            <div className="flex flex-col items-start md:items-center">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Rang</span>
-              <div className="text-xl font-bold text-white mt-1">
+            {/* 2. Rank */}
+            <div className="flex flex-col items-center justify-center px-2 py-1">
+              <span className="text-[8px] font-black tracking-widest text-slate-600 uppercase">Rang</span>
+              <div className="text-lg font-bold text-slate-300 mt-0.5">
                 {currentUserRank > 0 ? `#${currentUserRank}` : "-"}
               </div>
             </div>
-
-            <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
             
-            {/* 3. TacPoints (Season) */}
-            <div className="flex flex-col items-start md:items-end">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints</span>
-              <div className="text-2xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none mt-1">
+            {/* 3. TacPoints */}
+            <div className="flex flex-col items-center justify-center px-3 py-1 bg-amber-950/20 border border-amber-900/50 rounded-lg">
+              <span className="text-[8px] font-black tracking-widest text-amber-500/70 uppercase">TacPoints</span>
+              <div className="text-xl font-black text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.4)] leading-none mt-0.5">
                 {displayTacPoints}
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -302,9 +306,8 @@ export default function HomeView({
             
             {top5Players.map((player, index) => {
               const isUser = player.name === userName; 
-              const highlightColor = lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400';
-              const activeBg = lbTab === 'alltime' ? 'bg-cyan-950/30 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/30 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]';
-              const tagColor = lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300';
+              const activeBg = lbTab === 'alltime' ? 'bg-cyan-950/30 border-cyan-900/50' : 'bg-orange-950/30 border-orange-900/50';
+              const nameHighlight = lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400';
               
               return (
                 <div 
@@ -317,14 +320,29 @@ export default function HomeView({
                   <div className="flex items-center gap-3">
                     <span className="w-6 text-center text-sm">{getMedal(index)}</span>
                     {renderAvatar(player.avatar_url, player.name)}
-                    <span className={`font-bold text-sm ${isUser ? highlightColor : 'text-slate-300'} truncate max-w-[120px] sm:max-w-[150px]`}>
+                    <span className={`font-bold text-sm truncate max-w-[90px] sm:max-w-[120px] ${isUser ? nameHighlight : 'text-slate-300'}`}>
                       {player.name}
-                      {isUser && <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${tagColor}`}>Du</span>}
                     </span>
                   </div>
-                  <span className={`font-black text-sm tracking-wider ${isUser ? 'text-white' : 'text-slate-400'}`}>
-                    {player.score.toLocaleString()} <span className="text-[9px] text-slate-600 font-bold">{lbTab === 'alltime' ? 'PTS' : 'TP'}</span>
-                  </span>
+
+                  {/* --- NEU: ZWEI WERTE NEBENEINANDER (PTS & TP) --- */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex flex-col items-end w-12">
+                      <span className="text-[7px] font-black uppercase text-slate-500 tracking-widest leading-none">TacScore</span>
+                      <span className={`text-xs font-black ${isUser && lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-400'}`}>
+                        {player.score.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="w-px h-5 bg-slate-700/50"></div>
+                    
+                    <div className="flex flex-col items-end w-12">
+                      <span className="text-[7px] font-black uppercase text-amber-500/70 tracking-widest leading-none">TacPoints</span>
+                      <span className={`text-xs font-black ${isUser && lbTab === 'season' ? 'text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]' : 'text-amber-500/80'}`}>
+                        {(player.tacPoints || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -335,20 +353,35 @@ export default function HomeView({
                 <div 
                   onClick={() => onPlayerClick?.(currentUserData.id)}
                   className={`flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer hover:scale-[1.02] active:scale-95 ${
-                    lbTab === 'alltime' ? 'bg-cyan-950/20 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/20 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]'
+                    lbTab === 'alltime' ? 'bg-cyan-950/20 border-cyan-900/50' : 'bg-orange-950/20 border-orange-900/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <span className={`font-black text-sm w-6 text-center ${lbTab === 'alltime' ? 'text-cyan-600' : 'text-orange-600'}`}>{currentUserRank}.</span>
                     {renderAvatar(currentUserData.avatar_url, currentUserData.name)}
-                    <span className={`font-bold text-sm truncate max-w-[100px] sm:max-w-[150px] ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400'}`}>
+                    <span className={`font-bold text-sm truncate max-w-[80px] sm:max-w-[120px] ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400'}`}>
                       {currentUserData.name}
-                      <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300'}`}>Du</span>
                     </span>
                   </div>
-                  <span className="font-black text-sm tracking-wider text-white">
-                    {currentUserData.score.toLocaleString()} <span className="text-[9px] text-slate-600 font-bold">{lbTab === 'alltime' ? 'PTS' : 'TP'}</span>
-                  </span>
+                  
+                  {/* DU - EIGENE PUNKTE IM GLEICHEN FORMAT */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex flex-col items-end w-12">
+                      <span className="text-[7px] font-black uppercase text-slate-500 tracking-widest leading-none">TacScore</span>
+                      <span className={`text-xs font-black ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-400'}`}>
+                        {currentUserData.score.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="w-px h-5 bg-slate-700/50"></div>
+                    
+                    <div className="flex flex-col items-end w-12">
+                      <span className="text-[7px] font-black uppercase text-amber-500/70 tracking-widest leading-none">TacPoints</span>
+                      <span className={`text-xs font-black ${lbTab === 'season' ? 'text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]' : 'text-amber-500/80'}`}>
+                        {(currentUserData.tacPoints || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
