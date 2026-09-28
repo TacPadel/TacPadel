@@ -402,6 +402,14 @@ export const calculateSmartAITurn = (
     if (targetRow > 1) finalInterceptZones.add(`${targetCol}${targetRow - 1}`); 
     if (targetRow < 4) finalInterceptZones.add(`${targetCol}${targetRow + 1}`); 
   }
+  // --- NEUE ERWEITERUNG: FLACHE BÄLLE VORNE ABFANGEN ---
+  // Wir verlängern die Abfangzone vom Endpunkt bis zum Netz (Reihe 5),
+  // aber nur bei flachen Bällen (kein Lob, kein Aufschlag).
+  if (shot !== "LOB" && shot !== "AUFSCHLAG") {
+      for (let r = 5; r > targetRow; r--) {
+          finalInterceptZones.add(`${targetCol}${r}`);
+      }
+  }
 
   const uniqueInterceptZones = Array.from(finalInterceptZones);
 
