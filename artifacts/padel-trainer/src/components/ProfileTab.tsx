@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
@@ -9,13 +9,42 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
 
+// ==========================================
+// --- RPG MOCK DATENBANK (Reines UI-Mockup) ---
+// ==========================================
+const RACKETS = [
+  { id: 'racket_starter', name: 'Rookie Frame Basic', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
+  { id: 'racket_aero', name: 'Aero Swift Pro X', modifiers: { smash: 3, control: 2, defense: 0, agility: 5 } },
+  { id: 'racket_titan', name: 'Titan Matrix CTRL', modifiers: { smash: -2, control: 7, defense: 3, agility: 0 } },
+  { id: 'racket_eclipse', name: 'Eclipse Carbon Strike', modifiers: { smash: 4, control: 3, defense: -2, agility: 1 } },
+];
+
+// Übersetzt den Spielstil deines Partners in RPG-Werte (Aktuell nur für die UI)
+const getPartnerModifiers = (partnerId: string) => {
+  const p = AI_PROFILES.flatMap(prof => [
+    { id: `${prof.id}-1`, style: prof.style },
+    { id: `${prof.id}-2`, style: prof.style }
+  ]).find(x => x.id === partnerId);
+  
+  const style = p?.style?.toLowerCase() || '';
+  
+  if (style.includes('aggressiv') || style.includes('finisher')) return { smash: 6, control: -2, defense: -3, agility: 2 };
+  if (style.includes('taktik') || style.includes('control')) return { smash: -2, control: 6, defense: 3, agility: -1 };
+  if (style.includes('defensiv') || style.includes('mauer')) return { smash: -3, control: 2, defense: 6, agility: 1 };
+  
+  // Default Allrounder
+  return { smash: 2, control: 2, defense: 2, agility: 2 };
+};
+// ==========================================
+
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
   
-  // --- NEU: Team & Partner States ---
+  // --- Team, Partner & Ausrüstung States ---
   const [teamName, setTeamName] = useState("TacPadel Rookies");
   const [partnerId, setPartnerId] = useState("pro_1-1"); 
+  const [racketId, setRacketId] = useState("racket_starter"); 
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -57,10 +86,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   useEffect(() => {
     const loadUserData = async () => {
-      // 1. Profil, Team & Score laden
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id') // NEU: team_name & partner_id hinzugefügt
+        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id') 
         .eq('id', user.id)
         .maybeSingle();
 
@@ -86,7 +114,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
       }
 
-      // 2. Match Historie laden 
       const { data: historyData } = await supabase
         .from('match_history')
         .select('points, tac_points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
@@ -101,7 +128,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         setAllHistory([]);
       }
 
-      // 3. Trophäen laden
       const { data: trophiesData } = await supabase
         .from('tour_progress')
         .select('tournament_id')
@@ -178,6 +204,42 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
+  // ==========================================
+  // --- BERECHNUNG DER NEUEN RPG STATS ---
+  // ==========================================
+  const loadoutStats = useMemo(() => {
+    // Basis Werte des Spielers
+    const baseStats = { smash: 50, control: 50, defense: 50, agility: 50 };
+    const calculated = { ...baseStats };
+    
+    const pMods = getPartnerModifiers(partnerId);
+    const rMods = RACKETS.find(r => r.id === racketId)?.modifiers || { smash: 0, control: 0, defense: 0, agility: 0 };
+
+    const diffs = {
+      smash: pMods.smash + rMods.smash,
+      control: pMods.control + rMods.control,
+      defense: pMods.defense + rMods.defense,
+      agility: pMods.agility + rMods.agility,
+    };
+
+    calculated.smash += diffs.smash;
+    calculated.control += diffs.control;
+    calculated.defense += diffs.defense;
+    calculated.agility += diffs.agility;
+
+    return { stats: calculated, diffs };
+  }, [partnerId, racketId]);
+
+  const renderStatDiff = (diff: number) => {
+    if (diff === 0) return <span className="text-[10px] font-black text-slate-600 bg-slate-800/50 px-1 rounded">-</span>;
+    return (
+      <span className={`text-[10px] font-black px-1 rounded ${diff > 0 ? 'text-emerald-400 bg-emerald-900/30 border border-emerald-500/30' : 'text-red-400 bg-red-900/30 border border-red-500/30'}`}>
+        {diff > 0 ? '+' : ''}{diff}
+      </span>
+    );
+  };
+  // ==========================================
+
   const handlePartnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newPartner = e.target.value;
     setPartnerId(newPartner);
@@ -222,7 +284,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     
     const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
     
-    // BEIDES SPEICHERN: Name und Team-Name
     const { error: dbError } = await supabase.from('user_stats').update({ 
       display_name: newName,
       team_name: newTeam 
@@ -301,24 +362,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </div>
           </div>
 
-          {/* NEU: Team-Name & Partner Auswahl */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-1">
+          <div className="grid grid-cols-1 w-full mt-1">
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Turnier Team-Name</label>
               <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="z.B. TacPadel Bros" className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
-            </div>
-            <div className="flex flex-col gap-1.5 text-left">
-              <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Dein Partner (KI)</label>
-              <select 
-                value={partnerId} 
-                onChange={handlePartnerChange} 
-                className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] appearance-none cursor-pointer"
-              >
-                {AI_PROFILES.flatMap(p => [
-                  <option key={`${p.id}-1`} value={`${p.id}-1`}>{p.p1} ({p.style})</option>,
-                  <option key={`${p.id}-2`} value={`${p.id}-2`}>{p.p2} ({p.style})</option>
-                ])}
-              </select>
             </div>
           </div>
 
@@ -361,35 +408,101 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       {/* 2. STATS, AUSRÜSTUNG & ROADMAP/TROPHÄEN   */}
       {/* ========================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+      <div className="grid grid-cols-1 gap-4 w-full">
         
+        {/* HIER STARTET DIE NEUE LOADOUT/RPG BOX */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
-              <span>Spielstil & Ausrüstung</span><span className="text-slate-600">Locker</span>
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Position</span>
-                <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
+          <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
+            <span>Spielstil & Ausrüstung</span><span className="text-slate-600">Locker</span>
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* LINKE SPALTE: Auswahl */}
+            <div className="flex flex-col gap-3">
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
+                <select 
+                  value={partnerId} 
+                  onChange={handlePartnerChange} 
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  {AI_PROFILES.flatMap(p => [
+                    <option key={`${p.id}-1`} value={`${p.id}-1`}>{p.p1} ({p.style})</option>,
+                    <option key={`${p.id}-2`} value={`${p.id}-2`}>{p.p2} ({p.style})</option>
+                  ])}
+                </select>
               </div>
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Schläger</span>
-                <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
+
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
+                <select 
+                  value={racketId} 
+                  onChange={(e) => setRacketId(e.target.value)} 
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  {RACKETS.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
               </div>
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Ausrüstung</span>
-                <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
-              </div>
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col justify-center">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Powerschlag</span>
-                <p className="font-bold text-slate-200 text-xs mt-0.5 leading-tight">Coming soon...</p>
+
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 opacity-50 cursor-not-allowed">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Ausrüstung / Perks</label>
+                <div className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-slate-500 text-xs font-bold">
+                  Coming soon...
+                </div>
               </div>
             </div>
+
+            {/* RECHTE SPALTE: RPG Stats & Diffs */}
+            <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+              {/* Leichter orange Glow im Hintergrund für Style */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
+              
+              <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black mb-4 border-b border-slate-800 pb-2">Player Attributes</h4>
+              
+              <div className="grid grid-cols-2 gap-y-6 gap-x-4 relative z-10">
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Smash Power</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.smash}</span>
+                    {renderStatDiff(loadoutStats.diffs.smash)}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Control</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.control}</span>
+                    {renderStatDiff(loadoutStats.diffs.control)}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Defense</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.defense}</span>
+                    {renderStatDiff(loadoutStats.diffs.defense)}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Agility</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.agility}</span>
+                    {renderStatDiff(loadoutStats.diffs.agility)}
+                  </div>
+                </div>
+              </div>
+              
+            </div>
+
           </div>
         </div>
 
-        <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
+        {/* Trophäen Box */}
+        <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between mt-2">
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-black tracking-widest text-purple-400 uppercase">Tour Ranking & Trophäen</h3>
