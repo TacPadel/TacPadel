@@ -589,9 +589,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       </div>
 
 
-      {/* ========================================================= */}
-      /* DETAIL MODAL (DER "TURNIER RUN" & RETRY LOGIK)             */
-      /* ========================================================= */
+      
       <AnimatePresence>
         {selectedTour && (() => {
           const dbProg = progress[selectedTour.id];
@@ -726,9 +724,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         })()}
       </AnimatePresence>
 
-      {/* ========================================================= */}
-      /* LEADERBOARD / SEASON RANKING MODAL                         */
-      /* ========================================================= */
+      
       <AnimatePresence>
         {showLeaderboard && (
           <>
