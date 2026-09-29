@@ -118,16 +118,13 @@ export const calculateSmartAITurn = (
   const bothAtBack = youRow <= 2 && partnerRow <= 2;
   const openCols = allCols.filter(col => col !== youCol && col !== partnerCol);
   
-  // Hilfsfunktion für Zielauswahl basierend auf Profil
   const getStyleTarget = (options: string[]) => {
       if (options.length === 0) return "C";
       if (aiStyle === "defensive") {
-          // Defensive Teams spielen lieber sicher durch die Mitte
           if (options.includes("C") && Math.random() < 0.7) return "C";
           if (options.includes("B") && Math.random() < 0.5) return "B";
           if (options.includes("D") && Math.random() < 0.5) return "D";
       } else if (aiStyle === "aggressive") {
-          // Aggressive Teams spielen auf die Linien
           const edges = options.filter(c => c === "A" || c === "E");
           if (edges.length > 0 && Math.random() < 0.6) return edges[Math.floor(Math.random() * edges.length)];
       }
@@ -196,7 +193,6 @@ export const calculateSmartAITurn = (
       const filteredShots = possibleShots.filter(s => !aiShotHistory.slice(0, 2).includes(s));
       const shotPool = filteredShots.length > 0 ? filteredShots : possibleShots;
       
-      // AI STYLE EINGRIFF AM NETZ
       if (aiStyle === "aggressive" && shotPool.includes("SMASH") && Math.random() < 0.5) {
           shot = "SMASH";
       } else if (aiStyle === "aggressive" && shotPool.includes("VIBORA") && Math.random() < 0.4) {
@@ -243,11 +239,8 @@ export const calculateSmartAITurn = (
     }
   }
 
-// --- 🧊 KÜHLSCHRANK-TAKTIK (Ab 4500 TacScore) ---
   if (tacScore >= 4500 && !isAiServe) {
       const staminaDiff = staminaYou - staminaPartner;
-      
-      // Wenn ein Spieler deutlich erschöpfter ist (Differenz > 10)
       if (Math.abs(staminaDiff) > 10) {
           const weakCol = staminaDiff > 0 ? partnerCol : youCol; 
           const isWeakLeft = weakCol === "A" || weakCol === "B" || (weakCol === "C" && Math.random() > 0.5);
@@ -260,50 +253,51 @@ export const calculateSmartAITurn = (
       }
   }
 
-  // --- FINALE KI-STATS BALANCE ---
-  let hitChance = 71;      
+  // --- FINALE KI-STATS BALANCE (Pacing-Optimierung für kürzere Matches) ---
+  let hitChance = 68;      // Etwas weniger Konstanz (vorher 71)
   let perfectChance = 5;   
-  let recoveryChance = 14; 
+  let recoveryChance = 18; // KI wackelt öfter (vorher 14), damit du öfter attackieren kannst!
   let aiTitle = `KI SPIELT: ${shot}`;
   let aiMsg = `Die KI spielt einen platzierten ${shot}.`;
 
-  // --- AI STYLE STAT-MODIFIKATOREN ---
   if (aiStyle === "aggressive") {
-      perfectChance += 4;  // Viel gefährlicher
-      hitChance -= 12;     // Macht mehr unforced errors
+      perfectChance += 4;  
+      hitChance -= 12;     
   } else if (aiStyle === "defensive") {
-      perfectChance = Math.max(1, perfectChance - 3); // Kaum Winner
-      hitChance += 12;     // Fast fehlerfrei (Mauer)
-      recoveryChance += 5; // Spielt öfter ungefährliche Bälle rüber
+      perfectChance = Math.max(1, perfectChance - 3); 
+      hitChance += 12;     
+      recoveryChance += 5; 
   }
 
   if (shot === "AUFSCHLAG") {
       const isRisky = targetRow === 2 || targetCol === "A" || targetCol === "C" || targetCol === "E";
       if (serveNumber === 1) {
           if (isRisky) {
-              perfectChance = 10; 
-              hitChance = 67;     
+              perfectChance = 7; 
+              hitChance = 67;    
               recoveryChance = 0; 
           } else {
               perfectChance = 3;  
-              hitChance = 87;     
+              hitChance = 87;    
               recoveryChance = 0;
           }
       } else {
           if (isRisky) {
               perfectChance = 3;  
-              hitChance = 55;     
+              hitChance = 55;    
               recoveryChance = 0;
           } else {
               perfectChance = 1;  
-              hitChance = 94;     
+              hitChance = 94;    
               recoveryChance = 0;
           }
       }
   }
 
   if (incomingQuality === "recovery") {
-    perfectChance += 17; 
+    // Bestrafung skaliert mit dem Score. So wirst du in den frühen Runden nicht sofort zerstört.
+    const punishBonus = Math.round((tacScore / 3000) * 15); 
+    perfectChance += punishBonus; 
     hitChance += 5;      
     aiTitle = `KI ATTACKIERT!`; 
     aiMsg = `Die KI nutzt deinen schwachen Ball gnadenlos aus und attackiert mit einem ${shot}!`;
@@ -351,11 +345,18 @@ export const calculateSmartAITurn = (
            aiMsg = "Leichter Fehler der KI! Der Ball landet unbedrängt im Netz.";
       }
   } else if (tacScore >= 4000 && aiResult === "success") {
-      const perfectBoost = ((tacScore - 4000) / 100) * 0.015; 
-      if (Math.random() < perfectBoost) {
+      // KI Lethality ab 4000: KI pusht das Tempo, macht dadurch Winner, aber auch Fehler!
+      const highLevelRisk = ((tacScore - 4000) / 100) * 0.02; 
+      const riskRoll = Math.random();
+      
+      if (riskRoll < highLevelRisk) {
            aiResult = "perfect";
            aiTitle = "⭐ UNHALTBAR!";
-           aiMsg = "Die KI feuert einen messerscharfen, perfekten Ball ab. Keine Chance!";
+           aiMsg = "Die KI feuert aus dem Nichts einen messerscharfen Ball ab!";
+      } else if (riskRoll < highLevelRisk * 1.5) { 
+           aiResult = Math.random() > 0.5 ? "error_net" : "error_wall_direct";
+           aiTitle = "❌ ZU VIEL RISIKO!";
+           aiMsg = "Die KI wollte das Tempo pushen und überpowert den Ball völlig!";
       }
   }
 
@@ -386,7 +387,6 @@ export const calculateSmartAITurn = (
     for (let r = minRow; r <= maxRow; r++) { finalInterceptZones.add(`${targetCol}${r}`); }
   }
 
-  // ... (Dein Code darüber bleibt gleich: isWallHit / colIdx) ...
   const colIdx = ["A", "B", "C", "D", "E"].indexOf(targetCol);
   Array.from(finalInterceptZones).forEach(zone => {
       if (traj.isWallHit || shot === "SMASH") {
@@ -396,47 +396,39 @@ export const calculateSmartAITurn = (
       }
   });
 
-  // --- NEU: DER "LASERSTRAHL" FÜR EXAKTE (AUCH DIAGONALE) FLUGBAHNEN ---
   if (shot !== "LOB" && shot !== "AUFSCHLAG") {
-      // 1. Koordinaten in Zahlen umwandeln (1 = A, 5 = E)
       const hColNum = ["A", "B", "C", "D", "E"].indexOf(aiHitCol) + 1; 
       const tColNum = ["A", "B", "C", "D", "E"].indexOf(targetCol) + 1; 
+      const yHitter = aiHitRow;       
+      const yTarget = 11 - targetRow; 
 
-      // 2. Y-Achse (Entfernung über den gesamten Platz) definieren
-      const yHitter = aiHitRow;        // KI-Seite (1 = Hinten, 5 = Netz)
-      const yTarget = 11 - targetRow;  // Deine Seite (6 = Netz, 10 = Hinten)
-
-      // 3. Wir verfolgen den Ball für jede deiner Reihen vom Netz (5) bis zum Ziel
       for (let r = 5; r > targetRow; r--) {
-          const y = 11 - r; // Die Y-Position der abzufragenden Reihe
-          const t = (y - yHitter) / (yTarget - yHitter); // Prozentuale Strecke des Balls
-          const x = hColNum + t * (tColNum - hColNum);   // Die exakte X-Position (Spalte)
+          const y = 11 - r; 
+          const t = (y - yHitter) / (yTarget - yHitter); 
+          const x = hColNum + t * (tColNum - hColNum);   
 
-          // 4. Wenn der Ball genau über der Mittellinie zweier Spalten fliegt (Toleranz > 0.25)
           if (Math.abs(x - Math.round(x)) > 0.25) {
               const col1 = Math.max(1, Math.floor(x)) - 1;
               const col2 = Math.min(5, Math.ceil(x)) - 1;
               finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col1]}${r}`);
               finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col2]}${r}`);
           } else {
-              // Ball ist eindeutig in einer bestimmten Spalte
               const col = Math.max(1, Math.min(5, Math.round(x))) - 1;
               finalInterceptZones.add(`${["A", "B", "C", "D", "E"][col]}${r}`);
           }
       }
   } else if (!traj.isWallHit) {
-      // Lob und Aufschlag bleiben unangetastet: nur den Aufprall-Bereich freigeben
       if (targetRow > 1) finalInterceptZones.add(`${targetCol}${targetRow - 1}`); 
       if (targetRow < 4) finalInterceptZones.add(`${targetCol}${targetRow + 1}`); 
   }
 
   const uniqueInterceptZones = Array.from(finalInterceptZones);
-  // ... (Ab hier geht dein bestehender Code weiter) ...
 
   let speedMulti = 1.0;
   if (tacScore < 3000) { speedMulti = tacScore / 3000; } 
   else if (tacScore < 4000) { speedMulti = 1.0 + ((tacScore - 3000) / 1000) * 0.15; } 
-  else { speedMulti = 1.15 + ((tacScore - 4000) / 1000) * 0.5; }
+  // Höherer Multiplikator ab 4000 für flotteres Pacing
+  else { speedMulti = 1.15 + ((tacScore - 4000) / 1000) * 0.8; }
 
   let finalFlightTime = Math.max(1500, Math.min(10000, traj.flightTimeMs / speedMulti));
 
@@ -490,9 +482,9 @@ export const evaluatePlayerShot = (
   const oppsAtNet = o1Row >= 3 || o2Row >= 3;
   const oppsAtBack = o1Row <= 2 && o2Row <= 2;
 
-  // --- FINALE PLAYER-STATS BALANCE ---
-  let hitChance = 68;      
-  let perfectChance = 4;   
+  // --- FINALE PLAYER-STATS BALANCE (Pacing-Optimierung) ---
+  let hitChance = 65;      // Vorher 68
+  let perfectChance = 8;   // Vorher 4. Doppelt so hohe Grundchance auf direkte Winner!
   let recoveryChance = 16; 
   let title = "GUTE IDEE"; 
   let msg = "Eine sehr solide taktische Entscheidung."; 
@@ -581,7 +573,7 @@ export const evaluatePlayerShot = (
       }
 
       if (isPerfectCounter) {
-        perfectChance += 30; 
+        perfectChance += 45; // MASSIVER Winner-Boost bei KI-Wacklern (vorher 30)
         hitChance += 15;
         recoveryChance = 0;
         title = counterTitle;

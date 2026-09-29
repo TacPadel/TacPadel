@@ -94,6 +94,36 @@ export default function GameScreen() {
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
+  // --- NEUER TIMER STATE ---
+  const [matchSeconds, setMatchSeconds] = useState<number>(0);
+  const matchSecondsRef = useRef(matchSeconds);
+
+  // Hilfsfunktion für die Anzeige (z.B. 65 Sekunden -> "1:05")
+  const formatMatchTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // Timer Ref synchronisieren
+  useEffect(() => {
+    matchSecondsRef.current = matchSeconds;
+  }, [matchSeconds]);
+
+  // Live-Timer Logik
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    // Zähle hoch, solange das Match läuft und keine Menüs offen sind
+    if (!gameOver && !isMenuOpen && !isTourOpen) { 
+      interval = setInterval(() => {
+        setMatchSeconds(prev => prev + 1);
+      }, 1000);
+    }
+
+    return () => clearInterval(interval);
+  }, [gameOver, isMenuOpen, isTourOpen]);
+
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
   const [stamina, setStamina] = useState({ 
     you: MAX_PLAYER_STAMINA, 
@@ -305,6 +335,13 @@ export default function GameScreen() {
         });
       }
 
+      // Timer laden falls vorhanden
+      if (parsed.matchSeconds) {
+        setMatchSeconds(parsed.matchSeconds);
+      } else {
+        setMatchSeconds(0);
+      }
+
       if (staminaModeEnabled) {
         if (parsed.stamina) setStamina(parsed.stamina);
         else setStamina({ you: MAX_PLAYER_STAMINA, partner: MAX_PLAYER_STAMINA, opp1: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000), opp2: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000) });
@@ -348,6 +385,7 @@ export default function GameScreen() {
 
     setPlayerScore(0);
     setAiScore(0);
+    setMatchSeconds(0); // Timer zurücksetzen
     setGameOver(false);
     setShowGameOverUI(false);
     setMatchStats(initialStatsData);
@@ -415,6 +453,7 @@ export default function GameScreen() {
 
     setPlayerScore(0);
     setAiScore(0);
+    setMatchSeconds(0); // Timer zurücksetzen
     setGameOver(false);
     setShowGameOverUI(false);
     setEarnedTP(0);
@@ -1079,6 +1118,7 @@ export default function GameScreen() {
                 unforced_errors: newStats.player.unforcedErrors,
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
+                duration_seconds: matchSecondsRef.current, // <-- TIMER GESPEICHERT
                 match_type: "tournament",
                 tac_points: currentTacPoints 
               });
@@ -1117,6 +1157,7 @@ export default function GameScreen() {
                 unforced_errors: newStats.player.unforcedErrors,
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
+                duration_seconds: matchSecondsRef.current, // <-- TIMER GESPEICHERT
                 match_type: "single"
               });
             }
@@ -1226,7 +1267,8 @@ export default function GameScreen() {
       tournamentId: activeTournamentId,
       tournamentRound: activeTournamentRound,
       tournamentDifficulty: activeTournamentDifficulty,
-      activeAiProfile 
+      activeAiProfile,
+      matchSeconds: matchSecondsRef.current // <-- TIMER LOKAL SPEICHERN
     };
     localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
   };
@@ -1428,6 +1470,17 @@ export default function GameScreen() {
                     {playerScore > aiScore ? <span className="text-emerald-400">🏆 Ihr Gewinnt!</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} Gewinnt!</span>}
                   </h2>
                   <p className="text-slate-300 text-lg font-bold">Endstand im Tiebreak: {playerScore} : {aiScore}</p>
+                  
+                  {/* ANZEIGE IM GAME OVER SCREEN */}
+                  <div className="mt-4 flex justify-center">
+                    <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Spieldauer</span>
+                      <span className="text-xl text-white font-black tracking-wider">
+                        ⏱️ {formatMatchTime(matchSeconds)}
+                      </span>
+                    </div>
+                  </div>
+
                 </div>
                 
                 <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full">
@@ -1585,6 +1638,18 @@ export default function GameScreen() {
           )}
         </AnimatePresence>
 
+        {/* LIVE TIMER IM MATCH */}
+        {!isMenuOpen && !isTourOpen && !gameOver && !isIntroPlaying && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center justify-center">
+            <div className="bg-slate-900/80 border border-slate-700 px-4 py-1.5 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-slate-300 font-black tracking-widest text-sm">
+                {formatMatchTime(matchSeconds)}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="absolute inset-0 z-10">
           <ScenarioCourt3D 
             key={`court-${introTrigger}`} 
@@ -1633,7 +1698,7 @@ export default function GameScreen() {
             isPlayerTeamServe={isPlayerTeamServe}
 
             hidePlayerLabels={!showNameTags}
-            userTeamName={userTeamName} // <-- HIER ERGÄNZEN
+            userTeamName={userTeamName}
             activeAiProfile={activeAiProfile}
           />
         </div>
