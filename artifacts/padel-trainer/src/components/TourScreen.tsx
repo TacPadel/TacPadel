@@ -16,7 +16,7 @@ interface LeaderboardEntry {
   id: string;
   username: string; 
   tac_points: number;
-  points: number; // <-- NEU: TacScore für die Liste
+  points: number; 
 }
 
 interface PlayerStats {
@@ -32,6 +32,9 @@ interface PlayerStats {
 // 30-Tage Beta Enddatum
 const BETA_END_DATE = new Date("2026-10-24T23:59:59").getTime();
 
+// --- Freischalt-Bedingung für die Tour ---
+const TOUR_UNLOCK_SCORE = 2000;
+
 interface TourScreenProps {
   onClose: () => void;
   onStartMatch?: (tournamentId: string, currentRound: number, baseDifficulty: number, reward: number) => void;
@@ -42,8 +45,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   
   // -- SUPABASE STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
-  const [tacPoints, setTacPoints] = useState<number>(0); // Die Währung (Saison Ranking / Startgeld)
-  const [tacScore, setTacScore] = useState<number>(0);   // Das Skill-Level (für die Eintrittsbedingung)
+  const [tacPoints, setTacPoints] = useState<number>(0); 
+  const [tacScore, setTacScore] = useState<number>(0); 
   const [loading, setLoading] = useState(true);
 
   // -- TIMER STATE --
@@ -146,13 +149,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data, error } = await supabase
         .from('user_stats')
-        // HIER ANGEPASST: display_name und email statt username laden
         .select('id, email, display_name, tac_points, points') 
         .order('tac_points', { ascending: false })
         .limit(10); 
 
       if (data && !error) {
-        // HIER ANGEPASST: Den Namen formatieren, genau wie in der App.tsx
         const formattedData = data.map((user: any) => {
           const emailFallback = user.email ? user.email.split('@')[0] : "Spieler XYZ";
           const finalName = user.display_name && user.display_name.trim() !== "" 
@@ -161,7 +162,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
           return {
             id: user.id,
-            username: finalName, // Gemappt auf 'username' für dein Interface
+            username: finalName,
             tac_points: user.tac_points || 0,
             points: user.points || 0
           };
@@ -233,6 +234,54 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     }
   };
 
+  // -----------------------------------------------------------
+  // NEU: Retry Turnier Logik
+  // -----------------------------------------------------------
+  const handleRetryTournament = async (tour: Tournament) => {
+    // Wenn das Turnier kostenlos ist (0 TP), kostet das Retry 50 TP. Ansonsten = Startgeld.
+    const retryFee = tour.entryFee > 0 ? tour.entryFee : 50;
+
+    if (tacPoints < retryFee) {
+      alert(`Zu wenig TacPoints! Ein Retry kostet ${retryFee} TP.`);
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // 1. TacPoints (Geld) abziehen
+      const newTacPoints = tacPoints - retryFee;
+      setTacPoints(newTacPoints);
+      localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+      
+      if (session?.user) {
+        // Punkte in user_stats updaten
+        await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
+        
+        // 2. Status in DB wieder auf "active" und Runde auf 1 setzen
+        await supabase.from("tour_progress").update({ 
+          status: "active", 
+          current_round: 1 
+        }).eq("user_id", session.user.id).eq("tournament_id", tour.id);
+      }
+
+      // 3. Lokalen State aktualisieren
+      setProgress(prev => ({
+        ...prev,
+        [tour.id]: { tournament_id: tour.id, status: "active", current_round: 1 }
+      }));
+
+      // 4. Match sofort wieder in Runde 1 starten
+      if (onStartMatch) {
+        onStartMatch(tour.id, 1, tour.baseDifficulty, tour.tacPointsReward);
+      }
+
+    } catch (err) {
+      console.error("Fehler beim Retry des Turniers:", err);
+      alert("Fehler beim Zurücksetzen. Bitte versuche es erneut.");
+    }
+  };
+
   const handleStartTournament = async (tour: Tournament) => {
     const currentStatus = progress[tour.id];
 
@@ -244,16 +293,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // Nur bei einem NEUEN Turnier (Runde 1) das Startgeld abziehen
       if (!currentStatus) {
-        
-        // 1. Hat der Spieler genug Geld für den Buy-In?
         if (tacPoints < tour.entryFee) {
            alert(`Zu wenig TacPoints! Du brauchst ${tour.entryFee} TP Startgeld.`);
            return;
         }
 
-        // 2. Startgeld abziehen
         if (tour.entryFee > 0) {
            const newTacPoints = tacPoints - tour.entryFee;
            setTacPoints(newTacPoints);
@@ -264,7 +309,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
            }
         }
 
-        // 3. Turnier in der DB starten
         if (session?.user) {
             const { error } = await supabase.from("tour_progress").insert({
             user_id: session.user.id,
@@ -285,7 +329,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         }
 
       } else {
-        // Turnier läuft bereits (z.B. Runde 2), Startgeld wurde schon bezahlt!
         if (onStartMatch) {
           onStartMatch(tour.id, currentStatus.current_round, tour.baseDifficulty, tour.tacPointsReward);
         } 
@@ -331,16 +374,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     };
   };
 
+  // Sperr-Zustand berechnen
+  const isTourLocked = !loading && tacScore < TOUR_UNLOCK_SCORE;
+
   return (
     <div className="w-full h-full flex flex-col bg-[#02050a] text-slate-200 relative overflow-hidden pointer-events-auto">
       
       {/* HINTERGRUND GRID */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none"></div>
 
-      {/* --- NEUER KOMPAKTER HEADER (2x2 Grid) --- */}
+      {/* --- HEADER --- */}
       <div className="flex flex-col items-center w-full px-4 pt-6 pb-4 shrink-0 relative border-b border-slate-800/50 bg-[#050b18]/90 backdrop-blur-md z-10">
-        
-        {/* Schließen Button (X) */}
         <button 
           onClick={onClose}
           className="absolute left-4 top-6 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors z-20 shadow-md"
@@ -348,7 +392,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           ✕
         </button>
 
-        {/* Titel & Subtitel */}
         <h1 className="text-xl sm:text-2xl font-black text-white tracking-[0.2em] uppercase mt-1 drop-shadow-[0_0_10px_rgba(56,189,248,0.4)]">
           Beta Season <span className="text-sky-400">1</span>
         </h1>
@@ -356,22 +399,18 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           Sammle TacPoints und klettere im Ranking
         </p>
 
-        {/* 2x2 Grid für Stats und Actions - Spart enorm Platz! */}
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm px-2">
           
-          {/* TacScore */}
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-emerald-500/30 bg-emerald-950/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.1)]">
             <span className="text-emerald-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]">⚡ {tacScore}</span>
             <span className="text-[7px] text-emerald-500/70 uppercase tracking-widest font-bold mt-0.5">TacScore</span>
           </div>
 
-          {/* TacPoints */}
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-amber-500/30 bg-amber-950/30 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]">
             <span className="text-amber-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(245,158,11,0.8)]">⭐ {tacPoints}</span>
             <span className="text-[7px] text-amber-500/70 uppercase tracking-widest font-bold mt-0.5">TacPoints</span>
           </div>
 
-          {/* Ranking Button */}
           <button 
             onClick={fetchLeaderboard}
             className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-indigo-500/40 bg-indigo-900/20 hover:bg-indigo-900/40 transition-colors shadow-[inset_0_0_10px_rgba(99,102,241,0.15)] active:scale-95"
@@ -380,7 +419,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             <span className="text-[7px] text-indigo-500/70 uppercase tracking-widest font-bold mt-0.5">Beta Leaderboard</span>
           </button>
 
-          {/* Timer */}
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-red-500/30 bg-red-950/30 shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
             <span className="text-red-400 font-black text-xs tracking-wider">{timeLeft === "BETA BEENDET" ? "BEENDET" : timeLeft}</span>
             <div className="flex items-center gap-1 mt-0.5">
@@ -388,127 +426,190 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               <span className="text-[7px] text-red-500/70 uppercase tracking-widest font-bold">Beta Ends</span>
             </div>
           </div>
-
         </div>
       </div>
       {/* --- ENDE HEADER --- */}
 
-      {/* TURNIER-LISTE (SCROLLBAR) */}
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar z-10 flex flex-col gap-4 pb-20 pt-2">
+
+      {/* --- CONTENT AREA: TURNIER-LISTE ODER LOCK-SCREEN --- */}
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar z-10 flex flex-col pb-20 relative">
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-8 h-8 rounded-full border-t-2 border-fuchsia-500 animate-spin"></div>
           </div>
-        ) : (
-          TOURNAMENTS.map((tour) => {
-            const dbProg = progress[tour.id];
-            const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
+        ) : isTourLocked ? (
+          
+          /* ========================================================= */
+          /* LOCK SCREEN                                               */
+          /* ========================================================= */
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center flex-1 h-full px-4"
+          >
+            <div className="w-20 h-20 bg-slate-900 border border-slate-700 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,0,0,0.8)] relative">
+              <span className="text-4xl">🔒</span>
+              <div className="absolute inset-0 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-[spin_4s_linear_infinite] opacity-50"></div>
+            </div>
             
-            // NEU: Doppel-Check (Skill oder Geld fehlt)
-            const isLockedByScore = tacScore < tour.reqScore;
-            const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; // Wenn Turnier läuft, ist Geld egal
+            <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-widest text-center mb-3 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+              Pro Tour Gesperrt
+            </h2>
+            
+            <p className="text-slate-400 text-center text-sm font-medium mb-8 max-w-xs leading-relaxed">
+              Beweise dich erst im Einzelmatch. Du benötigst <strong className="text-emerald-400 font-black">{TOUR_UNLOCK_SCORE} TacScore</strong>, um an offiziellen Turnieren teilzunehmen.
+            </p>
 
-            return (
-              <motion.div 
-                key={tour.id}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setSelectedTour(tour)}
-                className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${!isCompleted ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${isCompleted ? 'opacity-50 grayscale-[0.3]' : ''}`}
+            <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-full h-4 mb-2 overflow-hidden relative shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.8)] transition-all duration-1000 ease-out"
+                style={{ width: `${Math.min(100, (tacScore / TOUR_UNLOCK_SCORE) * 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between w-full max-w-sm px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 mb-10">
+              <span>Aktuell: {tacScore}</span>
+              <span className="text-emerald-500">Ziel: {TOUR_UNLOCK_SCORE}</span>
+            </div>
+
+            <div className="w-full max-w-sm flex flex-col gap-3">
+              <div className="flex items-center gap-3 mb-2">
+                 <div className="h-px bg-slate-800 flex-1"></div>
+                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-600">Oder sofort freischalten</span>
+                 <div className="h-px bg-slate-800 flex-1"></div>
+              </div>
+              <button 
+                disabled
+                className="w-full py-4 bg-gradient-to-r from-amber-600/10 to-yellow-600/10 border border-amber-500/30 text-amber-500/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
               >
-                <div className={`w-full h-full bg-gradient-to-br ${getTypeBg(tour.type)} p-4 rounded-xl flex flex-col bg-[#050b14]`}>
-                  
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full border ${getTypeColor(tour.type)} bg-black/50`}>
-                        {tour.type === "master" ? "Premier Master" : tour.type === "pro" ? "Pro" : "Open"}
-                      </span>
-                      <h3 className="text-lg font-black text-white uppercase tracking-wider mt-2 drop-shadow-lg">{tour.name}</h3>
-                    </div>
+                <span>⭐ Pro Supporter Pass (Demnächst)</span>
+              </button>
+              <button 
+                disabled
+                className="w-full py-4 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-blue-500/30 text-blue-400/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+              >
+                <span>🎥 Video schauen (Demnächst)</span>
+              </button>
+            </div>
+          </motion.div>
+
+        ) : (
+
+          /* ========================================================= */
+          /* TURNIER LISTE                                             */
+          /* ========================================================= */
+          <div className="flex flex-col gap-4">
+            {TOURNAMENTS.map((tour) => {
+              const dbProg = progress[tour.id];
+              const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
+              
+              const isLockedByScore = tacScore < tour.reqScore;
+              const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; 
+
+              return (
+                <motion.div 
+                  key={tour.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setSelectedTour(tour)}
+                  // Ein verlorenes Turnier wird jetzt nicht mehr grau/blockiert angezeigt,
+                  // da der Spieler es für ein Retry anklicken können soll!
+                  className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${!isCompleted || dbProg?.status === 'eliminated' ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${dbProg?.status === 'won' ? 'opacity-50 grayscale-[0.3]' : ''}`}
+                >
+                  <div className={`w-full h-full bg-gradient-to-br ${getTypeBg(tour.type)} p-4 rounded-xl flex flex-col bg-[#050b14]`}>
                     
-                    {/* STATUS BADGE */}
-                    {!isCompleted && dbProg?.status === "active" && (
-                      <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.3)]">
-                        LÄUFT (Runde {dbProg.current_round})
-                      </span>
-                    )}
-                    {dbProg?.status === "won" && (
-                      <span className="text-[10px] font-black text-emerald-500 bg-emerald-950/50 border border-emerald-500 px-2 py-1 rounded">
-                        GEWONNEN 🏆
-                      </span>
-                    )}
-                    {dbProg?.status === "eliminated" && (
-                      <span className="text-[10px] font-black text-red-500 bg-red-950/50 border border-red-500 px-2 py-1 rounded">
-                        AUSGESCHIEDEN 💀
-                      </span>
-                    )}
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <span className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full border ${getTypeColor(tour.type)} bg-black/50`}>
+                          {tour.type === "master" ? "Premier Master" : tour.type === "pro" ? "Pro" : "Open"}
+                        </span>
+                        <h3 className="text-lg font-black text-white uppercase tracking-wider mt-2 drop-shadow-lg">{tour.name}</h3>
+                      </div>
+                      
+                      {/* STATUS BADGE */}
+                      {!isCompleted && dbProg?.status === "active" && (
+                        <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.3)]">
+                          LÄUFT (Runde {dbProg.current_round})
+                        </span>
+                      )}
+                      {dbProg?.status === "won" && (
+                        <span className="text-[10px] font-black text-emerald-500 bg-emerald-950/50 border border-emerald-500 px-2 py-1 rounded">
+                          GEWONNEN 🏆
+                        </span>
+                      )}
+                      {dbProg?.status === "eliminated" && (
+                        <span className="text-[10px] font-black text-red-500 bg-red-950/50 border border-red-500 px-2 py-1 rounded">
+                          AUSGESCHIEDEN 💀
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      <div className="flex flex-col">
+                        <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Entry TacScore</span>
+                        <span className={`text-sm font-black ${
+                          tour.reqScore === 0 
+                            ? 'text-slate-300' 
+                            : !isLockedByScore 
+                              ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]' 
+                              : 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
+                        }`}>
+                          {tour.reqScore === 0 ? "Offen" : `${tour.reqScore}`}
+                        </span>
+                      </div>
+                      
+                      <div className="w-[1px] h-6 bg-slate-700"></div>
+                      
+                      <div className="flex flex-col">
+                        <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Startgeld</span>
+                        <span className={`text-sm font-black flex items-center gap-1 ${
+                          tour.entryFee === 0 
+                            ? 'text-emerald-400' 
+                            : !isLockedByFunds 
+                              ? 'text-amber-400'
+                              : 'text-red-500 line-through'
+                        }`}>
+                          {tour.entryFee === 0 ? "Frei" : `${tour.entryFee} TP`}
+                        </span>
+                      </div>
+
+                      <div className="w-[1px] h-6 bg-slate-700"></div>
+                      
+                      <div className="flex flex-col">
+                        <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Rewards</span>
+                        <span className="text-sm font-bold text-amber-400">{tour.rewardText}</span>
+                      </div>
+                    </div>
+
                   </div>
-
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    {/* TacScore Req */}
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Entry TacScore</span>
-                      <span className={`text-sm font-black ${
-                        tour.reqScore === 0 
-                          ? 'text-slate-300' 
-                          : !isLockedByScore 
-                            ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]' 
-                            : 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
-                      }`}>
-                        {tour.reqScore === 0 ? "Offen" : `${tour.reqScore}`}
-                      </span>
-                    </div>
-                    
-                    <div className="w-[1px] h-6 bg-slate-700"></div>
-                    
-                    {/* Startgeld (Buy-In) */}
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Startgeld</span>
-                      <span className={`text-sm font-black flex items-center gap-1 ${
-                        tour.entryFee === 0 
-                          ? 'text-emerald-400' 
-                          : !isLockedByFunds 
-                            ? 'text-amber-400'
-                            : 'text-red-500 line-through'
-                      }`}>
-                        {tour.entryFee === 0 ? "Frei" : `${tour.entryFee} TP`}
-                      </span>
-                    </div>
-
-                    <div className="w-[1px] h-6 bg-slate-700"></div>
-                    
-                    {/* Belohnung */}
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Rewards</span>
-                      <span className="text-sm font-bold text-amber-400">{tour.rewardText}</span>
-                    </div>
-                  </div>
-
-                </div>
-              </motion.div>
-            );
-          })
+                </motion.div>
+              );
+            })}
+          </div>
         )}
       </div>
 
+
       {/* ========================================================= */}
-      {/* DETAIL MODAL (DER "TURNIER RUN")                          */}
-      {/* ========================================================= */}
+      /* DETAIL MODAL (DER "TURNIER RUN" & RETRY LOGIK)             */
+      /* ========================================================= */
       <AnimatePresence>
         {selectedTour && (() => {
           const dbProg = progress[selectedTour.id];
           const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
+          const isEliminated = dbProg?.status === 'eliminated';
           
           const isLockedByScore = tacScore < selectedTour.reqScore;
-          // Prüfen ob pleite, ABER nur wenn das Turnier nicht schon im Gange ist!
           const isLockedByFunds = tacPoints < selectedTour.entryFee && !dbProg;
           
           const isLocked = isLockedByScore || isLockedByFunds;
 
-          // Dynamischer Button-Text
+          // Retry Logik
+          const retryFee = selectedTour.entryFee > 0 ? selectedTour.entryFee : 50;
+          const canAffordRetry = tacPoints >= retryFee;
+
+          // Text für normalen Start/Continue Button
           let btnText = "Beta-Run Starten";
           if (dbProg?.status === 'won') btnText = 'Turnier Beendet (Sieger)';
-          else if (dbProg?.status === 'eliminated') btnText = 'Turnier Beendet (Raus)';
           else if (isLockedByScore) btnText = `Gesperrt: ${selectedTour.reqScore} TacScore nötig`;
           else if (isLockedByFunds) btnText = `Gesperrt: Zu wenig TacPoints (${selectedTour.entryFee} nötig)`;
           else if (!dbProg && selectedTour.entryFee > 0) btnText = `Buy-In zahlen (${selectedTour.entryFee} TP) & Starten`;
@@ -543,7 +644,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </div>
                 </div>
 
-                {/* DER DYNAMISCHE TURNIER-BAUM (BRACKET) */}
                 <div className="flex-1 overflow-y-auto mb-6 custom-scrollbar">
                   <div className="flex flex-col gap-3">
                     
@@ -588,18 +688,38 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </div>
                 </div>
 
-                {/* ACTION BUTTON MIT LOCK-STATUS */}
-                <button 
-                  disabled={isCompleted || isLocked}
-                  onClick={() => handleStartTournament(selectedTour)}
-                  className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
-                    !isLocked && !isCompleted
-                      ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                  }`}
-                >
-                  {btnText}
-                </button>
+                {/* --- NEU: DYNAMISCHER BUTTON BEREICH --- */}
+                {isEliminated ? (
+                  <div className="w-full flex flex-col gap-2">
+                    <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">Nicht aufgeben!</p>
+                    <button 
+                      disabled={!canAffordRetry}
+                      onClick={() => handleRetryTournament(selectedTour)}
+                      className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
+                        canAffordRetry
+                          ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-[0_0_20px_rgba(225,29,72,0.4)]'
+                          : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                      }`}
+                    >
+                      {!canAffordRetry 
+                        ? `Zweite Chance: Zu wenig TP (${retryFee} nötig)` 
+                        : `🔄 Zweite Chance (${retryFee} TP)`}
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    disabled={isCompleted || isLocked}
+                    onClick={() => handleStartTournament(selectedTour)}
+                    className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
+                      !isLocked && !isCompleted
+                        ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_20px_rgba(255,119,0,0.4)]'
+                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                    }`}
+                  >
+                    {btnText}
+                  </button>
+                )}
+
               </motion.div>
             </>
           );
@@ -607,8 +727,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       </AnimatePresence>
 
       {/* ========================================================= */}
-      {/* LEADERBOARD / SEASON RANKING MODAL                          */}
-      {/* ========================================================= */}
+      /* LEADERBOARD / SEASON RANKING MODAL                         */
+      /* ========================================================= */
       <AnimatePresence>
         {showLeaderboard && (
           <>
@@ -676,10 +796,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           </p>
                         </div>
                         
-                        {/* --- NEU: Punkte Anzeige (Beide Werte nebeneinander) --- */}
                         <div className="flex items-center gap-3 shrink-0">
-                          
-                          {/* TacScore Anzeige (Skill) */}
                           <div className="flex flex-col items-end">
                             <span className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">TacScore</span>
                             <span className="text-xs font-black text-slate-300">
@@ -689,16 +806,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
                           <div className="w-px h-6 bg-slate-700/50"></div>
                           
-                          {/* TacPoints Anzeige (Ranking Metrik) */}
                           <div className="flex flex-col items-end w-14">
                             <span className="text-[9px] font-black uppercase text-indigo-500/70 tracking-widest leading-none">TacPoints</span>
                             <span className="text-sm font-black text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]">
                               {player.tac_points}
                             </span>
                           </div>
-                          
                         </div>
-                        {/* -------------------------------------------------------- */}
                       </div>
                     );
                   })

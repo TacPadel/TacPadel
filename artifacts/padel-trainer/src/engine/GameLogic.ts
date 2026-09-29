@@ -269,8 +269,8 @@ export const calculateSmartAITurn = (
 
   // --- AI STYLE STAT-MODIFIKATOREN ---
   if (aiStyle === "aggressive") {
-      perfectChance += 8;  // Viel gefährlicher
-      hitChance -= 10;     // Macht mehr unforced errors
+      perfectChance += 4;  // Viel gefährlicher
+      hitChance -= 12;     // Macht mehr unforced errors
   } else if (aiStyle === "defensive") {
       perfectChance = Math.max(1, perfectChance - 3); // Kaum Winner
       hitChance += 12;     // Fast fehlerfrei (Mauer)
@@ -281,8 +281,8 @@ export const calculateSmartAITurn = (
       const isRisky = targetRow === 2 || targetCol === "A" || targetCol === "C" || targetCol === "E";
       if (serveNumber === 1) {
           if (isRisky) {
-              perfectChance = 15; 
-              hitChance = 65;     
+              perfectChance = 10; 
+              hitChance = 67;     
               recoveryChance = 0; 
           } else {
               perfectChance = 3;  
@@ -291,7 +291,7 @@ export const calculateSmartAITurn = (
           }
       } else {
           if (isRisky) {
-              perfectChance = 5;  
+              perfectChance = 3;  
               hitChance = 55;     
               recoveryChance = 0;
           } else {
@@ -303,7 +303,7 @@ export const calculateSmartAITurn = (
   }
 
   if (incomingQuality === "recovery") {
-    perfectChance += 22; 
+    perfectChance += 17; 
     hitChance += 5;      
     aiTitle = `KI ATTACKIERT!`; 
     aiMsg = `Die KI nutzt deinen schwachen Ball gnadenlos aus und attackiert mit einem ${shot}!`;
