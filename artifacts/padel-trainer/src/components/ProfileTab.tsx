@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 
 // --- Imports für KI-Profile & 3D ---
 import { AI_PROFILES } from '../engine/AiProfiles'; 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
 
@@ -19,7 +19,6 @@ const RACKETS = [
   { id: 'racket_eclipse', name: 'Eclipse Carbon Strike', modifiers: { smash: 4, control: 3, defense: -2, agility: 1 } },
 ];
 
-// Übersetzt den Spielstil deines Partners in RPG-Werte (Aktuell nur für die UI)
 const getPartnerModifiers = (partnerId: string) => {
   const p = AI_PROFILES.flatMap(prof => [
     { id: `${prof.id}-1`, style: prof.style },
@@ -32,17 +31,95 @@ const getPartnerModifiers = (partnerId: string) => {
   if (style.includes('taktik') || style.includes('control')) return { smash: -2, control: 6, defense: 3, agility: -1 };
   if (style.includes('defensiv') || style.includes('mauer')) return { smash: -3, control: 2, defense: 6, agility: 1 };
   
-  // Default Allrounder
   return { smash: 2, control: 2, defense: 2, agility: 2 };
 };
+
+// ==========================================
+// --- 3D TRON TROPHIES & CABINET ---
+// ==========================================
+function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
+  const ref = useRef<any>(null);
+  
+  useFrame((state, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 0.8;
+  });
+
+  const isMajor = tourId.toLowerCase().includes('major');
+  const isMaster = tourId.toLowerCase().includes('master');
+  const color = isMajor ? "#fbbf24" : isMaster ? "#e2e8f0" : "#f97316";
+
+  return (
+    <group position={position} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
+      <mesh visible={false} position={[0, 0.7, 0]}>
+        <cylinderGeometry args={[0.5, 0.5, 1.5, 8]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
+      <mesh position={[0, 0.1, 0]}>
+        <cylinderGeometry args={[0.3, 0.4, 0.2, 8]} />
+        <meshStandardMaterial color="#020617" wireframe />
+      </mesh>
+      <mesh position={[0, 0.1, 0]}>
+        <cylinderGeometry args={[0.25, 0.35, 0.18, 16]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
+      </mesh>
+      <mesh position={[0, 0.6, 0]}>
+        <cylinderGeometry args={[0.04, 0.04, 0.8, 16]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2.5} />
+      </mesh>
+      <mesh position={[0, 1.2, 0]}>
+        <cylinderGeometry args={[0.35, 0.02, 0.5, 8]} />
+        <meshStandardMaterial color={color} wireframe />
+      </mesh>
+      <mesh position={[0, 1.45, 0]}>
+        <octahedronGeometry args={[0.15]} />
+        <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={2} />
+      </mesh>
+    </group>
+  );
+}
+
+function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophyClick: (id: string) => void }) {
+  const numRows = Math.max(1, Math.ceil(trophies.length / 5));
+  const shelves = Array.from({ length: numRows });
+
+  return (
+    <group position={[0, -1, 0]}>
+      <gridHelper args={[40, 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
+      <gridHelper args={[40, 40, '#a855f7', '#020617']} position={[0, -0.02, 0]} rotation={[0, Math.PI / 4, 0]} />
+      {shelves.map((_, rowIndex) => (
+        <mesh key={`shelf-${rowIndex}`} position={[0, rowIndex * 2, 0]}>
+          <boxGeometry args={[8, 0.05, 1.5]} />
+          <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={0.2} transparent opacity={0.3} />
+        </mesh>
+      ))}
+      {trophies.map((tourId, idx) => {
+        const row = Math.floor(idx / 5);
+        const col = idx % 5;
+        const xPos = (col - 2) * 1.4; 
+        const yPos = row * 2;
+        return (
+          <TronTrophy 
+            key={`${tourId}-${idx}`} 
+            tourId={tourId} 
+            position={[xPos, yPos, 0]} 
+            onClick={onTrophyClick} 
+          />
+        );
+      })}
+    </group>
+  );
+}
 // ==========================================
 
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
-  
-  // --- Team, Partner & Ausrüstung States ---
   const [teamName, setTeamName] = useState("TacPadel Rookies");
+  
+  // Um zu tracken, ob wir überhaupt speichern müssen (Auto-Save)
+  const [savedUsername, setSavedUsername] = useState(fallbackName);
+  const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
+
   const [partnerId, setPartnerId] = useState("pro_1-1"); 
   const [racketId, setRacketId] = useState("racket_starter"); 
   
@@ -62,6 +139,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
   const [allHistory, setAllHistory] = useState<any[]>([]);
   const [wonTrophies, setWonTrophies] = useState<string[]>([]);
+  const [activeTrophyBanner, setActiveTrophyBanner] = useState<string | null>(null);
   const [matchHistory, setMatchHistory] = useState<any[]>([]);
 
   const [showNameTags, setShowNameTags] = useState(() => localStorage.getItem("tacpadel_show_nametags") !== "false");
@@ -95,10 +173,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       let trueScore = currentScore; 
 
       if (profileData) {
-        if (profileData.display_name) setUsername(profileData.display_name);
+        if (profileData.display_name) {
+          setUsername(profileData.display_name);
+          setSavedUsername(profileData.display_name);
+        }
         if (profileData.avatar_url) setAvatarUrl(profileData.avatar_url);
         if (profileData.points != null) trueScore = profileData.points;
-        if (profileData.team_name) setTeamName(profileData.team_name);
+        
+        if (profileData.team_name) {
+          setTeamName(profileData.team_name);
+          setSavedTeamName(profileData.team_name);
+        }
         
         if (profileData.partner_id) {
           setPartnerId(profileData.partner_id);
@@ -204,11 +289,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
-  // ==========================================
-  // --- BERECHNUNG DER NEUEN RPG STATS ---
-  // ==========================================
   const loadoutStats = useMemo(() => {
-    // Basis Werte des Spielers
     const baseStats = { smash: 50, control: 50, defense: 50, agility: 50 };
     const calculated = { ...baseStats };
     
@@ -238,7 +319,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </span>
     );
   };
-  // ==========================================
 
   const handlePartnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newPartner = e.target.value;
@@ -249,6 +329,37 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     if (!error) {
       setMessage({ type: 'success', text: `Partner erfolgreich gewählt!` });
       setTimeout(() => setMessage(null), 2500);
+    }
+  };
+
+  // --- NEUE AUTO-SAVE FUNKTION FÜR PROFIL-DATEN ---
+  const handleAutoSave = async () => {
+    const newName = username.trim();
+    const newTeam = teamName.trim();
+    
+    // Nur speichern, wenn sich wirklich etwas geändert hat
+    if (newName === savedUsername && newTeam === savedTeamName) return;
+    if (!newName || !newTeam) return; // Nichts speichern, wenn leer
+    
+    setIsSaving(true);
+    setMessage(null);
+    
+    const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
+    
+    const { error: dbError } = await supabase.from('user_stats').update({ 
+      display_name: newName,
+      team_name: newTeam 
+    }).eq('id', user.id);
+    
+    setIsSaving(false);
+    if (authError || dbError) {
+      setMessage({ type: 'error', text: "Fehler beim Speichern!" });
+      setTimeout(() => setMessage(null), 3000); 
+    } else {
+      setSavedUsername(newName);
+      setSavedTeamName(newTeam);
+      setMessage({ type: 'success', text: "Automatisch gespeichert!" });
+      setTimeout(() => setMessage(null), 2500); 
     }
   };
 
@@ -271,30 +382,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setTimeout(() => setMessage(null), 3000);
     } catch (error: any) {
       setMessage({ type: 'error', text: "Fehler beim Hochladen: " + error.message });
+      setTimeout(() => setMessage(null), 3000);
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    setMessage(null);
-    const newName = username.trim();
-    const newTeam = teamName.trim();
-    
-    const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
-    
-    const { error: dbError } = await supabase.from('user_stats').update({ 
-      display_name: newName,
-      team_name: newTeam 
-    }).eq('id', user.id);
-    
-    setIsSaving(false);
-    if (authError || dbError) {
-      setMessage({ type: 'error', text: "Fehler beim Speichern: " + (authError?.message || dbError?.message) });
-    } else {
-      setMessage({ type: 'success', text: "Profil & Team erfolgreich aktualisiert!" });
-      setTimeout(() => setMessage(null), 3000); 
     }
   };
 
@@ -334,7 +424,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       {/* 1. KOPFBEREICH: Avatar & Name             */}
       {/* ========================================= */}
-      <div className="flex flex-col md:flex-row items-center md:items-start gap-6 w-full">
+      <div className="flex flex-col md:flex-row items-center md:items-start gap-6 w-full relative">
         <div className="relative flex flex-col items-center shrink-0">
           <label htmlFor="avatar-upload" className={`relative cursor-pointer group ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {avatarUrl ? (
@@ -342,39 +432,61 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             ) : (
               <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">👤</div>
             )}
-            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏️</div>
+            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏️️</div>
           </label>
           <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
           {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>}
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+          <div className="flex justify-between items-center w-full">
+            <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+            
+            {/* Feedback-Anzeige für Auto-Save / Avatar */}
+            {message && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
+              >
+                {isSaving ? "Speichert..." : message.text}
+              </motion.div>
+            )}
+          </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">E-Mail</label>
               <div className="px-4 py-3 bg-[#030611] border border-slate-800 rounded-xl text-slate-500 text-xs font-semibold cursor-not-allowed">{user?.email}</div>
             </div>
-            <div className="flex flex-col gap-1.5 text-left">
+            <div className="flex flex-col gap-1.5 text-left relative group">
               <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">Dein Spielername</label>
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Name..." className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
+              <input 
+                type="text" 
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)} 
+                onBlur={handleAutoSave} // <-- Auto-Save beim Verlassen des Feldes
+                onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
+                placeholder="Name..." 
+                className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-1 w-full mt-1">
-            <div className="flex flex-col gap-1.5 text-left">
+            <div className="flex flex-col gap-1.5 text-left relative group">
               <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Turnier Team-Name</label>
-              <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="z.B. TacPadel Bros" className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" />
+              <input 
+                type="text" 
+                value={teamName} 
+                onChange={(e) => setTeamName(e.target.value)} 
+                onBlur={handleAutoSave} // <-- Auto-Save beim Verlassen des Feldes
+                onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
+                placeholder="z.B. TacPadel Bros" 
+                className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
+              />
             </div>
           </div>
-
-          <button onClick={handleSave} disabled={isSaving || !username.trim() || !teamName.trim()} className="w-full sm:w-auto self-end px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-1">
-            {isSaving ? "Speichert..." : "Profil speichern"}
-          </button>
-          {message && (
-            <div className={`w-full p-2.5 rounded-lg text-xs font-bold text-center ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{message.text}</div>
-          )}
+          <span className="text-[8px] text-slate-500 text-right mt-[-4px] mr-2">Änderungen werden automatisch gespeichert</span>
         </div>
       </div>
 
@@ -410,7 +522,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
-        {/* HIER STARTET DIE NEUE LOADOUT/RPG BOX */}
+        {/* LOADOUT/RPG BOX */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
             <span>Spielstil & Ausrüstung</span><span className="text-slate-600">Locker</span>
@@ -420,6 +532,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             
             {/* LINKE SPALTE: Auswahl */}
             <div className="flex flex-col gap-3">
+              
+              {/* 1. Teampartner (Aktiv) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
                 <select 
@@ -434,30 +548,47 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </select>
               </div>
 
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+              {/* 2. Schläger (Gesperrt / Coming Soon) */}
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
                 <select 
                   value={racketId} 
                   onChange={(e) => setRacketId(e.target.value)} 
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                  disabled
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-white text-xs font-bold outline-none appearance-none opacity-40 cursor-not-allowed"
                 >
                   {RACKETS.map(r => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
-              </div>
-
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 opacity-50 cursor-not-allowed">
-                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Ausrüstung / Perks</label>
-                <div className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-slate-500 text-xs font-bold">
-                  Coming soon...
+                {/* Coming Soon Overlay */}
+                <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
+                  <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
+                    🔒 Coming soon
+                  </span>
                 </div>
               </div>
+
+              {/* 3. Powerschlag (Gesperrt / Coming Soon) */}
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Powerschlag</label>
+                <select disabled className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-white text-xs font-bold outline-none appearance-none opacity-40 cursor-not-allowed">
+                  <option>Topspin Smash (Klassik)</option>
+                  <option>Bandeja Viper</option>
+                  <option>Vibora Strike</option>
+                </select>
+                {/* Coming Soon Overlay */}
+                <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
+                  <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
+                    🔒 Coming soon
+                  </span>
+                </div>
+              </div>
+
             </div>
 
             {/* RECHTE SPALTE: RPG Stats & Diffs */}
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-              {/* Leichter orange Glow im Hintergrund für Style */}
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
               
               <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black mb-4 border-b border-slate-800 pb-2">Player Attributes</h4>
@@ -501,7 +632,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </div>
         </div>
 
-        {/* Trophäen Box */}
+        {/* --- 3D TROPHÄENSCHRANK --- */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between mt-2">
           <div>
             <div className="flex justify-between items-center mb-4">
@@ -524,27 +655,41 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                    style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
             </div>
 
-            <div className="w-full bg-[#050b18] rounded-lg border border-slate-800/50 p-3 min-h-[85px] relative overflow-hidden shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-              <span className="text-[8px] text-slate-500 uppercase tracking-widest font-black mb-2 block">Trophäenschrank</span>
-              {wonTrophies.length === 0 ? (
-                <div className="flex items-center justify-center h-10 text-[9px] text-slate-600 font-bold uppercase tracking-widest text-center px-2">Noch keine Turniere gewonnen</div>
-              ) : (
-                <div className="flex flex-wrap gap-2.5">
-                  {wonTrophies.map((tourId, idx) => {
-                    const isMajor = tourId.toLowerCase().includes('major');
-                    const isMaster = tourId.toLowerCase().includes('master');
-                    const trophyStyle = isMajor ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : isMaster ? 'text-slate-300 drop-shadow-[0_0_6px_rgba(203,213,225,0.8)]' : 'text-orange-600 drop-shadow-[0_0_6px_rgba(234,88,12,0.8)]'; 
-                    return (
-                      <div key={idx} className="relative group cursor-help flex items-center justify-center">
-                        <div className={`text-2xl transition-transform group-hover:scale-110 ${trophyStyle}`}>🏆</div>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max bg-slate-900 border border-slate-700 text-white text-[9px] px-2.5 py-1 rounded shadow-lg z-20 font-black uppercase tracking-widest pointer-events-none">
-                          {formatTourName(tourId)}
-                        </div>
-                      </div>
-                    )
-                  })}
+            {/* TRON 3D CABINET CONTAINER */}
+            <div className="w-full bg-[#020408] rounded-xl border border-cyan-900/50 p-0 h-[280px] relative overflow-hidden shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]">
+              <div className="absolute top-3 left-4 z-10 pointer-events-none">
+                <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">Tron Trophäen-Vault</span>
+              </div>
+
+              {wonTrophies.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                  <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Vault noch leer</span>
                 </div>
               )}
+
+              <Canvas camera={{ position: [0, 1.5, 6], fov: 45 }}>
+                <ambientLight intensity={0.8} />
+                <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
+                <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
+                <OrbitControls enableZoom={true} maxDistance={10} minDistance={2} maxPolarAngle={Math.PI / 2 + 0.1} minPolarAngle={Math.PI / 3} />
+              </Canvas>
+
+              {/* DYNAMISCHES BANNER OVERLAY */}
+              <AnimatePresence>
+                {activeTrophyBanner && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20, scale: 0.9 }} 
+                    animate={{ opacity: 1, y: 0, scale: 1 }} 
+                    exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                    onClick={() => setActiveTrophyBanner(null)}
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-slate-900/95 border border-cyan-500/50 rounded-xl p-4 shadow-[0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md cursor-pointer z-20 flex flex-col items-center text-center"
+                  >
+                    <span className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-1">Sieger</span>
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider">{formatTourName(activeTrophyBanner)}</h4>
+                    <span className="text-[8px] text-slate-400 mt-2">Klicken zum Schließen</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             
           </div>

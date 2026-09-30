@@ -110,19 +110,19 @@ export default function GameScreen() {
     matchSecondsRef.current = matchSeconds;
   }, [matchSeconds]);
 
-  // Live-Timer Logik
+  // Timer-Logik (pausiert im Hintergrund)
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
-    // Zähle hoch, solange das Match läuft und keine Menüs offen sind
-    if (!gameOver && !isMenuOpen && !isTourOpen) { 
+    // Zähle nur hoch, wenn das Spiel läuft UND die App aktiv im Vordergrund ist (isVisible)
+    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible) { 
       interval = setInterval(() => {
         setMatchSeconds(prev => prev + 1);
       }, 1000);
     }
 
     return () => clearInterval(interval);
-  }, [gameOver, isMenuOpen, isTourOpen]);
+  }, [gameOver, isMenuOpen, isTourOpen, isVisible]);
 
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
   const [stamina, setStamina] = useState({ 
@@ -306,10 +306,17 @@ export default function GameScreen() {
   }, []);
 
   const [flashMsg, setFlashMsg] = useState<{text: string, color: string} | null>(null);
+  const flashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showFlash = (text: string, color: string = "text-white", duration: number = 2000) => {
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    
     setFlashMsg({ text, color });
-    setTimeout(() => setFlashMsg(null), duration);
+    
+    flashTimeoutRef.current = setTimeout(() => {
+      setFlashMsg(null);
+      flashTimeoutRef.current = null;
+    }, duration);
   };
 
   const loadGame = () => {
@@ -432,15 +439,16 @@ export default function GameScreen() {
     if (round === 2) roundName = "Halbfinale";
     if (round === 3) roundName = "Finale";
     
-    setTimeout(() => {
-        showFlash(`Gegner: ${selectedProfile.teamName} (${selectedProfile.p1} & ${selectedProfile.p2})`, "text-cyan-400", 4000);
-    }, 3500);
-
     if (round > 1 && staminaModeEnabled) {
-        showFlash(`🏆 ${roundName} gestartet! (Stamina teilweise regeneriert)`, "text-amber-400", 4000);
+        showFlash(`🏆 ${roundName} gestartet! (Stamina teilweise regeneriert)`, "text-amber-400", 3500);
     } else {
         showFlash(`🏆 ${roundName} gestartet!`, "text-orange-400", 3500);
     }
+
+    setTimeout(() => {
+        const styleText = selectedProfile.style === "aggressive" ? "Aggressiv" : selectedProfile.style === "defensive" ? "Defensiv" : "Ausgeglichen";
+        showFlash(`Gegner: ${selectedProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
+    }, 3600);
   };
 
   const startNewGame = () => {
@@ -477,7 +485,8 @@ export default function GameScreen() {
     setIsIntroPlaying(true); 
 
     setTimeout(() => {
-        showFlash(`Gegner: ${randomProfile.teamName} (${randomProfile.p1} & ${randomProfile.p2})`, "text-cyan-400", 4000);
+        const styleText = randomProfile.style === "aggressive" ? "Aggressiv" : randomProfile.style === "defensive" ? "Defensiv" : "Ausgeglichen";
+        showFlash(`Gegner: ${randomProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
     }, 3500);
   };
 
@@ -1637,18 +1646,6 @@ export default function GameScreen() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* LIVE TIMER IM MATCH */}
-        {!isMenuOpen && !isTourOpen && !gameOver && !isIntroPlaying && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center justify-center">
-            <div className="bg-slate-900/80 border border-slate-700 px-4 py-1.5 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-slate-300 font-black tracking-widest text-sm">
-                {formatMatchTime(matchSeconds)}
-              </span>
-            </div>
-          </div>
-        )}
 
         <div className="absolute inset-0 z-10">
           <ScenarioCourt3D 

@@ -35,7 +35,7 @@ export const SCENARIOS: Scenario[] = [
     bestZones: ["A1", "E1"],
     explanation: "Die Bandeja (spanisch für 'Tablett') ist ein typischer Padel-Schlag. Du triffst den Ball auf Kopfhöhe und 'schiebst' ihn wie auf einem Tablett kontrolliert zurück, um deine Netzposition nicht zu verlieren.",
     positions: {
-      you: "B4",
+      you: "B3",
       partner: "D4",
       opp1: "B1",
       opp2: "D1",
@@ -54,7 +54,7 @@ export const SCENARIOS: Scenario[] = [
       partner: "D4",
       opp1: "B1",
       opp2: "D1",
-      ball: { side: "left", zone: "C4" },
+      ball: { side: "left", zone: "B4" },
     },
     laufZone: "B4",
   },
@@ -137,11 +137,11 @@ export const SCENARIOS: Scenario[] = [
     id: 9,
     description: "Ein neuer Punkt beginnt. Du stehst rechts hinten hinter der Linie und musst den Ball ins Spiel bringen. Der Ball darf beim Schlagen maximal auf Hüfthöhe getroffen werden.",
     validShots: ["AUFSCHLAG"],
-    bestZones: ["A2", "C2"],
+    bestZones: ["A3","B3", "C3"],
     explanation: "Der Aufschlag eröffnet jeden Ballwechsel. Im Gegensatz zum Tennis wird er beim Padel nach dem Bodenaufprall 'von unten' geschlagen und muss diagonal ins gegnerische Feld fliegen.",
     positions: {
       you: "D1",
-      partner: "B4",
+      partner: "D4",
       opp1: "B1",
       opp2: "D2",
       ball: { side: "left", zone: "D1" },
@@ -152,7 +152,7 @@ export const SCENARIOS: Scenario[] = [
     id: 10,
     description: "Du stehst hinten. Die Gegner am Netz haben eine große Lücke gelassen. Welchen klassischen, flachen Grundschlag (wie beim Tennis) nutzt du, um den Ball nach einem Bodenaufprall an ihnen vorbeizuspielen?",
     validShots: ["DRIVE"],
-    bestZones: ["A4", "A5"],
+    bestZones: ["A1", "A1"],
     explanation: "Der Drive ist der klassische Vorhand- oder Rückhandschlag, nachdem der Ball einmal auf dem Boden aufgetippt ist. Man spielt ihn meist flach, um das Netz zu passieren.",
     positions: {
       you: "A2",
@@ -161,7 +161,7 @@ export const SCENARIOS: Scenario[] = [
       opp2: "D4",
       ball: { side: "left", zone: "A2" },
     },
-    laufZone: "B3",
+    laufZone: "B2",
   },
   
   // ==========================================
@@ -174,7 +174,7 @@ export const SCENARIOS: Scenario[] = [
     bestZones: ["A1", "E1"],
     explanation: "Nach unberechenbaren Gittertreffern ist ein hoher Lob in die tiefen Ecken die sicherste Option, um den Angriff zu stoppen.",
     positions: { you: "B3", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B3" } },
-    laufZone: "B2",
+    laufZone: "B4",
   },
   {
     id: 12,
@@ -187,7 +187,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 13,
-    description: "Du stehst auf der linken Netzseite (B4). GEG1 steht tief hinten in der Ecke (A1). Du willst maximalen Druck aufbauen.",
+    description: "Du stehst auf der linken Netzseite (B4). Gegner steht tief hinten in der Ecke (A1). Du willst maximalen Druck aufbauen.",
     validShots: ["VOLLEY"],
     bestZones: ["A1", "A2"],
     explanation: "Ein flacher Volley tief in die Ecke des defensiven Gegners zwingt ihn zu einem schweren Wand-Ball.",
@@ -200,8 +200,8 @@ export const SCENARIOS: Scenario[] = [
     validShots: ["LOB"],
     bestZones: ["A1", "E1"],
     explanation: "Ein hoher Return-Lob über die vorstürmenden Netzspieler hinweg nimmt den Gegnern sofort die Initiative.",
-    positions: { you: "A2", partner: "C1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
-    laufZone: "B2",
+    positions: { you: "A2", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
+    laufZone: "B4",
   },
   {
     id: 15,
@@ -639,7 +639,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 62,
     description: "Spieleröffnung von Rechts: Du servierst von der rechten Seite. Der Returnspieler hat sich sehr weit nach außen Richtung Gitter positioniert, die Mitte ist offen.",
-    positions: { you: "D1", partner: "A4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "D1" } },
+    positions: { you: "D1", partner: "B4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "D1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["C3"],
     laufZone: "D4",
@@ -659,9 +659,9 @@ export const SCENARIOS: Scenario[] = [
     description: "Service ins Eck: Du schlägst von der linken Seite auf die Rückhand des Gegners auf, direkt ans Glas.",
     positions: { you: "B1", partner: "D4", opp1: "D1", opp2: "B1", ball: { side: "left", zone: "B1" } },
     validShots: ["AUFSCHLAG"],
-    bestZones: ["A3"],
+    bestZones: ["E3"],
     laufZone: "B4",
-    explanation: "Ein starker Kick-Aufschlag an die Scheibe (A3) bringt den Gegner in Not. Du rückst sofort auf deine Netzposition (B4) vor."
+    explanation: "Ein starker Kick-Aufschlag an die Scheibe (E3) bringt den Gegner in Not. Du rückst sofort auf deine Netzposition (B4) vor."
   },
   {
     id: 65,
@@ -688,14 +688,14 @@ export const SCENARIOS: Scenario[] = [
     description: "Unter Druck an der Seitenwand: Der gegnerische Ball treibt dich extrem weit nach außen. Du bist fast am Gitter, der Netzspieler stürmt vor.",
     positions: { you: "A1", partner: "D2", opp1: "C4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     validShots: ["DRIVE"],
-    bestZones: ["A5"],
+    bestZones: ["A1"],
     laufZone: "C1",
-    explanation: "Du ziehst den Drive extrem flach Longline (A5), um den Netzspieler zu passieren. Danach musst du sofort die offene Mitte (C1) in der Defensive schließen, da du weit aus dem Feld getrieben wurdest."
+    explanation: "Du ziehst den Drive extrem flach Longline (A1), um den Netzspieler zu passieren. Danach musst du sofort die offene Mitte (C1) in der Defensive schließen, da du weit aus dem Feld getrieben wurdest."
   },
   {
     id: 68,
     description: "Die Einladung beim Return: Der gegnerische Aufschlag ist viel zu langsam und springt hoch ab. Du trittst entschlossen ins Feld hinein.",
-    positions: { you: "D1", partner: "B2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "D2" } },
+    positions: { you: "D2", partner: "B2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "D2" } },
     validShots: ["DRIVE"],
     bestZones: ["C1"],
     laufZone: "D3",
@@ -904,8 +904,8 @@ export const SCENARIOS: Scenario[] = [
     positions: { you: "E2", partner: "B4", opp1: "D4", opp2: "B4", ball: { side: "left", zone: "E2" } },
     validShots: ["BAJADA"],
     bestZones: ["D4"],
-    laufZone: "D3",
-    explanation: "Du schießt die Bajada kompromisslos auf den Körper des unsicheren Spielers (D4). Durch seinen flachen Block rückst du auf D3 auf, um das Feld eng zu machen."
+    laufZone: "D2",
+    explanation: "Du schießt die Bajada kompromisslos auf den Körper des unsicheren Spielers (D4). Durch seinen flachen Block rückst du auf D2 auf, um das Feld eng zu machen."
   },
   {
     id: 91,
@@ -960,8 +960,8 @@ export const SCENARIOS: Scenario[] = [
     positions: { you: "E1", partner: "B2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["CHIQUITA"],
     bestZones: ["D4"],
-    laufZone: "E3",
-    explanation: "Die tiefe Chiquita fällt auf D4 ab. Da du von ganz hinten kommst, reicht die Zeit für einen Netzsprint nicht. Du sicherst immerhin das Halbfeld (E3) ab."
+    laufZone: "E2",
+    explanation: "Die tiefe Chiquita fällt auf D4 ab. Da du von ganz hinten kommst, reicht die Zeit für einen Netzsprint nicht. Du sicherst immerhin das Halbfeld (E2) ab."
   },
 
   // --- VOLLEY (Fokus: Am Netz zuschlagen & Wischer-Bewegung) ---
@@ -1006,7 +1006,7 @@ export const SCENARIOS: Scenario[] = [
     description: "Schuss aufs Metall: Aus der linken Position feuerst du den Ball ohne Vorwarnung scharf auf das gegenüberliegende Gitter.",
     positions: { you: "B4", partner: "D4", opp1: "E1", opp2: "A1", ball: { side: "left", zone: "B4" } },
     validShots: ["VOLLEY"],
-    bestZones: ["E2"],
+    bestZones: ["E3"],
     laufZone: "A4",
     explanation: "Ein aggressiver Volley ans Gitter (E2) öffnet kurz deine Longline-Seite. Verschiebe dich einen Schritt nach links (A4), um diesen Passierball direkt zu verhindern."
   },

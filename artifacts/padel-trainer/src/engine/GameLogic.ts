@@ -346,14 +346,14 @@ export const calculateSmartAITurn = (
       }
   } else if (tacScore >= 4000 && aiResult === "success") {
       // KI Lethality ab 4000: KI pusht das Tempo, macht dadurch Winner, aber auch Fehler!
-      const highLevelRisk = ((tacScore - 4000) / 100) * 0.02; 
+      const highLevelRisk = ((tacScore - 4000) / 100) * 0.015; 
       const riskRoll = Math.random();
       
       if (riskRoll < highLevelRisk) {
            aiResult = "perfect";
            aiTitle = "⭐ UNHALTBAR!";
            aiMsg = "Die KI feuert aus dem Nichts einen messerscharfen Ball ab!";
-      } else if (riskRoll < highLevelRisk * 1.5) { 
+      } else if (riskRoll < highLevelRisk * 1.0) { 
            aiResult = Math.random() > 0.5 ? "error_net" : "error_wall_direct";
            aiTitle = "❌ ZU VIEL RISIKO!";
            aiMsg = "Die KI wollte das Tempo pushen und überpowert den Ball völlig!";
@@ -425,10 +425,10 @@ export const calculateSmartAITurn = (
   const uniqueInterceptZones = Array.from(finalInterceptZones);
 
   let speedMulti = 1.0;
-  if (tacScore < 3000) { speedMulti = tacScore / 3000; } 
-  else if (tacScore < 4000) { speedMulti = 1.0 + ((tacScore - 3000) / 1000) * 0.15; } 
+  if (tacScore < 3000) { speedMulti = 1.0 + ((tacScore / 3000) * 0.3);}
+  else if (tacScore < 4000) { speedMulti = 1.3 + ((tacScore - 3000) / 1000) * 0.2; } 
   // Höherer Multiplikator ab 4000 für flotteres Pacing
-  else { speedMulti = 1.15 + ((tacScore - 4000) / 1000) * 0.8; }
+  else { speedMulti = 1.5 + ((tacScore - 4000) / 1000) * 0.8; }
 
   let finalFlightTime = Math.max(1500, Math.min(10000, traj.flightTimeMs / speedMulti));
 
@@ -746,9 +746,9 @@ export const evaluatePlayerShot = (
 
     let penalty = 0;
     if (tacScore >= 3000 && tacScore < 4000) {
-        penalty = ((tacScore - 3000) / 1000) * 2.0; 
+        penalty = ((tacScore - 3000) / 1000) * 1.5; 
     } else if (tacScore >= 4000) {
-        penalty = 2.0 + ((tacScore - 4000) / 100) * 0.5; 
+        penalty = Math.min(4.0, 1.5 + ((tacScore - 4000) / 100) * 0.2);
     }
     
     hitChance -= penalty;
