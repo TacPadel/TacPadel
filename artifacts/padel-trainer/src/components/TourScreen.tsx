@@ -235,27 +235,32 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   };
 
   // -----------------------------------------------------------
-  // NEU: Retry Turnier Logik
+  // AKTUALISIERT: Re-Buy / Straf-Logik (Überall harte Strafe)
+  // -------------------- Einsteiger-Turniere mit 15 TP kosten jetzt z.B. mindestens 50 TP Strafe oder doppelter Entry, 
+  // -------------------- Open (Entry 50) kostet entsprechend mehr (z.B. 100 TP Strafe).
   // -----------------------------------------------------------
+  const getRetryFee = (tour: Tournament) => {
+    if (tour.entryFee === 0) return 50; // Kostenlose Turniere kosten als Strafe 50 TP
+    return Math.max(50, tour.entryFee * 2); // Mindestens 50 TP Strafe oder der doppelte Entry
+  };
+
   const handleRetryTournament = async (tour: Tournament) => {
-    // Wenn das Turnier kostenlos ist (0 TP), kostet das Retry 50 TP. Ansonsten = Startgeld.
-    const retryFee = tour.entryFee > 0 ? tour.entryFee : 50;
+    const retryFee = getRetryFee(tour);
 
     if (tacPoints < retryFee) {
-      alert(`Zu wenig TacPoints! Ein Retry kostet ${retryFee} TP.`);
+      alert(`Zu wenig TacPoints! Die Strafe für die zweite Chance beträgt ${retryFee} TP.`);
       return;
     }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // 1. TacPoints (Geld) abziehen
+      // 1. TacPoints (Strafgebühr) abziehen
       const newTacPoints = tacPoints - retryFee;
       setTacPoints(newTacPoints);
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
       
       if (session?.user) {
-        // Punkte in user_stats updaten
         await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
         
         // 2. Status in DB wieder auf "active" und Runde auf 1 setzen
