@@ -382,15 +382,15 @@ export default function CourtFloor(props: ScoreboardProps) {
         else if (randomArenaPath === "/TacPadelPremium.glb") {
           if (!isCourt) {
             // Beispiel: Ein etwas helleres, rötliches oder beton-artiges Theme
-            child.material.color = new THREE.Color("#0B0D12FF"); // Dunkles Grau/Braun
-            child.material.roughness = 0.15; // Weniger spiegelnd, rauer
-            child.material.metalness = 0.85; // Weniger metallisch
-            child.material.envMapIntensity = 2.0; 
+            child.material.color = new THREE.Color("#1e293b"); // Dunkles Grau/Braun
+            child.material.roughness = 0.7; // Weniger spiegelnd, rauer
+            child.material.metalness = 0.2; // Weniger metallisch
+            child.material.envMapIntensity = 0.5; 
           } else {
             // Vielleicht soll das Spielfeld hier auch leicht anders wirken
-            child.material.roughness = 0.4; 
-            child.material.metalness = 0.0; 
-            child.material.envMapIntensity = 1.0; 
+            child.material.roughness = 0.6; 
+            child.material.metalness = 0.05; 
+            child.material.envMapIntensity = 0.8; 
           }
         }
 
