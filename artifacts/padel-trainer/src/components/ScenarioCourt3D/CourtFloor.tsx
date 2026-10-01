@@ -9,7 +9,7 @@ import { AiProfile } from "../../engine/AiProfiles";
 // Hier trägst du später einfach Arena 3 und 4 ein, sobald sie fertig sind.
 const ARENA_MODELS = [
   "/TacPadel.glb",
-  "/TacPadel2.glb",
+  "/TacPadelPremium.glb",
   // "/TacPadel3.glb",
   // "/TacPadel4.glb",
 ];
