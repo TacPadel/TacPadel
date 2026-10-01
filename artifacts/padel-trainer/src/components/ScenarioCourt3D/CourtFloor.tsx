@@ -357,26 +357,52 @@ export default function CourtFloor(props: ScoreboardProps) {
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const name = child.name.toLowerCase();
-        
-        // WICHTIG: Deine zweite Blender-Arena muss Meshes haben, 
-        // die "zone", "court", "floor", "grass" oder "feld" heißen, 
-        // damit sie hier das richtige Material bekommen!
+        // Erkennt, ob das aktuelle Mesh das Spielfeld ist
         const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
 
-        if (!isCourt) {
-          child.material.color = new THREE.Color("#020308"); 
-          child.material.roughness = 0.15; 
-          child.material.metalness = 0.85; 
-          child.material.envMapIntensity = 2.0; 
-        } else {
-          child.material.roughness = 0.3; 
-          child.material.metalness = 0.1; 
-          child.material.envMapIntensity = 1.0; 
+        // ==========================================================
+        // ARENA 1: Das bisherige, dunkle "Neon/Cyber"-Theme
+        // ==========================================================
+        if (randomArenaPath === "/TacPadel.glb") {
+          if (!isCourt) {
+            child.material.color = new THREE.Color("#020308"); // Sehr dunkles Blau/Schwarz
+            child.material.roughness = 0.15; 
+            child.material.metalness = 0.85; 
+            child.material.envMapIntensity = 2.0; 
+          } else {
+            child.material.roughness = 0.3; 
+            child.material.metalness = 0.1; 
+            child.material.envMapIntensity = 1.0; 
+          }
         }
+        
+        // ==========================================================
+        // ARENA 2: Ein komplett anderer Look (z.B. Sand, Beton oder andere Farben)
+        // ==========================================================
+        else if (randomArenaPath === "/TacPadelPremium.glb") {
+          if (!isCourt) {
+            // Beispiel: Ein etwas helleres, rötliches oder beton-artiges Theme
+            child.material.color = new THREE.Color("#0B0D12FF"); // Dunkles Grau/Braun
+            child.material.roughness = 0.25; // Weniger spiegelnd, rauer
+            child.material.metalness = 0.3; // Weniger metallisch
+            child.material.envMapIntensity = 1.0; 
+          } else {
+            // Vielleicht soll das Spielfeld hier auch leicht anders wirken
+            child.material.roughness = 0.4; 
+            child.material.metalness = 0.0; 
+            child.material.envMapIntensity = 1.0; 
+          }
+        }
+
+        // ==========================================================
+        // ARENA 3 & 4 (Für später schon mal vorbereitet)
+        // ==========================================================
+        // else if (randomArenaPath === "/TacPadel3.glb") { ... }
+
         child.material.needsUpdate = true;
       }
     });
-  }, [scene]);
+  }, [scene, randomArenaPath]); // <- Wichtig: randomArenaPath hier als Dependency hinzufügen!
 
   const {
     serverId = "you",

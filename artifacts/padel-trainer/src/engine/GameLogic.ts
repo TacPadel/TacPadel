@@ -623,7 +623,7 @@ export const evaluatePlayerShot = (
       case "BANDEJA":
         if (hRow <= 1) {
              hitChance -= 15; recoveryChance += 35; title = "ZU WEIT HINTEN"; msg = "Falsche Position: Die Bandeja ist ein Aufbauschlag aus dem Halbfeld, nicht von der Grundlinie.";
-        } else if (tRow >= 3) { 
+        } else if (tRow >= 4) { 
              hitChance -= 5; recoveryChance += 25; title = "ZIEL ZU KURZ"; msg = "Zu kurz gezielt! Bandejas müssen die Gegner zwingend an die Rückwand drängen."; 
         } else if (oppsAtBack) { 
             perfectChance += 8; hitChance += 5; title = "STARKE IDEE"; msg = "Taktisch sauber: Eine tiefe Bandeja hilft euch, das Netz sicher zu verteidigen."; 
@@ -660,7 +660,7 @@ export const evaluatePlayerShot = (
              hitChance -= 20; recoveryChance += 40; title = "BLOCK VON HINTEN?!"; msg = "Sinnlos: Ein Block macht nur ganz vorne direkt am Netz Sinn, um Härte abzufangen.";
         } else if (tRow >= 4 && oppsAtNet) { 
             perfectChance += 12; hitChance += 5; title = "STARKE IDEE"; msg = "Genialer Plan: Den harten Ball extrem weich direkt vor die Füße der Angreifer abtropfen lassen."; 
-        } else if (tRow <= 2) {
+        } else if (tRow <= 1) {
             hitChance -= 5; recoveryChance += 30; title = "ZIEL ZU LANG"; msg = "Zu lang gezielt! Ein Block bis an die Grundlinie wird leicht zum langsamen Flugball für die Gegner.";
         } else { 
             hitChance += 5; title = "SICHERER BLOCK"; msg = "Gute taktische Entscheidung, um das gegnerische Tempo aus dem Ball zu nehmen."; 

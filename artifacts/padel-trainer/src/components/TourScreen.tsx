@@ -40,6 +40,14 @@ interface TourScreenProps {
   onStartMatch?: (tournamentId: string, currentRound: number, baseDifficulty: number, reward: number) => void;
 }
 
+// -----------------------------------------------------------
+// ZENTRALE RE-BUY LOGIK (Überall einheitlich abrufbar)
+// -----------------------------------------------------------
+const getRetryFee = (tour: Tournament) => {
+  if (tour.entryFee === 0) return 50; // Kostenlose Turniere kosten als Strafe 50 TP
+  return Math.max(50, tour.entryFee * 2); // Mindestens 50 TP Strafe oder der doppelte Entry
+};
+
 export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [selectedTour, setSelectedTour] = useState<Tournament | null>(null);
   
@@ -235,32 +243,26 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   };
 
   // -----------------------------------------------------------
-  // AKTUALISIERT: Re-Buy / Straf-Logik (Überall harte Strafe)
-  // -------------------- Einsteiger-Turniere mit 15 TP kosten jetzt z.B. mindestens 50 TP Strafe oder doppelter Entry, 
-  // -------------------- Open (Entry 50) kostet entsprechend mehr (z.B. 100 TP Strafe).
+  // AKTUALISIERT: Re-Buy / Straf-Logik (Verwendet getRetryFee)
   // -----------------------------------------------------------
-  const getRetryFee = (tour: Tournament) => {
-    if (tour.entryFee === 0) return 50; // Kostenlose Turniere kosten als Strafe 50 TP
-    return Math.max(50, tour.entryFee * 2); // Mindestens 50 TP Strafe oder der doppelte Entry
-  };
-
   const handleRetryTournament = async (tour: Tournament) => {
     const retryFee = getRetryFee(tour);
 
     if (tacPoints < retryFee) {
-      alert(`Zu wenig TacPoints! Die Strafe für die zweite Chance beträgt ${retryFee} TP.`);
+      alert(`Zu wenig TacPoints! Ein Retry kostet ${retryFee} TP.`);
       return;
     }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // 1. TacPoints (Strafgebühr) abziehen
+      // 1. TacPoints (Geld) abziehen
       const newTacPoints = tacPoints - retryFee;
       setTacPoints(newTacPoints);
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
       
       if (session?.user) {
+        // Punkte in user_stats updaten
         await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
         
         // 2. Status in DB wieder auf "active" und Runde auf 1 setzen
@@ -506,9 +508,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             {TOURNAMENTS.map((tour) => {
               const dbProg = progress[tour.id];
               const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
+              const isEliminated = dbProg?.status === 'eliminated';
               
               const isLockedByScore = tacScore < tour.reqScore;
               const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; 
+              
+              const retryFee = getRetryFee(tour);
 
               return (
                 <motion.div 
@@ -516,8 +521,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setSelectedTour(tour)}
-                  // Ein verlorenes Turnier wird jetzt nicht mehr grau/blockiert angezeigt,
-                  // da der Spieler es für ein Retry anklicken können soll!
                   className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${!isCompleted || dbProg?.status === 'eliminated' ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${dbProg?.status === 'won' ? 'opacity-50 grayscale-[0.3]' : ''}`}
                 >
                   <div className={`w-full h-full bg-gradient-to-br ${getTypeBg(tour.type)} p-4 rounded-xl flex flex-col bg-[#050b14]`}>
@@ -541,7 +544,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           GEWONNEN 🏆
                         </span>
                       )}
-                      {dbProg?.status === "eliminated" && (
+                      {isEliminated && (
                         <span className="text-[10px] font-black text-red-500 bg-red-950/50 border border-red-500 px-2 py-1 rounded">
                           AUSGESCHIEDEN 💀
                         </span>
@@ -565,15 +568,22 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                       <div className="w-[1px] h-6 bg-slate-700"></div>
                       
                       <div className="flex flex-col">
-                        <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Startgeld</span>
+                        {/* DYNAMISCHES TEXT LABEL FÜR STRAFE ODER ENTRY */}
+                        <span className={`text-[8px] font-bold uppercase tracking-widest ${isEliminated ? 'text-red-400/80' : 'text-slate-500'}`}>
+                          {isEliminated ? 'Re-Buy Strafe' : 'Startgeld'}
+                        </span>
+                        
+                        {/* DYNAMISCHER PREIS (Strafe vs Entry) */}
                         <span className={`text-sm font-black flex items-center gap-1 ${
-                          tour.entryFee === 0 
-                            ? 'text-emerald-400' 
-                            : !isLockedByFunds 
-                              ? 'text-amber-400'
-                              : 'text-red-500 line-through'
+                          isEliminated
+                            ? (tacPoints >= retryFee ? 'text-red-400' : 'text-red-600 line-through')
+                            : (tour.entryFee === 0 
+                                ? 'text-emerald-400' 
+                                : !isLockedByFunds 
+                                  ? 'text-amber-400'
+                                  : 'text-red-500 line-through')
                         }`}>
-                          {tour.entryFee === 0 ? "Frei" : `${tour.entryFee} TP`}
+                          {isEliminated ? `${retryFee} TP` : (tour.entryFee === 0 ? "Frei" : `${tour.entryFee} TP`)}
                         </span>
                       </div>
 
@@ -606,8 +616,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           
           const isLocked = isLockedByScore || isLockedByFunds;
 
-          // Retry Logik
-          const retryFee = selectedTour.entryFee > 0 ? selectedTour.entryFee : 50;
+          // Retry Logik mit ZENTRALER FUNKTION
+          const retryFee = getRetryFee(selectedTour);
           const canAffordRetry = tacPoints >= retryFee;
 
           // Text für normalen Start/Continue Button
@@ -643,7 +653,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-4 items-center">
                     <span>KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span></span>
                     <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                    <span className="text-amber-400 font-black">Buy-In: {selectedTour.entryFee === 0 ? "Frei" : `${selectedTour.entryFee} TP`}</span>
+                    
+                    {/* DYNAMISCHES HEADER LABEL IM POPUP */}
+                    {isEliminated ? (
+                      <span className="text-red-400 font-black drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]">
+                        Re-Buy Strafe: {retryFee} TP
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 font-black">
+                        Buy-In: {selectedTour.entryFee === 0 ? "Frei" : `${selectedTour.entryFee} TP`}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -691,7 +711,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </div>
                 </div>
 
-                {/* --- NEU: DYNAMISCHER BUTTON BEREICH --- */}
+                {/* --- DYNAMISCHER BUTTON BEREICH --- */}
                 {isEliminated ? (
                   <div className="w-full flex flex-col gap-2">
                     <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">Nicht aufgeben!</p>
@@ -892,7 +912,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </motion.div>
                 )}
               </AnimatePresence>
-
             </motion.div>
           </>
         )}
