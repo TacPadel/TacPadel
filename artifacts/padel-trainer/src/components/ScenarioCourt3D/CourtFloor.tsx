@@ -383,9 +383,9 @@ export default function CourtFloor(props: ScoreboardProps) {
           if (!isCourt) {
             // Beispiel: Ein etwas helleres, rötliches oder beton-artiges Theme
             child.material.color = new THREE.Color("#0B0D12FF"); // Dunkles Grau/Braun
-            child.material.roughness = 0.25; // Weniger spiegelnd, rauer
-            child.material.metalness = 0.3; // Weniger metallisch
-            child.material.envMapIntensity = 1.0; 
+            child.material.roughness = 0.15; // Weniger spiegelnd, rauer
+            child.material.metalness = 0.85; // Weniger metallisch
+            child.material.envMapIntensity = 2.0; 
           } else {
             // Vielleicht soll das Spielfeld hier auch leicht anders wirken
             child.material.roughness = 0.4; 

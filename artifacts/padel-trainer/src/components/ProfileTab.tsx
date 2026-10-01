@@ -35,7 +35,7 @@ const getPartnerModifiers = (partnerId: string) => {
 };
 
 // ==========================================
-// --- 3D TRON TROPHIES & CABINET ---
+// --- 3D TRON TROPHIES & VITRINENSCHRANK ---
 // ==========================================
 function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
   const ref = useRef<any>(null);
@@ -78,30 +78,73 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   );
 }
 
+// --- NEUER VITRINENSCHRANK ---
 function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophyClick: (id: string) => void }) {
-  const numRows = Math.max(1, Math.ceil(trophies.length / 5));
-  const shelves = Array.from({ length: numRows });
+  const cols = 3; // 3 Trophäen nebeneinander pro Reihe
+  const minShelves = 4; // Mindestens 4 Böden übereinander, damit es wie ein Schrank aussieht
+  const numShelves = Math.max(minShelves, Math.ceil(trophies.length / cols));
+  
+  const shelfHeight = 2.2; 
+  const width = 5.5; 
+  const depth = 1.8;
+  const totalHeight = numShelves * shelfHeight;
 
   return (
-    <group position={[0, -1, 0]}>
+    <group position={[0, -2, 0]}> {/* Schrank leicht nach unten versetzt */}
+      
+      {/* Tron Boden-Grid */}
       <gridHelper args={[40, 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
-      <gridHelper args={[40, 40, '#a855f7', '#020617']} position={[0, -0.02, 0]} rotation={[0, Math.PI / 4, 0]} />
-      {shelves.map((_, rowIndex) => (
-        <mesh key={`shelf-${rowIndex}`} position={[0, rowIndex * 2, 0]}>
-          <boxGeometry args={[8, 0.05, 1.5]} />
-          <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={0.2} transparent opacity={0.3} />
+      
+      {/* Vitrinen-Bodenplatte (Sockel) */}
+      <mesh position={[0, -0.1, 0]}>
+        <boxGeometry args={[width + 0.2, 0.2, depth + 0.2]} />
+        <meshStandardMaterial color="#020617" emissive="#0ea5e9" emissiveIntensity={0.5} />
+      </mesh>
+
+      {/* Vitrinen-Deckel (Dach) */}
+      <mesh position={[0, totalHeight, 0]}>
+        <boxGeometry args={[width + 0.2, 0.2, depth + 0.2]} />
+        <meshStandardMaterial color="#020617" emissive="#0ea5e9" emissiveIntensity={0.5} />
+      </mesh>
+
+      {/* Vitrinen-Rückwand (Dunkel) */}
+      <mesh position={[0, totalHeight / 2, -depth / 2]}>
+        <boxGeometry args={[width, totalHeight, 0.1]} />
+        <meshStandardMaterial color="#010308" />
+      </mesh>
+
+      {/* Vitrinen-Seitenglas (Links) */}
+      <mesh position={[-width / 2, totalHeight / 2, 0]}>
+        <boxGeometry args={[0.05, totalHeight, depth]} />
+        <meshStandardMaterial color="#0ea5e9" transparent opacity={0.15} />
+      </mesh>
+
+      {/* Vitrinen-Seitenglas (Rechts) */}
+      <mesh position={[width / 2, totalHeight / 2, 0]}>
+        <boxGeometry args={[0.05, totalHeight, depth]} />
+        <meshStandardMaterial color="#0ea5e9" transparent opacity={0.15} />
+      </mesh>
+
+      {/* Einlegeböden */}
+      {Array.from({ length: numShelves }).map((_, rowIndex) => (
+        <mesh key={`shelf-${rowIndex}`} position={[0, rowIndex * shelfHeight, 0]}>
+          <boxGeometry args={[width, 0.05, depth]} />
+          <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={0.3} transparent opacity={0.4} />
         </mesh>
       ))}
+
+      {/* Trophäen positionieren */}
       {trophies.map((tourId, idx) => {
-        const row = Math.floor(idx / 5);
-        const col = idx % 5;
-        const xPos = (col - 2) * 1.4; 
-        const yPos = row * 2;
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        const xPos = (col - 1) * 1.6; // Positionen: -1.6, 0, 1.6
+        const yPos = row * shelfHeight;
+        
         return (
           <TronTrophy 
             key={`${tourId}-${idx}`} 
             tourId={tourId} 
-            position={[xPos, yPos, 0]} 
+            position={[xPos, yPos + 0.025, 0]} // +0.025 damit sie direkt auf dem Boden stehen
             onClick={onTrophyClick} 
           />
         );
@@ -332,7 +375,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
-  // --- NEUE AUTO-SAVE FUNKTION FÜR PROFIL-DATEN ---
   const handleAutoSave = async () => {
     const newName = username.trim();
     const newTeam = teamName.trim();
@@ -432,7 +474,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             ) : (
               <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">👤</div>
             )}
-            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏️️</div>
+            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏</div>
           </label>
           <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
           {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>}
@@ -464,7 +506,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 type="text" 
                 value={username} 
                 onChange={(e) => setUsername(e.target.value)} 
-                onBlur={handleAutoSave} // <-- Auto-Save beim Verlassen des Feldes
+                onBlur={handleAutoSave} 
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
                 placeholder="Name..." 
                 className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
@@ -479,7 +521,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 type="text" 
                 value={teamName} 
                 onChange={(e) => setTeamName(e.target.value)} 
-                onBlur={handleAutoSave} // <-- Auto-Save beim Verlassen des Feldes
+                onBlur={handleAutoSave} 
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
                 placeholder="z.B. TacPadel Bros" 
                 className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
@@ -656,7 +698,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </div>
 
             {/* TRON 3D CABINET CONTAINER */}
-            <div className="w-full bg-[#020408] rounded-xl border border-cyan-900/50 p-0 h-[280px] relative overflow-hidden shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]">
+            <div className="w-full bg-[#020408] rounded-xl border border-cyan-900/50 p-0 h-[380px] relative overflow-hidden shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]">
               <div className="absolute top-3 left-4 z-10 pointer-events-none">
                 <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">Tron Trophäen-Vault</span>
               </div>
@@ -667,11 +709,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </div>
               )}
 
-              <Canvas camera={{ position: [0, 1.5, 6], fov: 45 }}>
+              <Canvas camera={{ position: [0, 2.5, 8], fov: 45 }}>
                 <ambientLight intensity={0.8} />
                 <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
                 <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
-                <OrbitControls enableZoom={true} maxDistance={10} minDistance={2} maxPolarAngle={Math.PI / 2 + 0.1} minPolarAngle={Math.PI / 3} />
+                <OrbitControls 
+                  target={[0, 2, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
+                  enableZoom={true} 
+                  maxDistance={12} 
+                  minDistance={3} 
+                  maxPolarAngle={Math.PI / 2 + 0.05} 
+                  minPolarAngle={Math.PI / 4} 
+                />
               </Canvas>
 
               {/* DYNAMISCHES BANNER OVERLAY */}

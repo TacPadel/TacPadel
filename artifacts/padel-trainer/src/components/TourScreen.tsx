@@ -409,12 +409,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm px-2">
           
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-emerald-500/30 bg-emerald-950/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.1)]">
-            <span className="text-emerald-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]">⚡ {tacScore}</span>
+            <span className="text-emerald-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]">{tacScore}</span>
             <span className="text-[7px] text-emerald-500/70 uppercase tracking-widest font-bold mt-0.5">TacScore</span>
           </div>
 
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-amber-500/30 bg-amber-950/30 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]">
-            <span className="text-amber-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(245,158,11,0.8)]">⭐ {tacPoints}</span>
+            <span className="text-amber-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(245,158,11,0.8)]">{tacPoints}</span>
             <span className="text-[7px] text-amber-500/70 uppercase tracking-widest font-bold mt-0.5">TacPoints</span>
           </div>
 
@@ -422,7 +422,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             onClick={fetchLeaderboard}
             className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-indigo-500/40 bg-indigo-900/20 hover:bg-indigo-900/40 transition-colors shadow-[inset_0_0_10px_rgba(99,102,241,0.15)] active:scale-95"
           >
-            <span className="text-indigo-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(99,102,241,0.8)]">🏆 Ranking</span>
+            <span className="text-indigo-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(99,102,241,0.8)]">Ranking</span>
             <span className="text-[7px] text-indigo-500/70 uppercase tracking-widest font-bold mt-0.5">Beta Leaderboard</span>
           </button>
 
@@ -488,13 +488,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 disabled
                 className="w-full py-4 bg-gradient-to-r from-amber-600/10 to-yellow-600/10 border border-amber-500/30 text-amber-500/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
               >
-                <span>⭐ Pro Supporter Pass (Demnächst)</span>
+                <span>Pro Supporter Pass (Demnächst)</span>
               </button>
               <button 
                 disabled
                 className="w-full py-4 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-blue-500/30 text-blue-400/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
               >
-                <span>🎥 Video schauen (Demnächst)</span>
+                <span>Video schauen (Demnächst)</span>
               </button>
             </div>
           </motion.div>
