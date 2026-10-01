@@ -5,6 +5,15 @@ import { useGLTF, Html, Text } from "@react-three/drei";
 
 import { AiProfile } from "../../engine/AiProfiles"; 
 
+// --- ARRAY FÜR DEINE ARENEN ---
+// Hier trägst du später einfach Arena 3 und 4 ein, sobald sie fertig sind.
+const ARENA_MODELS = [
+  "/TacPadel.glb",
+  "/TacPadel2.glb",
+  // "/TacPadel3.glb",
+  // "/TacPadel4.glb",
+];
+
 // --- Die offiziellen weißen Padel-Linien als 3D-Objekte ---
 function OfficialCourtLines() {
   const thickness = 0.05; 
@@ -334,12 +343,24 @@ export interface ScoreboardProps {
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
-  const { scene } = useGLTF("/TacPadel.glb");
+  
+  // 1. ZUFÄLLIGE ARENA AUSWÄHLEN (Bleibt konstant während eines Matches)
+  const randomArenaPath = useMemo(() => {
+    const randomIndex = Math.floor(Math.random() * ARENA_MODELS.length);
+    return ARENA_MODELS[randomIndex];
+  }, []);
+
+  // 2. SZENE LADEN
+  const { scene } = useGLTF(randomArenaPath);
 
   useEffect(() => {
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const name = child.name.toLowerCase();
+        
+        // WICHTIG: Deine zweite Blender-Arena muss Meshes haben, 
+        // die "zone", "court", "floor", "grass" oder "feld" heißen, 
+        // damit sie hier das richtige Material bekommen!
         const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
 
         if (!isCourt) {
@@ -380,7 +401,9 @@ export default function CourtFloor(props: ScoreboardProps) {
 
   return (
     <group name="Environment">
+      {/* 3. AUSGEWÄHLTE SZENE RENDERN */}
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
+      
       <OfficialCourtLines />
       <HologramBanner />
       <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
@@ -457,4 +480,5 @@ export default function CourtFloor(props: ScoreboardProps) {
   );
 }
 
-useGLTF.preload("/TacPadel.glb");
+// 4. ALLE MODELLE IM ARRAY VORLADEN
+ARENA_MODELS.forEach(path => useGLTF.preload(path));
