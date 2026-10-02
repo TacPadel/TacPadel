@@ -5,15 +5,6 @@ import { useGLTF, Html, Text } from "@react-three/drei";
 
 import { AiProfile } from "../../engine/AiProfiles"; 
 
-// --- ARRAY FÜR DEINE ARENEN ---
-// Hier trägst du später einfach Arena 3 und 4 ein, sobald sie fertig sind.
-const ARENA_MODELS = [
-  "/TacPadel.glb",
-  "/TacPadelPremium.glb",
-  // "/TacPadel3.glb",
-  // "/TacPadel4.glb",
-];
-
 // --- Die offiziellen weißen Padel-Linien als 3D-Objekte ---
 function OfficialCourtLines() {
   const thickness = 0.05; 
@@ -343,66 +334,28 @@ export interface ScoreboardProps {
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
-  
-  // 1. ZUFÄLLIGE ARENA AUSWÄHLEN (Bleibt konstant während eines Matches)
-  const randomArenaPath = useMemo(() => {
-    const randomIndex = Math.floor(Math.random() * ARENA_MODELS.length);
-    return ARENA_MODELS[randomIndex];
-  }, []);
-
-  // 2. SZENE LADEN
-  const { scene } = useGLTF(randomArenaPath);
+  const { scene } = useGLTF("/TacPadel.glb");
 
   useEffect(() => {
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const name = child.name.toLowerCase();
-        // Erkennt, ob das aktuelle Mesh das Spielfeld ist
         const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
 
-        // ==========================================================
-        // ARENA 1: Das bisherige, dunkle "Neon/Cyber"-Theme
-        // ==========================================================
-        if (randomArenaPath === "/TacPadel.glb") {
-          if (!isCourt) {
-            child.material.color = new THREE.Color("#020308"); // Sehr dunkles Blau/Schwarz
-            child.material.roughness = 0.15; 
-            child.material.metalness = 0.85; 
-            child.material.envMapIntensity = 2.0; 
-          } else {
-            child.material.roughness = 0.3; 
-            child.material.metalness = 0.1; 
-            child.material.envMapIntensity = 1.0; 
-          }
+        if (!isCourt) {
+          child.material.color = new THREE.Color("#020308"); 
+          child.material.roughness = 0.15; 
+          child.material.metalness = 0.85; 
+          child.material.envMapIntensity = 2.0; 
+        } else {
+          child.material.roughness = 0.3; 
+          child.material.metalness = 0.1; 
+          child.material.envMapIntensity = 1.0; 
         }
-        
-        // ==========================================================
-        // ARENA 2: Ein komplett anderer Look (z.B. Sand, Beton oder andere Farben)
-        // ==========================================================
-        else if (randomArenaPath === "/TacPadelPremium.glb") {
-          if (!isCourt) {
-            // Beispiel: Ein etwas helleres, rötliches oder beton-artiges Theme
-            child.material.color = new THREE.Color("#1e293b"); // Dunkles Grau/Braun
-            child.material.roughness = 0.7; // Weniger spiegelnd, rauer
-            child.material.metalness = 0.2; // Weniger metallisch
-            child.material.envMapIntensity = 0.5; 
-          } else {
-            // Vielleicht soll das Spielfeld hier auch leicht anders wirken
-            child.material.roughness = 0.6; 
-            child.material.metalness = 0.05; 
-            child.material.envMapIntensity = 0.8; 
-          }
-        }
-
-        // ==========================================================
-        // ARENA 3 & 4 (Für später schon mal vorbereitet)
-        // ==========================================================
-        // else if (randomArenaPath === "/TacPadel3.glb") { ... }
-
         child.material.needsUpdate = true;
       }
     });
-  }, [scene, randomArenaPath]); // <- Wichtig: randomArenaPath hier als Dependency hinzufügen!
+  }, [scene]);
 
   const {
     serverId = "you",
@@ -427,9 +380,7 @@ export default function CourtFloor(props: ScoreboardProps) {
 
   return (
     <group name="Environment">
-      {/* 3. AUSGEWÄHLTE SZENE RENDERN */}
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
-      
       <OfficialCourtLines />
       <HologramBanner />
       <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
@@ -506,5 +457,4 @@ export default function CourtFloor(props: ScoreboardProps) {
   );
 }
 
-// 4. ALLE MODELLE IM ARRAY VORLADEN
-ARENA_MODELS.forEach(path => useGLTF.preload(path));
+useGLTF.preload("/TacPadel.glb");

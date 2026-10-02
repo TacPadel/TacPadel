@@ -379,6 +379,7 @@ export default function GameScreen() {
   };
 
   const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
+    localStorage.removeItem("tacpadel_current_arena");
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
@@ -452,6 +453,7 @@ export default function GameScreen() {
   };
 
   const startNewGame = () => {
+    localStorage.removeItem("tacpadel_current_arena");
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
