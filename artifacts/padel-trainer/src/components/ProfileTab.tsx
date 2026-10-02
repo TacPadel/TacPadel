@@ -709,12 +709,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </div>
               )}
 
-              <Canvas camera={{ position: [0, 2.5, 8], fov: 45 }}>
+              <Canvas camera={{ position: [0, 2.5, 16], fov: 45 }}>
                 <ambientLight intensity={0.8} />
                 <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
                 <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
                 <OrbitControls 
-                  target={[0, 10, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
+                  target={[0, 2, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
                   enableZoom={true} 
                   maxDistance={14} 
                   minDistance={3} 
