@@ -1,5 +1,4 @@
 import React, { useRef, useState, useCallback, useMemo } from "react";
-// DEIN NEUER COURT IMPORT
 import ScenarioCourt4D from "./ScenarioCourt4D";
 
 interface DraggableItem {
@@ -218,7 +217,12 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        movements[p.id] = { tx: p.x, ty: ball.y };
+        // HIER IST DER FIX: Defensiver Partner verschiebt sich parallel (Padel-Scheibenwischer)
+        const gapY = p.y - closestA.y;
+        let targetY = ball.y + (gapY * 0.85); // Hält den vertikalen Abstand zum Partner bei
+        targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
+        const moveX = Math.max(30, p.x - 15); // Minimal nach hinten fallen zur Absicherung
+        movements[p.id] = { tx: moveX, ty: targetY };
       }
     });
 
@@ -228,9 +232,12 @@ const getTacticalAnalysis = (
         const optY = p.id === "b1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, false), ty: optY };
       } else {
+        // FIX: Angreifer kollidieren nicht auf einem Punkt, sondern rücken mit Linienabstand parallel vor
+        const shiftY = ball.y < V_HEIGHT / 2 ? -35 : 35;
+        let targetY = p.y + shiftY;
+        targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
         const targetNetX = netX + 50;
-        const targetNetY = ball.y > V_HEIGHT / 2 ? V_HEIGHT * 0.65 : V_HEIGHT * 0.35;
-        movements[p.id] = { tx: p.x * 0.4 + targetNetX * 0.6, ty: p.y * 0.4 + targetNetY * 0.6 };
+        movements[p.id] = { tx: p.x * 0.4 + targetNetX * 0.6, ty: p.y * 0.4 + targetY * 0.6 };
       }
     });
 
@@ -246,7 +253,12 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        movements[p.id] = { tx: p.x, ty: ball.y };
+        // HIER IST DER FIX FÜR TEAM B Partner
+        const gapY = p.y - closestB.y;
+        let targetY = ball.y + (gapY * 0.85);
+        targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
+        const moveX = Math.min(V_WIDTH - 30, p.x + 15);
+        movements[p.id] = { tx: moveX, ty: targetY };
       }
     });
 
@@ -256,9 +268,12 @@ const getTacticalAnalysis = (
         const optY = p.id === "a1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, true), ty: optY };
       } else {
+        // FIX für TEAM A Angreifer
+        const shiftY = ball.y < V_HEIGHT / 2 ? -35 : 35;
+        let targetY = p.y + shiftY;
+        targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
         const targetNetX = netX - 50;
-        const targetNetY = ball.y > V_HEIGHT / 2 ? V_HEIGHT * 0.65 : V_HEIGHT * 0.35;
-        movements[p.id] = { tx: p.x * 0.4 + targetNetX * 0.6, ty: p.y * 0.4 + targetNetY * 0.6 };
+        movements[p.id] = { tx: p.x * 0.4 + targetNetX * 0.6, ty: p.y * 0.4 + targetY * 0.6 };
       }
     });
 
@@ -286,7 +301,6 @@ function TrajectoryView3D() {
   const sniperSvgRef = useRef<SVGSVGElement>(null);
   const NET_X = V_WIDTH / 2;
 
-  // 1. Die klassische Zonen-Rechnung (Das "Alibi" für TacticalData.tsx)
   const getZoneFromXY = (x: number, y: number, isTeamA: boolean) => {
     const clampedY = Math.max(0, Math.min(V_HEIGHT - 0.1, y));
     const colIndex = Math.floor((clampedY / V_HEIGHT) * 5); 
@@ -307,7 +321,6 @@ function TrajectoryView3D() {
     return `${col}${row}`;
   };
 
-  // 2. Die neue millimetergenaue Umrechnung (Die "Wahrheit" für den Ballflug)
   const getMetersFromXY = (svgX: number, svgY: number) => {
     const z = 10 - ((svgX / V_WIDTH) * 20); 
     const x = ((svgY / V_HEIGHT) * 10) - 5; 
@@ -334,14 +347,12 @@ function TrajectoryView3D() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 500; // Vertikal Width
-    const SVG_VIEW_H = 880; // Vertikal Height
+    const SVG_VIEW_W = 500; 
+    const SVG_VIEW_H = 880; 
 
-    // Visuelle Klick-Koordinaten
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Rück-Umrechnung auf das logische horizontale 760x380 Grid
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -417,10 +428,7 @@ function TrajectoryView3D() {
             </div>
             
             <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center">
-              {/* RADAR IST JETZT EBENFALLS VERTIKAL */}
               <svg ref={sniperSvgRef} viewBox="-60 -60 500 880" className="w-full max-w-[200px] h-auto touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
-                
-                {/* MAGISCHE MATRIX: Dreht das 16:9 Koordinatensystem in ein 9:16 Ansichtsfenster! */}
                 <g transform="matrix(0 -1 1 0 0 760)">
                   <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3} />
                   
@@ -439,8 +447,6 @@ function TrajectoryView3D() {
                   <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
                     <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
                     <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
-                    
-                    {/* Text muss am exakten Punkt zurück-gedreht werden, damit er aufrecht steht */}
                     <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>DU</text>
                   </g>
                 </g>
@@ -492,7 +498,6 @@ export default function TacticsBoard() {
   const [customTarget, setCustomTarget] = useState<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<number>(0);
 
-  // Toggle für die Modi
   const [activeMode, setActiveMode] = useState<"tactics" | "3d">("tactics");
 
   const [filters, setFilters] = useState<TacticalFilters>({
@@ -520,7 +525,6 @@ export default function TacticsBoard() {
     }
   };
 
-  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -542,13 +546,12 @@ export default function TacticsBoard() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 500; // Vertikal Width
-    const SVG_VIEW_H = 880; // Vertikal Height
+    const SVG_VIEW_W = 500; 
+    const SVG_VIEW_H = 880; 
 
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Wir konvertieren den visuellen Vertikal-Klick wieder auf unser logisches 760x380 Feld!
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -717,7 +720,6 @@ export default function TacticsBoard() {
         </div>
       </div>
 
-      {/* --- RENDERN BASIEREND AUF DEM SCHALTER --- */}
       {activeMode === "3d" ? (
         <TrajectoryView3D />
       ) : (
@@ -852,7 +854,6 @@ export default function TacticsBoard() {
                 </linearGradient>
               </defs>
 
-              {/* MAGISCHE MATRIX: Dreht das logische 16:9 System visuell in 9:16 um! */}
               <g transform="matrix(0 -1 1 0 0 760)">
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="#1034A6" />
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="url(#turf)" />
@@ -895,7 +896,6 @@ export default function TacticsBoard() {
                   <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
                 </g>
 
-                {/* Texte werden lokal am exakten Punkt zurück-gedreht, damit sie aufrecht lesbar bleiben */}
                 <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
                 <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
                 <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
@@ -974,7 +974,6 @@ export default function TacticsBoard() {
                   </>
                 )}
 
-                {/* Figuren */}
                 {items.map((item) => {
                   const isDragging = activeId === item.id;
                   const baseR = item.isPlayer ? 16 : 10;
@@ -989,7 +988,6 @@ export default function TacticsBoard() {
                       )}
                       <circle cx={item.x} cy={item.y} r={r} fill={item.color} stroke={isActivePlayer ? "#ffffff" : "white"} strokeWidth={isActivePlayer ? 4 : 2} filter={isDragging ? "url(#activeShadow)" : "url(#shadow)"} />
                       
-                      {/* Text wird ebenfalls am exakten Spielerpunkt aufrecht gedreht */}
                       <text x={item.x} y={item.y} transform={`rotate(90 ${item.x} ${item.y})`} textAnchor="middle" dominantBaseline="central" fill={item.color === "#f1c40f" ? "black" : "white"} fontSize={item.isPlayer ? 11 : 12} fontWeight="bold" style={{ pointerEvents: "none", userSelect: "none" }}>{item.label}</text>
                     </g>
                   );
