@@ -714,9 +714,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
                 <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
                 <OrbitControls 
-                  target={[0, 2, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
+                  target={[0, 10, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
                   enableZoom={true} 
-                  maxDistance={12} 
+                  maxDistance={14} 
                   minDistance={3} 
                   maxPolarAngle={Math.PI / 2 + 0.05} 
                   minPolarAngle={Math.PI / 4} 
