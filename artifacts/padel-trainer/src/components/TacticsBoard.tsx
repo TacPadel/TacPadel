@@ -143,12 +143,18 @@ const getTacticalAnalysis = (
 
   const isBallOnSideA = ball.x <= netX;
 
-  const closestA = teamA.reduce((prev, curr) =>
-    Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev
-  );
-  const closestB = teamB.reduce((prev, curr) =>
-    Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev
-  );
+  // FIX: Padel-gerechte Zuordnung! Y-Achse (Seite) wird stärker gewichtet, damit Spieler nicht sinnlos kreuzen.
+  const closestA = teamA.reduce((prev, curr) => {
+    const scorePrev = Math.abs(prev.x - ball.x) + Math.abs(prev.y - ball.y) * 2.2;
+    const scoreCurr = Math.abs(curr.x - ball.x) + Math.abs(curr.y - ball.y) * 2.2;
+    return scoreCurr < scorePrev ? curr : prev;
+  });
+
+  const closestB = teamB.reduce((prev, curr) => {
+    const scorePrev = Math.abs(prev.x - ball.x) + Math.abs(prev.y - ball.y) * 2.2;
+    const scoreCurr = Math.abs(curr.x - ball.x) + Math.abs(curr.y - ball.y) * 2.2;
+    return scoreCurr < scorePrev ? curr : prev;
+  });
 
   const movements: Record<string, { tx: number; ty: number }> = {};
   let targetX = 0;
@@ -217,11 +223,10 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        // HIER IST DER FIX: Defensiver Partner verschiebt sich parallel (Padel-Scheibenwischer)
         const gapY = p.y - closestA.y;
-        let targetY = ball.y + (gapY * 0.85); // Hält den vertikalen Abstand zum Partner bei
+        let targetY = ball.y + (gapY * 0.85);
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
-        const moveX = Math.max(30, p.x - 15); // Minimal nach hinten fallen zur Absicherung
+        const moveX = Math.max(30, p.x - 15);
         movements[p.id] = { tx: moveX, ty: targetY };
       }
     });
@@ -232,7 +237,6 @@ const getTacticalAnalysis = (
         const optY = p.id === "b1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, false), ty: optY };
       } else {
-        // FIX: Angreifer kollidieren nicht auf einem Punkt, sondern rücken mit Linienabstand parallel vor
         const shiftY = ball.y < V_HEIGHT / 2 ? -35 : 35;
         let targetY = p.y + shiftY;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
@@ -253,7 +257,6 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        // HIER IST DER FIX FÜR TEAM B Partner
         const gapY = p.y - closestB.y;
         let targetY = ball.y + (gapY * 0.85);
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
@@ -268,7 +271,6 @@ const getTacticalAnalysis = (
         const optY = p.id === "a1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, true), ty: optY };
       } else {
-        // FIX für TEAM A Angreifer
         const shiftY = ball.y < V_HEIGHT / 2 ? -35 : 35;
         let targetY = p.y + shiftY;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
@@ -336,7 +338,6 @@ function TrajectoryView3D() {
   const playerCoords = getMetersFromXY(playerPos.x, playerPos.y);
   const targetCoords = getMetersFromXY(targetPos.x, targetPos.y);
 
-  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = sniperSvgRef.current;
     if (!svg) return { x: 0, y: 0 };
