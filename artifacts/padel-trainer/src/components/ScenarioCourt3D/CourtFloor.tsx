@@ -331,12 +331,36 @@ export interface ScoreboardProps {
   activeAiProfile?: AiProfile; 
   targetScore?: number; 
   matchTitle?: string;
+  // NEU: Arena-Model Prop hinzufügen
+  arenaModel?: string; 
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
-  const { scene } = useGLTF("/TacPadel.glb");
+  const {
+    serverId = "you",
+    playerScore = 0,
+    aiScore = 0,
+    isAiActive = false,
+    phase = "player_turn",
+    isTimerPhase = false,
+    isPlayerTeamServe = true,
+    playerName = "Gast",
+    partnerName = "Partner",
+    userTeamName = "Dein Team",
+    isSimulationMode = false,
+    activeAiProfile,
+    targetScore = 10,
+    matchTitle = "Match-Tiebreak",
+    arenaModel = "/TacPadel.glb" // Standardwert, falls nicht übergeben
+  } = props;
+
+  // Dynamisches Laden des Models anstelle der harten Verdrahtung
+  const { scene } = useGLTF(arenaModel);
 
   useEffect(() => {
+    // WICHTIG: Den Abdunklungs-Shader nur anwenden, wenn es die Standard-Arena ist!
+    if (arenaModel !== "/TacPadel.glb") return;
+
     scene.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const name = child.name.toLowerCase();
@@ -355,25 +379,8 @@ export default function CourtFloor(props: ScoreboardProps) {
         child.material.needsUpdate = true;
       }
     });
-  }, [scene]);
+  }, [scene, arenaModel]);
 
-  const {
-    serverId = "you",
-    playerScore = 0,
-    aiScore = 0,
-    isAiActive = false,
-    phase = "player_turn",
-    isTimerPhase = false,
-    isPlayerTeamServe = true,
-    playerName = "Gast",
-    partnerName = "Partner",
-    userTeamName = "Dein Team",
-    isSimulationMode = false,
-    activeAiProfile,
-    targetScore = 10,
-    matchTitle = "Match-Tiebreak"
-  } = props;
-  
   const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
   const opp1Name = activeAiProfile?.p1 || "KI 1";
   const opp2Name = activeAiProfile?.p2 || "KI 2";
@@ -457,4 +464,5 @@ export default function CourtFloor(props: ScoreboardProps) {
   );
 }
 
+// Preload der Standard-Arena, um Ladezeiten bei Start zu verkürzen
 useGLTF.preload("/TacPadel.glb");

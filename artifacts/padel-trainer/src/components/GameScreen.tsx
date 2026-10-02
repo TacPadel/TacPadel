@@ -379,7 +379,7 @@ export default function GameScreen() {
   };
 
   const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
-    localStorage.removeItem("tacpadel_current_arena");
+    // localStorage wird hier nicht mehr für Arenen resettet, da wir es über TOURNAMENTS steuern
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
@@ -453,7 +453,7 @@ export default function GameScreen() {
   };
 
   const startNewGame = () => {
-    localStorage.removeItem("tacpadel_current_arena");
+    // localStorage wird hier nicht mehr für Arenen resettet, da wir es über TOURNAMENTS steuern
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
@@ -1317,6 +1317,10 @@ export default function GameScreen() {
     );
   };
 
+  // --- NEU: Arena anhand des Turniers bestimmen ---
+  const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
+  const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
+
   return (
     <div 
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
@@ -1650,8 +1654,10 @@ export default function GameScreen() {
         </AnimatePresence>
 
         <div className="absolute inset-0 z-10">
+          {/* HIER WIRD DIE AUSGEWÄHLTE ARENA ÜBERGEBEN */}
           <ScenarioCourt3D 
-            key={`court-${introTrigger}`} 
+            key={`court-${introTrigger}`}
+            arenaModel={currentArenaModel} 
             playIntro={playIntro}  
             gameOver={gameOver} 
             

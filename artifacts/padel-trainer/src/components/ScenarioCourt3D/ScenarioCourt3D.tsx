@@ -245,7 +245,7 @@ export interface Props {
   acceptableLaufZones?: string[];
   onLaufZoneClick?: (id: string) => void;
   previewShot?: string | null;
-  userTeamName?: string; // <-- HIER HINZUFÜGEN
+  userTeamName?: string; 
 
   activeChar: "you" | "partner" | "opp1" | "opp2";
   hitterId: "you" | "partner" | "opp1" | "opp2";
@@ -276,12 +276,15 @@ export interface Props {
   activeAiProfile?: AiProfile; 
   targetScore?: number;
   matchTitle?: string;
+
+  // NEU HINZUGEFÜGT FÜR TURNIER-ARENEN (aus GameScreen)
+  arenaModel?: string; 
 }
 
 export default function ScenarioCourt3D(props: Props) {
   const [introFinished, setIntroFinished] = useState(false);
   const [playerName, setPlayerName] = useState("Gast");
-  const [partnerName, setPartnerName] = useState("Partner"); // NEU: Partner-Name State
+  const [partnerName, setPartnerName] = useState("Partner"); 
   
   const [blackout, setBlackout] = useState(false);
   
@@ -408,18 +411,19 @@ export default function ScenarioCourt3D(props: Props) {
               isTimerPhase={props.isTimerPhase}
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
-              partnerName={partnerName} // NEU: Partner-Name an CourtFloor übergeben
-              userTeamName={props.userTeamName} // <-- HIER MITÜBERGEBEN
+              partnerName={partnerName} 
+              userTeamName={props.userTeamName} 
               activeAiProfile={props.activeAiProfile} 
               targetScore={props.targetScore}
               matchTitle={props.matchTitle}
-              
+              arenaModel={props.arenaModel} // <-- WICHTIG: Hier wird das dynamische Modell durchgereicht!
             /> 
-            {/* HIER DIE BEIDEN PROPS HINZUFÜGEN: */}
+            
             <TacticalData 
               {...props} 
               playerName={playerName} 
-              partnerName={partnerName}/>
+              partnerName={partnerName}
+            />
           </Suspense>
         </Canvas>
       </div>

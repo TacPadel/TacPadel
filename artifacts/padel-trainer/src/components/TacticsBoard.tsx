@@ -20,7 +20,7 @@ interface TacticalFilters {
   showAttackArc: boolean;
 }
 
-// Virtuelle Konstanten für stabiles Scaling
+// Virtuelle Konstanten für stabiles Scaling (Logik bleibt 16:9, Ansicht wird 9:16 gedreht!)
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
@@ -323,6 +323,7 @@ function TrajectoryView3D() {
   const playerCoords = getMetersFromXY(playerPos.x, playerPos.y);
   const targetCoords = getMetersFromXY(targetPos.x, targetPos.y);
 
+  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = sniperSvgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -333,12 +334,17 @@ function TrajectoryView3D() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 880;
-    const SVG_VIEW_H = 500;
+    const SVG_VIEW_W = 500; // Vertikal Width
+    const SVG_VIEW_H = 880; // Vertikal Height
 
+    // Visuelle Klick-Koordinaten
+    const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
+    const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
+
+    // Rück-Umrechnung auf das logische horizontale 760x380 Grid
     return {
-      x: ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X,
-      y: ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y,
+      x: V_WIDTH - vY,
+      y: vX,
     };
   }, []);
 
@@ -374,7 +380,7 @@ function TrajectoryView3D() {
 
   return (
     <div className="w-full max-w-5xl flex-1 flex flex-col h-full px-2 mb-4">
-      <div className="w-full flex-1 h-full min-h-[400px] bg-[#02040a] rounded-xl shadow-2xl border-4 border-[#111] overflow-hidden relative">
+      <div className="w-full flex-1 h-full min-h-[450px] bg-[#02040a] rounded-xl shadow-2xl border-4 border-[#111] overflow-hidden relative">
         <div className="absolute inset-0 pointer-events-auto">
           <ScenarioCourt4D
             level="Schlagrichtung"
@@ -385,22 +391,11 @@ function TrajectoryView3D() {
               partner: "EXACT_1000_1000",
               opp1: "EXACT_1000_1000",
               opp2: "EXACT_1000_1000",
-              
-              // HIER GEÄNDERT: Nutzt jetzt ebenfalls die exakten Koordinaten statt des Rasters!
-              ball: { 
-                side: "left", 
-                zone: `EXACT_${playerCoords.x}_${playerCoords.z}`, 
-                type: shotType 
-              },
+              ball: { side: "left", zone: `EXACT_${playerCoords.x}_${playerCoords.z}`, type: shotType },
             }}
             
             selectedZone={`EXACT_${targetCoords.x}_${targetCoords.z}`}
-            
-            exactCoords={{
-              you: playerCoords,
-              target: targetCoords
-            }}
-            
+            exactCoords={{ you: playerCoords, target: targetCoords }}
             hidePlayerLabels={true}
             hasSubmitted={hasSubmitted}
             bestZones={[`EXACT_${targetCoords.x}_${targetCoords.z}`]}
@@ -421,27 +416,33 @@ function TrajectoryView3D() {
               </div>
             </div>
             
-            <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden">
-              <svg ref={sniperSvgRef} viewBox="-60 -60 880 500" className="w-full h-auto touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
-                <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3} />
+            <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center">
+              {/* RADAR IST JETZT EBENFALLS VERTIKAL */}
+              <svg ref={sniperSvgRef} viewBox="-60 -60 500 880" className="w-full max-w-[200px] h-auto touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
                 
-                {/* Padel Feld Linien (Maßstabsgetreu 1 Meter = 38 Pixel) */}
-                <line x1={NET_X} y1={10} x2={NET_X} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.5)" strokeWidth={3} strokeDasharray="6 4" />
-                <line x1={NET_X - (6.95 * 38)} y1={10} x2={NET_X - (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-                <line x1={NET_X + (6.95 * 38)} y1={10} x2={NET_X + (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-                <line x1={NET_X - (6.95 * 38)} y1={V_HEIGHT / 2} x2={NET_X} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-                <line x1={NET_X} y1={V_HEIGHT / 2} x2={NET_X + (6.95 * 38)} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-                
-                <line x1={playerPos.x} y1={playerPos.y} x2={targetPos.x} y2={targetPos.y} stroke="#f1c40f" strokeWidth="6" strokeDasharray="8 6" opacity={0.8} />
-                <g style={{ cursor: activeDrag === "target" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("target", e)} onTouchStart={(e) => onPointerDown("target", e)}>
-                  <circle cx={targetPos.x} cy={targetPos.y} r={40} fill="transparent" />
-                  <circle cx={targetPos.x} cy={targetPos.y} r="16" fill="none" stroke="#f1c40f" strokeWidth="3" className="animate-pulse" />
-                  <circle cx={targetPos.x} cy={targetPos.y} r="6" fill="#f1c40f" />
-                </g>
-                <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
-                  <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
-                  <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
-                  <text x={playerPos.x} y={playerPos.y} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>DU</text>
+                {/* MAGISCHE MATRIX: Dreht das 16:9 Koordinatensystem in ein 9:16 Ansichtsfenster! */}
+                <g transform="matrix(0 -1 1 0 0 760)">
+                  <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3} />
+                  
+                  <line x1={NET_X} y1={10} x2={NET_X} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.5)" strokeWidth={3} strokeDasharray="6 4" />
+                  <line x1={NET_X - (6.95 * 38)} y1={10} x2={NET_X - (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+                  <line x1={NET_X + (6.95 * 38)} y1={10} x2={NET_X + (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+                  <line x1={NET_X - (6.95 * 38)} y1={V_HEIGHT / 2} x2={NET_X} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+                  <line x1={NET_X} y1={V_HEIGHT / 2} x2={NET_X + (6.95 * 38)} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+                  
+                  <line x1={playerPos.x} y1={playerPos.y} x2={targetPos.x} y2={targetPos.y} stroke="#f1c40f" strokeWidth="6" strokeDasharray="8 6" opacity={0.8} />
+                  <g style={{ cursor: activeDrag === "target" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("target", e)} onTouchStart={(e) => onPointerDown("target", e)}>
+                    <circle cx={targetPos.x} cy={targetPos.y} r={40} fill="transparent" />
+                    <circle cx={targetPos.x} cy={targetPos.y} r="16" fill="none" stroke="#f1c40f" strokeWidth="3" className="animate-pulse" />
+                    <circle cx={targetPos.x} cy={targetPos.y} r="6" fill="#f1c40f" />
+                  </g>
+                  <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
+                    <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
+                    <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
+                    
+                    {/* Text muss am exakten Punkt zurück-gedreht werden, damit er aufrecht steht */}
+                    <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>DU</text>
+                  </g>
                 </g>
               </svg>
             </div>
@@ -519,6 +520,7 @@ export default function TacticsBoard() {
     }
   };
 
+  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -540,12 +542,16 @@ export default function TacticsBoard() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 880;
-    const SVG_VIEW_H = 500;
+    const SVG_VIEW_W = 500; // Vertikal Width
+    const SVG_VIEW_H = 880; // Vertikal Height
 
+    const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
+    const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
+
+    // Wir konvertieren den visuellen Vertikal-Klick wieder auf unser logisches 760x380 Feld!
     return {
-      x: ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X,
-      y: ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y,
+      x: V_WIDTH - vY,
+      y: vX,
     };
   }, []);
 
@@ -789,13 +795,12 @@ export default function TacticsBoard() {
             </div>
           )}
 
-          {/* SPIELFELD - SVG */}
-          {/* Fügen Sie hier "flex-col" hinzu, damit alles untereinander statt nebeneinander angeordnet wird */}
-          <div ref={containerRef} className="w-full max-w-5xl px-3 flex-1 flex flex-col items-center justify-center min-h-[300px]">
+          {/* SPIELFELD - SVG (VERTIKAL ANGEORDNET!) */}
+          <div ref={containerRef} className="w-full max-w-[600px] mx-auto px-3 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <svg
               ref={svgRef}
-              viewBox="-60 -60 880 500"
-              className="rounded-xl shadow-2xl border-4 border-[#111] w-full h-auto max-h-[100%] touch-none select-none overflow-hidden"
+              viewBox="-60 -60 500 880"
+              className="rounded-xl shadow-2xl border-4 border-[#111] w-full h-auto max-h-[75vh] touch-none select-none overflow-hidden"
               style={{ background: "#050505", display: "block", touchAction: "none" }}
               onMouseMove={onPointerMove}
               onMouseUp={onPointerUp}
@@ -814,10 +819,10 @@ export default function TacticsBoard() {
                   <polygon points="0 0, 8 3, 0 6" fill="#5cd6ff" />
                 </marker>
                 <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.5)" />
+                  <feDropShadow dx="-2" dy="0" stdDeviation="2" floodColor="rgba(0,0,0,0.5)" />
                 </filter>
                 <filter id="activeShadow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="rgba(0,0,0,0.6)" />
+                  <feDropShadow dx="-8" dy="0" stdDeviation="6" floodColor="rgba(0,0,0,0.6)" />
                 </filter>
                 
                 <pattern id="turf" width="4" height="4" patternUnits="userSpaceOnUse">
@@ -847,147 +852,153 @@ export default function TacticsBoard() {
                 </linearGradient>
               </defs>
 
-              <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="#1034A6" />
-              <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="url(#turf)" />
-              <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="#ffffff" strokeWidth={3} opacity={0.9} />
-              <line x1={offsetX} y1={10} x2={offsetX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
-              <line x1={V_WIDTH - offsetX} y1={10} x2={V_WIDTH - offsetX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
-              <line x1={offsetX} y1={V_HEIGHT / 2} x2={V_WIDTH - offsetX} y2={V_HEIGHT / 2} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
-              <rect x={netX - 2} y={10} width={4} height={V_HEIGHT - 20} fill="#111" />
-              <line x1={netX} y1={10} x2={netX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} strokeDasharray="6 4" opacity={0.85} />
+              {/* MAGISCHE MATRIX: Dreht das logische 16:9 System visuell in 9:16 um! */}
+              <g transform="matrix(0 -1 1 0 0 760)">
+                <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="#1034A6" />
+                <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="url(#turf)" />
+                <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="#ffffff" strokeWidth={3} opacity={0.9} />
+                <line x1={offsetX} y1={10} x2={offsetX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
+                <line x1={V_WIDTH - offsetX} y1={10} x2={V_WIDTH - offsetX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
+                <line x1={offsetX} y1={V_HEIGHT / 2} x2={V_WIDTH - offsetX} y2={V_HEIGHT / 2} stroke="#ffffff" strokeWidth={2} opacity={0.8} />
+                <rect x={netX - 2} y={10} width={4} height={V_HEIGHT - 20} fill="#111" />
+                <line x1={netX} y1={10} x2={netX} y2={V_HEIGHT - 10} stroke="#ffffff" strokeWidth={2} strokeDasharray="6 4" opacity={0.85} />
 
-              <g stroke="#555" strokeWidth="2" strokeLinejoin="round">
-                <polygon points="-30,-30 125,-30 150,10 10,10" fill="url(#glassGradTop)" />
-                <polygon points="125,-30 635,-30 610,10 150,10" fill="url(#mesh)" />      
-                <polygon points="635,-30 790,-30 750,10 610,10" fill="url(#glassGradTop)" />
-                <polygon points="-30,410 125,410 150,370 10,370" fill="url(#glassGradBottom)" />
-                <polygon points="125,410 635,410 610,370 150,370" fill="url(#mesh)" />      
-                <polygon points="635,410 790,410 750,370 610,370" fill="url(#glassGradBottom)" />
-                <polygon points="-30,-30 -30,410 10,370 10,10" fill="url(#glassGradLeft)" /> 
-                <polygon points="790,-30 790,410 750,370 750,10" fill="url(#glassGradRight)" /> 
-              </g>
+                <g stroke="#555" strokeWidth="2" strokeLinejoin="round">
+                  <polygon points="-30,-30 125,-30 150,10 10,10" fill="url(#glassGradTop)" />
+                  <polygon points="125,-30 635,-30 610,10 150,10" fill="url(#mesh)" />      
+                  <polygon points="635,-30 790,-30 750,10 610,10" fill="url(#glassGradTop)" />
+                  <polygon points="-30,410 125,410 150,370 10,370" fill="url(#glassGradBottom)" />
+                  <polygon points="125,410 635,410 610,370 150,370" fill="url(#mesh)" />      
+                  <polygon points="635,410 790,410 750,370 610,370" fill="url(#glassGradBottom)" />
+                  <polygon points="-30,-30 -30,410 10,370 10,10" fill="url(#glassGradLeft)" /> 
+                  <polygon points="790,-30 790,410 750,370 750,10" fill="url(#glassGradRight)" /> 
+                </g>
 
-              <g stroke="#666" strokeWidth="3" strokeLinecap="round">
-                <rect x="-30" y="-30" width="820" height="440" fill="none" strokeWidth="4" />
-                <line x1="150" y1="10" x2="125" y2="-30" />
-                <line x1="610" y1="10" x2="635" y2="-30" />
-                <line x1="150" y1="370" x2="125" y2="410" />
-                <line x1="610" y1="370" x2="635" y2="410" />
-                <line x1={netX} y1="10" x2={netX} y2="-30" />
-                <line x1={netX} y1="370" x2={netX} y2="410" />
-              </g>
+                <g stroke="#666" strokeWidth="3" strokeLinecap="round">
+                  <rect x="-30" y="-30" width="820" height="440" fill="none" strokeWidth="4" />
+                  <line x1="150" y1="10" x2="125" y2="-30" />
+                  <line x1="610" y1="10" x2="635" y2="-30" />
+                  <line x1="150" y1="370" x2="125" y2="410" />
+                  <line x1="610" y1="370" x2="635" y2="410" />
+                  <line x1={netX} y1="10" x2={netX} y2="-30" />
+                  <line x1={netX} y1="370" x2={netX} y2="410" />
+                </g>
 
-              <g stroke="#7f8c8d" strokeWidth="3">
-                <line x1="-30" y1="-30" x2="-50" y2="-50" />
-                <line x1="-55" y1="-45" x2="-45" y2="-55" stroke="#fff" strokeWidth="6" />
-                <line x1="790" y1="-30" x2="810" y2="-50" />
-                <line x1="805" y1="-55" x2="815" y2="-45" stroke="#fff" strokeWidth="6" />
-                <line x1="-30" y1="410" x2="-50" y2="430" />
-                <line x1="-55" y1="425" x2="-45" y2="435" stroke="#fff" strokeWidth="6" />
-                <line x1="790" y1="410" x2="810" y2="430" />
-                <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
-              </g>
+                <g stroke="#7f8c8d" strokeWidth="3">
+                  <line x1="-30" y1="-30" x2="-50" y2="-50" />
+                  <line x1="-55" y1="-45" x2="-45" y2="-55" stroke="#fff" strokeWidth="6" />
+                  <line x1="790" y1="-30" x2="810" y2="-50" />
+                  <line x1="805" y1="-55" x2="815" y2="-45" stroke="#fff" strokeWidth="6" />
+                  <line x1="-30" y1="410" x2="-50" y2="430" />
+                  <line x1="-55" y1="425" x2="-45" y2="435" stroke="#fff" strokeWidth="6" />
+                  <line x1="790" y1="410" x2="810" y2="430" />
+                  <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
+                </g>
 
-              <text x={netX} y={V_HEIGHT / 2} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
-              <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
-              <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
+                {/* Texte werden lokal am exakten Punkt zurück-gedreht, damit sie aufrecht lesbar bleiben */}
+                <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
+                <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
+                <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
 
-              {showTactics && (
-                <>
-                  {filters.showAttackArc && (
-                    <>
-                      <path d={`M ${getArcX(20, true)} 20 Q ${getControlPointX(true)} ${V_HEIGHT/2} ${getArcX(V_HEIGHT-20, true)} ${V_HEIGHT-20}`} fill="none" stroke="rgba(255, 255, 255, 0.4)" strokeWidth="4" strokeDasharray="8 6" />
-                      <path d={`M ${getArcX(20, false)} 20 Q ${getControlPointX(false)} ${V_HEIGHT/2} ${getArcX(V_HEIGHT-20, false)} ${V_HEIGHT-20}`} fill="none" stroke="rgba(255, 255, 255, 0.4)" strokeWidth="4" strokeDasharray="8 6" />
-                    </>
-                  )}
-
-                  <line x1={V_WIDTH * 0.25} y1={10} x2={V_WIDTH * 0.25} y2={V_HEIGHT - 10} stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity="0.3" />
-                  <line x1={netX - 80} y1={10} x2={netX - 80} y2={V_HEIGHT - 10} stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity="0.3" />
-
-                  {filters.showWeaknessZones && (() => {
-                    const ball = items.find((i) => i.id === "ball");
-                    if (!ball) return null;
-                    if (ball.x <= netX) {
-                      const b1 = items.find((i) => i.id === "b1"); const b2 = items.find((i) => i.id === "b2"); if (!b1 || !b2) return null;
-                      const gap = Math.abs(b1.y - b2.y); const avgX = (b1.x + b2.x) / 2; const avgY = (b1.y + b2.y) / 2;
-                      return (
-                        <>
-                          {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
-                          {avgX < netX + DEEP_DEF_THRESHOLD && <rect x={netX + 10} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
-                        </>
-                      );
-                    } else {
-                      const a1 = items.find((i) => i.id === "a1"); const a2 = items.find((i) => i.id === "a2"); if (!a1 || !a2) return null;
-                      const gap = Math.abs(a1.y - a2.y); const avgX = (a1.x + a2.x) / 2; const avgY = (a1.y + a2.y) / 2;
-                      return (
-                        <>
-                          {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
-                          {avgX > netX - DEEP_DEF_THRESHOLD && <rect x={netX - 60} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
-                        </>
-                      );
-                    }
-                  })()}
-
-                  {filters.showTeamLines && (() => {
-                    const teamA = items.filter((i) => i.id.startsWith("a")); if (teamA.length < 2) return null;
-                    const distA = Math.hypot(teamA[0].x - teamA[1].x, teamA[0].y - teamA[1].y);
-                    const isGapTooWide = distA > GAP_THRESHOLD;
-                    return <line x1={teamA[0].x} y1={teamA[0].y} x2={teamA[1].x} y2={teamA[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
-                  })()}
-
-                  {filters.showTeamLines && (() => {
-                    const teamB = items.filter((i) => i.id.startsWith("b")); if (teamB.length < 2) return null;
-                    const distB = Math.hypot(teamB[0].x - teamB[1].x, teamB[0].y - teamB[1].y);
-                    const isGapTooWide = distB > GAP_THRESHOLD;
-                    return <line x1={teamB[0].x} y1={teamB[0].y} x2={teamB[1].x} y2={teamB[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
-                  })()}
-
-                  {filters.showTeamLines && (
-                    <line x1={((items.find((i) => i.id === "a1")?.x || 0) + (items.find((i) => i.id === "a2")?.x || 0)) / 2} y1={V_HEIGHT / 2} x2={items.find((i) => i.id === "ball")?.x || 0} y2={items.find((i) => i.id === "ball")?.y || 0} stroke="#3498db" strokeWidth="2" strokeDasharray="4 2" />
-                  )}
-
-                  {analysis && filters.showBallVector && (
-                    <>
-                      <line x1={items.find((i) => i.id === "ball")?.x || 0} y1={items.find((i) => i.id === "ball")?.y || 0} x2={analysis.targetX} y2={analysis.targetY} stroke="yellow" strokeWidth="4" strokeDasharray="6 2" markerEnd="url(#arrowhead)" />
-                      <g className="animate-pulse">
-                        <circle cx={analysis.targetX} cy={analysis.targetY} r="14" fill="none" stroke="yellow" strokeWidth="2" opacity="0.85" />
-                        <circle cx={analysis.targetX} cy={analysis.targetY} r="4" fill="yellow" />
-                      </g>
-                    </>
-                  )}
-
-                  {analysis && filters.showMovements && items.filter(item => item.isPlayer).map(player => {
-                    const move = analysis.movements?.[player.id]; if (!move) return null;
-                    const angle = Math.atan2(move.ty - player.y, move.tx - player.x);
-                    const startX = player.x + Math.cos(angle) * 17; const startY = player.y + Math.sin(angle) * 17;
-                    if (Math.hypot(move.tx - player.x, move.ty - player.y) < 12) return null;
-                    return <line key={`move-${player.id}`} x1={startX} y1={startY} x2={move.tx} y2={move.ty} stroke="#5cd6ff" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#moveArrowhead)" />;
-                  })}
-                </>
-              )}
-
-              {/* Figuren */}
-              {items.map((item) => {
-                const isDragging = activeId === item.id;
-                const baseR = item.isPlayer ? 16 : 10;
-                const r = isDragging ? baseR * 1.15 : baseR;
-                const isActivePlayer = showTactics && analysis && analysis.activePlayerId === item.id;
-
-                return (
-                  <g key={item.id} style={{ cursor: isDragging ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown(item.id, e)} onTouchStart={(e) => onPointerDown(item.id, e)}>
-                    <circle cx={item.x} cy={item.y} r={baseR + 12} fill="transparent" />
-                    {isActivePlayer && filters.showPulse && (
-                      <circle cx={item.x} cy={item.y} r={r + 6} fill="none" stroke={item.id.startsWith("a") ? "#ffffff" : "#f1c40f"} strokeWidth="3" className="animate-ping" style={{ transformOrigin: `${item.x}px ${item.y}px`, opacity: 0.6 }} />
+                {showTactics && (
+                  <>
+                    {filters.showAttackArc && (
+                      <>
+                        <path d={`M ${getArcX(20, true)} 20 Q ${getControlPointX(true)} ${V_HEIGHT/2} ${getArcX(V_HEIGHT-20, true)} ${V_HEIGHT-20}`} fill="none" stroke="rgba(255, 255, 255, 0.4)" strokeWidth="4" strokeDasharray="8 6" />
+                        <path d={`M ${getArcX(20, false)} 20 Q ${getControlPointX(false)} ${V_HEIGHT/2} ${getArcX(V_HEIGHT-20, false)} ${V_HEIGHT-20}`} fill="none" stroke="rgba(255, 255, 255, 0.4)" strokeWidth="4" strokeDasharray="8 6" />
+                      </>
                     )}
-                    <circle cx={item.x} cy={item.y} r={r} fill={item.color} stroke={isActivePlayer ? "#ffffff" : "white"} strokeWidth={isActivePlayer ? 4 : 2} filter={isDragging ? "url(#activeShadow)" : "url(#shadow)"} />
-                    <text x={item.x} y={item.y} textAnchor="middle" dominantBaseline="central" fill={item.color === "#f1c40f" ? "black" : "white"} fontSize={item.isPlayer ? 11 : 12} fontWeight="bold" style={{ pointerEvents: "none", userSelect: "none" }}>{item.label}</text>
-                  </g>
-                );
-              })}
+
+                    <line x1={V_WIDTH * 0.25} y1={10} x2={V_WIDTH * 0.25} y2={V_HEIGHT - 10} stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity="0.3" />
+                    <line x1={netX - 80} y1={10} x2={netX - 80} y2={V_HEIGHT - 10} stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity="0.3" />
+
+                    {filters.showWeaknessZones && (() => {
+                      const ball = items.find((i) => i.id === "ball");
+                      if (!ball) return null;
+                      if (ball.x <= netX) {
+                        const b1 = items.find((i) => i.id === "b1"); const b2 = items.find((i) => i.id === "b2"); if (!b1 || !b2) return null;
+                        const gap = Math.abs(b1.y - b2.y); const avgX = (b1.x + b2.x) / 2; const avgY = (b1.y + b2.y) / 2;
+                        return (
+                          <>
+                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
+                            {avgX < netX + DEEP_DEF_THRESHOLD && <rect x={netX + 10} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
+                          </>
+                        );
+                      } else {
+                        const a1 = items.find((i) => i.id === "a1"); const a2 = items.find((i) => i.id === "a2"); if (!a1 || !a2) return null;
+                        const gap = Math.abs(a1.y - a2.y); const avgX = (a1.x + a2.x) / 2; const avgY = (a1.y + a2.y) / 2;
+                        return (
+                          <>
+                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
+                            {avgX > netX - DEEP_DEF_THRESHOLD && <rect x={netX - 60} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
+                          </>
+                        );
+                      }
+                    })()}
+
+                    {filters.showTeamLines && (() => {
+                      const teamA = items.filter((i) => i.id.startsWith("a")); if (teamA.length < 2) return null;
+                      const distA = Math.hypot(teamA[0].x - teamA[1].x, teamA[0].y - teamA[1].y);
+                      const isGapTooWide = distA > GAP_THRESHOLD;
+                      return <line x1={teamA[0].x} y1={teamA[0].y} x2={teamA[1].x} y2={teamA[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
+                    })()}
+
+                    {filters.showTeamLines && (() => {
+                      const teamB = items.filter((i) => i.id.startsWith("b")); if (teamB.length < 2) return null;
+                      const distB = Math.hypot(teamB[0].x - teamB[1].x, teamB[0].y - teamB[1].y);
+                      const isGapTooWide = distB > GAP_THRESHOLD;
+                      return <line x1={teamB[0].x} y1={teamB[0].y} x2={teamB[1].x} y2={teamB[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
+                    })()}
+
+                    {filters.showTeamLines && (
+                      <line x1={((items.find((i) => i.id === "a1")?.x || 0) + (items.find((i) => i.id === "a2")?.x || 0)) / 2} y1={V_HEIGHT / 2} x2={items.find((i) => i.id === "ball")?.x || 0} y2={items.find((i) => i.id === "ball")?.y || 0} stroke="#3498db" strokeWidth="2" strokeDasharray="4 2" />
+                    )}
+
+                    {analysis && filters.showBallVector && (
+                      <>
+                        <line x1={items.find((i) => i.id === "ball")?.x || 0} y1={items.find((i) => i.id === "ball")?.y || 0} x2={analysis.targetX} y2={analysis.targetY} stroke="yellow" strokeWidth="4" strokeDasharray="6 2" markerEnd="url(#arrowhead)" />
+                        <g className="animate-pulse">
+                          <circle cx={analysis.targetX} cy={analysis.targetY} r="14" fill="none" stroke="yellow" strokeWidth="2" opacity="0.85" />
+                          <circle cx={analysis.targetX} cy={analysis.targetY} r="4" fill="yellow" />
+                        </g>
+                      </>
+                    )}
+
+                    {analysis && filters.showMovements && items.filter(item => item.isPlayer).map(player => {
+                      const move = analysis.movements?.[player.id]; if (!move) return null;
+                      const angle = Math.atan2(move.ty - player.y, move.tx - player.x);
+                      const startX = player.x + Math.cos(angle) * 17; const startY = player.y + Math.sin(angle) * 17;
+                      if (Math.hypot(move.tx - player.x, move.ty - player.y) < 12) return null;
+                      return <line key={`move-${player.id}`} x1={startX} y1={startY} x2={move.tx} y2={move.ty} stroke="#5cd6ff" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#moveArrowhead)" />;
+                    })}
+                  </>
+                )}
+
+                {/* Figuren */}
+                {items.map((item) => {
+                  const isDragging = activeId === item.id;
+                  const baseR = item.isPlayer ? 16 : 10;
+                  const r = isDragging ? baseR * 1.15 : baseR;
+                  const isActivePlayer = showTactics && analysis && analysis.activePlayerId === item.id;
+
+                  return (
+                    <g key={item.id} style={{ cursor: isDragging ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown(item.id, e)} onTouchStart={(e) => onPointerDown(item.id, e)}>
+                      <circle cx={item.x} cy={item.y} r={baseR + 12} fill="transparent" />
+                      {isActivePlayer && filters.showPulse && (
+                        <circle cx={item.x} cy={item.y} r={r + 6} fill="none" stroke={item.id.startsWith("a") ? "#ffffff" : "#f1c40f"} strokeWidth="3" className="animate-ping" style={{ transformOrigin: `${item.x}px ${item.y}px`, opacity: 0.6 }} />
+                      )}
+                      <circle cx={item.x} cy={item.y} r={r} fill={item.color} stroke={isActivePlayer ? "#ffffff" : "white"} strokeWidth={isActivePlayer ? 4 : 2} filter={isDragging ? "url(#activeShadow)" : "url(#shadow)"} />
+                      
+                      {/* Text wird ebenfalls am exakten Spielerpunkt aufrecht gedreht */}
+                      <text x={item.x} y={item.y} transform={`rotate(90 ${item.x} ${item.y})`} textAnchor="middle" dominantBaseline="central" fill={item.color === "#f1c40f" ? "black" : "white"} fontSize={item.isPlayer ? 11 : 12} fontWeight="bold" style={{ pointerEvents: "none", userSelect: "none" }}>{item.label}</text>
+                    </g>
+                  );
+                })}
+              </g>
             </svg>
 
             {showTactics && analysis && (
-              <div className={`mt-4 p-4 sm:p-6 rounded-2xl text-white shadow-2xl border-2 border-white/20 w-full transition-all duration-500 ${analysis.color}`}>
+              <div className={`mt-4 p-4 sm:p-6 rounded-2xl text-white shadow-2xl border-2 border-white/20 w-full max-w-[600px] transition-all duration-500 ${analysis.color}`}>
                 <h3 className="text-lg sm:text-xl font-bold mb-2 flex items-center gap-2"><span className="text-xl sm:text-2xl">📋</span> {analysis.title}</h3>
                 <p className="text-sm sm:text-lg leading-relaxed font-medium opacity-90">{analysis.body}</p>
                 <div className="mt-4 bg-white/20 p-3 sm:p-4 rounded-xl border border-white/30 backdrop-blur-sm">
@@ -1009,7 +1020,7 @@ export default function TacticsBoard() {
             )}
           </div>
 
-          <div className="flex gap-2 sm:gap-3 flex-wrap justify-center px-3 mb-6">
+          <div className="flex gap-2 sm:gap-3 flex-wrap justify-center px-3 mb-6 w-full">
             <button onClick={reset} className="px-3 sm:px-4 py-2 bg-red-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-red-700 active:scale-95 transition-all shadow-md">Positionen zurücksetzen</button>
             <button onClick={() => setShowTactics(!showTactics)} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-md ${showTactics ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-gray-200 text-gray-800 hover:bg-gray-300"}`}>{showTactics ? "Analyse aus" : "Analyse ein"}</button>
           </div>

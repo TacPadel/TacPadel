@@ -1,5 +1,5 @@
 export type TourStatus = "active" | "upcoming" | "completed";
-export type TourType = "open" | "pro" | "master"; // <-- FIP/Major entfernt
+export type TourType = "open" | "pro" | "master";
 
 export interface Tournament {
   id: string;
@@ -13,6 +13,7 @@ export interface Tournament {
   startsIn?: string;
   baseDifficulty: number;
   tacPointsReward: number;
+  arenaModel?: string; // <-- HIER IST DER FIX: Die Eigenschaft muss ins Interface
 }
 
 export const TOURNAMENTS: Tournament[] = [
@@ -30,6 +31,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2000, 
     tacPointsReward: 100,
     rewardText: "Bronze-Badge + 100 TP",
+    arenaModel: "/TacPadel.glb" 
   },
   {
     id: "open_london", 
@@ -42,6 +44,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2200, 
     tacPointsReward: 100,
     rewardText: "Bronze-Badge + 100 TP",
+    arenaModel: "/TacPadel.glb" 
   },
   {
     id: "open_amsterdam", 
@@ -54,6 +57,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2400, 
     tacPointsReward: 150,
     rewardText: "Bronze-Badge + 150 TP",
+    arenaModel: "/TacPadel.glb" 
   },
   {
     id: "open_rome", 
@@ -66,6 +70,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2500, 
     tacPointsReward: 180,
     rewardText: "Bronze-Badge + 180 TP",
+    // arenaModel fehlt hier, greift durch das "?" im Interface auf den Standard aus CourtFloor.tsx zurück
   },
   {
     id: "open_miami", 
@@ -78,6 +83,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2600, 
     tacPointsReward: 200,
     rewardText: "Bronze-Badge + 200 TP",
+    arenaModel: "/TacPadel.glb" 
   },
   {
     id: "open_sydney", 
@@ -90,6 +96,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2800, 
     tacPointsReward: 250,
     rewardText: "Bronze-Badge + 250 TP",
+    arenaModel: "/TacPadel.glb" 
   },
 
   // ==========================================
@@ -106,6 +113,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 3200,
     tacPointsReward: 400,
     rewardText: "Silber-Pokal + 400 TP",
+    arenaModel: "/TacPadelPremium.glb"
   },
   {
     id: "pro_buenosaires",
@@ -118,6 +126,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 3400,
     tacPointsReward: 450,
     rewardText: "Silber-Pokal + 450 TP",
+    arenaModel: "/TacPadelIndustrial.glb"
   },
   {
     id: "pro_tokyo",
@@ -130,6 +139,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 3600,
     tacPointsReward: 500,
     rewardText: "Silber-Pokal + 500 TP",
+    arenaModel: "/TacPadelPremium.glb"
   },
   {
     id: "pro_capetown",
@@ -142,6 +152,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 3800,
     tacPointsReward: 550,
     rewardText: "Silber-Pokal + 550 TP",
+    arenaModel: "/TacPadelIndustrial.glb"
   },
   {
     id: "pro_dubai",
@@ -154,6 +165,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 4000,
     tacPointsReward: 650,
     rewardText: "Silber-Pokal + 650 TP",
+    arenaModel: "/TacPadelPremium.glb"
   },
 
   // ==========================================
@@ -170,6 +182,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 4500,
     tacPointsReward: 1000,
     rewardText: "Gold-Pokal + 1000 TP",
+    arenaModel: "/TacPadelIndustrial.glb"
   },
   {
     id: "master_rome",
@@ -182,6 +195,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 4700, 
     tacPointsReward: 1200,
     rewardText: "Gold-Pokal + 1200 TP",
+    arenaModel: "/TacPadelPremium.glb"
   },
   {
     id: "master_paris",
@@ -194,6 +208,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 5000, 
     tacPointsReward: 1500,
     rewardText: "Gold-Pokal + 1500 TP",
+    arenaModel: "/TacPadelIndustrial.glb"
   },
   {
     id: "master_monterrey",
@@ -206,5 +221,6 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 5500, 
     tacPointsReward: 2000,
     rewardText: "Platin-Pokal + 2000 TP",
+    arenaModel: "/TacPadelIndustrial.glb"
   }
 ];
