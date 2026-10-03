@@ -53,7 +53,22 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
   const handleSave = async () => {
     if (!username.trim()) return;
     setIsSaving(true);
+    
+    // 1. Auth-Metadaten aktualisieren (wie bisher)
     await supabase.auth.updateUser({ data: { display_name: username } });
+
+    // 2. NEU: Den Namen direkt in deine user_stats Tabelle schreiben
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await supabase
+        .from('user_stats')
+        .upsert({ 
+          id: session.user.id, 
+          email: session.user.email,
+          display_name: username 
+        }, { onConflict: 'id' }); // Überschreibt/Erstellt den Eintrag anhand der ID
+    }
+
     setIsSaving(false);
     onComplete();
   };

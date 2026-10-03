@@ -1354,12 +1354,12 @@ export default function GameScreen() {
                   Match Fortsetzen
                 </button>)}
               
-              {/* Pro Tour Events Button */}
+              {/* TP Tour Events Button */}
               <button 
                 onClick={() => setIsTourOpen(true)}
                 className="w-full max-w-sm py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-105 transition-all"
               >
-                Pro Tour Events
+                TP Tour Events
               </button>
             </div>
           </div>
@@ -1367,7 +1367,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* PRO TOUR SCREEN OVERLAY                             */}
+      {/* TP TOUR SCREEN OVERLAY                             */}
       {/* =================================================== */}
       <AnimatePresence>
         {isTourOpen && (
@@ -1565,7 +1565,7 @@ export default function GameScreen() {
                 
                 {activeTournamentId ? (
                    <button onClick={() => { setIsTourOpen(true); setShowGameOverUI(false); setActiveTournamentId(null); }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                     Zurück zur Pro Tour
+                     Zurück zur TP Tour
                    </button>
                 ) : (
                    <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">

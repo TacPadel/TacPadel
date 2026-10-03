@@ -460,7 +460,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             </div>
             
             <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-widest text-center mb-3 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
-              Pro Tour Gesperrt
+              TP Tour Gesperrt
             </h2>
             
             <p className="text-slate-400 text-center text-sm font-medium mb-8 max-w-xs leading-relaxed">
@@ -766,7 +766,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               <div className="flex justify-between items-center mb-6 shrink-0 border-b border-slate-800 pb-4">
                 <div>
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">Beta Ranking</h2>
-                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Die Top Tester der Pro Tour</p>
+                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Die Top Tester der TP Tour</p>
                 </div>
                 <button 
                   onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }} 
