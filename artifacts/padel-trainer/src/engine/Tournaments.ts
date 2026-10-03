@@ -44,7 +44,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2200, 
     tacPointsReward: 100,
     rewardText: "Bronze-Badge + 100 TP",
-    arenaModel: "/TacPadel.glb" 
+    arenaModel: "/TacPadelTournament.glb" 
   },
   {
     id: "open_amsterdam", 
@@ -70,7 +70,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 2500, 
     tacPointsReward: 180,
     rewardText: "Bronze-Badge + 180 TP",
-    // arenaModel fehlt hier, greift durch das "?" im Interface auf den Standard aus CourtFloor.tsx zurück
+    arenaModel: "/TacPadel.glb" 
   },
   {
     id: "open_miami", 
@@ -139,7 +139,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 3600,
     tacPointsReward: 500,
     rewardText: "Silber-Pokal + 500 TP",
-    arenaModel: "/TacPadelPremium.glb"
+    arenaModel: "/TacPadelTournament.glb"
   },
   {
     id: "pro_capetown",
@@ -208,7 +208,7 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 5000, 
     tacPointsReward: 1500,
     rewardText: "Gold-Pokal + 1500 TP",
-    arenaModel: "/TacPadelIndustrial.glb"
+    arenaModel: "/TacPadelTournament.glb"
   },
   {
     id: "master_monterrey",
@@ -221,6 +221,6 @@ export const TOURNAMENTS: Tournament[] = [
     baseDifficulty: 5500, 
     tacPointsReward: 2000,
     rewardText: "Platin-Pokal + 2000 TP",
-    arenaModel: "/TacPadelIndustrial.glb"
+    arenaModel: "/TacPadel.glb"
   }
 ];

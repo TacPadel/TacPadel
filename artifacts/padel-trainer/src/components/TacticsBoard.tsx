@@ -215,30 +215,44 @@ const getTacticalAnalysis = (
     const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD;
     const isAInTransition = teamA_X > V_WIDTH * 0.25 && teamA_X < netX - 80;
 
+    // Hitter-Berechnung Team A
+    const hitterAngle = Math.atan2(ball.y - closestA.y, ball.x - closestA.x);
+    const hitterDist = Math.hypot(ball.x - closestA.x, ball.y - closestA.y);
+    const hitterStep = Math.max(0, hitterDist - 28);
+    const hitterTx = closestA.x + Math.cos(hitterAngle) * hitterStep;
+    const hitterTy = closestA.y + Math.sin(hitterAngle) * hitterStep;
+
     teamA.forEach(p => {
       if (p.id === closestA.id) {
         // Hitter bewegt sich zum Ball
-        const angle = Math.atan2(ball.y - p.y, ball.x - p.x);
-        const dist = Math.hypot(ball.x - p.x, ball.y - p.y);
-        const step = Math.max(0, dist - 28);
-        movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
+        movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
         // Partner hält den Abstand zum Ballführer
         const idealSpacing = p.id === "a1" ? -120 : 120;
         const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
-        movements[p.id] = { tx: p.x, ty: p.y * 0.4 + targetY * 0.6 };
+        
+        let partnerTx = p.x;
+        // Partner darf nicht nach hinten rennen, geht aber mit nach vorne, wenn der Hitter überholt
+        if (hitterTx > p.x) {
+          partnerTx = hitterTx;
+        }
+        
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
       }
     });
 
+    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team B berechnen
+    const defBaseX = (teamB[0].x + teamB[1].x) / 2;
+    
     teamB.forEach(p => {
       if (filters.showAttackArc) {
         const optY = p.id === "b1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
-        movements[p.id] = { tx: getArcX(optY, false), ty: optY };
+        movements[p.id] = { tx: defBaseX, ty: optY }; // Setze einheitliches defBaseX
       } else {
         // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "b1" ? 110 : 270;
         const targetNetY = baseY + lateralShift;
-        movements[p.id] = { tx: p.x, ty: p.y * 0.4 + targetNetY * 0.6 };
+        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; // Setze einheitliches defBaseX
       }
     });
 
@@ -247,30 +261,44 @@ const getTacticalAnalysis = (
     color = isAInTransition ? "bg-red-700" : (isBMiddleOpen && filters.showWeaknessZones) ? "bg-emerald-600" : "bg-indigo-700";
     activePlayerId = closestA.id;
   } else {
+    // Hitter-Berechnung Team B
+    const hitterAngle = Math.atan2(ball.y - closestB.y, ball.x - closestB.x);
+    const hitterDist = Math.hypot(ball.x - closestB.x, ball.y - closestB.y);
+    const hitterStep = Math.max(0, hitterDist - 28);
+    const hitterTx = closestB.x + Math.cos(hitterAngle) * hitterStep;
+    const hitterTy = closestB.y + Math.sin(hitterAngle) * hitterStep;
+
     teamB.forEach(p => {
       if (p.id === closestB.id) {
         // Hitter bewegt sich zum Ball
-        const angle = Math.atan2(ball.y - p.y, ball.x - p.x);
-        const dist = Math.hypot(ball.x - p.x, ball.y - p.y);
-        const step = Math.max(0, dist - 28);
-        movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
+        movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
         // Partner hält den Abstand zum Ballführer
         const idealSpacing = p.id === "b1" ? -120 : 120;
         const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
-        movements[p.id] = { tx: p.x, ty: p.y * 0.4 + targetY * 0.6 };
+        
+        let partnerTx = p.x;
+        // Partner darf nicht nach hinten rennen (nach rechts bei Team B)
+        if (hitterTx < p.x) {
+          partnerTx = hitterTx;
+        }
+        
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
       }
     });
 
+    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team A berechnen
+    const defBaseX = (teamA[0].x + teamA[1].x) / 2;
+    
     teamA.forEach(p => {
       if (filters.showAttackArc) {
         const optY = p.id === "a1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
-        movements[p.id] = { tx: getArcX(optY, true), ty: optY };
+        movements[p.id] = { tx: defBaseX, ty: optY }; // Setze einheitliches defBaseX
       } else {
         // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "a1" ? 110 : 270;
         const targetNetY = baseY + lateralShift;
-        movements[p.id] = { tx: p.x, ty: p.y * 0.4 + targetNetY * 0.6 };
+        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; // Setze einheitliches defBaseX
       }
     });
 
