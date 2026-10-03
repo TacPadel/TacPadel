@@ -23,9 +23,9 @@ interface TacticalFilters {
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse
-const GAP_THRESHOLD = 120;
-const WIDE_GAP_THRESHOLD = 130;
+// Globale Taktik-Schwellenwerte für Analyse (angepasst für den breiteren Scheibenwischer)
+const GAP_THRESHOLD = 180;
+const WIDE_GAP_THRESHOLD = 220;
 const DEEP_DEF_THRESHOLD = 80;
 const SHORT_DEF_THRESHOLD = 70;
 
@@ -132,8 +132,9 @@ const getTacticalAnalysis = (
   scenarioKey: string,
   customTarget: { x: number; y: number } | null
 ) => {
-  const teamA = items.filter((i) => i.id.startsWith("a"));
-  const teamB = items.filter((i) => i.id.startsWith("b"));
+  // FIX: isPlayer zwingend erforderlich, damit der Ball ("ball") nicht mehr als b-Spieler erkannt wird!
+  const teamA = items.filter((i) => i.isPlayer && i.id.startsWith("a"));
+  const teamB = items.filter((i) => i.isPlayer && i.id.startsWith("b"));
   const ball = items.find((i) => i.id === "ball");
   if (!ball || teamA.length < 2 || teamB.length < 2) return null;
 
@@ -143,7 +144,6 @@ const getTacticalAnalysis = (
 
   const isBallOnSideA = ball.x <= netX;
 
-  // FIX: Padel-gerechte Zuordnung! Y-Achse (Seite) wird stärker gewichtet, damit Spieler nicht sinnlos kreuzen.
   const closestA = teamA.reduce((prev, curr) => {
     const scorePrev = Math.abs(prev.x - ball.x) + Math.abs(prev.y - ball.y) * 2.2;
     const scoreCurr = Math.abs(curr.x - ball.x) + Math.abs(curr.y - ball.y) * 2.2;
@@ -223,12 +223,10 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        // FIX: Defensiver Partner verschiebt sich dynamisch nach Ball-Y, ABER behält seine X-Tiefe!
         const isPlayer1 = p.id.endsWith("1");
-        let targetY = isPlayer1 ? ball.y - 120 : ball.y + 120;
+        // FIX: Breiterer Team-Abstand (110 statt 80 = 220px totale Lücke)
+        let targetY = isPlayer1 ? ball.y - 110 : ball.y + 110;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
-        
-        // p.x bleibt unverändert! Das rettet Aufschlag- und Australian-Formationen.
         movements[p.id] = { tx: p.x, ty: targetY };
       }
     });
@@ -239,11 +237,11 @@ const getTacticalAnalysis = (
         const optY = p.id === "b1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, false), ty: optY };
       } else {
-        // FIX: Angreifer (Team B) schieben sich als stabile Kette am Netz entlang zum Ball
         const isPlayer1 = p.id.endsWith("1");
-        let targetY = isPlayer1 ? ball.y - 80 : ball.y + 80;
+        // FIX: Breiterer Team-Abstand (110)
+        let targetY = isPlayer1 ? ball.y - 110 : ball.y + 110;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
-        const targetNetX = netX + 60; // Standard Netz-Position
+        const targetNetX = netX + 60; 
         
         movements[p.id] = { tx: p.x * 0.5 + targetNetX * 0.5, ty: p.y * 0.5 + targetY * 0.5 };
       }
@@ -253,7 +251,7 @@ const getTacticalAnalysis = (
     title = `Abwehr-Modus — Spieler ${closestA.label} schlägt`;
     color = isAInTransition ? "bg-red-700" : (isBMiddleOpen && filters.showWeaknessZones) ? "bg-emerald-600" : "bg-indigo-700";
     activePlayerId = closestA.id;
-  } else { // isBallOnSideB
+  } else {
     teamB.forEach(p => {
       if (p.id === closestB.id) {
         const angle = Math.atan2(ball.y - p.y, ball.x - p.x);
@@ -261,9 +259,9 @@ const getTacticalAnalysis = (
         const step = Math.max(0, dist - 28);
         movements[p.id] = { tx: p.x + Math.cos(angle) * step, ty: p.y + Math.sin(angle) * step };
       } else {
-        // FIX: Defensiver Partner (Team B) behält X-Tiefe
         const isPlayer1 = p.id.endsWith("1");
-        let targetY = isPlayer1 ? ball.y - 120 : ball.y + 120;
+        // FIX: Breiterer Team-Abstand (110)
+        let targetY = isPlayer1 ? ball.y - 110 : ball.y + 110;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
         
         movements[p.id] = { tx: p.x, ty: targetY };
@@ -276,11 +274,11 @@ const getTacticalAnalysis = (
         const optY = p.id === "a1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
         movements[p.id] = { tx: getArcX(optY, true), ty: optY };
       } else {
-        // FIX: Angreifer (Team A) schieben sich als stabile Kette am Netz entlang zum Ball
         const isPlayer1 = p.id.endsWith("1");
-        let targetY = isPlayer1 ? ball.y - 80 : ball.y + 80;
+        // FIX: Breiterer Team-Abstand (110)
+        let targetY = isPlayer1 ? ball.y - 110 : ball.y + 110;
         targetY = Math.max(40, Math.min(V_HEIGHT - 40, targetY));
-        const targetNetX = netX - 60; // Standard Netz-Position
+        const targetNetX = netX - 60; 
         
         movements[p.id] = { tx: p.x * 0.5 + targetNetX * 0.5, ty: p.y * 0.5 + targetY * 0.5 };
       }

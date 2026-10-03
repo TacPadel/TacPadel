@@ -30,7 +30,7 @@ interface PlayerStats {
 }
 
 // 30-Tage Beta Enddatum
-const BETA_END_DATE = new Date("2026-10-24T23:59:59").getTime();
+const BETA_END_DATE = new Date("2026-10-28T23:59:59").getTime();
 
 // --- Freischalt-Bedingung für die Tour ---
 const TOUR_UNLOCK_SCORE = 2000;
