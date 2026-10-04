@@ -58,6 +58,63 @@ const evalRunTactics = (shot: string, runZone: string) => {
   return 0;
 };
 
+// ==========================================
+// --- NEU: TUTORIAL MODAL KOMPONENTE ---
+// ==========================================
+function GameTutorialModal({ onComplete }: { onComplete: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md pointer-events-auto">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(255,119,0,0.2)] max-w-lg w-full flex flex-col gap-6 relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-red-500" />
+        
+        <div className="text-center">
+          <span className="text-4xl mb-2 block">🎾</span>
+          <h2 className="text-2xl font-black text-white uppercase tracking-widest">Match-Modus</h2>
+          <p className="text-orange-400 text-sm font-bold tracking-wider mt-1">Das Spielprinzip</p>
+        </div>
+
+        <div className="flex flex-col gap-4 text-sm text-slate-300 mt-2">
+          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">1</div>
+            <div>
+              <p className="font-bold text-white mb-1">Reagieren (Der Timer läuft)</p>
+              <p className="leading-snug">Sobald der Gegner schlägt, tickt die Zeit! Entscheide schnell, ob <b>Du</b> oder dein <b>Partner</b> den Ball nimmt, und wähle die richtige Laufzone, um den Ball zu erreichen.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">2</div>
+            <div>
+              <p className="font-bold text-white mb-1">Schlag planen</p>
+              <p className="leading-snug">Hast du den Ball erreicht, wählst du deinen <b>Schlag</b> (z.B. Lob, Smash, Volley) und tippst auf das <b>Ziel</b> im gegnerischen Feld.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">3</div>
+            <div>
+              <p className="font-bold text-white mb-1">Ausdauer im Blick behalten</p>
+              <p className="leading-snug">Jeder Laufweg kostet Energie. Ist die Ausdauer leer, häufen sich die Fehler! Nutze langsame taktische Schläge wie den <i>Lob</i>, um während des Ballwechsels Energie zu regenerieren.</p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onComplete}
+          className="w-full mt-2 py-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded-xl font-black text-sm tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(255,119,0,0.3)] hover:scale-[1.02] active:scale-95 transition-all"
+        >
+          Verstanden, ab auf den Court!
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+// ==========================================
+
 export default function GameScreen() {
   const [playerScore, setPlayerScore] = useState<number>(0);
   const [aiScore, setAiScore] = useState<number>(0);
@@ -73,6 +130,21 @@ export default function GameScreen() {
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
+
+  // --- NEU: Tutorial State ---
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    const hasSeen = localStorage.getItem("tacpadel_hasSeenGameTutorial");
+    if (!hasSeen) {
+      setShowTutorial(true);
+    }
+  }, []);
+
+  const handleTutorialComplete = () => {
+    localStorage.setItem("tacpadel_hasSeenGameTutorial", "true");
+    setShowTutorial(false);
+  };
 
   const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
 
@@ -115,14 +187,14 @@ export default function GameScreen() {
     let interval: NodeJS.Timeout;
     
     // Zähle nur hoch, wenn das Spiel läuft UND die App aktiv im Vordergrund ist (isVisible)
-    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible) { 
+    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible && !showTutorial) { 
       interval = setInterval(() => {
         setMatchSeconds(prev => prev + 1);
       }, 1000);
     }
 
     return () => clearInterval(interval);
-  }, [gameOver, isMenuOpen, isTourOpen, isVisible]);
+  }, [gameOver, isMenuOpen, isTourOpen, isVisible, showTutorial]);
 
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
   const [stamina, setStamina] = useState({ 
@@ -235,14 +307,14 @@ export default function GameScreen() {
   useEffect(() => {
     if (bgmRef.current) {
       const isMusicEnabled = localStorage.getItem("tacpadel_music") !== "false";
-      if (!isMenuOpen && !gameOver && isMusicEnabled && isVisible) {
+      if (!isMenuOpen && !gameOver && isMusicEnabled && isVisible && !showTutorial) {
         bgmRef.current.play().catch(e => console.log("Browser blockiert Autoplay:", e));
       } else {
         bgmRef.current.pause();
         if (gameOver) bgmRef.current.currentTime = 0; 
       }
     }
-  }, [isMenuOpen, gameOver, isVisible]);
+  }, [isMenuOpen, gameOver, isVisible, showTutorial]);
 
   const totalPoints = playerScore + aiScore;
   const { serverId } = getServerInfo(totalPoints);
@@ -379,7 +451,6 @@ export default function GameScreen() {
   };
 
   const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
-    // localStorage wird hier nicht mehr für Arenen resettet, da wir es über TOURNAMENTS steuern
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
@@ -453,7 +524,6 @@ export default function GameScreen() {
   };
 
   const startNewGame = () => {
-    // localStorage wird hier nicht mehr für Arenen resettet, da wir es über TOURNAMENTS steuern
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
@@ -1326,6 +1396,14 @@ export default function GameScreen() {
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
+
+      {/* --- NEU: TUTORIAL MODAL --- */}
+      <AnimatePresence>
+        {showTutorial && (
+          <GameTutorialModal onComplete={handleTutorialComplete} />
+        )}
+      </AnimatePresence>
+
       {/* =================================================== */}
       {/* HAUPTMENÜ OVERLAY                                   */}
       {/* =================================================== */}

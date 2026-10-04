@@ -40,40 +40,83 @@ const getPartnerModifiers = (partnerId: string) => {
 function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
   const ref = useRef<any>(null);
   
+  // Die Trophäe dreht sich um die eigene Achse
   useFrame((state, delta) => {
     if (ref.current) ref.current.rotation.y += delta * 0.8;
   });
 
-  const isMajor = tourId.toLowerCase().includes('major');
-  const isMaster = tourId.toLowerCase().includes('master');
-  const color = isMajor ? "#fbbf24" : isMaster ? "#e2e8f0" : "#f97316";
+  const idLower = tourId.toLowerCase();
+  const isMaster = idLower.includes('master');
+  const isPro = idLower.includes('pro');
+  
+  // Farben: Master = Gold, Pro = Silber, Open = Bronze
+  const color = isMaster ? "#fbbf24" : isPro ? "#cbd5e1" : "#d97706";
+  const intensity = isMaster ? 3 : isPro ? 2 : 1.5;
 
   return (
     <group position={position} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
-      <mesh visible={false} position={[0, 0.7, 0]}>
-        <cylinderGeometry args={[0.5, 0.5, 1.5, 8]} />
+      
+      {/* Unsichtbare Hitbox (Zylinder) damit man die Trophäe leichter anklicken kann */}
+      <mesh visible={false} position={[0, 0.9, 0]}>
+        <cylinderGeometry args={[0.5, 0.5, 2, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
-      <mesh position={[0, 0.1, 0]}>
-        <cylinderGeometry args={[0.3, 0.4, 0.2, 8]} />
-        <meshStandardMaterial color="#020617" wireframe />
-      </mesh>
-      <mesh position={[0, 0.1, 0]}>
-        <cylinderGeometry args={[0.25, 0.35, 0.18, 16]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
-      </mesh>
-      <mesh position={[0, 0.6, 0]}>
-        <cylinderGeometry args={[0.04, 0.04, 0.8, 16]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2.5} />
-      </mesh>
-      <mesh position={[0, 1.2, 0]}>
-        <cylinderGeometry args={[0.35, 0.02, 0.5, 8]} />
-        <meshStandardMaterial color={color} wireframe />
-      </mesh>
-      <mesh position={[0, 1.45, 0]}>
-        <octahedronGeometry args={[0.15]} />
-        <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={2} />
-      </mesh>
+
+      {/* Gruppe, die sich dreht */}
+      <group ref={ref}>
+        
+        {/* === SOCKEL === */}
+        <mesh position={[0, 0.1, 0]}>
+          <cylinderGeometry args={[0.25, 0.35, 0.2, 16]} />
+          <meshStandardMaterial color="#020617" wireframe />
+        </mesh>
+        <mesh position={[0, 0.25, 0]}>
+          <cylinderGeometry args={[0.2, 0.25, 0.1, 16]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} />
+        </mesh>
+
+        {/* === SCHLÄGER-GRIFF === */}
+        <mesh position={[0, 0.7, 0]}>
+          <cylinderGeometry args={[0.04, 0.05, 0.8, 16]} />
+          {/* Griffband Optik durch dunkle Farbe und hohe Rauheit */}
+          <meshStandardMaterial color="#0f172a" roughness={0.9} />
+        </mesh>
+        
+        {/* Leuchtender Ring am Ende des Griffs */}
+        <mesh position={[0, 0.35, 0]}>
+          <torusGeometry args={[0.06, 0.015, 8, 16]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
+        </mesh>
+
+        {/* === SCHLÄGER-KOPF (Abstrakt & Tron-Style) === */}
+        <group position={[0, 1.4, 0]}>
+          
+          {/* Dunkle, leicht transparente Schlagfläche */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.4, 0.4, 0.04, 32]} />
+            <meshStandardMaterial color="#020617" transparent opacity={0.8} roughness={0.1} metalness={0.8} />
+          </mesh>
+          
+          {/* Leuchtender Außenrahmen (Rahmenschutz) */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.4, 0.04, 16, 64]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
+          </mesh>
+
+          {/* Innere Tron-Matrix/Loch-Muster Andeutung */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.3, 0.3, 0.05, 16]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.5} wireframe />
+          </mesh>
+          
+          {/* Leuchtender Kern im Herzstück des Schlägers */}
+          <mesh position={[0, -0.32, 0]}>
+            <octahedronGeometry args={[0.08]} />
+            <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={intensity * 1.5} />
+          </mesh>
+          
+        </group>
+      </group>
     </group>
   );
 }
@@ -84,7 +127,7 @@ function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophy
   const minShelves = 4; // Mindestens 4 Böden übereinander, damit es wie ein Schrank aussieht
   const numShelves = Math.max(minShelves, Math.ceil(trophies.length / cols));
   
-  const shelfHeight = 2.2; 
+  const shelfHeight = 2.4; // Etwas mehr Platz für die neuen Schläger-Trophäen
   const width = 5.5; 
   const depth = 1.8;
   const totalHeight = numShelves * shelfHeight;
@@ -410,15 +453,27 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setIsUploading(true);
       setMessage(null);
       if (!event.target.files || event.target.files.length === 0) throw new Error('Bitte wähle ein Bild aus.');
+      
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
+      // Fester Name pro User, z.B. "12345-avatar.jpg"
+      const fileName = `${user.id}-avatar.${fileExt}`; 
+      
+      // upsert: true überschreibt das alte Bild im Storage!
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file, {
+        upsert: true 
+      });
+      
       if (uploadError) throw uploadError;
+      
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      const publicUrl = data.publicUrl;
+      
+      // Cache-Busting: Zwingt den Browser, das Bild neu zu laden, auch wenn die URL gleich bleibt
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+      
       await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
       await supabase.from('user_stats').update({ avatar_url: publicUrl }).eq('id', user.id);
+      
       setAvatarUrl(publicUrl);
       setMessage({ type: 'success', text: "Profilbild erfolgreich aktualisiert!" });
       setTimeout(() => setMessage(null), 3000);
@@ -694,7 +749,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
               <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
               <div className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
-                   style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
+                  style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
             </div>
 
             {/* TRON 3D CABINET CONTAINER */}
