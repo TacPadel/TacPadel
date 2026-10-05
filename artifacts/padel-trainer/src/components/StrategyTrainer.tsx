@@ -75,7 +75,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         resetInputs();
       } else {
         setStrategyFinished(true);
-        onStrategyComplete(50); 
+        onStrategyComplete(50); // Punkte wie von dir auf 50 gesetzt
       }
     }
   };
@@ -95,6 +95,20 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     resetInputs();
   };
 
+  // Hilfsfunktion für stylische Theme-Farben
+  const getThemeStyles = (theme: string) => {
+    switch(theme) {
+      case "Offensive": 
+        return "bg-orange-950/50 text-orange-400 border-orange-900/50";
+      case "Defensive": 
+        return "bg-blue-950/50 text-blue-400 border-blue-900/50";
+      case "Umschaltspiel": 
+        return "bg-purple-950/50 text-purple-400 border-purple-900/50";
+      default: 
+        return "bg-slate-900/50 text-slate-400 border-slate-800";
+    }
+  };
+
   if (!activeStrategy) {
     return (
       <div className="w-full flex flex-col gap-6 p-4">
@@ -110,6 +124,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik aufzubauen.
         </p>
 
+        {/* 4er Grid mit allen importierten Strategien */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           {STRATEGIES.map((strat) => (
             <div 
@@ -119,12 +134,17 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                 setCurrentStepIndex(0);
                 resetInputs();
               }}
-              className="bg-[#050b18]/80 border border-slate-800 hover:border-cyan-500/50 p-5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] shadow-lg group relative overflow-hidden"
+              className="bg-[#050b18]/80 border border-slate-800 hover:border-cyan-500/50 p-5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] shadow-lg group relative overflow-hidden flex flex-col"
             >
               <div className="flex justify-between items-start mb-3 relative z-10">
-                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded bg-purple-950/50 text-purple-400 border border-purple-900/50`}>
-                  {strat.theme}
-                </span>
+                <div className="flex gap-2 items-center">
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${getThemeStyles(strat.theme)}`}>
+                    {strat.theme}
+                  </span>
+                  <span className="text-[10px] tracking-widest drop-shadow-md">
+                    {"⭐".repeat(strat.difficulty)}
+                  </span>
+                </div>
                 <span className="text-xs font-bold text-slate-500">{strat.steps.length} Züge</span>
               </div>
               <h3 className="text-lg font-bold text-white mb-2 relative z-10">{strat.title}</h3>
@@ -172,27 +192,22 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           {/* 3D Court */}
           <div className="lg:col-span-8 h-[50vh] min-h-[400px] bg-[#030611] rounded-2xl border border-slate-800 relative overflow-hidden">
             <ScenarioCourt25
-              level={"Strategie" as any} // <-- 1. LED Screen zeigt jetzt Strategie an
+              level={"Strategie" as any} 
               positions={{
                 ...activeStep.positions,
                 ball: {
                   ...activeStep.positions.ball,
-                  // Damit das LED Display oben den korrekten Schlag (z.B. DRIVE) anzeigt
                   type: isAITurn 
                     ? (activeStep.aiShot || activeStep.positions.ball.type)
                     : (selectedShot || activeStep.positions.ball.type)
                 }
               }}
-              // 2. KI Ziele werden ERST übergeben wenn "Abspielen" (hasSubmitted) geklickt wurde!
-              // Vorher ist es null, dadurch leuchtet bei der KI nichts vorab.
               selectedZone={isAITurn ? (hasSubmitted ? (activeStep.aiTarget || null) : null) : selectedZone}
               hasSubmitted={hasSubmitted}
-              // 3. Wenn die KI animiert wird, fügen wir ihr Ziel in bestZones ein, damit die LED NICHT "Falsche Wahl" ausspuckt
               bestZones={isAITurn ? (activeStep.aiTarget ? [activeStep.aiTarget] : []) : (activeStep.bestZones || [])}
               acceptableZones={[]} 
               onZoneClick={handleZoneClick}
               profiMode={!isAITurn} 
-              // Gleicher Fix für Laufwege
               selectedLaufZone={isAITurn ? (hasSubmitted ? (activeStep.aiLaufZone || null) : null) : selectedLaufZone}
               perfectLaufZone={isAITurn ? (activeStep.aiLaufZone || null) : (hasSubmitted ? (activeStep.laufZone || null) : null)}
               acceptableLaufZones={[]}
@@ -208,7 +223,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           <div className={`fixed bottom-20 lg:sticky lg:bottom-4 left-4 right-4 lg:left-auto lg:right-auto z-40 bg-[#050b18]/95 backdrop-blur-xl border ${isAITurn ? 'border-red-900/50 shadow-[0_-10px_30px_rgba(220,38,38,0.2)]' : 'border-slate-700'} p-3 rounded-xl`}>
             
             {isAITurn ? (
-              // Wenn die KI dran ist, gibt es nur EINEN dicken Ausführen-Button
               <button
                 onClick={handleSubmit}
                 className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black text-xs tracking-widest uppercase rounded-lg transition-all"
@@ -216,7 +230,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                 Gegnerischen Zug abspielen ➔
               </button>
             ) : (
-              // Wenn DU dran bist, hast du die normale Steuerung
               <div className="flex gap-2">
                 <div className={`flex-1 p-2 rounded-lg border ${selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/30 bg-purple-950/10'}`}>
                   <span className="text-[9px] font-black tracking-widest text-purple-400 uppercase">1. Laufzone</span>
@@ -273,7 +286,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           )}
         </AnimatePresence>
 
-        {/* Result Overlay für den aktuellen Schritt */}
+        {/* Result Overlay */}
         <AnimatePresence>
           {hasSubmitted && (
             <motion.div
