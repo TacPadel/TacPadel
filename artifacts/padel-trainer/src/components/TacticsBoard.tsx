@@ -24,9 +24,9 @@ interface TacticalFilters {
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse
-const GAP_THRESHOLD = 120;
-const WIDE_GAP_THRESHOLD = 130;
+// Globale Taktik-Schwellenwerte für Analyse (Jetzt auf 160px erhöht)
+const GAP_THRESHOLD = 160;
+const WIDE_GAP_THRESHOLD = 170;
 const DEEP_DEF_THRESHOLD = 80;
 const SHORT_DEF_THRESHOLD = 70;
 
@@ -49,7 +49,7 @@ const getControlPointX = (isTeamA: boolean) => {
   return 2 * apexX - edgeX;
 };
 
-// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS)
+// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) - Y-Werte an 160px Abstand angepasst!
 const SCENARIOS: Record<string, {
   name: string;
   items: DraggableItem[];
@@ -58,20 +58,20 @@ const SCENARIOS: Record<string, {
   initial: {
     name: "Standard Startaufstellung",
     items: [
-      { id: "a1", x: 120, y: 130, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 120, y: 250, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: V_WIDTH - 120, y: 130, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 120, y: 250, color: "#f1c40f", label: "B2", isPlayer: true },
+      { id: "a1", x: 120, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },
+      { id: "a2", x: 120, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
+      { id: "b1", x: V_WIDTH - 120, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
+      { id: "b2", x: V_WIDTH - 120, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
       { id: "ball", x: (V_WIDTH / 2) - 0, y: V_HEIGHT / 2, color: "#2ecc71", label: "●", isPlayer: false },
     ]
   },
   angriff_dynamisch: {
     name: "Taktik: Dynamischer Angriff (Scheibenwischer)",
     items: [
-      { id: "a1", x: getArcX(140, true), y: 140, color: "#e74c3c", label: "A1", isPlayer: true },      
-      { id: "a2", x: getArcX(240, true), y: 240, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: V_WIDTH - 70, y: 140, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 70, y: 240, color: "#f1c40f", label: "B2", isPlayer: true },
+      { id: "a1", x: getArcX(110, true), y: 110, color: "#e74c3c", label: "A1", isPlayer: true },      
+      { id: "a2", x: getArcX(270, true), y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
+      { id: "b1", x: V_WIDTH - 70, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
+      { id: "b2", x: V_WIDTH - 70, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
       { id: "ball", x: V_WIDTH / 2 - 40, y: V_HEIGHT / 2, color: "#2ecc71", label: "●", isPlayer: false },    
     ],
     customAnalysis: {
@@ -113,10 +113,10 @@ const SCENARIOS: Record<string, {
   angriff_netz_a: {
     name: "Taktik: Team A besetzt das Netz",
     items: [
-      { id: "a1", x: 310, y: 130, color: "#e74c3c", label: "A1", isPlayer: true },      
-      { id: "a2", x: 310, y: 250, color: "#e74c3c", label: "A2", isPlayer: true },
+      { id: "a1", x: 310, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },      
+      { id: "a2", x: 310, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
       { id: "b1", x: V_WIDTH - 70, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 80, y: 280, color: "#f1c40f", label: "B2", isPlayer: true },
+      { id: "b2", x: V_WIDTH - 70, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
       { id: "ball", x: 335, y: 135, color: "#2ecc71", label: "●", isPlayer: false },    
     ],
     customAnalysis: {
@@ -133,8 +133,9 @@ const getTacticalAnalysis = (
   scenarioKey: string,
   customTarget: { x: number; y: number } | null
 ) => {
-  const teamA = items.filter((i) => i.id.startsWith("a"));
-  const teamB = items.filter((i) => i.id.startsWith("b"));
+  // WICHTIG: i.isPlayer zwingend prüfen, da "ball" mit "b" anfängt! (Verhindert das Ball-Blinken)
+  const teamA = items.filter((i) => i.isPlayer && i.id.startsWith("a"));
+  const teamB = items.filter((i) => i.isPlayer && i.id.startsWith("b"));
   const ball = items.find((i) => i.id === "ball");
   if (!ball || teamA.length < 2 || teamB.length < 2) return null;
 
@@ -156,6 +157,7 @@ const getTacticalAnalysis = (
   let targetY = 0;
   let recommendation = "";
 
+  // Die automatische Zielverlegung bleibt unangetastet!
   if (customTarget) {
     targetX = customTarget.x;
     targetY = customTarget.y;
@@ -207,9 +209,9 @@ const getTacticalAnalysis = (
   let color = "";
   let activePlayerId = "";
 
-  // Globale Verschiebung (Scheibenwischer) basierend auf Ballposition
-  const ballYPercent = Math.max(0, Math.min(1, ball.y / V_HEIGHT));
-  const lateralShift = (ballYPercent - 0.5) * 140; // max +/- 70px
+  // Die Verteidiger reagieren ab jetzt IMMER auf targetY (egal ob manuell oder automatisch gesetzt)
+  const targetYPercent = Math.max(0, Math.min(1, targetY / V_HEIGHT));
+  const targetLateralShift = (targetYPercent - 0.5) * 160;
 
   if (isBallOnSideA) {
     const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD;
@@ -227,32 +229,31 @@ const getTacticalAnalysis = (
         // Hitter bewegt sich zum Ball
         movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
-        // Partner hält den Abstand zum Ballführer
-        const idealSpacing = p.id === "a1" ? -120 : 120;
-        const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
+        // Partner hält den neuen idealen Abstand (Abstände: -80 und +80 = 160px Gap)
+        const idealSpacing = p.id.endsWith("1") ? -80 : 80;
+        const idealY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
         
         let partnerTx = p.x;
-        // Partner darf nicht nach hinten rennen, geht aber mit nach vorne, wenn der Hitter überholt
+        // Partner rennt nicht nach hinten! Er geht aber mit, wenn der Hitter überholt.
         if (hitterTx > p.x) {
           partnerTx = hitterTx;
         }
         
-        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + idealY * 0.6 };
       }
     });
 
-    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team B berechnen
+    // GEGNER (Team B) AUF EINER LINIE: Reagiert jetzt dynamisch auf das Ziel!
     const defBaseX = (teamB[0].x + teamB[1].x) / 2;
     
     teamB.forEach(p => {
       if (filters.showAttackArc) {
-        const optY = p.id === "b1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
-        movements[p.id] = { tx: defBaseX, ty: optY }; // Setze einheitliches defBaseX
+        const optY = p.id === "b1" ? 110 + targetLateralShift : 270 + targetLateralShift;
+        movements[p.id] = { tx: defBaseX, ty: optY };
       } else {
-        // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "b1" ? 110 : 270;
-        const targetNetY = baseY + lateralShift;
-        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; // Setze einheitliches defBaseX
+        const targetNetY = baseY + targetLateralShift;
+        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 };
       }
     });
 
@@ -273,32 +274,31 @@ const getTacticalAnalysis = (
         // Hitter bewegt sich zum Ball
         movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
-        // Partner hält den Abstand zum Ballführer
-        const idealSpacing = p.id === "b1" ? -120 : 120;
-        const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
+        // Partner hält den neuen idealen Abstand
+        const idealSpacing = p.id.endsWith("1") ? -80 : 80;
+        const idealY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
         
         let partnerTx = p.x;
-        // Partner darf nicht nach hinten rennen (nach rechts bei Team B)
+        // Partner rennt nicht nach hinten! (Nach hinten ist für Team B kleineres X)
         if (hitterTx < p.x) {
           partnerTx = hitterTx;
         }
         
-        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + idealY * 0.6 };
       }
     });
 
-    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team A berechnen
+    // GEGNER (Team A) AUF EINER LINIE: Reagiert jetzt dynamisch auf das Ziel!
     const defBaseX = (teamA[0].x + teamA[1].x) / 2;
     
     teamA.forEach(p => {
       if (filters.showAttackArc) {
-        const optY = p.id === "a1" ? 90 + (ballYPercent * 100) : 190 + (ballYPercent * 100);
-        movements[p.id] = { tx: defBaseX, ty: optY }; // Setze einheitliches defBaseX
+        const optY = p.id === "a1" ? 110 + targetLateralShift : 270 + targetLateralShift;
+        movements[p.id] = { tx: defBaseX, ty: optY };
       } else {
-        // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "a1" ? 110 : 270;
-        const targetNetY = baseY + lateralShift;
-        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; // Setze einheitliches defBaseX
+        const targetNetY = baseY + targetLateralShift;
+        movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 };
       }
     });
 
@@ -326,7 +326,6 @@ function TrajectoryView3D() {
   const sniperSvgRef = useRef<SVGSVGElement>(null);
   const NET_X = V_WIDTH / 2;
 
-  // 1. Die klassische Zonen-Rechnung (Das "Alibi" für TacticalData.tsx)
   const getZoneFromXY = (x: number, y: number, isTeamA: boolean) => {
     const clampedY = Math.max(0, Math.min(V_HEIGHT - 0.1, y));
     const colIndex = Math.floor((clampedY / V_HEIGHT) * 5); 
@@ -347,7 +346,6 @@ function TrajectoryView3D() {
     return `${col}${row}`;
   };
 
-  // 2. Die neue millimetergenaue Umrechnung (Die "Wahrheit" für den Ballflug)
   const getMetersFromXY = (svgX: number, svgY: number) => {
     const z = 10 - ((svgX / V_WIDTH) * 20); 
     const x = ((svgY / V_HEIGHT) * 10) - 5; 
@@ -357,13 +355,9 @@ function TrajectoryView3D() {
     };
   };
 
-  const playerZone = getZoneFromXY(playerPos.x, playerPos.y, true);
-  const targetZone = getZoneFromXY(targetPos.x, targetPos.y, false);
-  
   const playerCoords = getMetersFromXY(playerPos.x, playerPos.y);
   const targetCoords = getMetersFromXY(targetPos.x, targetPos.y);
 
-  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = sniperSvgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -374,14 +368,12 @@ function TrajectoryView3D() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 500; // Vertikal Width
-    const SVG_VIEW_H = 880; // Vertikal Height
+    const SVG_VIEW_W = 500;
+    const SVG_VIEW_H = 880;
 
-    // Visuelle Klick-Koordinaten
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Rück-Umrechnung auf das logische horizontale 760x380 Grid
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -457,10 +449,7 @@ function TrajectoryView3D() {
             </div>
             
             <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center">
-              {/* RADAR IST JETZT EBENFALLS VERTIKAL */}
               <svg ref={sniperSvgRef} viewBox="-60 -60 500 880" className="w-full max-w-[200px] h-auto touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
-                
-                {/* MAGISCHE MATRIX: Dreht das 16:9 Koordinatensystem in ein 9:16 Ansichtsfenster! */}
                 <g transform="matrix(0 -1 1 0 0 760)">
                   <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3} />
                   
@@ -479,8 +468,6 @@ function TrajectoryView3D() {
                   <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
                     <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
                     <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
-                    
-                    {/* Text muss am exakten Punkt zurück-gedreht werden, damit er aufrecht steht */}
                     <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>DU</text>
                   </g>
                 </g>
@@ -532,7 +519,6 @@ export default function TacticsBoard() {
   const [customTarget, setCustomTarget] = useState<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<number>(0);
 
-  // Toggle für die Modi
   const [activeMode, setActiveMode] = useState<"tactics" | "3d">("tactics");
 
   const [filters, setFilters] = useState<TacticalFilters>({
@@ -560,7 +546,6 @@ export default function TacticsBoard() {
     }
   };
 
-  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -582,13 +567,12 @@ export default function TacticsBoard() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 500; // Vertikal Width
-    const SVG_VIEW_H = 880; // Vertikal Height
+    const SVG_VIEW_W = 500;
+    const SVG_VIEW_H = 880;
 
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Wir konvertieren den visuellen Vertikal-Klick wieder auf unser logisches 760x380 Feld!
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -642,6 +626,7 @@ export default function TacticsBoard() {
       let maxX = V_WIDTH - 16;
       const netX = V_WIDTH / 2;
 
+      // Ball Drag Logik an 160px Spacing angepasst
       if (id === "ball" && filters.showAttackArc) {
         const newX = Math.max(16, Math.min(V_WIDTH - 16, pt.x - ox));
         const newY = Math.max(16, Math.min(V_HEIGHT - 16, pt.y - oy));
@@ -656,12 +641,11 @@ export default function TacticsBoard() {
             const isAttacker = isTeamAAttacking ? item.id.startsWith("a") : item.id.startsWith("b");
             
             if (isAttacker) {
-              const targetY = (item.id === "a1" || item.id === "b1") ? 90 + ballRatio * 100 : 190 + ballRatio * 100;
+              const targetY = item.id.endsWith("1") ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
               return { ...item, x: getArcX(targetY, item.id.startsWith("a")), y: targetY };
             } else {
-              const targetX = isTeamAAttacking ? V_WIDTH - 80 : 80;
-              const isPlayer1 = item.id === "a1" || item.id === "b1";
-              const targetY = isPlayer1 ? 90 + ballRatio * 100 : 190 + ballRatio * 100;
+              const targetX = item.x; 
+              const targetY = item.id.endsWith("1") ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
               return { ...item, x: targetX, y: targetY };
             }
           }
@@ -731,7 +715,6 @@ export default function TacticsBoard() {
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
       
-      {/* --- DER TOGGLE-SCHALTER --- */}
       <div className="w-full max-w-5xl flex flex-col items-center mb-2 px-3">
         <div className="bg-white p-1.5 rounded-full shadow-sm border border-gray-200 inline-flex relative w-full max-w-md">
           <div
@@ -757,12 +740,10 @@ export default function TacticsBoard() {
         </div>
       </div>
 
-      {/* --- RENDERN BASIEREND AUF DEM SCHALTER --- */}
       {activeMode === "3d" ? (
         <TrajectoryView3D />
       ) : (
         <>
-          {/* --- FILTER PANEL --- */}
           {showTactics && (
             <div className="w-full max-w-5xl px-3 flex flex-col gap-3">
               <div className="p-3 sm:p-4 bg-white border border-gray-200 rounded-xl shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -835,7 +816,6 @@ export default function TacticsBoard() {
             </div>
           )}
 
-          {/* SPIELFELD - SVG (VERTIKAL ANGEORDNET!) */}
           <div ref={containerRef} className="w-full max-w-[600px] mx-auto px-3 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <svg
               ref={svgRef}
@@ -892,7 +872,6 @@ export default function TacticsBoard() {
                 </linearGradient>
               </defs>
 
-              {/* MAGISCHE MATRIX: Dreht das logische 16:9 System visuell in 9:16 um! */}
               <g transform="matrix(0 -1 1 0 0 760)">
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="#1034A6" />
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="url(#turf)" />
@@ -935,7 +914,6 @@ export default function TacticsBoard() {
                   <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
                 </g>
 
-                {/* Texte werden lokal am exakten Punkt zurück-gedreht, damit sie aufrecht lesbar bleiben */}
                 <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
                 <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
                 <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
@@ -960,7 +938,8 @@ export default function TacticsBoard() {
                         const gap = Math.abs(b1.y - b2.y); const avgX = (b1.x + b2.x) / 2; const avgY = (b1.y + b2.y) / 2;
                         return (
                           <>
-                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
+                            {/* Roter Kasten der Schwächenzone nun auf 160px Spacing angepasst */}
+                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX < netX + DEEP_DEF_THRESHOLD && <rect x={netX + 10} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
                         );
@@ -969,7 +948,7 @@ export default function TacticsBoard() {
                         const gap = Math.abs(a1.y - a2.y); const avgX = (a1.x + a2.x) / 2; const avgY = (a1.y + a2.y) / 2;
                         return (
                           <>
-                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 60} width={60} height={120} fill="red" opacity="0.35" rx="8" />}
+                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX > netX - DEEP_DEF_THRESHOLD && <rect x={netX - 60} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
                         );
@@ -1014,7 +993,6 @@ export default function TacticsBoard() {
                   </>
                 )}
 
-                {/* Figuren */}
                 {items.map((item) => {
                   const isDragging = activeId === item.id;
                   const baseR = item.isPlayer ? 16 : 10;
@@ -1029,7 +1007,6 @@ export default function TacticsBoard() {
                       )}
                       <circle cx={item.x} cy={item.y} r={r} fill={item.color} stroke={isActivePlayer ? "#ffffff" : "white"} strokeWidth={isActivePlayer ? 4 : 2} filter={isDragging ? "url(#activeShadow)" : "url(#shadow)"} />
                       
-                      {/* Text wird ebenfalls am exakten Spielerpunkt aufrecht gedreht */}
                       <text x={item.x} y={item.y} transform={`rotate(90 ${item.x} ${item.y})`} textAnchor="middle" dominantBaseline="central" fill={item.color === "#f1c40f" ? "black" : "white"} fontSize={item.isPlayer ? 11 : 12} fontWeight="bold" style={{ pointerEvents: "none", userSelect: "none" }}>{item.label}</text>
                     </g>
                   );
