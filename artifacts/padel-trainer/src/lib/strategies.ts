@@ -145,5 +145,121 @@ export const STRATEGIES: StrategySequence[] = [
         stepExplanation: "Hervorragend. Du hast das Momentum gedreht und den Punkt zugemacht."
       }
     ]
+  },
+{
+    id: "STRAT-3",
+    title: "Anti-Tennis: Die Glaswand-Falle",
+    theme: "Offensive",
+    difficulty: 2,
+    description: "Tennisspieler hassen die Glaswand. Spiele den Ball absichtlich tief in die Ecke ans Glas. Sie werden einen schwachen Lob spielen, den du bestrafst.",
+    steps: [
+      {
+        stepId: 1,
+        playerTurn: "you",
+        description: "Ihr habt das Netz, die typischen Tennisspieler stehen an der Grundlinie. Spiele einen Volley oder eine weiche Bandeja GANZ TIEF in die linke Ecke ans Glas.",
+        positions: {
+          you: "E4", // Du stehst aggressiv am Netz
+          partner: "E2", 
+          opp1: "A2", // Tennisspieler bleiben wie angewurzelt hinten
+          opp2: "A4", 
+          ball: { side: "right", zone: "E4", type: "Vorbereitung" } 
+        },
+        validShots: ["VOLLEY", "BANDEJA"],
+        bestZones: ["A1"], // Ganz tief in die Ecke
+        laufZone: "E4", // Position behaupten
+        stepExplanation: "Genau richtig! Der Ball klatscht an die Scheibe. Ein Albtraum für reine Tennisspieler."
+      },
+      {
+        stepId: 2,
+        playerTurn: "ai",
+        description: "Der Gegner dreht sich ungeschickt zur Scheibe, schwingt zu weit aus und muss einen Not-Lob spielen.",
+        positions: {
+          you: "E4", 
+          partner: "E2", 
+          opp1: "A1", // Gegner in die Ecke gezwungen
+          opp2: "A4", 
+          ball: { side: "left", zone: "A1", type: "VOLLEY" } 
+        },
+        aiHitter: "opp1",
+        aiShot: "LOB",
+        aiTarget: "D4", // Ein zu kurzer Lob
+        aiLaufZone: "B2",
+        stepExplanation: "Typisch! Der Ball kommt durch die schlechte Wandtechnik viel zu kurz und hoch zurück."
+      },
+      {
+        stepId: 3,
+        playerTurn: "you",
+        description: "Der Lob verhungert im Halbfeld. Mach ein bis zwei Schritte zurück und beende den Punkt hart durch die Mitte.",
+        positions: {
+          you: "D4", // Du bist leicht zurückgegangen
+          partner: "E2", 
+          opp1: "B2", 
+          opp2: "A4", 
+          ball: { side: "right", zone: "D4", type: "LOB" } 
+        },
+        validShots: ["SMASH", "VIBORA"], 
+        bestZones: ["B3", "A3"], // Hart durch die Mitte, wo sich beide Tennisspieler uneinig sind
+        laufZone: "E4", // Sofort wieder ans Netz
+        stepExplanation: "Krawumm! So bestraft man mangelnde Glaswand-Verteidigung."
+      }
+    ]
+  },
+  {
+    id: "STRAT-4",
+    title: "Anti-Tennis: Die Ziehharmonika",
+    theme: "Umschaltspiel",
+    difficulty: 3,
+    description: "Tennisspieler meiden den Weg nach vorne. Locke sie mit einer 'Chiquita' (kurzer Ball) vor ans Netz und überloppe sie direkt im nächsten Zug.",
+    steps: [
+      {
+        stepId: 1,
+        playerTurn: "you",
+        description: "Beide Teams stehen hinten (klassisches Tennis-Duell). Unterbrich den Rhythmus! Spiele eine softe Chiquita (kurz) vor die Füße des linken Gegners.",
+        positions: {
+          you: "A4", // Du bist hinten
+          partner: "A2", 
+          opp1: "A2", // Gegner auch hinten
+          opp2: "A4", 
+          ball: { side: "right", zone: "A4", type: "Vorbereitung" } 
+        },
+        validShots: ["CHIQUITA", "DRIVE"],
+        bestZones: ["C2", "C3"], // Kurz hinter das Netz
+        laufZone: "C4", // Du gehst vor ins Halbfeld, um den Druck zu erhöhen
+        stepExplanation: "Clever! Der Gegner MUSS nun nach vorne ins ungeliebte No-Man's-Land."
+      },
+      {
+        stepId: 2,
+        playerTurn: "ai",
+        description: "Der Gegner sprintet hektisch nach vorne und muss den Ball tief ausgraben (schwieriger Volley).",
+        positions: {
+          you: "C4", // Du bist aufgerückt
+          partner: "C2", 
+          opp1: "C2", // Gegner ist nach vorne geeilt
+          opp2: "A4", 
+          ball: { side: "left", zone: "C2", type: "CHIQUITA" } 
+        },
+        aiHitter: "opp1",
+        aiShot: "VOLLEY",
+        aiTarget: "C4", // Spielt einen defensiven Halb-Volley auf dich
+        aiLaufZone: "C2", // Bleibt im Halbfeld stehen
+        stepExplanation: "Genau wie geplant. Er steht jetzt gestrandet im Halbfeld, wo er nicht sein will."
+      },
+      {
+        stepId: 3,
+        playerTurn: "you",
+        description: "Der Gegner steht im Halbfeld. Nutze den Platz hinter ihm und spiele einen präzisen Lob in seine Ecke.",
+        positions: {
+          you: "C4", 
+          partner: "C2", 
+          opp1: "C2", // Gestrandeter Gegner
+          opp2: "A4", 
+          ball: { side: "right", zone: "C4", type: "VOLLEY" } 
+        },
+        validShots: ["LOB"], 
+        bestZones: ["A1", "A2"], // Tief über ihn drüber in seine Ecke
+        laufZone: "E4", // Du und dein Partner erobern jetzt das Netz!
+        stepExplanation: "Schachmatt! Der Gegner muss nun rückwärts laufen und einen schwierigen Überkopfschlag meistern – eine absolute Schwäche von Tennisspielern."
+      }
+    ]
   }
 ];

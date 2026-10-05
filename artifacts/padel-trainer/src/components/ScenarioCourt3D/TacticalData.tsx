@@ -508,15 +508,33 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
     
     const runRow = parseInt(runZone[1]);
 
-    if (["LOB", "CHIQUITA", "AUFSCHLAG"].includes(shot)) {
+    // NEU: Gegner-Positionen auslesen für smarte Laufwege
+    const o1Row = parseInt(props.positions.opp1[1]);
+    const o2Row = parseInt(props.positions.opp2[1]);
+    const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
+
+    // 1. Offensive Schläge & Netzspiel (Hier MUSST du auf Reihe 3, 4 oder 5 stehen)
+    // "BLOCK" ist jetzt hier drin, da du nach einem Block am Netz bleibst!
+    if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(shot)) {
         return runRow >= 3;
     }
-    if (["SMASH", "VOLLEY", "BANDEJA", "VIBORA"].includes(shot)) {
-        return runRow >= 3;
+    
+    // 2. Die neue, dynamische Bajada-Mechanik
+    if (shot === "BAJADA") {
+        if (oppsAtNet) {
+            // Gegner am Netz = Riskanter Passierschlag. Wir bleiben zur Absicherung hinten!
+            return runRow <= 2; 
+        } else {
+            // Gegner hinten = Laser-Bajada. Wir stürmen mit dem Schwung das Netz!
+            return runRow >= 3; 
+        }
     }
-    if (["DRIVE", "BLOCK", "BAJADA"].includes(shot)) {
+    
+    // 3. Defensive Grundschläge (Hinten absichern auf Reihe 1 oder 2)
+    if (["DRIVE"].includes(shot)) {
         return runRow <= 2;
     }
+    
     return false;
   };
 
@@ -782,15 +800,23 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
           const oppsAtBack = o1Row <= 2 && o2Row <= 2; 
 
-          if (["VOLLEY", "BLOCK", "SMASH", "BANDEJA", "VIBORA"].includes(upperSType) && hRow <= 2) {
-            lineColor = "#ef4444"; 
+          // --- 1. GLOBALE POSITIONS-VERBOTE (FEHLER) ---
+          if (["VOLLEY", "BLOCK", "SMASH"].includes(upperSType) && hRow <= 2) {
+            lineColor = "#ef4444"; // Überkopfbälle/Volleys von hinten verboten
           } 
-          else if (["DRIVE", "BAJADA"].includes(upperSType) && hRow >= 4) {
-            lineColor = "#ef4444"; 
+          else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow <= 1) {
+            lineColor = "#ef4444"; // Bandeja/Vibora ganz hinten an der Wand (Reihe 1) verboten
           }
-          else if (upperSType === "BLOCK" && hRow <= 2) {
-            lineColor = "#ef4444"; 
+          else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow >= 4) {
+            lineColor = "#ef4444"; // Bandeja/Vibora ganz vorne (Reihe 4 und 5) verboten wegen Platzmangel
           }
+          else if (upperSType === "BAJADA" && hRow >= 3) {
+            lineColor = "#ef4444"; // Bajada muss von ganz hinten (Reihe 1 oder 2) gespielt werden
+          }
+          else if (upperSType === "DRIVE" && hRow >= 4) {
+            lineColor = "#ef4444"; // Drive am Netz verboten (muss Volley sein)
+          }
+          // --- 2. SCHLAG-SPEZIFISCHE BEWERTUNG ---
           else {
             switch(upperSType) {
               case "AUFSCHLAG":
@@ -818,19 +844,21 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 break;
                 
               case "VOLLEY":
-                if (tRow <= 2) {
+                if (tRow >= 4) {
+                  // NEU: Stop-Volley (Dropshot) vs. "In den Mann spielen"
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
+                } else if (tRow <= 2) {
                   lineColor = "#34d399"; 
-                } else if (tRow >= 4 && oppsAtNet) {
-                  lineColor = "#ef4444"; 
                 } else {
                   lineColor = "#f97316"; 
                 }
                 break;
 
               case "BLOCK":
-                if (tRow >= 4 && oppsAtNet) {
+                if (tRow >= 4) {
+                  // NEU: Block am Netz (oder Dropshot-Block) ist jetzt immer eine perfekte Idee
                   lineColor = "#34d399"; 
-                } else if (tRow <= 2) {
+                } else if (tRow <= 1) {
                   lineColor = "#ef4444"; 
                 } else {
                   lineColor = "#f97316"; 
@@ -850,6 +878,9 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
               case "CHIQUITA":
                 if (tRow <= 3) {
                   lineColor = "#ef4444"; 
+                } else if (hRow >= 4) {
+                  // NEU: Stoppball (Dejada) vom Netz aus!
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399";
                 } else if (oppsAtNet) {
                   lineColor = "#34d399"; 
                 } else {
@@ -858,18 +889,18 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 break;
                 
               case "BAJADA":
-                if (tRow <= 2) {
-                  lineColor = "#34d399"; 
-                } else if (tRow === 3) {
-                  lineColor = "#f97316"; 
+                if (tRow >= 3) {
+                  lineColor = "#ef4444"; // Zu kurz
+                } else if (oppsAtNet) {
+                  lineColor = "#f97316"; // NEU: Riskanter Passierschlag, daher Orange statt Grün
                 } else {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#34d399"; // Laser-Bajada ins freie Feld
                 }
                 break;
                 
               case "BANDEJA":
-                if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                if (tRow >= 4) {
+                  lineColor = "#ef4444"; // Zu kurz
                 } else if (oppsAtBack) {
                   lineColor = "#34d399"; 
                 } else {
@@ -879,7 +910,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 
               case "VIBORA":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444"; // Zu kurz
                 } else if (oppsAtBack && (tCol === "A" || tCol === "E")) {
                   lineColor = "#34d399"; 
                 } else {
@@ -888,12 +919,12 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 break;
                 
               case "SMASH":
-                if (tRow <= 2) {
-                  lineColor = "#34d399"; 
+                if (tRow >= 4) {
+                  lineColor = "#ef4444"; // Zu steil
                 } else if (tRow === 3) {
                   lineColor = "#f97316"; 
                 } else {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#34d399"; // Krachend ans hintere Glas
                 }
                 break;
             }
