@@ -456,9 +456,9 @@ function TrajectoryView3D() {
               </div>
             </div>
             
-            <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center">
-              {/* RADAR IST JETZT EBENFALLS VERTIKAL */}
-              <svg ref={sniperSvgRef} viewBox="-60 -60 500 880" className="w-full max-w-[200px] h-auto touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
+            <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center py-2">
+              {/* RADAR IST JETZT EBENFALLS VERTIKAL UND VON DER HÖHE LIMITIERT */}
+              <svg ref={sniperSvgRef} viewBox="-60 -60 500 880" className="w-auto h-[180px] sm:h-[220px] touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
                 
                 {/* MAGISCHE MATRIX: Dreht das 16:9 Koordinatensystem in ein 9:16 Ansichtsfenster! */}
                 <g transform="matrix(0 -1 1 0 0 760)">
@@ -835,7 +835,6 @@ export default function TacticsBoard() {
             </div>
           )}
 
-          {/* SPIELFELD - SVG (VERTIKAL ANGEORDNET!) */}
           <div ref={containerRef} className="w-full max-w-[600px] mx-auto px-3 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <svg
               ref={svgRef}
@@ -892,7 +891,6 @@ export default function TacticsBoard() {
                 </linearGradient>
               </defs>
 
-              {/* MAGISCHE MATRIX: Dreht das logische 16:9 System visuell in 9:16 um! */}
               <g transform="matrix(0 -1 1 0 0 760)">
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="#1034A6" />
                 <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="url(#turf)" />

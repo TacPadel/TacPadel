@@ -514,12 +514,12 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
     const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
 
     // 1. Offensive Schläge & Netzspiel (Hier MUSST du auf Reihe 3, 4 oder 5 stehen)
-    // "BLOCK" ist jetzt hier drin, da du nach einem Block am Netz bleibst!
+    // "BLOCK" ist jetzt hier drin!
     if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(shot)) {
         return runRow >= 3;
     }
     
-    // 2. Die neue, dynamische Bajada-Mechanik
+    // 2. Die neue, dynamische Bajada-Mechanik (HIER WAR DEIN ROTER FEHLER!)
     if (shot === "BAJADA") {
         if (oppsAtNet) {
             // Gegner am Netz = Riskanter Passierschlag. Wir bleiben zur Absicherung hinten!
@@ -530,7 +530,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         }
     }
     
-    // 3. Defensive Grundschläge (Hinten absichern auf Reihe 1 oder 2)
+    // 3. Defensive Grundschläge (Hinten absichern)
     if (["DRIVE"].includes(shot)) {
         return runRow <= 2;
     }
