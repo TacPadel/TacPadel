@@ -131,6 +131,12 @@ export default function GameScreen() {
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
 
+  // --- NEU: Exploit Warning State ---
+  const [abandonWarning, setAbandonWarning] = useState<{
+    action: "single" | "tour";
+    tourParams?: { tourId: string; round: number; difficulty: number };
+  } | null>(null);
+
   // --- NEU: Tutorial State ---
   const [showTutorial, setShowTutorial] = useState(false);
 
@@ -187,14 +193,14 @@ export default function GameScreen() {
     let interval: NodeJS.Timeout;
     
     // Zähle nur hoch, wenn das Spiel läuft UND die App aktiv im Vordergrund ist (isVisible)
-    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible && !showTutorial) { 
+    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible && !showTutorial && !abandonWarning) { 
       interval = setInterval(() => {
         setMatchSeconds(prev => prev + 1);
       }, 1000);
     }
 
     return () => clearInterval(interval);
-  }, [gameOver, isMenuOpen, isTourOpen, isVisible, showTutorial]);
+  }, [gameOver, isMenuOpen, isTourOpen, isVisible, showTutorial, abandonWarning]);
 
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
   const [stamina, setStamina] = useState({ 
@@ -389,6 +395,83 @@ export default function GameScreen() {
       setFlashMsg(null);
       flashTimeoutRef.current = null;
     }, duration);
+  };
+
+  const abortMatchAndPenalize = async () => {
+    const savedData = localStorage.getItem("tacpadel_savegame");
+    if (!savedData) return;
+    
+    const parsed = JSON.parse(savedData);
+    const tId = parsed.tournamentId;
+    const scoreChange = -50; // Fester Abzug für Rage-Quits
+    const finalScore = Math.max(0, tacScore + scoreChange);
+    
+    setTacScore(finalScore);
+    localStorage.setItem("tacpadel_score", finalScore.toString());
+    setLastScoreChange(scoreChange);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        // Punkte abziehen
+        await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
+        
+        // Match als Niederlage in die Historie eintragen
+        await supabase.from("match_history").insert({ 
+          user_id: session.user.id, 
+          points: finalScore, 
+          result: "loss", // Aufgabe = Niederlage
+          match_type: tId ? "tournament" : "single",
+          duration_seconds: parsed.matchSeconds || 0
+        });
+        
+        // Bei Turnieren: Ausscheiden eintragen und Ausdauer löschen
+        if (tId) {
+           await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", tId);
+           
+           const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+           if (savedTourStamina[tId]) {
+             delete savedTourStamina[tId];
+             localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+           }
+        }
+      }
+    } catch (err) {
+      console.error("Fehler beim Abbrechen des Matches:", err);
+    }
+    
+    // Lokalen Spielstand endgültig löschen
+    localStorage.removeItem("tacpadel_savegame");
+  };
+
+  const attemptStartNewGame = () => {
+    if (localStorage.getItem("tacpadel_savegame")) {
+      setAbandonWarning({ action: "single" });
+    } else {
+      setIsMenuOpen(false);
+      startNewGame();
+    }
+  };
+
+  const attemptStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
+    if (localStorage.getItem("tacpadel_savegame")) {
+      setAbandonWarning({ action: "tour", tourParams: { tourId, round, difficulty } });
+    } else {
+      handleStartTournamentMatch(tourId, round, difficulty);
+    }
+  };
+
+  const confirmAbandon = async () => {
+    await abortMatchAndPenalize();
+    
+    if (abandonWarning?.action === "single") {
+      setIsMenuOpen(false);
+      startNewGame();
+    } else if (abandonWarning?.action === "tour" && abandonWarning.tourParams) {
+      const { tourId, round, difficulty } = abandonWarning.tourParams;
+      handleStartTournamentMatch(tourId, round, difficulty);
+    }
+    setAbandonWarning(null);
   };
 
   const loadGame = () => {
@@ -1404,6 +1487,42 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
+      {/* --- NEU: ABANDON WARNING MODAL --- */}
+      <AnimatePresence>
+        {abandonWarning && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md pointer-events-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#050b18] border border-red-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(239,68,68,0.2)] max-w-lg w-full text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-600" />
+              <span className="text-5xl mb-4 block">⚠️</span>
+              <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">Laufendes Match abbrechen?</h2>
+              <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+                Du hast noch ein nicht beendetes Match! Wenn du ein neues startest, gibst du das alte Match auf. Dies wird als <b className="text-red-400">Niederlage mit Punktabzug</b> gewertet (und eliminiert dich aus einem laufenden Turnier).
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={confirmAbandon}
+                  className="w-full py-4 bg-red-600/20 border border-red-500 text-red-400 hover:bg-red-600 hover:text-white rounded-xl font-black text-sm tracking-widest uppercase transition-all"
+                >
+                  Ja, aufgeben & Neu starten
+                </button>
+                <button
+                  onClick={() => setAbandonWarning(null)}
+                  className="w-full py-4 bg-slate-800 text-white rounded-xl font-black text-sm tracking-widest uppercase hover:bg-slate-700 transition-all"
+                >
+                  Abbrechen (Zurück zum Menü)
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* =================================================== */}
       {/* HAUPTMENÜ OVERLAY                                   */}
       {/* =================================================== */}
@@ -1418,7 +1537,7 @@ export default function GameScreen() {
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
               
               <button 
-                onClick={() => { startNewGame(); setIsMenuOpen(false); }}
+                onClick={attemptStartNewGame}
                 className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 transition-all"
               >
                 Neues Einzelmatch
@@ -1445,7 +1564,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* TP TOUR SCREEN OVERLAY                             */}
+      {/* TP TOUR SCREEN OVERLAY                               */}
       {/* =================================================== */}
       <AnimatePresence>
         {isTourOpen && (
@@ -1457,7 +1576,7 @@ export default function GameScreen() {
           >
             <TourScreen 
               onClose={() => setIsTourOpen(false)} 
-              onStartMatch={handleStartTournamentMatch} 
+              onStartMatch={attemptStartTournamentMatch} 
             />
           </motion.div>
         )}

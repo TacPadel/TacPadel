@@ -54,10 +54,10 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
     if (!username.trim()) return;
     setIsSaving(true);
     
-    // 1. Auth-Metadaten aktualisieren (wie bisher)
+    // 1. Auth-Metadaten aktualisieren
     await supabase.auth.updateUser({ data: { display_name: username } });
 
-    // 2. NEU: Den Namen direkt in deine user_stats Tabelle schreiben
+    // 2. Namen UND Google-Profilbild in die Datenbank schreiben
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       await supabase
@@ -65,8 +65,10 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
         .upsert({ 
           id: session.user.id, 
           email: session.user.email,
-          display_name: username 
-        }, { onConflict: 'id' }); // Überschreibt/Erstellt den Eintrag anhand der ID
+          display_name: username,
+          // NEU: Wir kopieren das Google-Profilbild in deine Datenbank!
+          avatar_url: session.user.user_metadata?.avatar_url || null
+        }, { onConflict: 'id' }); 
     }
 
     setIsSaving(false);
