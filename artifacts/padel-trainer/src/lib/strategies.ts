@@ -159,14 +159,14 @@ export const STRATEGIES: StrategySequence[] = [
         description: "Ihr habt das Netz, die typischen Tennisspieler stehen an der Grundlinie. Spiele einen Volley oder eine weiche Bandeja GANZ TIEF in die linke Ecke ans Glas.",
         positions: {
           you: "E4", // Du stehst aggressiv am Netz
-          partner: "E2", 
+          partner: "B4", 
           opp1: "A2", // Tennisspieler bleiben wie angewurzelt hinten
-          opp2: "A4", 
-          ball: { side: "right", zone: "E4", type: "Vorbereitung" } 
+          opp2: "D2", 
+          ball: { side: "left", zone: "E4", type: "Vorbereitung" } 
         },
-        validShots: ["VOLLEY", "BANDEJA"],
+        validShots: ["VOLLEY"],
         bestZones: ["A1"], // Ganz tief in die Ecke
-        laufZone: "E4", // Position behaupten
+        laufZone: "D4", // Position behaupten
         stepExplanation: "Genau richtig! Der Ball klatscht an die Scheibe. Ein Albtraum für reine Tennisspieler."
       },
       {
@@ -174,15 +174,15 @@ export const STRATEGIES: StrategySequence[] = [
         playerTurn: "ai",
         description: "Der Gegner dreht sich ungeschickt zur Scheibe, schwingt zu weit aus und muss einen Not-Lob spielen.",
         positions: {
-          you: "E4", 
-          partner: "E2", 
+          you: "D4", 
+          partner: "B4", 
           opp1: "A1", // Gegner in die Ecke gezwungen
-          opp2: "A4", 
-          ball: { side: "left", zone: "A1", type: "VOLLEY" } 
+          opp2: "D2", 
+          ball: { side: "right", zone: "A1", type: "VOLLEY" } 
         },
         aiHitter: "opp1",
         aiShot: "LOB",
-        aiTarget: "D4", // Ein zu kurzer Lob
+        aiTarget: "D3", // Ein zu kurzer Lob
         aiLaufZone: "B2",
         stepExplanation: "Typisch! Der Ball kommt durch die schlechte Wandtechnik viel zu kurz und hoch zurück."
       },
@@ -191,15 +191,15 @@ export const STRATEGIES: StrategySequence[] = [
         playerTurn: "you",
         description: "Der Lob verhungert im Halbfeld. Mach ein bis zwei Schritte zurück und beende den Punkt hart durch die Mitte.",
         positions: {
-          you: "D4", // Du bist leicht zurückgegangen
-          partner: "E2", 
+          you: "D3", // Du bist leicht zurückgegangen
+          partner: "B4", 
           opp1: "B2", 
-          opp2: "A4", 
-          ball: { side: "right", zone: "D4", type: "LOB" } 
+          opp2: "D2", 
+          ball: { side: "left", zone: "D3", type: "LOB" } 
         },
         validShots: ["SMASH", "VIBORA"], 
-        bestZones: ["B3", "A3"], // Hart durch die Mitte, wo sich beide Tennisspieler uneinig sind
-        laufZone: "E4", // Sofort wieder ans Netz
+        bestZones: ["C1"], // Hart durch die Mitte, wo sich beide Tennisspieler uneinig sind
+        laufZone: "D4", // Sofort wieder ans Netz
         stepExplanation: "Krawumm! So bestraft man mangelnde Glaswand-Verteidigung."
       }
     ]
@@ -216,15 +216,15 @@ export const STRATEGIES: StrategySequence[] = [
         playerTurn: "you",
         description: "Beide Teams stehen hinten (klassisches Tennis-Duell). Unterbrich den Rhythmus! Spiele eine softe Chiquita (kurz) vor die Füße des linken Gegners.",
         positions: {
-          you: "A4", // Du bist hinten
-          partner: "A2", 
-          opp1: "A2", // Gegner auch hinten
-          opp2: "A4", 
-          ball: { side: "right", zone: "A4", type: "Vorbereitung" } 
+          you: "B2", // Du bist hinten
+          partner: "D2", 
+          opp1: "B2", // Gegner auch hinten
+          opp2: "D2", 
+          ball: { side: "left", zone: "B2", type: "Vorbereitung" } 
         },
-        validShots: ["CHIQUITA", "DRIVE"],
-        bestZones: ["C2", "C3"], // Kurz hinter das Netz
-        laufZone: "C4", // Du gehst vor ins Halbfeld, um den Druck zu erhöhen
+        validShots: ["CHIQUITA"],
+        bestZones: ["C4"], // Kurz hinter das Netz
+        laufZone: "B4", // Du gehst vor ins Halbfeld, um den Druck zu erhöhen
         stepExplanation: "Clever! Der Gegner MUSS nun nach vorne ins ungeliebte No-Man's-Land."
       },
       {
@@ -232,16 +232,16 @@ export const STRATEGIES: StrategySequence[] = [
         playerTurn: "ai",
         description: "Der Gegner sprintet hektisch nach vorne und muss den Ball tief ausgraben (schwieriger Volley).",
         positions: {
-          you: "C4", // Du bist aufgerückt
-          partner: "C2", 
-          opp1: "C2", // Gegner ist nach vorne geeilt
-          opp2: "A4", 
-          ball: { side: "left", zone: "C2", type: "CHIQUITA" } 
+          you: "B4", // Du bist aufgerückt
+          partner: "D4", 
+          opp1: "C4", // Gegner ist nach vorne geeilt
+          opp2: "D4", 
+          ball: { side: "right", zone: "C4", type: "CHIQUITA" } 
         },
         aiHitter: "opp1",
         aiShot: "VOLLEY",
-        aiTarget: "C4", // Spielt einen defensiven Halb-Volley auf dich
-        aiLaufZone: "C2", // Bleibt im Halbfeld stehen
+        aiTarget: "B4", // Spielt einen defensiven Halb-Volley auf dich
+        aiLaufZone: "C3", // Bleibt im Halbfeld stehen
         stepExplanation: "Genau wie geplant. Er steht jetzt gestrandet im Halbfeld, wo er nicht sein will."
       },
       {
@@ -249,15 +249,15 @@ export const STRATEGIES: StrategySequence[] = [
         playerTurn: "you",
         description: "Der Gegner steht im Halbfeld. Nutze den Platz hinter ihm und spiele einen präzisen Lob in seine Ecke.",
         positions: {
-          you: "C4", 
-          partner: "C2", 
-          opp1: "C2", // Gestrandeter Gegner
-          opp2: "A4", 
-          ball: { side: "right", zone: "C4", type: "VOLLEY" } 
+          you: "B4", 
+          partner: "D4", 
+          opp1: "C3", // Gestrandeter Gegner
+          opp2: "D3", 
+          ball: { side: "left", zone: "B4", type: "VOLLEY" } 
         },
         validShots: ["LOB"], 
-        bestZones: ["A1", "A2"], // Tief über ihn drüber in seine Ecke
-        laufZone: "E4", // Du und dein Partner erobern jetzt das Netz!
+        bestZones: ["A1"], // Tief über ihn drüber in seine Ecke
+        laufZone: "B4", // Du und dein Partner erobern jetzt das Netz!
         stepExplanation: "Schachmatt! Der Gegner muss nun rückwärts laufen und einen schwierigen Überkopfschlag meistern – eine absolute Schwäche von Tennisspielern."
       }
     ]
