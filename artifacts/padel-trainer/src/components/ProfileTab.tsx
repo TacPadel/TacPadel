@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 // --- Imports für KI-Profile & 3D ---
 import { AI_PROFILES } from '../engine/AiProfiles'; 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, Text } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
 
 // ==========================================
@@ -35,87 +35,151 @@ const getPartnerModifiers = (partnerId: string) => {
 };
 
 // ==========================================
-// --- 3D TRON TROPHIES & VITRINENSCHRANK ---
+// --- 3D TRON TROPHIES (Hologramm Style) ---
 // ==========================================
 function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
   const ref = useRef<any>(null);
   
-  // Die Trophäe dreht sich um die eigene Achse
+  // Rotation der gesamten Trophäe
   useFrame((state, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.8;
+    if (ref.current) ref.current.rotation.y += delta * 0.4;
   });
 
   const idLower = tourId.toLowerCase();
   const isMaster = idLower.includes('master');
   const isPro = idLower.includes('pro');
   
-  // Farben: Master = Gold, Pro = Silber, Open = Bronze
-  const color = isMaster ? "#fbbf24" : isPro ? "#cbd5e1" : "#d97706";
-  const intensity = isMaster ? 3 : isPro ? 2 : 1.5;
+  // Farben (Gold, Silber/Eisblau, Bronze/Neon-Orange)
+  const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
+  const intensity = isMaster ? 3 : isPro ? 2 : 2.5;
+
+  // Generiere den Lorbeerkranz (Blätter links und rechts vom Schlägerhals)
+  const leaves = Array.from({ length: 5 }).map((_, i) => {
+    const y = 0.6 + i * 0.15;
+    const x = 0.25 + Math.sin(i * 0.4) * 0.12;
+    const rotZ = -Math.PI / 4 + i * 0.2;
+    return (
+      <group key={i}>
+        <mesh position={[-x, y, 0]} rotation={[0, 0, -rotZ]}>
+          <cylinderGeometry args={[0.015, 0.05, 0.2, 4]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
+        </mesh>
+        <mesh position={[x, y, 0]} rotation={[0, 0, rotZ]}>
+          <cylinderGeometry args={[0.015, 0.05, 0.2, 4]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
+        </mesh>
+      </group>
+    );
+  });
 
   return (
-    <group position={position} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
+    // Skaliere minimal runter, damit sie perfekt ins Regal passen
+    <group position={position} scale={0.8} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
       
-      {/* Unsichtbare Hitbox (Zylinder) damit man die Trophäe leichter anklicken kann */}
-      <mesh visible={false} position={[0, 0.9, 0]}>
-        <cylinderGeometry args={[0.5, 0.5, 2, 8]} />
+      {/* Unsichtbare Hitbox zum Anklicken */}
+      <mesh visible={false} position={[0, 1.2, 0]}>
+        <cylinderGeometry args={[0.8, 0.8, 2.5, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
-      {/* Gruppe, die sich dreht */}
       <group ref={ref}>
         
-        {/* === SOCKEL === */}
-        <mesh position={[0, 0.1, 0]}>
-          <cylinderGeometry args={[0.25, 0.35, 0.2, 16]} />
-          <meshStandardMaterial color="#020617" wireframe />
-        </mesh>
-        <mesh position={[0, 0.25, 0]}>
-          <cylinderGeometry args={[0.2, 0.25, 0.1, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} />
-        </mesh>
+        {/* === SOCKEL (Hexagon mit Schräge & Neon-Linien) === */}
+        <group position={[0, 0.2, 0]}>
+          {/* Dunkler Kern */}
+          <mesh>
+            <cylinderGeometry args={[0.45, 0.65, 0.4, 6]} />
+            <meshStandardMaterial color="#020617" roughness={0.3} metalness={0.8} />
+          </mesh>
+          {/* Leuchtender Wireframe für Neon-Kanten */}
+          <mesh>
+            <cylinderGeometry args={[0.46, 0.66, 0.41, 6]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.8} wireframe />
+          </mesh>
+          {/* Neon Boden-Linie extra betont */}
+          <mesh position={[0, -0.2, 0]}>
+            <cylinderGeometry args={[0.67, 0.67, 0.02, 6]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
+          </mesh>
+          
+          {/* TP Logo auf dem Sockel */}
+          <Text 
+            position={[0, 0, 0.6]} 
+            fontSize={0.18} 
+            color="#ffffff" 
+            font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+            fontWeight="bold"
+          >
+            TP
+          </Text>
+        </group>
 
-        {/* === SCHLÄGER-GRIFF === */}
-        <mesh position={[0, 0.7, 0]}>
-          <cylinderGeometry args={[0.04, 0.05, 0.8, 16]} />
-          {/* Griffband Optik durch dunkle Farbe und hohe Rauheit */}
-          <meshStandardMaterial color="#0f172a" roughness={0.9} />
-        </mesh>
-        
-        {/* Leuchtender Ring am Ende des Griffs */}
-        <mesh position={[0, 0.35, 0]}>
-          <torusGeometry args={[0.06, 0.015, 8, 16]} />
+        {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === */}
+        <mesh position={[0, 1.4, -0.15]} rotation={[0, 0, Math.PI / 4]}>
+          <torusGeometry args={[0.8, 0.015, 16, 64, Math.PI * 1.2]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
         </mesh>
 
-        {/* === SCHLÄGER-KOPF (Abstrakt & Tron-Style) === */}
-        <group position={[0, 1.4, 0]}>
-          
-          {/* Dunkle, leicht transparente Schlagfläche */}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.4, 0.4, 0.04, 32]} />
-            <meshStandardMaterial color="#020617" transparent opacity={0.8} roughness={0.1} metalness={0.8} />
-          </mesh>
-          
-          {/* Leuchtender Außenrahmen (Rahmenschutz) */}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.4, 0.04, 16, 64]} />
-            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-          </mesh>
+        {/* === LORBEERKRANZ === */}
+        {leaves}
 
-          {/* Innere Tron-Matrix/Loch-Muster Andeutung */}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.3, 0.3, 0.05, 16]} />
-            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.5} wireframe />
+        {/* === HOLOGRAPHISCHER PADLESCHLÄGER === */}
+        <group position={[0, 0, 0]}>
+          {/* Schläger-Griff */}
+          <mesh position={[0, 0.7, 0]}>
+            <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, 0.7, 0]}>
+            <cylinderGeometry args={[0.065, 0.065, 0.6, 8]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.3} wireframe />
           </mesh>
           
-          {/* Leuchtender Kern im Herzstück des Schlägers */}
-          <mesh position={[0, -0.32, 0]}>
-            <octahedronGeometry args={[0.08]} />
-            <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={intensity * 1.5} />
-          </mesh>
-          
+          {/* Schläger-Kopf */}
+          <group position={[0, 1.5, 0]}>
+            {/* Dunkle Fläche (Carbon/Glas) */}
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.48, 0.48, 0.03, 32]} />
+              <meshStandardMaterial color="#020617" transparent opacity={0.7} roughness={0.2} metalness={0.9} />
+            </mesh>
+            
+            {/* Leuchtender Außenrahmen */}
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.48, 0.035, 16, 64]} />
+              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
+            </mesh>
+
+            {/* Inneres Grid (Löcher im Padelschläger andeuten) */}
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.43, 0.43, 0.035, 16, 4]} />
+              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} wireframe />
+            </mesh>
+            
+            {/* TP Logo im Racket */}
+            <Text 
+              position={[0, 0, 0.02]} 
+              fontSize={0.25} 
+              color="#ffffff" 
+              font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+              fontWeight="black"
+            >
+              TP
+            </Text>
+          </group>
         </group>
+
+        {/* === TENNIS/PADEL BALL (Hologramm Drahtgitter) === */}
+        <group position={[0.35, 0.55, 0.25]}>
+          <mesh>
+            <sphereGeometry args={[0.16, 16, 16]} />
+            <meshStandardMaterial color="#020617" roughness={0.4} />
+          </mesh>
+          <mesh>
+            <sphereGeometry args={[0.165, 12, 12]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} wireframe />
+          </mesh>
+        </group>
+
       </group>
     </group>
   );
@@ -123,17 +187,17 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
 
 // --- NEUER VITRINENSCHRANK ---
 function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophyClick: (id: string) => void }) {
-  const cols = 3; // 3 Trophäen nebeneinander pro Reihe
-  const minShelves = 4; // Mindestens 4 Böden übereinander, damit es wie ein Schrank aussieht
+  const cols = 3; 
+  const minShelves = 4; 
   const numShelves = Math.max(minShelves, Math.ceil(trophies.length / cols));
   
-  const shelfHeight = 2.4; // Etwas mehr Platz für die neuen Schläger-Trophäen
+  const shelfHeight = 2.4; 
   const width = 5.5; 
   const depth = 1.8;
   const totalHeight = numShelves * shelfHeight;
 
   return (
-    <group position={[0, -2, 0]}> {/* Schrank leicht nach unten versetzt */}
+    <group position={[0, -2, 0]}> 
       
       {/* Tron Boden-Grid */}
       <gridHelper args={[40, 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
@@ -453,27 +517,15 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setIsUploading(true);
       setMessage(null);
       if (!event.target.files || event.target.files.length === 0) throw new Error('Bitte wähle ein Bild aus.');
-      
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
-      // Fester Name pro User, z.B. "12345-avatar.jpg"
-      const fileName = `${user.id}-avatar.${fileExt}`; 
-      
-      // upsert: true überschreibt das alte Bild im Storage!
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file, {
-        upsert: true 
-      });
-      
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
       if (uploadError) throw uploadError;
-      
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      
-      // Cache-Busting: Zwingt den Browser, das Bild neu zu laden, auch wenn die URL gleich bleibt
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-      
+      const publicUrl = data.publicUrl;
       await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
       await supabase.from('user_stats').update({ avatar_url: publicUrl }).eq('id', user.id);
-      
       setAvatarUrl(publicUrl);
       setMessage({ type: 'success', text: "Profilbild erfolgreich aktualisiert!" });
       setTimeout(() => setMessage(null), 3000);
@@ -539,7 +591,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex justify-between items-center w-full">
             <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
             
-            {/* Feedback-Anzeige für Auto-Save / Avatar */}
             {message && (
               <motion.div 
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
@@ -606,7 +657,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             <spotLight position={[0, 4, 1]} intensity={3.0} angle={0.8} penumbra={1} />
             <pointLight position={[-1.5, 1.5, 1.5]} intensity={15} color="#00f0ff" distance={10} />
             <pointLight position={[1.5, 1.5, 1.5]} intensity={15} color="#ff7700" distance={10} />
-            <PlayerShow />
+            <React.Suspense fallback={null}>
+              <PlayerShow />
+            </React.Suspense>
             <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} minPolarAngle={Math.PI / 2.5} maxPolarAngle={Math.PI / 2} />
           </Canvas>
         </div>
@@ -627,10 +680,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* LINKE SPALTE: Auswahl */}
             <div className="flex flex-col gap-3">
-              
-              {/* 1. Teampartner (Aktiv) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
                 <select 
@@ -645,7 +695,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </select>
               </div>
 
-              {/* 2. Schläger (Gesperrt / Coming Soon) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
                 <select 
@@ -658,7 +707,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
-                {/* Coming Soon Overlay */}
                 <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
                   <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
                     🔒 Coming soon
@@ -666,7 +714,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </div>
               </div>
 
-              {/* 3. Powerschlag (Gesperrt / Coming Soon) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Powerschlag</label>
                 <select disabled className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-white text-xs font-bold outline-none appearance-none opacity-40 cursor-not-allowed">
@@ -674,17 +721,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   <option>Bandeja Viper</option>
                   <option>Vibora Strike</option>
                 </select>
-                {/* Coming Soon Overlay */}
                 <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
                   <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
                     🔒 Coming soon
                   </span>
                 </div>
               </div>
-
             </div>
 
-            {/* RECHTE SPALTE: RPG Stats & Diffs */}
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
               
@@ -767,9 +811,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <Canvas camera={{ position: [0, 2.5, 16], fov: 45 }}>
                 <ambientLight intensity={0.8} />
                 <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
-                <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
+                
+                <React.Suspense fallback={null}>
+                  <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
+                </React.Suspense>
+                
                 <OrbitControls 
-                  target={[0, 2, 0]} // Kamera zielt jetzt auf die mittlere Höhe der Vitrine
+                  target={[0, 2, 0]} 
                   enableZoom={true} 
                   maxDistance={14} 
                   minDistance={3} 

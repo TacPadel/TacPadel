@@ -343,14 +343,21 @@ export const calculateSmartAITurn = (
            aiMsg = "Leichter Fehler der KI! Der Ball landet unbedrängt im Netz.";
       }
   } else if (tacScore >= 4000 && aiResult === "success") {
-      const highLevelRisk = ((tacScore - 4000) / 100) * 0.015; 
+      // FIX 1: Hard-Cap für die Winner-Quote. Maximal 12 % Chance, egal wie hoch der TacScore ist.
+      let highLevelRisk = Math.min(0.12, ((tacScore - 4000) / 100) * 0.012); 
+      
+      // FIX 2: Return-Winner massiv drosseln! Ein direkter Winner auf einen Aufschlag ist sehr schwer.
+      if (incomingShot === "AUFSCHLAG") {
+          highLevelRisk *= 0.2; // Reduziert die Chance auf Return-Winner um 80 %
+      }
+      
       const riskRoll = Math.random();
       
       if (riskRoll < highLevelRisk) {
            aiResult = "perfect";
            aiTitle = "⭐ UNHALTBAR!";
            aiMsg = "Die KI feuert aus dem Nichts einen messerscharfen Ball ab!";
-      } else if (riskRoll < highLevelRisk * 1.0) { 
+      } else if (riskRoll < highLevelRisk * 1.5) { // Das KI-Risiko für Fehler (Unforced Errors) bleibt bestehen
            aiResult = Math.random() > 0.5 ? "error_net" : "error_wall_direct";
            aiTitle = "❌ ZU VIEL RISIKO!";
            aiMsg = "Die KI wollte das Tempo pushen und überpowert den Ball völlig!";
