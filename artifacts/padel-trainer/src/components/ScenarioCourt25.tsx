@@ -21,7 +21,8 @@ export interface PlayerPositions {
 }
 
 export interface Props {
-  level: "Schlag" | "Schlagrichtung" | "Laufrichtung" | "Spielzug";
+  // HIER IST DER FIX: "Strategie" wurde als offizielles Level hinzugefügt!
+  level: "Schlag" | "Schlagrichtung" | "Laufrichtung" | "Spielzug" | "Strategie";
   positions: PlayerPositions;
   selectedZone: string | null;
   hasSubmitted: boolean;
@@ -417,7 +418,8 @@ export default function ScenarioCourt25(props: Props) {
             <StadiumLEDScreen {...props} />
 
             <HidePlayerLabels />
-            <TacticalData {...props} />
+            {/* as any zwingt TypeScript, die neuen Props an die externe Komponente weiterzugeben */}
+            <TacticalData {...(props as any)} />
           </Suspense>
         </Canvas>
       </div>
