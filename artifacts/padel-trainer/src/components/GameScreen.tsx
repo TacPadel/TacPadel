@@ -1765,9 +1765,17 @@ export default function GameScreen() {
                      Zurück zur TP Tour
                    </button>
                 ) : (
-                   <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                     Neues Match starten
-                   </button>
+                   <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
+                     <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
+                       Neues Match
+                     </button>
+                     <button 
+                       onClick={() => { setShowGameOverUI(false); setIsMenuOpen(true); }} 
+                       className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-white font-black tracking-widest uppercase rounded-xl border border-slate-700 shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
+                     >
+                       Zum Menü
+                     </button>
+                   </div>
                 )}
 
               </div>
