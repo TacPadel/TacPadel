@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { STRATEGIES, StrategySequence, StrategyStep } from "../lib/strategies";
+import StrategyBuilder from "./StrategyBuilder";
+import { supabase } from "../lib/supabase"; // <-- Pfad anpassen, falls supabase.ts woanders liegt
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 
@@ -12,7 +14,11 @@ interface StrategyTrainerProps {
 
 export default function StrategyTrainer({ onBack, onStrategyComplete }: StrategyTrainerProps) {
   const [activeStrategy, setActiveStrategy] = useState<StrategySequence | null>(null);
+  const [currentView, setCurrentView] = useState<"list" | "builder">("list");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
+  // State für ALLE Strategien (Lokal + Community)
+  const [allStrategies, setAllStrategies] = useState<StrategySequence[]>(STRATEGIES);
 
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
@@ -22,6 +28,33 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   const [isShotModalOpen, setIsShotModalOpen] = useState(false);
   const [stepResult, setStepResult] = useState<"correct" | "wrong" | null>(null);
   const [strategyFinished, setStrategyFinished] = useState(false);
+
+  // Lade Community-Strategien beim Start
+  useEffect(() => {
+    async function fetchCommunityStrategies() {
+      const { data, error } = await supabase
+        .from('community_strategies')
+        .select('*')
+        .eq('status', 'approved');
+        
+      if (data && data.length > 0) {
+        const communityStrats: StrategySequence[] = data.map(dbRow => ({
+          id: dbRow.id,
+          // Wir hängen den Namen des Erstellers direkt an den Titel an!
+          title: `${dbRow.title} (von ${dbRow.creator_name})`, 
+          theme: dbRow.theme as any,
+          difficulty: dbRow.difficulty as any,
+          description: dbRow.description,
+          steps: dbRow.steps
+        }));
+        
+        // Mische deine festen mit den neuen Community-Strategien
+        setAllStrategies([...STRATEGIES, ...communityStrats]);
+      }
+    }
+    
+    fetchCommunityStrategies();
+  }, []);
 
   const activeStep: StrategyStep | null = activeStrategy ? activeStrategy.steps[currentStepIndex] : null;
   const isAITurn = activeStep?.playerTurn === "ai";
@@ -109,24 +142,38 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     }
   };
 
+  // Wenn der Nutzer auf "+ Erstellen" geklickt hat, zeige den Builder:
+  if (currentView === "builder") {
+    return <StrategyBuilder onBack={() => setCurrentView("list")} />;
+  }
+
   if (!activeStrategy) {
     return (
       <div className="w-full flex flex-col gap-6 p-4">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
-            ← Zurück
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
+              ← Zurück
+            </button>
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 uppercase tracking-widest">
+              Strategie-Pfade
+            </h2>
+          </div>
+          <button 
+            onClick={() => setCurrentView("builder")} 
+            className="text-xs bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 px-4 py-2 rounded-lg font-bold hover:bg-cyan-600/40 transition-colors"
+          >
+            + Erstellen
           </button>
-          <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 uppercase tracking-widest">
-            Strategie-Pfade
-          </h2>
         </div>
+        
         <p className="text-slate-400 text-sm">
           Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik aufzubauen.
         </p>
 
         {/* 4er Grid mit allen importierten Strategien */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          {STRATEGIES.map((strat) => (
+          {allStrategies.map((strat) => (
             <div 
               key={strat.id}
               onClick={() => {
