@@ -35,12 +35,12 @@ const getPartnerModifiers = (partnerId: string) => {
 };
 
 // ==========================================
-// --- 3D TRON TROPHIES (Hologramm Style) ---
+// --- 3D TRON TROPHIES (Hologramm Style Bild-getreu) ---
 // ==========================================
 function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
   const ref = useRef<any>(null);
   
-  // Rotation der gesamten Trophäe
+  // Sanfte Rotation der gesamten Trophäe
   useFrame((state, delta) => {
     if (ref.current) ref.current.rotation.y += delta * 0.4;
   });
@@ -49,23 +49,30 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   const isMaster = idLower.includes('master');
   const isPro = idLower.includes('pro');
   
-  // Farben (Gold, Silber/Eisblau, Bronze/Neon-Orange)
+  // Farben (Gold, Silber/Eisblau, Bronze/Neon-Orange) passend zum Bild
   const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
-  const intensity = isMaster ? 3 : isPro ? 2 : 2.5;
+  const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
 
-  // Generiere den Lorbeerkranz (Blätter links und rechts vom Schlägerhals)
-  const leaves = Array.from({ length: 5 }).map((_, i) => {
-    const y = 0.6 + i * 0.15;
-    const x = 0.25 + Math.sin(i * 0.4) * 0.12;
-    const rotZ = -Math.PI / 4 + i * 0.2;
+  // Sichelförmiger Lorbeerkranz (Wreath) wie im Bild
+  const leaves = Array.from({ length: 6 }).map((_, i) => {
+    // Links (schmiegt sich näher an den Schläger)
+    const yL = 0.5 + i * 0.16;
+    const xL = 0.25 + Math.sin(i * 0.3) * 0.15;
+    const rotZL = -Math.PI / 3 + i * 0.15;
+    
+    // Rechts (macht Platz für den Ball)
+    const yR = 0.5 + i * 0.16;
+    const xR = 0.3 + Math.sin(i * 0.3) * 0.15;
+    const rotZR = Math.PI / 3 - i * 0.15;
+    
     return (
       <group key={i}>
-        <mesh position={[-x, y, 0]} rotation={[0, 0, -rotZ]}>
-          <cylinderGeometry args={[0.015, 0.05, 0.2, 4]} />
+        <mesh position={[-xL, yL, -0.05]} rotation={[0, 0, -rotZL]}>
+          <cylinderGeometry args={[0.012, 0.04, 0.2, 4]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
         </mesh>
-        <mesh position={[x, y, 0]} rotation={[0, 0, rotZ]}>
-          <cylinderGeometry args={[0.015, 0.05, 0.2, 4]} />
+        <mesh position={[xR, yR, -0.05]} rotation={[0, 0, rotZR]}>
+          <cylinderGeometry args={[0.012, 0.04, 0.2, 4]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
         </mesh>
       </group>
@@ -73,12 +80,11 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   });
 
   return (
-    // Skaliere minimal runter, damit sie perfekt ins Regal passen
     <group position={position} scale={0.8} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
       
-      {/* Unsichtbare Hitbox zum Anklicken */}
+      {/* Unsichtbare Hitbox */}
       <mesh visible={false} position={[0, 1.2, 0]}>
-        <cylinderGeometry args={[0.8, 0.8, 2.5, 8]} />
+        <cylinderGeometry args={[0.9, 0.9, 2.5, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
@@ -96,62 +102,69 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <cylinderGeometry args={[0.46, 0.66, 0.41, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.8} wireframe />
           </mesh>
-          {/* Neon Boden-Linie extra betont */}
+          {/* Neon Boden-Linie */}
           <mesh position={[0, -0.2, 0]}>
             <cylinderGeometry args={[0.67, 0.67, 0.02, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
           
-          {/* TP Logo auf dem Sockel */}
-          <Text 
-            position={[0, 0, 0.6]} 
-            fontSize={0.18} 
-            color="#ffffff" 
-            font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-            fontWeight="bold"
-          >
-            TP
-          </Text>
+          {/* TP Logo auf angewinkelter Frontplatte (Hexagon hat flache Seiten) */}
+          <group position={[0, 0, 0.53]} rotation={[0.2, 0, 0]}>
+            <mesh position={[0, 0, -0.02]}>
+              <boxGeometry args={[0.4, 0.2, 0.01]} />
+              <meshStandardMaterial color="#020617" />
+            </mesh>
+            <Text 
+              fontSize={0.15} 
+              color="#ffffff" 
+              font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+              fontWeight="bold"
+            >
+              TP
+            </Text>
+          </group>
         </group>
 
         {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === */}
         <mesh position={[0, 1.4, -0.15]} rotation={[0, 0, Math.PI / 4]}>
-          <torusGeometry args={[0.8, 0.015, 16, 64, Math.PI * 1.2]} />
+          <torusGeometry args={[0.85, 0.015, 16, 64, Math.PI * 1.2]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
         </mesh>
 
         {/* === LORBEERKRANZ === */}
         {leaves}
 
-        {/* === HOLOGRAPHISCHER PADLESCHLÄGER === */}
-        <group position={[0, 0, 0]}>
+        {/* === HOLOGRAPHISCHER PADLESCHLÄGER (Geneigt!) === */}
+        {/* Drehpunkt (pivot) unten am Sockel (Y=0.4), Rotation um Z (Math.PI / 10 ist ca. 18 Grad nach links) */}
+        <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 10]}>
+          
           {/* Schläger-Griff */}
-          <mesh position={[0, 0.7, 0]}>
+          <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
             <meshStandardMaterial color="#0f172a" roughness={0.9} />
           </mesh>
-          <mesh position={[0, 0.7, 0]}>
+          <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.065, 0.065, 0.6, 8]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.3} wireframe />
           </mesh>
           
           {/* Schläger-Kopf */}
-          <group position={[0, 1.5, 0]}>
+          <group position={[0, 1.1, 0]}>
             {/* Dunkle Fläche (Carbon/Glas) */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.48, 0.48, 0.03, 32]} />
+              <cylinderGeometry args={[0.5, 0.5, 0.03, 32]} />
               <meshStandardMaterial color="#020617" transparent opacity={0.7} roughness={0.2} metalness={0.9} />
             </mesh>
             
             {/* Leuchtender Außenrahmen */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.48, 0.035, 16, 64]} />
+              <torusGeometry args={[0.5, 0.035, 16, 64]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
             </mesh>
 
             {/* Inneres Grid (Löcher im Padelschläger andeuten) */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.43, 0.43, 0.035, 16, 4]} />
+              <cylinderGeometry args={[0.45, 0.45, 0.035, 16, 4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} wireframe />
             </mesh>
             
@@ -168,14 +181,15 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
           </group>
         </group>
 
-        {/* === TENNIS/PADEL BALL (Hologramm Drahtgitter) === */}
-        <group position={[0.35, 0.55, 0.25]}>
+        {/* === TENNIS/PADEL BALL (Hologramm Drahtgitter) - Größer und Höher === */}
+        {/* Positioniert weiter rechts und leicht angehoben auf dem Sockel */}
+        <group position={[0.45, 0.65, 0.2]}>
           <mesh>
-            <sphereGeometry args={[0.16, 16, 16]} />
+            <sphereGeometry args={[0.18, 16, 16]} />
             <meshStandardMaterial color="#020617" roughness={0.4} />
           </mesh>
           <mesh>
-            <sphereGeometry args={[0.165, 12, 12]} />
+            <sphereGeometry args={[0.185, 12, 12]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} wireframe />
           </mesh>
         </group>

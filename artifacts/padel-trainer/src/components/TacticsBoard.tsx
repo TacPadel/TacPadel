@@ -24,7 +24,7 @@ interface TacticalFilters {
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse (JETZT AUF 160px ANGEPASST)
+// Globale Taktik-Schwellenwerte für Analyse
 const GAP_THRESHOLD = 160;
 const WIDE_GAP_THRESHOLD = 170;
 const DEEP_DEF_THRESHOLD = 80;
@@ -49,7 +49,8 @@ const getControlPointX = (isTeamA: boolean) => {
   return 2 * apexX - edgeX;
 };
 
-// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) - Y-Werte an 160px Abstand angepasst
+// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) 
+// - Y-Werte perfekt an 160px Abstand angepasst (110 und 270), damit die Linien grün bleiben
 const SCENARIOS: Record<string, {
   name: string;
   items: DraggableItem[];
@@ -83,11 +84,11 @@ const SCENARIOS: Record<string, {
   aufschlag_a: {
     name: "Taktik: Eigener Aufschlag (Team A)",
     items: [
-      { id: "a1", x: 60, y: 290, color: "#e74c3c", label: "A1", isPlayer: true },      
+      { id: "a1", x: 60, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 320, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },      
-      { id: "b1", x: V_WIDTH - 80, y: 100, color: "#f1c40f", label: "B1", isPlayer: true },
+      { id: "b1", x: V_WIDTH - 80, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
       { id: "b2", x: V_WIDTH - 240, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 85, y: 285, color: "#2ecc71", label: "●", isPlayer: false },    
+      { id: "ball", x: 85, y: 270, color: "#2ecc71", label: "●", isPlayer: false },    
     ],
     customAnalysis: {
       targetX: 660,
@@ -98,11 +99,11 @@ const SCENARIOS: Record<string, {
   return_a: {
     name: "Taktik: Return-Abwehr (Gegner schlägt auf)",
     items: [
-      { id: "a1", x: 80, y: 280, color: "#e74c3c", label: "A1", isPlayer: true },      
+      { id: "a1", x: 80, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 90, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },      
-      { id: "b1", x: V_WIDTH - 60, y: 100, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 440, y: 260, color: "#f1c40f", label: "B2", isPlayer: true },      
-      { id: "ball", x: V_WIDTH - 90, y: 120, color: "#2ecc71", label: "●", isPlayer: false },
+      { id: "b1", x: V_WIDTH - 60, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
+      { id: "b2", x: 440, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },      
+      { id: "ball", x: V_WIDTH - 90, y: 110, color: "#2ecc71", label: "●", isPlayer: false },
     ],
     customAnalysis: {
       targetX: 100,

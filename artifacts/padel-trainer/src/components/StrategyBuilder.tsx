@@ -26,24 +26,24 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
   const [stepDesc, setStepDesc] = useState("");
   const [stepExpl, setStepExpl] = useState("");
   
-  const [posYou, setPosYou] = useState("A4");
-  const [posPartner, setPosPartner] = useState("A2");
-  const [posOpp1, setPosOpp1] = useState("E2");
-  const [posOpp2, setPosOpp2] = useState("E4");
+  const [posYou, setPosYou] = useState("B2");
+  const [posPartner, setPosPartner] = useState("D2");
+  const [posOpp1, setPosOpp1] = useState("B2");
+  const [posOpp2, setPosOpp2] = useState("D2");
   
-  const [ballSide, setBallSide] = useState<"right" | "left">("right"); // right = deine Seite, left = Gegner
-  const [ballZone, setBallZone] = useState("A4");
-  const [ballType, setBallType] = useState("DRIVE");
+  const [ballSide, setBallSide] = useState<"left" | "right">("left"); // right = deine Seite, left = Gegner
+  const [ballZone, setBallZone] = useState("B2");
+  const [ballType, setBallType] = useState("VORBEREITUNG");
 
   // If YOU
-  const [validShots, setValidShots] = useState<string[]>(["DRIVE"]);
-  const [bestZones, setBestZones] = useState<string[]>(["E1"]);
-  const [laufZone, setLaufZone] = useState("A4");
+  const [validShots, setValidShots] = useState<string[]>(["VORBEREITUNG"]);
+  const [bestZones, setBestZones] = useState<string[]>(["b2"]);
+  const [laufZone, setLaufZone] = useState("B2");
 
   // If AI
   const [aiHitter, setAiHitter] = useState<"opp1" | "opp2">("opp1");
-  const [aiTarget, setAiTarget] = useState("A4");
-  const [aiLaufZone, setAiLaufZone] = useState("E2");
+  const [aiTarget, setAiTarget] = useState("B2");
+  const [aiLaufZone, setAiLaufZone] = useState("D2");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
@@ -119,7 +119,7 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
       <div className="flex items-center gap-4 bg-[#040914] p-4 rounded-xl border border-slate-800">
         <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Zurück</button>
         <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 uppercase tracking-widest">
-          Community Builder
+          Community Builder (Alpha-Test)
         </h2>
       </div>
 
