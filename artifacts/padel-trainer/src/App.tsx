@@ -225,6 +225,13 @@ export default function App(): React.JSX.Element {
     return savedTab ? savedTab : "home";
   });
 
+  // --- NEUE STATES FÜR E-MAIL LOGIN ---
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authMsg, setAuthMsg] = useState<{type: 'error'|'success', text: string} | null>(null);
+
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -563,9 +570,30 @@ export default function App(): React.JSX.Element {
     if (data?.url) {
       window.location.href = data.url;
     }
-};
+  };
 
+  // --- NEUE FUNKTION FÜR E-MAIL LOGIN & REGISTRIERUNG ---
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthMsg(null);
 
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setAuthMsg({ type: 'error', text: error.message });
+      } else {
+        setAuthMsg({ type: 'success', text: 'Registrierung erfolgreich! (Prüfe ggf. deine E-Mails)' });
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setAuthMsg({ type: 'error', text: 'Falsche E-Mail oder Passwort.' });
+      }
+      // Bei Erfolg greift automatisch dein bestehender authListener und leitet weiter!
+    }
+    setAuthLoading(false);
+  };
 
   const filteredScenarios = useMemo(() => {
     if (level === "Schlag") return SCENARIOS.filter(s => s.id <= 10);
@@ -1442,7 +1470,7 @@ export default function App(): React.JSX.Element {
               </motion.div>
             )}
 
-            {/* LOGIN TAB */}
+            {/* LOGIN TAB - AKTUALISIERT */}
             {activeTab === "login" && (
               <motion.div
                 key="login-page"
@@ -1450,19 +1478,73 @@ export default function App(): React.JSX.Element {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.18 }}
-                className="flex flex-col items-center justify-center p-6 sm:p-10 bg-card border border-card-border rounded-2xl shadow-2xl max-w-md mx-auto mt-12 gap-6 text-center"
+                className="flex flex-col items-center justify-center p-6 sm:p-10 bg-card border border-card-border rounded-2xl shadow-2xl max-w-md mx-auto mt-12 gap-5 w-full"
               >
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 text-primary text-3xl">
                   🎾
                 </div>
-                <h2 className="text-2xl font-black text-primary tracking-wide">Anmelden bei TacPadel</h2>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  Sichere deinen Trainingsfortschritt! Logge dich ein, um deine gesammelten Punkte in der Cloud zu speichern und auf all deinen Geräten zu synchronisieren.
-                </p>
                 
+                <div className="text-center mb-2">
+                  <h2 className="text-2xl font-black text-primary tracking-wide">
+                    {isSignUp ? "Account erstellen" : "Anmelden"}
+                  </h2>
+                  <p className="text-muted-foreground text-xs sm:text-sm leading-relaxed mt-2">
+                    Sichere deinen Trainingsfortschritt in der Cloud.
+                  </p>
+                </div>
+
+                {/* Feedback Message */}
+                <AnimatePresence>
+                  {authMsg && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      className={`w-full p-3 rounded-lg text-xs font-bold text-center border ${authMsg.type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}
+                    >
+                      {authMsg.text}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* E-MAIL & PASSWORT FORMULAR */}
+                <form onSubmit={handleEmailAuth} className="w-full flex flex-col gap-3">
+                  <input
+                    type="email"
+                    placeholder="E-Mail Adresse"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-xl text-foreground text-sm font-semibold outline-none transition-colors"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Passwort (min. 6 Zeichen)"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-xl text-foreground text-sm font-semibold outline-none transition-colors"
+                  />
+                  
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full px-6 py-3.5 bg-primary text-primary-foreground rounded-xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all mt-2 disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    {authLoading ? "Wird verarbeitet..." : (isSignUp ? "Registrieren" : "Einloggen")}
+                  </button>
+                </form>
+
+                <div className="flex items-center w-full gap-3 my-2 opacity-50">
+                  <div className="flex-1 h-px bg-border"></div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Oder</span>
+                  <div className="flex-1 h-px bg-border"></div>
+                </div>
+
+                {/* GOOGLE BUTTON */}
                 <button
                   onClick={handleGoogleLogin}
-                  className="flex items-center justify-center gap-3 w-full px-6 py-3.5 bg-white text-black rounded-xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all mt-2"
+                  type="button"
+                  className="flex items-center justify-center gap-3 w-full px-6 py-3.5 bg-white text-black rounded-xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.52-1.14 2.81-2.42 3.68v3.05h3.91c2.28-2.1 3.61-5.19 3.61-8.58z"/>
@@ -1470,15 +1552,27 @@ export default function App(): React.JSX.Element {
                     <path fill="#FBBC05" d="M5.35 14.29c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.56H1.31C.47 8.24 0 10.06 0 12s.47 3.76 1.31 5.44l4.04-3.15z"/>
                     <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.37 0 3.29 1.64 1.31 4.75l4.04 3.15c.93-2.82 3.56-4.91 6.65-4.91z"/>
                   </svg>
-                  Mit Google anmelden
+                  Mit Google
                 </button>
 
-                <button
-                  onClick={() => setActiveTab("home")}
-                  className="text-xs text-muted-foreground hover:text-foreground font-semibold uppercase tracking-wider transition-colors mt-4"
-                >
-                  ← Zurück zur Startseite
-                </button>
+                {/* TOGGLE ZWISCHEN LOGIN UND REGISTRIEREN */}
+                <div className="flex flex-col items-center gap-3 mt-4 w-full">
+                  <button
+                    type="button"
+                    onClick={() => { setIsSignUp(!isSignUp); setAuthMsg(null); }}
+                    className="text-xs text-muted-foreground hover:text-primary font-bold transition-colors"
+                  >
+                    {isSignUp ? "Bereits einen Account? Hier einloggen." : "Neu hier? Account erstellen."}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("home")}
+                    className="text-[10px] text-muted-foreground hover:text-foreground font-semibold uppercase tracking-widest transition-colors mt-2"
+                  >
+                    ← Zurück zur Startseite
+                  </button>
+                </div>
               </motion.div>
             )}
 
