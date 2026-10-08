@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
+import * as THREE from 'three'; // <-- NEUER IMPORT FÜR DIE LINIEN
 
 // --- Imports für KI-Profile & 3D ---
 import { AI_PROFILES } from '../engine/AiProfiles'; 
@@ -49,40 +50,39 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   const isMaster = idLower.includes('master');
   const isPro = idLower.includes('pro');
   
-  // Farben (Gold, Silber/Eisblau, Bronze/Neon-Orange) passend zum Bild
   const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
   const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
 
-  // Sichelförmiger Lorbeerkranz (Wreath) wie im Bild
-  const leaves = Array.from({ length: 6 }).map((_, i) => {
-    // Links (schmiegt sich näher an den Schläger)
-    const yL = 0.5 + i * 0.16;
-    const xL = 0.25 + Math.sin(i * 0.3) * 0.15;
-    const rotZL = -Math.PI / 3 + i * 0.15;
+  // --- NEU: Durchgehende Energie-Strudel (Tubes) ---
+  const { curve1, curve2 } = useMemo(() => {
+    const spiralSegments = 60;
+    const pts1 = [];
+    const pts2 = [];
     
-    // Rechts (macht Platz für den Ball)
-    const yR = 0.5 + i * 0.16;
-    const xR = 0.3 + Math.sin(i * 0.3) * 0.15;
-    const rotZR = Math.PI / 3 - i * 0.15;
+    for (let i = 0; i <= spiralSegments; i++) {
+      const t = i / spiralSegments; // 0.0 bis 1.0
+      const radius = 0.4 - (t * 0.15); // Strudel wird nach oben hin enger
+      const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
+      
+      // Erste Linie
+      const angle1 = t * Math.PI * 4; 
+      pts1.push(new THREE.Vector3(Math.cos(angle1) * radius, y, Math.sin(angle1) * radius));
+      
+      // Zweite Linie (um 180 Grad bzw. Math.PI versetzt)
+      const angle2 = t * Math.PI * 4 + Math.PI; 
+      pts2.push(new THREE.Vector3(Math.cos(angle2) * radius, y, Math.sin(angle2) * radius));
+    }
     
-    return (
-      <group key={i}>
-        <mesh position={[-xL, yL, -0.05]} rotation={[0, 0, -rotZL]}>
-          <cylinderGeometry args={[0.012, 0.04, 0.2, 4]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-        </mesh>
-        <mesh position={[xR, yR, -0.05]} rotation={[0, 0, rotZR]}>
-          <cylinderGeometry args={[0.012, 0.04, 0.2, 4]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-        </mesh>
-      </group>
-    );
-  });
+    return {
+      curve1: new THREE.CatmullRomCurve3(pts1),
+      curve2: new THREE.CatmullRomCurve3(pts2)
+    };
+  }, []);
 
   return (
     <group position={position} scale={0.8} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
       
-      {/* Unsichtbare Hitbox */}
+      {/* Unsichtbare Hitbox zum Anklicken */}
       <mesh visible={false} position={[0, 1.2, 0]}>
         <cylinderGeometry args={[0.9, 0.9, 2.5, 8]} />
         <meshBasicMaterial transparent opacity={0} />
@@ -90,25 +90,21 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
 
       <group ref={ref}>
         
-        {/* === SOCKEL (Hexagon mit Schräge & Neon-Linien) === */}
+        {/* === SOCKEL === */}
         <group position={[0, 0.2, 0]}>
-          {/* Dunkler Kern */}
           <mesh>
             <cylinderGeometry args={[0.45, 0.65, 0.4, 6]} />
             <meshStandardMaterial color="#020617" roughness={0.3} metalness={0.8} />
           </mesh>
-          {/* Leuchtender Wireframe für Neon-Kanten */}
           <mesh>
             <cylinderGeometry args={[0.46, 0.66, 0.41, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.8} wireframe />
           </mesh>
-          {/* Neon Boden-Linie */}
           <mesh position={[0, -0.2, 0]}>
             <cylinderGeometry args={[0.67, 0.67, 0.02, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
           
-          {/* TP Logo auf angewinkelter Frontplatte (Hexagon hat flache Seiten) */}
           <group position={[0, 0, 0.53]} rotation={[0.2, 0, 0]}>
             <mesh position={[0, 0, -0.02]}>
               <boxGeometry args={[0.4, 0.2, 0.01]} />
@@ -131,14 +127,22 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
         </mesh>
 
-        {/* === LORBEERKRANZ === */}
-        {leaves}
+        {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
+        <group>
+          <mesh>
+            {/* args: [curve, tubularSegments, radius, radialSegments, closed] */}
+            <tubeGeometry args={[curve1, 64, 0.012, 8, false]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
+          </mesh>
+          <mesh>
+            <tubeGeometry args={[curve2, 64, 0.012, 8, false]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
+          </mesh>
+        </group>
 
-        {/* === HOLOGRAPHISCHER PADLESCHLÄGER (Geneigt!) === */}
-        {/* Drehpunkt (pivot) unten am Sockel (Y=0.4), Rotation um Z (Math.PI / 10 ist ca. 18 Grad nach links) */}
+        {/* === HOLOGRAPHISCHER PADLESCHLÄGER === */}
         <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 10]}>
           
-          {/* Schläger-Griff */}
           <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
             <meshStandardMaterial color="#0f172a" roughness={0.9} />
@@ -148,27 +152,19 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.3} wireframe />
           </mesh>
           
-          {/* Schläger-Kopf */}
           <group position={[0, 1.1, 0]}>
-            {/* Dunkle Fläche (Carbon/Glas) */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.5, 0.5, 0.03, 32]} />
               <meshStandardMaterial color="#020617" transparent opacity={0.7} roughness={0.2} metalness={0.9} />
             </mesh>
-            
-            {/* Leuchtender Außenrahmen */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <torusGeometry args={[0.5, 0.035, 16, 64]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
             </mesh>
-
-            {/* Inneres Grid (Löcher im Padelschläger andeuten) */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.45, 0.45, 0.035, 16, 4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} wireframe />
             </mesh>
-            
-            {/* TP Logo im Racket */}
             <Text 
               position={[0, 0, 0.02]} 
               fontSize={0.25} 
@@ -181,8 +177,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
           </group>
         </group>
 
-        {/* === TENNIS/PADEL BALL (Hologramm Drahtgitter) - Größer und Höher === */}
-        {/* Positioniert weiter rechts und leicht angehoben auf dem Sockel */}
+        {/* === TENNIS/PADEL BALL === */}
         <group position={[0.45, 0.65, 0.2]}>
           <mesh>
             <sphereGeometry args={[0.18, 16, 16]} />
