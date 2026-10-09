@@ -164,7 +164,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
               <torusGeometry args={[0.5, 0.035, 16, 64]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
             </mesh>
-            <mesh rotation={[Math.PI / 1, 0, 0]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.45, 0.45, 0.035, 16, 4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} wireframe />
             </mesh>
@@ -181,7 +181,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         </group>
 
         {/* === TENNIS/PADEL BALL === */}
-        <group position={[0.45, 1.5, 0.2]}>
+        <group position={[0.45, 1.4, 0.2]}>
           <mesh>
             <sphereGeometry args={[0.18, 16, 16]} />
             <meshStandardMaterial color="#020617" roughness={0.4} />
