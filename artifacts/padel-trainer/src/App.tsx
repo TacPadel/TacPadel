@@ -20,6 +20,7 @@ import { DBPlayer } from "./components/HomeView";
 import ProfileTab from './components/ProfileTab';
 import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
+import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
@@ -231,8 +232,7 @@ export default function App(): React.JSX.Element {
   const [authLoading, setAuthLoading] = useState(false);
   const [authMsg, setAuthMsg] = useState<{type: 'error'|'success', text: string} | null>(null);
 
-  // --- HIER ANGEPASST: Speichert ID und Typ (alltime / season) ---
-  const [selectedPublicUserId, setSelectedPublicUserId] = useState<{ id: string; type: "alltime" | "season" } | null>(null);
+  const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
@@ -914,28 +914,13 @@ export default function App(): React.JSX.Element {
       </div>
       <SplashScreen />
 
-      {/* --- NEUES PUBLIC PROFILE MODAL ÜBER PROFILETAB --- */}
+      {/* --- PUBLIC PROFILE MODAL --- */}
       <AnimatePresence>
         {selectedPublicUserId && (
-          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-            <div className="relative w-full max-w-3xl mt-16 md:mt-0">
-              <button 
-                onClick={() => setSelectedPublicUserId(null)}
-                className="absolute -top-12 md:-top-10 right-0 md:right-4 z-50 bg-slate-800 text-white font-black px-4 py-2 rounded-xl hover:bg-slate-700 transition-colors shadow-lg"
-              >
-                ✕ Schließen
-              </button>
-              
-              {/* Lädt den Profil-/Statistik-Tab für den angeklickten User */}
-              <div className="bg-card rounded-2xl overflow-hidden shadow-2xl border border-card-border">
-                <ProfileTab 
-                  user={{ id: selectedPublicUserId.id } as any} 
-                  setActiveTab={() => setSelectedPublicUserId(null)} 
-                  initialStatsMode={selectedPublicUserId.type === "season" ? "tournament" : "single"}
-                />
-              </div>
-            </div>
-          </div>
+          <PublicProfileModal
+            userId={selectedPublicUserId}
+            onClose={() => setSelectedPublicUserId(null)}
+          />
         )}
       </AnimatePresence>
 
@@ -1016,11 +1001,9 @@ export default function App(): React.JSX.Element {
                   userAvatar={finalAvatarUrl} 
                   dbLeaderboard={dbLeaderboard.length > 0 ? dbLeaderboard : undefined}
                   dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} // Das Season Leaderboard
-                  
-                  // --- HIER ANGEPASST: Speichert ID und Typ (alltime / season) ---
-                  onPlayerClick={(id, listType) => setSelectedPublicUserId({ id, type: (listType as "alltime" | "season") || "alltime" })}
-                  
+                  onPlayerClick={(id) => setSelectedPublicUserId(id)}
                   onQuickStart={(specificIndex?: number) => {
+                    // --- NEU: Wenn Simulation frei ist, direkt dorthin routen ---
                     if ((highestScores["Spielzug"] || 0) >= 50) {
                       handleLevelChange("Simulation" as Level);
                       setActiveTab("trainer");
