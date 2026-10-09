@@ -43,7 +43,7 @@ interface HomeViewProps {
   userAvatar?: string;
   dbLeaderboard?: DBPlayer[];
   dbSeasonLeaderboard?: DBPlayer[]; 
-  onPlayerClick?: (id: string) => void;
+  onPlayerClick?: (id: string, listType?: "alltime" | "season") => void;
 }
 
 export default function HomeView({ 
@@ -64,6 +64,7 @@ export default function HomeView({
   
   const displayScore = Math.floor(currentScore);
   const displayTacPoints = Math.floor(currentTacPoints);
+  const isNewbie = displayScore === 0 && displayTacPoints === 0;
   
   const [dailyTip] = useState(() => TACTIC_TIPS[Math.floor(Math.random() * TACTIC_TIPS.length)]);
   
@@ -246,10 +247,18 @@ export default function HomeView({
               
               <div className="flex justify-between items-start w-full relative z-30">
                 <div className="flex flex-col items-start text-left gap-1.5">
-                  <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">Letzter Stand</span>
-                  <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-wider drop-shadow-md">Fortsetzen</h2>
-                  <p className="text-xs text-slate-400 max-w-[200px] mt-1">Mach genau da weiter, wo du beim letzten Mal aufgehört hast.</p>
-                </div>
+              <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
+                {isNewbie ? "Dein Weg zum Profi" : "Letzter Stand"}
+              </span>
+              <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-wider drop-shadow-md">
+                {isNewbie ? "Blitzstart" : "Fortsetzen"}
+              </h2>
+              <p className="text-xs text-slate-400 max-w-[220px] mt-1">
+                {isNewbie 
+                  ? "Starte hier dein erstes Training, um ein echter TacPadeler zu werden." 
+                  : "Mach genau da weiter, wo du beim letzten Mal aufgehört hast."}
+              </p>
+            </div>
                 
                 <div className="w-12 h-12 rounded-full bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white group-hover:shadow-[0_0_15px_rgba(6,182,212,0.6)] transition-all">
                   <span className="text-xl font-black">➔</span>
@@ -309,7 +318,7 @@ export default function HomeView({
               return (
                 <div 
                   key={`rank-${player.id}-${player.name}`}
-                  onClick={() => onPlayerClick?.(player.id)}
+                  onClick={() => onPlayerClick?.(player.id, lbTab)}
                   className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer hover:scale-[1.02] active:scale-95 ${
                     isUser ? activeBg : 'bg-[#030611]/50 border-slate-800/50 hover:bg-slate-900'
                   }`}
@@ -333,7 +342,7 @@ export default function HomeView({
               <>
                 <div className="text-center text-slate-700 font-black tracking-widest text-xs py-1">•••</div>
                 <div 
-                  onClick={() => onPlayerClick?.(currentUserData.id)}
+                  onClick={() => onPlayerClick?.(currentUserData.id, lbTab)}
                   className={`flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer hover:scale-[1.02] active:scale-95 ${
                     lbTab === 'alltime' ? 'bg-cyan-950/20 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/20 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]'
                   }`}
