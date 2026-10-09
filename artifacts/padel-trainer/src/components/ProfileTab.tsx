@@ -109,7 +109,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
           
-          <group position={[0, 0, 0.61]} rotation={[-0.2, 0, 0]}>
+          {/*<group position={[0, 0, 0.61]} rotation={[-0.2, 0, 0]}>
             <mesh position={[0, 0, -0.02]}>
               <boxGeometry args={[0.4, 0.2, 0.01]} />
               <meshStandardMaterial color="#020617" />
@@ -122,7 +122,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             >
               TP
             </Text>
-          </group>
+          </group>*/}
         </group>
 
         {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === 
