@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
-import * as THREE from 'three'; // <-- NEUER IMPORT FÜR DIE LINIEN
+import * as THREE from 'three'; 
 
 // --- Imports für KI-Profile & 3D ---
 import { AI_PROFILES } from '../engine/AiProfiles'; 
@@ -53,7 +53,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
   const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
 
-  // --- NEU: Durchgehende Energie-Strudel (Tubes) ---
+  // --- ENERGIE-STRUDEL (VON UNTEN NACH OBEN BREITER) ---
   const { curve1, curve2 } = useMemo(() => {
     const spiralSegments = 60;
     const pts1 = [];
@@ -61,7 +61,11 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
     
     for (let i = 0; i <= spiralSegments; i++) {
       const t = i / spiralSegments; // 0.0 bis 1.0
-      const radius = 0.4 - (t * 0.15); // Strudel wird nach oben hin enger
+      
+      // [HIER WURDE ES ANGEPASST]
+      // Startet unten eng (0.15) am Griff und öffnet sich auf 0.45 (breit) um den Schläger
+      const radius = 0.15 + (t * 0.3); 
+      
       const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
       
       // Erste Linie
@@ -130,7 +134,6 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
           <mesh>
-            {/* args: [curve, tubularSegments, radius, radialSegments, closed] */}
             <tubeGeometry args={[curve1, 64, 0.012, 8, false]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
@@ -275,7 +278,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [username, setUsername] = useState(fallbackName);
   const [teamName, setTeamName] = useState("TacPadel Rookies");
   
-  // Um zu tracken, ob wir überhaupt speichern müssen (Auto-Save)
   const [savedUsername, setSavedUsername] = useState(fallbackName);
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
