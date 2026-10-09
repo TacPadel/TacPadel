@@ -490,12 +490,14 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               >
                 <span>Pro Supporter Pass (Demnächst)</span>
               </button>
-              /*<button 
-                disabled
-                className="w-full py-4 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-blue-500/30 text-blue-400/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
-              >
-                <span>Video schauen (Demnächst)</span>
-              </button>*/
+              {/* 
+<button 
+  disabled
+  className="w-full py-4 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-blue-500/30 text-blue-400/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+>
+  <span>Video schauen (Demnächst)</span>
+</button>
+*/}
             </div>
           </motion.div>
 

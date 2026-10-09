@@ -332,8 +332,8 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
               <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">Wo liegt der Ball (vor dem Schlag)?</h4>
               <div className="grid grid-cols-3 gap-2">
                 <select value={ballSide} onChange={e => setBallSide(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none text-orange-300">
-                  <option value="right">Unten (Bei dir)</option>
-                  <option value="left">Oben (Gegner)</option>
+                  <option value="right">Oben (Gegner)</option>
+                  <option value="left">Unten (Bei dir)</option>
                 </select>
                 <select value={ballZone} onChange={e => setBallZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 <select value={ballType} onChange={e => setBallType(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>

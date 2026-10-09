@@ -59,6 +59,21 @@ const evalRunTactics = (shot: string, runZone: string) => {
 };
 
 // ==========================================
+// --- NEU: CONTINUE KOSTEN BERECHNEN ---
+// ==========================================
+const getContinueFee = (tourId: string, currentRound: number) => {
+  const tour = TOURNAMENTS.find(t => t.id === tourId);
+  if (!tour || currentRound > 2) return null; // Finale oder kein Turnier -> kein Retry
+
+  const baseFee = tour.entryFee === 0 ? 50 : tour.entryFee; // Mindestens 50 TP, falls Turnier kostenlos war
+  
+  if (currentRound === 1) return baseFee; // Viertelfinale (1x Entry Fee)
+  if (currentRound === 2) return baseFee * 2; // Halbfinale (2x Entry Fee)
+  
+  return null;
+};
+
+// ==========================================
 // --- NEU: TUTORIAL MODAL KOMPONENTE ---
 // ==========================================
 function GameTutorialModal({ onComplete }: { onComplete: () => void }) {
@@ -130,6 +145,11 @@ export default function GameScreen() {
   const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
+
+  // --- NEU: Zweite Chance (Continue) States ---
+  const [retryUsed, setRetryUsed] = useState<boolean>(false);
+  const [isProcessingRetry, setIsProcessingRetry] = useState<boolean>(false);
+  const currentTacPoints = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
 
   // --- NEU: Exploit Warning State ---
   const [abandonWarning, setAbandonWarning] = useState<{
@@ -553,6 +573,11 @@ export default function GameScreen() {
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
     setEarnedTP(0);
+
+    // Wenn es Runde 1 ist, setzen wir den Retry-Status lokal zurück
+    if (round === 1) {
+       setRetryUsed(false);
+    }
 
     const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
     const roundDifficultyBonus = (round - 1) * 100; 
@@ -984,6 +1009,59 @@ export default function GameScreen() {
     }));
   };
 
+  // ==========================================
+  // --- NEU: KAUFFUNKTION ZWEITE CHANCE ---
+  // ==========================================
+  const handleBuySecondChance = async () => {
+    if (!activeTournamentId || isProcessingRetry) return;
+    
+    setIsProcessingRetry(true);
+    const fee = getContinueFee(activeTournamentId, activeTournamentRound);
+    
+    if (fee === null) {
+       setIsProcessingRetry(false);
+       return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("Kein User gefunden");
+
+      const newTacPoints = currentTacPoints - fee;
+
+      // 1. TacPoints abziehen
+      const { error: pointsError } = await supabase
+        .from('user_stats')
+        .update({ tac_points: newTacPoints })
+        .eq('id', session.user.id);
+
+      if (pointsError) throw pointsError;
+
+      // 2. Retry in tour_progress markieren (Status MUSS 'playing' bleiben, falls er vorher kurz auf eliminated gesetzt wurde)
+      const { error: progressError } = await supabase
+        .from('tour_progress')
+        .update({ retry_used: true, status: 'playing' })
+        .eq('user_id', session.user.id)
+        .eq('tournament_id', activeTournamentId);
+
+      if (progressError) throw progressError;
+
+      // 3. Match neu starten (Gleiche Runde, gleiches Turnier)
+      localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+      setRetryUsed(true);
+      setIsProcessingRetry(false);
+      
+      // Match Reset auslösen
+      handleStartTournamentMatch(activeTournamentId, activeTournamentRound, activeTournamentDifficulty);
+
+    } catch (error) {
+      console.error("Fehler beim Kauf der zweiten Chance:", error);
+      alert("Fehler beim Kauf. Bitte überprüfe deine Internetverbindung.");
+      setIsProcessingRetry(false);
+    }
+  };
+
+
   const handleSubmit = () => {
     setPhase("player_animating"); 
     const chosenShot = commands[hitterId].shot!;
@@ -1037,7 +1115,7 @@ export default function GameScreen() {
     if (isPlayerServingTurn && hitterId !== serverId) {
       currentTurnResult = "error_wrong_zone";
       tTitle = "❌ FALSCHER AUFSCHLÄGER!";
-      message = `Regelfehler! Falscher Aufschläger. Laut Rotation ${serverId === "you" ? "bist DU" : `ist ${partnerName}`} an der Reihe!`;
+      message = `Regelfehler! Falscher Aufschlag. Laut Rotation ${serverId === "you" ? "bist DU" : `ist ${partnerName}`} an der Reihe!`;
     } 
     else if (isPlayerServingTurn) {
       const hCol = hitFromPos.charAt(0).toUpperCase();
@@ -1263,12 +1341,12 @@ export default function GameScreen() {
                   await supabase.from("tour_progress").update({ current_round: activeTournamentRound + 1 }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
                 }
               } else {
+                // NEU: HIER NICHT MEHR AUF ELIMINATED SETZEN, DAMIT DIE ZWEITE CHANCE FUNKTIONIERT
                 const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                 if (savedTourStamina[activeTournamentId]) {
                   delete savedTourStamina[activeTournamentId];
                   localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
                 }
-                await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
               }
 
               await supabase.from("user_stats").update({ points: finalScore, tac_points: currentTacPoints }).eq("id", session.user.id);
@@ -1536,12 +1614,24 @@ export default function GameScreen() {
             <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-4 w-full">
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
               
-              <button 
-                onClick={attemptStartNewGame}
-                className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 transition-all"
-              >
-                Neues Einzelmatch
-              </button>
+              {tacScore < 1500 ? (
+                <button 
+                  disabled
+                  className="w-full max-w-sm py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                >
+                  <span className="text-sm">🔒 Einzelmatch (Ab 1500)</span>
+                  <span className="text-[10px] text-slate-500 normal-case tracking-normal">
+                    Sammle erst Erfahrung im Taktik-Trainer
+                  </span>
+                </button>
+              ) : (
+                <button 
+                  onClick={attemptStartNewGame}
+                  className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 transition-all"
+                >
+                  Neues Einzelmatch
+                </button>
+              )}
 
               {localStorage.getItem("tacpadel_savegame") && (
                 <button 
@@ -1693,9 +1783,38 @@ export default function GameScreen() {
                     </div>
                   </div>
 
+                  {/* NEU: ZWEITE CHANCE LOGIK (Nur bei Niederlage im Turnier) */}
+                  {activeTournamentId && playerScore < aiScore && getContinueFee(activeTournamentId, activeTournamentRound) !== null && !retryUsed && (
+                    <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
+                      <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
+                      <span className="text-amber-400 font-black uppercase tracking-widest text-sm mb-2 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">
+                        Zweite Chance?
+                      </span>
+                      <p className="text-[10px] text-slate-400 text-center mb-4 leading-relaxed">
+                        Du hast im Turnier genau EINE Möglichkeit, ein Match zu wiederholen.
+                      </p>
+                      
+                      <button 
+                        disabled={currentTacPoints < getContinueFee(activeTournamentId, activeTournamentRound)! || isProcessingRetry}
+                        onClick={handleBuySecondChance} 
+                        className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${
+                          currentTacPoints >= getContinueFee(activeTournamentId, activeTournamentRound)! && !isProcessingRetry
+                            ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95' 
+                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isProcessingRetry 
+                          ? "Wird gekauft..." 
+                          : currentTacPoints < getContinueFee(activeTournamentId, activeTournamentRound)! 
+                            ? `Zu wenig TP (${getContinueFee(activeTournamentId, activeTournamentRound)} nötig)` 
+                            : `Match wiederholen (${getContinueFee(activeTournamentId, activeTournamentRound)} TP)`
+                        }
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
-                <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full">
+                <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full mt-6">
                   
                   {/* LINKE SPALTE: TACSCORE & TACPOINTS */}
                   <div className="flex-1 flex flex-col gap-4 w-full">
@@ -1761,8 +1880,25 @@ export default function GameScreen() {
                 </div>
                 
                 {activeTournamentId ? (
-                   <button onClick={() => { setIsTourOpen(true); setShowGameOverUI(false); setActiveTournamentId(null); }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                     Zurück zur TP Tour
+                   <button onClick={() => { 
+                     setIsTourOpen(true); 
+                     setShowGameOverUI(false); 
+                     setActiveTournamentId(null); 
+                     
+                     // NEU: Wenn der Spieler verloren hat und NICHT den Continue Button genutzt hat, 
+                     // wird er hier als "eliminated" markiert, wenn er zur Tour zurückkehrt.
+                     if (playerScore < aiScore) {
+                       supabase.auth.getSession().then(({ data: { session } }) => {
+                         if (session?.user) {
+                           supabase.from("tour_progress")
+                             .update({ status: "eliminated" })
+                             .eq("user_id", session.user.id)
+                             .eq("tournament_id", activeTournamentId);
+                         }
+                       });
+                     }
+                   }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
+                     {playerScore < aiScore ? "Aufgeben & Zurück zur TP Tour" : "Zurück zur TP Tour"}
                    </button>
                 ) : (
                    <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
