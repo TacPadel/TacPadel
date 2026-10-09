@@ -181,7 +181,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         </group>
 
         {/* === TENNIS/PADEL BALL === */}
-        <group position={[0.45, 0.65, 0.5]}>
+        <group position={[0.45, 1.5, 0.2]}>
           <mesh>
             <sphereGeometry args={[0.18, 16, 16]} />
             <meshStandardMaterial color="#020617" roughness={0.4} />
