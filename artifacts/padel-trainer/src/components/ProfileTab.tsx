@@ -64,7 +64,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
       
       // [HIER WURDE ES ANGEPASST]
       // Startet unten eng (0.15) am Griff und öffnet sich auf 0.45 (breit) um den Schläger
-      const radius = 0.15 + (t * 0.3); 
+      const radius = 0.15 + (t * 0.4); 
       
       const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
       
@@ -109,7 +109,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
           
-          <group position={[0, 0, 0.53]} rotation={[0.2, 0, 0]}>
+          <group position={[0, 0, 0.63]} rotation={[0.2, 0, 0]}>
             <mesh position={[0, 0, -0.02]}>
               <boxGeometry args={[0.4, 0.2, 0.01]} />
               <meshStandardMaterial color="#020617" />
@@ -125,11 +125,11 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
           </group>
         </group>
 
-        {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === */}
+        {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === 
         <mesh position={[0, 1.4, -0.15]} rotation={[0, 0, Math.PI / 4]}>
           <torusGeometry args={[0.85, 0.015, 16, 64, Math.PI * 1.2]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-        </mesh>
+        </mesh>*/}
 
         {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
@@ -181,7 +181,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         </group>
 
         {/* === TENNIS/PADEL BALL === */}
-        <group position={[0.45, 0.65, 0.2]}>
+        <group position={[0.45, 0.65, 0.5]}>
           <mesh>
             <sphereGeometry args={[0.18, 16, 16]} />
             <meshStandardMaterial color="#020617" roughness={0.4} />
