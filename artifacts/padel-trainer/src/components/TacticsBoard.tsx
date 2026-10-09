@@ -24,9 +24,10 @@ interface TacticalFilters {
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse
+// Globale Taktik-Schwellenwerte für Analyse (JETZT AUF 160px ANGEPASST)
 const GAP_THRESHOLD = 160;
-const WIDE_GAP_THRESHOLD = 170;
+// WIDE_GAP_THRESHOLD auf 180px erhöht, damit sich die diagonale Linie auf dem Bogen dehnen darf, ohne rot zu werden!
+const WIDE_GAP_THRESHOLD = 180;
 const DEEP_DEF_THRESHOLD = 80;
 const SHORT_DEF_THRESHOLD = 70;
 
@@ -49,8 +50,7 @@ const getControlPointX = (isTeamA: boolean) => {
   return 2 * apexX - edgeX;
 };
 
-// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) 
-// - Y-Werte perfekt an 160px Abstand angepasst (110 und 270), damit die Linien grün bleiben
+// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) - Y-Werte an 160px Abstand angepasst
 const SCENARIOS: Record<string, {
   name: string;
   items: DraggableItem[];
@@ -87,7 +87,7 @@ const SCENARIOS: Record<string, {
       { id: "a1", x: 60, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 320, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },      
       { id: "b1", x: V_WIDTH - 80, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 240, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
+      { id: "b2", x: V_WIDTH - 100, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
       { id: "ball", x: 85, y: 270, color: "#2ecc71", label: "●", isPlayer: false },    
     ],
     customAnalysis: {
@@ -128,34 +128,21 @@ const SCENARIOS: Record<string, {
   }
 };
 
-const getTacticalAnalysis = (
-  items: DraggableItem[],
+// HILFSFUNKTION: Kapselt die Ziel-Berechnung für beide Systeme (Visuell beim Draggen & Analyse)
+const getTacticalTargetAndRec = (
+  ball: { x: number; y: number },
+  teamA: DraggableItem[],
+  teamB: DraggableItem[],
   filters: TacticalFilters,
   scenarioKey: string,
   customTarget: { x: number; y: number } | null
 ) => {
-  const teamA = items.filter((i) => i.id.startsWith("a"));
-  const teamB = items.filter((i) => i.id.startsWith("b"));
-  const ball = items.find((i) => i.id === "ball");
-  if (!ball || teamA.length < 2 || teamB.length < 2) return null;
-
   const netX = V_WIDTH / 2;
+  const isBallOnSideA = ball.x <= netX;
   const teamA_X = (teamA[0].x + teamA[1].x) / 2;
   const teamB_X = (teamB[0].x + teamB[1].x) / 2;
 
-  const isBallOnSideA = ball.x <= netX;
-
-  const closestA = teamA.reduce((prev, curr) =>
-    Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev
-  );
-  const closestB = teamB.reduce((prev, curr) =>
-    Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev
-  );
-
-  const movements: Record<string, { tx: number; ty: number }> = {};
-  let targetX = 0;
-  let targetY = 0;
-  let recommendation = "";
+  let targetX = 0; let targetY = 0; let recommendation = "";
 
   if (customTarget) {
     targetX = customTarget.x;
@@ -163,17 +150,16 @@ const getTacticalAnalysis = (
     recommendation = "Manueller Zielpunkt gesetzt! Die Taktikketten verschieben sich zum Landepunkt.";
   } else if (scenarioKey !== "custom" && SCENARIOS[scenarioKey]?.customAnalysis) {
     const custom = SCENARIOS[scenarioKey].customAnalysis;
-    targetX = custom!.targetX;
-    targetY = custom!.targetY;
-    recommendation = custom!.recommendation;
+    targetX = custom.targetX;
+    targetY = custom.targetY;
+    recommendation = custom.recommendation;
   } else {
     if (isBallOnSideA) {
       targetX = V_WIDTH - 80;
       targetY = V_HEIGHT / 2;
       recommendation = "Befreiungsschlag: Versuche einen Lob oder spiele flach in die Ecke.";
       
-      const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD;
-      
+      const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD + 2;
       if (teamB_X < netX + DEEP_DEF_THRESHOLD) {
         recommendation = "Die Gegner kleben am Netz. Zeit für einen hohen Lob in den Rückraum!";
         targetX = V_WIDTH - 40;
@@ -188,9 +174,8 @@ const getTacticalAnalysis = (
       targetY = V_HEIGHT / 2;
       recommendation = "Gegner am Ball. Halte die Netzposition und decke die Winkel.";
       
-      const isAMiddleOpen = Math.abs(teamA[0].y - teamA[1].y) > GAP_THRESHOLD;
+      const isAMiddleOpen = Math.abs(teamA[0].y - teamA[1].y) > GAP_THRESHOLD + 2;
       const isAAtNet = teamA_X > netX - DEEP_DEF_THRESHOLD;
-      
       if (isAAtNet) {
         recommendation = "Gefahr eines Lobs! Ihr seid weit vorne am Netz, bereitet euch auf den Rückzug vor.";
         targetX = 40;
@@ -202,22 +187,42 @@ const getTacticalAnalysis = (
       }
     }
   }
+  return { targetX, targetY, recommendation };
+};
 
-  let title = "";
-  let bodyText = "";
-  let color = "";
-  let activePlayerId = "";
+const getTacticalAnalysis = (
+  items: DraggableItem[],
+  filters: TacticalFilters,
+  scenarioKey: string,
+  customTarget: { x: number; y: number } | null
+) => {
+  const teamA = items.filter((i) => i.id.startsWith("a"));
+  const teamB = items.filter((i) => i.id.startsWith("b"));
+  const ball = items.find((i) => i.id === "ball");
+  if (!ball || teamA.length < 2 || teamB.length < 2) return null;
 
-  // Globale Verschiebung (Scheibenwischer) basierend auf Ballposition
-  const ballYPercent = Math.max(0, Math.min(1, ball.y / V_HEIGHT));
-  // Angepasst für 160px Abstand: Max Shift ist jetzt passend skaliert
-  const lateralShift = (ballYPercent - 0.5) * 160; 
+  const netX = V_WIDTH / 2;
+  const teamA_X = (teamA[0].x + teamA[1].x) / 2;
+  const teamB_X = (teamB[0].x + teamB[1].x) / 2;
+  const isBallOnSideA = ball.x <= netX;
+
+  const closestA = teamA.reduce((prev, curr) => Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev);
+  const closestB = teamB.reduce((prev, curr) => Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev);
+
+  const { targetX, targetY, recommendation } = getTacticalTargetAndRec(ball, teamA, teamB, filters, scenarioKey, customTarget);
+
+  const movements: Record<string, { tx: number; ty: number }> = {};
+  let title = ""; let bodyText = ""; let color = ""; let activePlayerId = "";
+
+  // Die neue Verschiebung für das Team OHNE Ball richtet sich nach dem Ziel (TargetY)
+  const targetYPercent = Math.max(0, Math.min(1, targetY / V_HEIGHT));
+  const targetLateralShift = (targetYPercent - 0.5) * 160;
 
   if (isBallOnSideA) {
-    const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD;
+    const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD + 2;
     const isAInTransition = teamA_X > V_WIDTH * 0.25 && teamA_X < netX - 80;
 
-    // Hitter-Berechnung Team A
+    // TEAM A (MIT BALL) -> Reagiert auf den BALL
     const hitterAngle = Math.atan2(ball.y - closestA.y, ball.x - closestA.x);
     const hitterDist = Math.hypot(ball.x - closestA.x, ball.y - closestA.y);
     const hitterStep = Math.max(0, hitterDist - 28);
@@ -226,34 +231,25 @@ const getTacticalAnalysis = (
 
     teamA.forEach(p => {
       if (p.id === closestA.id) {
-        // Hitter bewegt sich zum Ball
         movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
-        // Partner hält den 160px Abstand zum Ballführer
         const idealSpacing = p.id === "a1" ? -160 : 160;
-        const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
-        
+        const targetYBall = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
         let partnerTx = p.x;
-        // Partner darf nicht nach hinten rennen, geht aber mit nach vorne, wenn der Hitter überholt
-        if (hitterTx > p.x) {
-          partnerTx = hitterTx;
-        }
-        
-        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
+        if (hitterTx > p.x) partnerTx = hitterTx;
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetYBall * 0.6 };
       }
     });
 
-    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team B berechnen
+    // TEAM B (OHNE BALL, am Netz) -> Reagiert auf das ZIEL (gelbe Spitze)
     const defBaseX = (teamB[0].x + teamB[1].x) / 2;
-    
     teamB.forEach(p => {
       if (filters.showAttackArc) {
-        const optY = p.id === "b1" ? 110 + lateralShift : 270 + lateralShift;
+        const optY = p.id === "b1" ? 110 + targetLateralShift : 270 + targetLateralShift;
         movements[p.id] = { tx: defBaseX, ty: optY }; 
       } else {
-        // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "b1" ? 110 : 270;
-        const targetNetY = baseY + lateralShift;
+        const targetNetY = baseY + targetLateralShift;
         movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; 
       }
     });
@@ -263,7 +259,7 @@ const getTacticalAnalysis = (
     color = isAInTransition ? "bg-red-700" : (isBMiddleOpen && filters.showWeaknessZones) ? "bg-emerald-600" : "bg-indigo-700";
     activePlayerId = closestA.id;
   } else {
-    // Hitter-Berechnung Team B
+    // TEAM B (MIT BALL) -> Reagiert auf den BALL
     const hitterAngle = Math.atan2(ball.y - closestB.y, ball.x - closestB.x);
     const hitterDist = Math.hypot(ball.x - closestB.x, ball.y - closestB.y);
     const hitterStep = Math.max(0, hitterDist - 28);
@@ -272,34 +268,25 @@ const getTacticalAnalysis = (
 
     teamB.forEach(p => {
       if (p.id === closestB.id) {
-        // Hitter bewegt sich zum Ball
         movements[p.id] = { tx: hitterTx, ty: hitterTy };
       } else {
-        // Partner hält den 160px Abstand zum Ballführer
         const idealSpacing = p.id === "b1" ? -160 : 160;
-        const targetY = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
-        
+        const targetYBall = Math.max(40, Math.min(V_HEIGHT - 40, ball.y + idealSpacing));
         let partnerTx = p.x;
-        // Partner darf nicht nach hinten rennen (nach rechts bei Team B)
-        if (hitterTx < p.x) {
-          partnerTx = hitterTx;
-        }
-        
-        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetY * 0.6 };
+        if (hitterTx < p.x) partnerTx = hitterTx;
+        movements[p.id] = { tx: partnerTx, ty: p.y * 0.4 + targetYBall * 0.6 };
       }
     });
 
-    // GEGNER AUF EINER LINIE: Gemeinsame X-Koordinate für Team A berechnen
+    // TEAM A (OHNE BALL, am Netz) -> Reagiert auf das ZIEL (gelbe Spitze)
     const defBaseX = (teamA[0].x + teamA[1].x) / 2;
-    
     teamA.forEach(p => {
       if (filters.showAttackArc) {
-        const optY = p.id === "a1" ? 110 + lateralShift : 270 + lateralShift;
+        const optY = p.id === "a1" ? 110 + targetLateralShift : 270 + targetLateralShift;
         movements[p.id] = { tx: defBaseX, ty: optY }; 
       } else {
-        // Realistisches Pendeln der Verteidigung
         const baseY = p.id === "a1" ? 110 : 270;
-        const targetNetY = baseY + lateralShift;
+        const targetNetY = baseY + targetLateralShift;
         movements[p.id] = { tx: defBaseX, ty: p.y * 0.4 + targetNetY * 0.6 }; 
       }
     });
@@ -374,9 +361,6 @@ function TrajectoryView3D() {
     let clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     let clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-    // DAS FELD IM RADAR VERGRÖSSERT: 
-    // Wir passen die ViewBox-Werte an, um das Feld im SVG größer darzustellen,
-    // ohne die eigentliche Box zu verändern.
     const SVG_VIEW_X = -40; // Weniger Rand
     const SVG_VIEW_Y = -40; // Weniger Rand
     const SVG_VIEW_W = 460; // Geringere Breite -> Feld wirkt größer
@@ -462,7 +446,6 @@ function TrajectoryView3D() {
             </div>
             
             <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center py-2">
-              {/* ANGEPASSTE VIEWBOX FÜR GRÖSSERES FELD IM RADAR */}
               <svg ref={sniperSvgRef} viewBox="-40 -40 460 840" className="w-auto h-[180px] sm:h-[220px] touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
                 
                 <g transform="matrix(0 -1 1 0 0 760)">
@@ -584,8 +567,8 @@ export default function TacticsBoard() {
 
     const SVG_VIEW_X = -60;
     const SVG_VIEW_Y = -60;
-    const SVG_VIEW_W = 500; // Vertikal Width
-    const SVG_VIEW_H = 880; // Vertikal Height
+    const SVG_VIEW_W = 500; 
+    const SVG_VIEW_H = 880; 
 
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
@@ -644,6 +627,7 @@ export default function TacticsBoard() {
       let maxX = V_WIDTH - 16;
       const netX = V_WIDTH / 2;
 
+      // === NEU: Beim Draggen des Balls orientieren sich Verteidiger am ZIEL ===
       if (id === "ball" && filters.showAttackArc) {
         const newX = Math.max(16, Math.min(V_WIDTH - 16, pt.x - ox));
         const newY = Math.max(16, Math.min(V_HEIGHT - 16, pt.y - oy));
@@ -651,28 +635,37 @@ export default function TacticsBoard() {
         
         const isTeamAAttacking = newX > netX;
 
+        // Wir berechnen temporär, wo das logische ZIEL (die gelbe Spitze) für diese neue Ballposition liegt
+        const pTeamA = prev.filter(i => i.id.startsWith("a"));
+        const pTeamB = prev.filter(i => i.id.startsWith("b"));
+        const simBall = { x: newX, y: newY };
+        const { targetY: simTargetY } = getTacticalTargetAndRec(simBall, pTeamA, pTeamB, filters, selectedScenarioKey, customTarget);
+        const targetRatio = Math.max(0, Math.min(1, simTargetY / V_HEIGHT));
+
         return prev.map((item) => {
           if (item.id === "ball") return { ...item, x: newX, y: newY };
           
           if (item.isPlayer) {
+            // isAttacker in dieser Logik meint das Team am Netz, auf das der Ball zufliegt (ohne Ball)
             const isAttacker = isTeamAAttacking ? item.id.startsWith("a") : item.id.startsWith("b");
             
             if (isAttacker) {
-              // 160px Spacing auch beim dynamischen Ballziehen erhalten!
-              const targetY = (item.id === "a1" || item.id === "b1") ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
-              return { ...item, x: getArcX(targetY, item.id.startsWith("a")), y: targetY };
+              // Netz-Team (ohne Ball) reagiert auf das ZIEL (TargetRatio)
+              const targetYPos = (item.id === "a1" || item.id === "b1") ? 110 + (targetRatio - 0.5) * 160 : 270 + (targetRatio - 0.5) * 160;
+              return { ...item, x: getArcX(targetYPos, item.id.startsWith("a")), y: targetYPos };
             } else {
+              // Baseline-Team (mit Ball) reagiert auf den BALL (BallRatio)
               const targetX = isTeamAAttacking ? V_WIDTH - 80 : 80;
               const isPlayer1 = item.id === "a1" || item.id === "b1";
-              // 160px Spacing auch hier erhalten!
-              const targetY = isPlayer1 ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
-              return { ...item, x: targetX, y: targetY };
+              const targetYPos = isPlayer1 ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
+              return { ...item, x: targetX, y: targetYPos };
             }
           }
           return item;
         });
       }
 
+      // Beim Ziehen von Spielern am Bogen bleibt die Mechanik erhalten
       if (id.startsWith("a")) {
         maxX = netX - 15;
       } else if (id.startsWith("b") && id !== "ball") {
@@ -714,7 +707,7 @@ export default function TacticsBoard() {
         return item;
       });
     });
-  }, [getPoint, filters.showAttackArc]);
+  }, [getPoint, filters, selectedScenarioKey, customTarget]);
 
   const onPointerUp = useCallback(() => {
     dragRef.current = null;
@@ -962,8 +955,8 @@ export default function TacticsBoard() {
                         const gap = Math.abs(b1.y - b2.y); const avgX = (b1.x + b2.x) / 2; const avgY = (b1.y + b2.y) / 2;
                         return (
                           <>
-                            {/* Rotes Feld ist jetzt exakt 160px hoch */}
-                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
+                            {/* Puffer-Check eingebaut (+2) */}
+                            {gap > GAP_THRESHOLD + 2 && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX < netX + DEEP_DEF_THRESHOLD && <rect x={netX + 10} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
                         );
@@ -972,8 +965,8 @@ export default function TacticsBoard() {
                         const gap = Math.abs(a1.y - a2.y); const avgX = (a1.x + a2.x) / 2; const avgY = (a1.y + a2.y) / 2;
                         return (
                           <>
-                            {/* Rotes Feld ist jetzt exakt 160px hoch */}
-                            {gap > GAP_THRESHOLD && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
+                            {/* Puffer-Check eingebaut (+2) */}
+                            {gap > GAP_THRESHOLD + 2 && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX > netX - DEEP_DEF_THRESHOLD && <rect x={netX - 60} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
                         );
@@ -983,14 +976,16 @@ export default function TacticsBoard() {
                     {filters.showTeamLines && (() => {
                       const teamA = items.filter((i) => i.id.startsWith("a")); if (teamA.length < 2) return null;
                       const distA = Math.hypot(teamA[0].x - teamA[1].x, teamA[0].y - teamA[1].y);
-                      const isGapTooWide = distA > GAP_THRESHOLD;
+                      // Diagonale darf sich auf dem Bogen bis zu WIDE_GAP_THRESHOLD (180px) dehnen
+                      const isGapTooWide = distA > WIDE_GAP_THRESHOLD;
                       return <line x1={teamA[0].x} y1={teamA[0].y} x2={teamA[1].x} y2={teamA[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
                     })()}
 
                     {filters.showTeamLines && (() => {
                       const teamB = items.filter((i) => i.id.startsWith("b")); if (teamB.length < 2) return null;
                       const distB = Math.hypot(teamB[0].x - teamB[1].x, teamB[0].y - teamB[1].y);
-                      const isGapTooWide = distB > GAP_THRESHOLD;
+                      // Diagonale darf sich auf dem Bogen bis zu WIDE_GAP_THRESHOLD (180px) dehnen
+                      const isGapTooWide = distB > WIDE_GAP_THRESHOLD;
                       return <line x1={teamB[0].x} y1={teamB[0].y} x2={teamB[1].x} y2={teamB[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
                     })()}
 

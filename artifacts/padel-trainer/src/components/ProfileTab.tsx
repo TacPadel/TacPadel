@@ -62,8 +62,6 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
     for (let i = 0; i <= spiralSegments; i++) {
       const t = i / spiralSegments; // 0.0 bis 1.0
       
-      // [HIER WURDE ES ANGEPASST]
-      // Startet unten eng (0.15) am Griff und öffnet sich auf 0.45 (breit) um den Schläger
       const radius = 0.15 + (t * 0.4); 
       
       const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
@@ -108,28 +106,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <cylinderGeometry args={[0.67, 0.67, 0.02, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
-          
-          {/*<group position={[0, 0, 0.61]} rotation={[-0.2, 0, 0]}>
-            <mesh position={[0, 0, -0.02]}>
-              <boxGeometry args={[0.4, 0.2, 0.01]} />
-              <meshStandardMaterial color="#020617" />
-            </mesh>
-            <Text 
-              fontSize={0.15} 
-              color="#ffffff" 
-              font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-              fontWeight="bold"
-            >
-              TP
-            </Text>
-          </group>*/}
         </group>
-
-        {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === 
-        <mesh position={[0, 1.4, -0.15]} rotation={[0, 0, Math.PI / 4]}>
-          <torusGeometry args={[0.85, 0.015, 16, 64, Math.PI * 1.2]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-        </mesh>*/}
 
         {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
@@ -273,7 +250,14 @@ function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophy
 }
 // ==========================================
 
-export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
+// --- NEU: Das Prop-Interface löst den TypeScript-Fehler 2322 in App.tsx! ---
+export interface ProfileTabProps {
+  user: any;
+  setActiveTab: (t: string) => void;
+  initialStatsMode?: 'single' | 'tournament';
+}
+
+export default function ProfileTab({ user, setActiveTab, initialStatsMode = 'single' }: ProfileTabProps) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
   const [teamName, setTeamName] = useState("TacPadel Rookies");
@@ -297,7 +281,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_show_explanations", newVal.toString());
   };
 
-  const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
+  // Verwendet nun das optional übergebene `initialStatsMode`
+  const [statsMode, setStatsMode] = useState<'single' | 'tournament'>(initialStatsMode);
   const [allHistory, setAllHistory] = useState<any[]>([]);
   const [wonTrophies, setWonTrophies] = useState<string[]>([]);
   const [activeTrophyBanner, setActiveTrophyBanner] = useState<string | null>(null);
@@ -315,6 +300,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     return saved ? parseInt(saved, 10) : 0;
   });
 
+  // --- NEU: Eigener State für die Turnierpunkte, damit der Balken stimmt ---
+  const [currentTac, setCurrentTac] = useState<number>(0);
+
   const [preferredPosition, setPreferredPosition] = useState<string>(() => localStorage.getItem("tacpadel_preferred_position") || "Rechts");
   const [aggStats, setAggStats] = useState({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
   const [matchesWithStats, setMatchesWithStats] = useState(0);
@@ -327,11 +315,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const loadUserData = async () => {
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id') 
+        .select('display_name, avatar_url, points, tac_points, preferred_position, team_name, partner_id') 
         .eq('id', user.id)
         .maybeSingle();
 
       let trueScore = currentScore; 
+      let trueTac = 0;
 
       if (profileData) {
         if (profileData.display_name) {
@@ -340,6 +329,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
         if (profileData.avatar_url) setAvatarUrl(profileData.avatar_url);
         if (profileData.points != null) trueScore = profileData.points;
+        if (profileData.tac_points != null) trueTac = profileData.tac_points;
         
         if (profileData.team_name) {
           setTeamName(profileData.team_name);
@@ -370,6 +360,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         setAllHistory(historyData);
         const lastMatch = historyData[historyData.length - 1];
         if (lastMatch.points != null) trueScore = lastMatch.points;
+        if (lastMatch.tac_points != null) trueTac = lastMatch.tac_points;
       } else {
         setAllHistory([]);
       }
@@ -385,10 +376,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       }
 
       setCurrentScore(trueScore);
+      setCurrentTac(trueTac);
       localStorage.setItem("tacpadel_score", trueScore.toString());
       
       if (!profileData) {
-        await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, preferred_position: preferredPosition, team_name: teamName, partner_id: partnerId });
+        await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, tac_points: trueTac, preferred_position: preferredPosition, team_name: teamName, partner_id: partnerId });
       } else if (profileData.points !== trueScore) {
         await supabase.from('user_stats').update({ points: trueScore }).eq('id', user.id);
       }
@@ -398,14 +390,23 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   }, [user.id]);
 
   useEffect(() => {
+    // --- NEU: Zuverlässigere, unempfindlichere String-Prüfung für die Statistik ---
+    const isSingle = (m: any) => !m.match_type || m.match_type.toLowerCase() === 'single';
+    const isTournament = (m: any) => m.match_type && m.match_type.toLowerCase() === 'tournament';
+    
+    const baseValue = statsMode === 'tournament' ? currentTac : currentScore;
+
     if (allHistory.length === 0) {
-      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
+      setMatchHistory([{ name: 'Start', Wert: baseValue }]);
+      setMatchesWithStats(0);
+      setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
       return;
     }
-    const filtered = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
+    
+    const filtered = allHistory.filter(m => statsMode === 'tournament' ? isTournament(m) : isSingle(m));
 
     if (filtered.length === 0) {
-      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
+      setMatchHistory([{ name: 'Start', Wert: baseValue }]);
       setMatchesWithStats(0);
       setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
       return;
@@ -416,7 +417,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       const date = new Date(match.created_at);
       return {
         name: `${date.getDate()}.${date.getMonth() + 1}.`,
-        Wert: statsMode === 'tournament' ? (match.tac_points || 0) : match.points,
+        // --- NEU: Absicherung falls Werte in der DB NULL sind (|| 0) ---
+        Wert: statsMode === 'tournament' ? (match.tac_points || 0) : (match.points || 0),
         result: match.result
       };
     });
@@ -448,7 +450,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
        setMatchesWithStats(0);
        setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
     }
-  }, [allHistory, statsMode, currentScore]);
+  }, [allHistory, statsMode, currentScore, currentTac]);
 
   const loadoutStats = useMemo(() => {
     const baseStats = { smash: 50, control: 50, defense: 50, agility: 50 };
@@ -564,9 +566,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_stamina", String(newState));
   };
 
-  const filteredForWins = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
-  const wins = filteredForWins.filter(m => m.result === 'win').length;
-  const losses = filteredForWins.filter(m => m.result === 'loss').length;
+  // --- NEU: Auch beim Gewinne-Zählen unempfindlicher Check ---
+  const isSingle = (m: any) => !m.match_type || m.match_type.toLowerCase() === 'single';
+  const isTournament = (m: any) => m.match_type && m.match_type.toLowerCase() === 'tournament';
+  
+  const filteredForWins = allHistory.filter(m => statsMode === 'tournament' ? isTournament(m) : isSingle(m));
+  const wins = filteredForWins.filter(m => m.result && m.result.toLowerCase() === 'win').length;
+  const losses = filteredForWins.filter(m => m.result && m.result.toLowerCase() === 'loss').length;
   const totalMatches = wins + losses;
   const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
 
@@ -796,15 +802,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             
             <div className="flex justify-between items-end mb-1">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Open</span>
-              <span className="text-[11px] font-black tracking-widest text-purple-400">{currentScore} TacScore</span>
+              {/* --- NEU: Hier werden nun die currentTac (Turnier-Punkte) anstatt normaler currentScore eingesetzt --- */}
+              <span className="text-[11px] font-black tracking-widest text-purple-400">{currentTac} TacScore</span>
               <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Major</span>
             </div>
             
             <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden mb-4 relative">
               <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
               <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
+              {/* --- NEU: Balken füllt sich nun korrekt anhand der TacPoints, sodass er nicht bei 100%+ überläuft! --- */}
               <div className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
-                  style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
+                  style={{ width: `${Math.min(100, Math.max(5, (currentTac / 6000) * 100))}%` }} />
             </div>
 
             {/* TRON 3D CABINET CONTAINER */}
