@@ -832,6 +832,29 @@ export default function App(): React.JSX.Element {
     setAttempts(0); 
   };
 
+  const handleLogout = async () => {
+    await signOut(); // Führt den Supabase Logout aus
+    clearActiveSession(); // Löscht den gespeicherten Spielstand
+    
+    // Setzt die Navigation auf Home zurück
+    setActiveTab("home");
+    localStorage.setItem("tacpadel_activeTab", "home");
+    
+    // Setzt alle relevanten Trainer-States zurück
+    setLevel("Schlag");
+    setScore(0);
+    setAttempts(0);
+    setRoundsPlayed(0);
+    setHasSubmitted(false);
+    setSelectedShot(null);
+    setSelectedZone(null);
+    setSelectedLaufZone(null);
+    setGameOver(false);
+    setIsRetryPhase(false);
+    setFeedbackMsg(null);
+    setWrongPool([]);
+  };
+
   return (
   <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
     
@@ -862,7 +885,7 @@ export default function App(): React.JSX.Element {
             </button>
 
             <button 
-              onClick={() => signOut()} 
+              onClick={handleLogout} 
               className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold hover:bg-red-500/20 transition-all ml-2"
             >
               Abmelden
