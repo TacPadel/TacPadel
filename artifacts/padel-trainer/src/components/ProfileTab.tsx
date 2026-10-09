@@ -144,7 +144,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         </group>
 
         {/* === HOLOGRAPHISCHER PADLESCHLÄGER === */}
-        <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 3]}>
+        <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 7]}>
           
           <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
@@ -160,7 +160,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
               <cylinderGeometry args={[0.5, 0.5, 0.03, 32]} />
               <meshStandardMaterial color="#020617" transparent opacity={0.7} roughness={0.2} metalness={0.9} />
             </mesh>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <mesh rotation={[0, 0, 0]}>
               <torusGeometry args={[0.5, 0.035, 16, 64]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
             </mesh>
