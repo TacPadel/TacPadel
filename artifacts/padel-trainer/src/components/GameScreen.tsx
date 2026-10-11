@@ -1572,6 +1572,14 @@ export default function GameScreen() {
       <AnimatePresence>
         {isMenuOpen && !isTourOpen && (
           <div className="absolute inset-0 z-[200] bg-[#050b18] rounded-2xl overflow-hidden pointer-events-auto">
+            {/* --- NEU: TUTORIAL BUTTON IN DER ECKE --- */}
+            <button
+              onClick={() => setShowTutorial(true)}
+              title="Tutorial wiederholen"
+              className="absolute top-4 right-4 z-50 w-10 h-10 bg-slate-800/80 hover:bg-cyan-600 border border-slate-700 hover:border-cyan-400 text-slate-400 hover:text-white rounded-full font-black text-xl flex items-center justify-center transition-all shadow-lg hover:scale-110 active:scale-95"
+            >
+              ?
+            </button>            
             <div className="absolute inset-0 pointer-events-none">
               <img src="/logo.png" alt="TacPadel Background" className="w-full h-full object-cover opacity-100" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/40 to-transparent"></div>
