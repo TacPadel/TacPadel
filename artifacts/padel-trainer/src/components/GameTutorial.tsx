@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import { AI_PROFILES } from "../engine/AiProfiles";
@@ -7,56 +7,59 @@ interface GameTutorialProps {
   onComplete: () => void;
 }
 
-// Unser Skript für die animierte 3D-Tour
+// Unser Skript für die animierte 3D-Tour (Mit dem neuen Volley-Spielzug!)
 const TUTORIAL_STEPS = [
   {
     title: "Willkommen",
     text: "Im Match-Modus spielst du Sätze gegen die KI. Timing, die richtige Taktik und Ausdauer entscheiden über Sieg oder Niederlage.",
-    phase: "ai_prepare", // KI überlegt kurz
+    phase: "ai_prepare", 
     isTimerActive: false,
     hasSubmitted: false,
-    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "B1", type: "PREPARE_SERVE" } },
+    // Du stehst auf D1 und hast Aufschlag
+    courtState: { you: "D1", partner: "B4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "D1", type: "PREPARE_SERVE" } },
     commands: { run: null as string | null, target: null as string | null, shot: null as string | null },
     turnResult: null
   },
   {
-    title: "1. Gegner schlägt auf",
-    text: "Der Gegner serviert! Der Ball fliegt in deine Hälfte. Ab jetzt tickt ein Timer! Du musst schnell handeln, bevor die Zeit abläuft.",
-    phase: "timer_running", // Ball ist im Flug!
+    title: "1. Reagieren (Zeitdruck!)",
+    text: "Dein Aufschlag wurde returniert! Der Ball fliegt flach auf dich zu. Ab jetzt tickt ein Timer! Du musst schnell handeln, bevor die Zeit abläuft.",
+    phase: "timer_running", 
     isTimerActive: true,
     hasSubmitted: false,
-    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "AUFSCHLAG" } }, // Typ zu AUFSCHLAG geändert
+    // Du bist ans Netz vorgerückt (D4), der Gegner returniert aus der Mitte (C2)
+    courtState: { you: "D4", partner: "B4", opp1: "C2", opp2: "D1", ball: { side: "left", zone: "D4", type: "DRIVE" } },
     commands: { run: null, target: null, shot: null },
     turnResult: null
   },
   {
     title: "2. Laufweg festlegen",
-    text: "Wähle deine Laufzone, um den Ball zu erreichen. Hier laufen wir nach B2, wo der Ball landen wird.",
-    phase: "player_planning", // Spiel pausiert, wir planen
+    text: "Wähle deine Laufzone, um den Ball zu erreichen. Da du schon optimal am Netz stehst, wählen wir D4, um die Position zu halten.",
+    phase: "player_planning", 
     isTimerActive: false,
     hasSubmitted: false,
-    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } },
-    commands: { run: "B2", target: null, shot: null }, // Wir markieren B2 als unser Lauf-Ziel
+    courtState: { you: "D4", partner: "B4", opp1: "C2", opp2: "D1", ball: { side: "left", zone: "D4", type: "DRIVE" } },
+    commands: { run: "D4", target: null, shot: null }, // Wir markieren D4 als unser Halte-Ziel
     turnResult: null
   },
   {
-    title: "3. Spieler rennt",
-    text: "Tippe auf das gegnerische Feld (C4), um das Schlagziel zu markieren. Wähle anschließend den Schlag (LOB).",
-    phase: "player_planning", // Dein Spieler ist jetzt auf B2 angekommen
+    title: "3. Schlagziel & Art",
+    text: "Jetzt markieren wir unser Schlagziel in der tiefen Ecke (A1), um den Gegner festzunageln, und wählen als Schlag den VOLLEY.",
+    phase: "player_planning", 
     isTimerActive: false,
     hasSubmitted: false,
-    courtState: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } }, // 'you' ist nun auf B2
-    commands: { run: "B2", target: "C4", shot: "LOB" }, // C4 und LOB sind ausgewählt
+    courtState: { you: "D4", partner: "B4", opp1: "C2", opp2: "D1", ball: { side: "left", zone: "D4", type: "DRIVE" } },
+    commands: { run: "D4", target: "A1", shot: "VOLLEY" }, // A1 und VOLLEY sind ausgewählt
     turnResult: null
   },
   {
     title: "4. Ausführen & Ausdauer",
-    text: "Wir führen den Zug aus! Jeder Sprint kostet Ausdauer. Spiele Lobs, um im Ballwechsel Energie zu tanken.",
-    phase: "player_animating", // Wir spielen den Ball zurück
+    text: "Stark! Mit dem Volley hältst du den Druck aufrecht. Jeder Sprint und harte Schlag kostet Ausdauer. Behalte den Balken immer im Blick.",
+    phase: "player_animating", 
     isTimerActive: false,
     hasSubmitted: true,
-    courtState: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "C4", type: "LOB" } }, // Ball fliegt nach C4
-    commands: { run: "B2", target: "C4", shot: "LOB" },
+    // Der Volley fliegt nach A1, der Gegner (opp1) muss hastig zurück nach B1 rennen
+    courtState: { you: "D4", partner: "B4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "A1", type: "VOLLEY" } }, 
+    commands: { run: "D4", target: "A1", shot: "VOLLEY" },
     turnResult: "perfect"
   }
 ];
@@ -73,7 +76,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       setStepIndex(prev => prev + 1);
       setAnimTrigger(prev => prev + 1); // Trigger für ScenarioCourt3D hochzählen
     } else {
-      onComplete();
+      onComplete(); // Tutorial beenden
     }
   };
 
