@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import { AI_PROFILES } from "../engine/AiProfiles";
@@ -7,12 +7,12 @@ interface GameTutorialProps {
   onComplete: () => void;
 }
 
-// Unser Skript für die geführte 3D-Tour
+// Unser Skript für die animierte 3D-Tour
 const TUTORIAL_STEPS = [
   {
     title: "Willkommen",
     text: "Im Match-Modus spielst du Sätze gegen die KI. Timing, die richtige Taktik und Ausdauer entscheiden über Sieg oder Niederlage.",
-    phase: "ai_prepare",
+    phase: "ai_prepare", // KI überlegt kurz
     isTimerActive: false,
     hasSubmitted: false,
     courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "B1", type: "PREPARE_SERVE" } },
@@ -21,41 +21,41 @@ const TUTORIAL_STEPS = [
   },
   {
     title: "1. Gegner schlägt auf",
-    text: "Der Gegner schlägt den Ball in deine Hälfte. Ab jetzt tickt ein Timer! Du musst schnell handeln, bevor die Zeit abläuft.",
-    phase: "timer_running",
+    text: "Der Gegner serviert! Der Ball fliegt in deine Hälfte. Ab jetzt tickt ein Timer! Du musst schnell handeln, bevor die Zeit abläuft.",
+    phase: "timer_running", // Ball ist im Flug!
     isTimerActive: true,
     hasSubmitted: false,
-    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } },
+    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "AUFSCHLAG" } }, // Typ zu AUFSCHLAG geändert
     commands: { run: null, target: null, shot: null },
     turnResult: null
   },
   {
     title: "2. Laufweg festlegen",
     text: "Wähle deine Laufzone, um den Ball zu erreichen. Hier laufen wir nach B2, wo der Ball landen wird.",
-    phase: "player_planning",
+    phase: "player_planning", // Spiel pausiert, wir planen
     isTimerActive: false,
     hasSubmitted: false,
     courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } },
-    commands: { run: "B2", target: null, shot: null },
+    commands: { run: "B2", target: null, shot: null }, // Wir markieren B2 als unser Lauf-Ziel
     turnResult: null
   },
   {
-    title: "3. Schlagziel & Art",
-    text: "Jetzt markieren wir unser Schlagziel im gegnerischen Feld (C4) und wählen den Schlag (LOB).",
-    phase: "player_planning",
+    title: "3. Spieler rennt",
+    text: "Tippe auf das gegnerische Feld (C4), um das Schlagziel zu markieren. Wähle anschließend den Schlag (LOB).",
+    phase: "player_planning", // Dein Spieler ist jetzt auf B2 angekommen
     isTimerActive: false,
     hasSubmitted: false,
-    courtState: { you: "B1", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } },
-    commands: { run: "B2", target: "C4", shot: "LOB" },
+    courtState: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "DRIVE" } }, // 'you' ist nun auf B2
+    commands: { run: "B2", target: "C4", shot: "LOB" }, // C4 und LOB sind ausgewählt
     turnResult: null
   },
   {
     title: "4. Ausführen & Ausdauer",
     text: "Wir führen den Zug aus! Jeder Sprint kostet Ausdauer. Spiele Lobs, um im Ballwechsel Energie zu tanken.",
-    phase: "player_animating",
+    phase: "player_animating", // Wir spielen den Ball zurück
     isTimerActive: false,
     hasSubmitted: true,
-    courtState: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2", type: "LOB" } },
+    courtState: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "right", zone: "C4", type: "LOB" } }, // Ball fliegt nach C4
     commands: { run: "B2", target: "C4", shot: "LOB" },
     turnResult: "perfect"
   }
@@ -65,9 +65,13 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const step = TUTORIAL_STEPS[stepIndex];
 
+  // Um die Animationen jedes Mal frisch auszulösen, brauchen wir einen Key
+  const [animTrigger, setAnimTrigger] = useState(0);
+
   const handleNext = () => {
     if (stepIndex < TUTORIAL_STEPS.length - 1) {
       setStepIndex(prev => prev + 1);
+      setAnimTrigger(prev => prev + 1); // Trigger für ScenarioCourt3D hochzählen
     } else {
       onComplete();
     }
@@ -82,6 +86,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       {/* 3D COURT IM HINTERGRUND (Visuelle Vorschau) */}
       <div className="absolute inset-0 z-10 pointer-events-none opacity-100">
         <ScenarioCourt3D 
+          key={`tutorial-court-${animTrigger}`} // Zwingt den Court, die Animation neu zu starten
           arenaModel="/TacPadel.glb" 
           playIntro={false}  
           gameOver={false} 
