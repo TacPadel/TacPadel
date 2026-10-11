@@ -10,7 +10,7 @@ import { soundManager } from '../lib/SoundManager';
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen"; 
-import GameTutorial from "./GameTutorial"; // <-- DEIN NEUES 3D-TUTORIAL
+import GameTutorial from "./GameTutorial"; // <-- NEU: Unser animiertes 3D Tutorial!
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
@@ -59,17 +59,14 @@ const evalRunTactics = (shot: string, runZone: string) => {
   return 0;
 };
 
-// ==========================================
-// --- CONTINUE KOSTEN BERECHNEN ---
-// ==========================================
 const getContinueFee = (tourId: string, currentRound: number) => {
   const tour = TOURNAMENTS.find(t => t.id === tourId);
-  if (!tour || currentRound > 2) return null; // Finale oder kein Turnier -> kein Retry
+  if (!tour || currentRound > 2) return null;
 
-  const baseFee = tour.entryFee === 0 ? 50 : tour.entryFee; // Mindestens 50 TP, falls Turnier kostenlos war
+  const baseFee = tour.entryFee === 0 ? 50 : tour.entryFee;
   
-  if (currentRound === 1) return baseFee; // Viertelfinale (1x Entry Fee)
-  if (currentRound === 2) return baseFee * 2; // Halbfinale (2x Entry Fee)
+  if (currentRound === 1) return baseFee; 
+  if (currentRound === 2) return baseFee * 2; 
   
   return null;
 };
@@ -90,12 +87,10 @@ export default function GameScreen() {
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
 
-  // --- Zweite Chance (Continue) States ---
   const [retryUsed, setRetryUsed] = useState<boolean>(false);
   const [isProcessingRetry, setIsProcessingRetry] = useState<boolean>(false);
   const currentTacPoints = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
 
-  // --- Exploit Warning State ---
   const [abandonWarning, setAbandonWarning] = useState<{
     action: "single" | "tour";
     tourParams?: { tourId: string; round: number; difficulty: number };
@@ -118,7 +113,6 @@ export default function GameScreen() {
 
   const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
 
-  // --- Team & Partner States ---
   const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
   const [partnerName, setPartnerName] = useState<string>("Partner");
   const [playerName, setPlayerName] = useState<string>("Du");
@@ -136,33 +130,26 @@ export default function GameScreen() {
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
-  // --- TIMER STATE ---
   const [matchSeconds, setMatchSeconds] = useState<number>(0);
   const matchSecondsRef = useRef(matchSeconds);
 
-  // Hilfsfunktion für die Anzeige (z.B. 65 Sekunden -> "1:05")
   const formatMatchTime = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // Timer Ref synchronisieren
   useEffect(() => {
     matchSecondsRef.current = matchSeconds;
   }, [matchSeconds]);
 
-  // Timer-Logik (pausiert im Hintergrund)
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
-    // Zähle nur hoch, wenn das Spiel läuft UND die App aktiv im Vordergrund ist (isVisible)
     if (!gameOver && !isMenuOpen && !isTourOpen && isVisible && !showTutorial && !abandonWarning) { 
       interval = setInterval(() => {
         setMatchSeconds(prev => prev + 1);
       }, 1000);
     }
-
     return () => clearInterval(interval);
   }, [gameOver, isMenuOpen, isTourOpen, isVisible, showTutorial, abandonWarning]);
 
@@ -229,7 +216,6 @@ export default function GameScreen() {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
             
-            // Name, Partner & Team Daten setzen
             if (data.display_name) setPlayerName(data.display_name);
             else setPlayerName(defaultName);
 
@@ -245,7 +231,7 @@ export default function GameScreen() {
       } catch (err) {
         console.log("Konnte Daten nicht von Supabase laden, nutze lokalen Speicher.");
       }
-      // Fallback
+      
       const saved = localStorage.getItem("tacpadel_score");
       if (saved) setTacScore(parseInt(saved, 10));
       
@@ -367,7 +353,7 @@ export default function GameScreen() {
     
     const parsed = JSON.parse(savedData);
     const tId = parsed.tournamentId;
-    const scoreChange = -50; // Fester Abzug für Rage-Quits
+    const scoreChange = -50; 
     const finalScore = Math.max(0, tacScore + scoreChange);
     
     setTacScore(finalScore);
@@ -377,19 +363,16 @@ export default function GameScreen() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        // Punkte abziehen
         await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
         
-        // Match als Niederlage in die Historie eintragen
         await supabase.from("match_history").insert({ 
           user_id: session.user.id, 
           points: finalScore, 
-          result: "loss", // Aufgabe = Niederlage
+          result: "loss", 
           match_type: tId ? "tournament" : "single",
           duration_seconds: parsed.matchSeconds || 0
         });
         
-        // Bei Turnieren: Ausscheiden eintragen und Ausdauer löschen
         if (tId) {
            await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", tId);
            
@@ -404,7 +387,6 @@ export default function GameScreen() {
       console.error("Fehler beim Abbrechen des Matches:", err);
     }
     
-    // Lokalen Spielstand endgültig löschen
     localStorage.removeItem("tacpadel_savegame");
   };
 
@@ -461,7 +443,6 @@ export default function GameScreen() {
         });
       }
 
-      // Timer laden falls vorhanden
       if (parsed.matchSeconds) {
         setMatchSeconds(parsed.matchSeconds);
       } else {
@@ -511,14 +492,13 @@ export default function GameScreen() {
 
     setPlayerScore(0);
     setAiScore(0);
-    setMatchSeconds(0); // Timer zurücksetzen
+    setMatchSeconds(0); 
     setGameOver(false);
     setShowGameOverUI(false);
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
     setEarnedTP(0);
 
-    // Wenn es Runde 1 ist, setzen wir den Retry-Status lokal zurück
     if (round === 1) {
        setRetryUsed(false);
     }
@@ -585,7 +565,7 @@ export default function GameScreen() {
 
     setPlayerScore(0);
     setAiScore(0);
-    setMatchSeconds(0); // Timer zurücksetzen
+    setMatchSeconds(0); 
     setGameOver(false);
     setShowGameOverUI(false);
     setEarnedTP(0);
@@ -1285,7 +1265,6 @@ export default function GameScreen() {
                   await supabase.from("tour_progress").update({ current_round: activeTournamentRound + 1 }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
                 }
               } else {
-                // NEU: HIER NICHT MEHR AUF ELIMINATED SETZEN, DAMIT DIE ZWEITE CHANCE FUNKTIONIERT
                 const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                 if (savedTourStamina[activeTournamentId]) {
                   delete savedTourStamina[activeTournamentId];
@@ -1496,7 +1475,7 @@ export default function GameScreen() {
   const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
 
-  // --- NEU: Spielstand-Info für den Fortsetzen-Button auslesen ---
+  // --- Spielstand-Info für den Fortsetzen-Button auslesen ---
   let savedMatchSubtext = "";
   const savedGameStr = localStorage.getItem("tacpadel_savegame");
   if (savedGameStr) {
@@ -1516,7 +1495,7 @@ export default function GameScreen() {
   }
 
   // ===============================================
-  // HIER IST DIE NEUE WEICHE FÜR DAS TUTORIAL
+  // HIER IST DIE WEICHE FÜR DAS NEUE TUTORIAL
   // ===============================================
   if (showTutorial) {
     return (
@@ -1572,6 +1551,7 @@ export default function GameScreen() {
       <AnimatePresence>
         {isMenuOpen && !isTourOpen && (
           <div className="absolute inset-0 z-[200] bg-[#050b18] rounded-2xl overflow-hidden pointer-events-auto">
+            
             {/* --- NEU: TUTORIAL BUTTON IN DER ECKE --- */}
             <button
               onClick={() => setShowTutorial(true)}
@@ -1579,7 +1559,8 @@ export default function GameScreen() {
               className="absolute top-4 right-4 z-50 w-10 h-10 bg-slate-800/80 hover:bg-cyan-600 border border-slate-700 hover:border-cyan-400 text-slate-400 hover:text-white rounded-full font-black text-xl flex items-center justify-center transition-all shadow-lg hover:scale-110 active:scale-95"
             >
               ?
-            </button>            
+            </button>
+
             <div className="absolute inset-0 pointer-events-none">
               <img src="/logo.png" alt="TacPadel Background" className="w-full h-full object-cover opacity-100" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/40 to-transparent"></div>
@@ -1977,6 +1958,7 @@ export default function GameScreen() {
         </AnimatePresence>
 
         <div className="absolute inset-0 z-10">
+          {/* HIER WIRD DIE AUSGEWÄHLTE ARENA ÜBERGEBEN */}
           <ScenarioCourt3D 
             key={`court-${introTrigger}`}
             arenaModel={currentArenaModel} 
