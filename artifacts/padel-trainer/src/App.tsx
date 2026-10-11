@@ -225,7 +225,6 @@ export default function App(): React.JSX.Element {
     return savedTab ? savedTab : "home";
   });
 
-  // --- NEUE STATES FÜR E-MAIL LOGIN ---
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -285,7 +284,7 @@ export default function App(): React.JSX.Element {
           return {
             id: user.id,
             name: finalName,
-            score: user.tac_points || 0, // Für das Leaderboard auf 'score' gemappt
+            score: user.tac_points || 0, 
             tacPoints: user.tac_points || 0,
             avatar_url: user.avatar_url 
           };
@@ -361,8 +360,9 @@ export default function App(): React.JSX.Element {
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
-  const [easyMode, setEasyMode] = useState(false);
-  const [correctionMode, setCorrectionMode] = useState(false);
+  // NEU: Default auf true für anfängerfreundlichen Einstieg
+  const [easyMode, setEasyMode] = useState(true);
+  const [correctionMode, setCorrectionMode] = useState(true);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const [hasRestored, setHasRestored] = useState(false);
@@ -550,7 +550,6 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const handleGoogleLogin = async () => {
-    // Erzwinge testweise den Web-Link, um zu sehen, ob das Handy ihn annimmt
     const redirectUrl = 'https://tac-padel-api-server.vercel.app';
 
     console.log("Starte Google OAuth mit Redirect zu:", redirectUrl);
@@ -572,7 +571,6 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  // --- NEUE FUNKTION FÜR E-MAIL LOGIN & REGISTRIERUNG ---
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -590,7 +588,6 @@ export default function App(): React.JSX.Element {
       if (error) {
         setAuthMsg({ type: 'error', text: 'Falsche E-Mail oder Passwort.' });
       }
-      // Bei Erfolg greift automatisch dein bestehender authListener und leitet weiter!
     }
     setAuthLoading(false);
   };
@@ -605,6 +602,20 @@ export default function App(): React.JSX.Element {
   }, [level, isSimulation]);
 
   const scenario = filteredScenarios[currentScenarioIndex] || filteredScenarios[0];
+
+  // NEU: Progressive Disclosure - Reduzierte Schlag-Auswahl im "Schlag"-Modus
+  const visibleShots = useMemo(() => {
+    if (level === "Schlag") {
+      const correctShot = scenario.validShots[0];
+      // Wir filtern alle Schläge, entfernen den korrekten und mischen sie
+      const otherShots = SHOTS.filter(s => s !== correctShot);
+      const shuffledOthers = otherShots.sort(() => Math.random() - 0.5);
+      // Nimm 2 zufällige falsche und füge den richtigen hinzu, dann nochmal mischen für zufällige Position
+      const reducedShots = [correctShot, ...shuffledOthers.slice(0, 2)].sort(() => Math.random() - 0.5);
+      return reducedShots;
+    }
+    return SHOTS;
+  }, [level, scenario]);
 
   const acceptableZones = useMemo(() => {
     if (!scenario || !easyMode || !scenario.bestZones) return [];
@@ -833,14 +844,12 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLogout = async () => {
-    await signOut(); // Führt den Supabase Logout aus
-    clearActiveSession(); // Löscht den gespeicherten Spielstand
+    await signOut(); 
+    clearActiveSession(); 
     
-    // Setzt die Navigation auf Home zurück
     setActiveTab("home");
     localStorage.setItem("tacpadel_activeTab", "home");
     
-    // Setzt alle relevanten Trainer-States zurück
     setLevel("Schlag");
     setScore(0);
     setAttempts(0);
@@ -995,15 +1004,14 @@ export default function App(): React.JSX.Element {
                 <HomeView 
                   setActiveTab={setActiveTab} 
                   currentScore={totalPoints}
-                  currentTacPoints={dbProfile?.tac_points || 0} // Die eigenen TacPoints aus der DB
+                  currentTacPoints={dbProfile?.tac_points || 0} 
                   userName={finalUserName}
                   userEmail={user?.email || ""}
                   userAvatar={finalAvatarUrl} 
                   dbLeaderboard={dbLeaderboard.length > 0 ? dbLeaderboard : undefined}
-                  dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} // Das Season Leaderboard
+                  dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} 
                   onPlayerClick={(id) => setSelectedPublicUserId(id)}
                   onQuickStart={(specificIndex?: number) => {
-                    // --- NEU: Wenn Simulation frei ist, direkt dorthin routen ---
                     if ((highestScores["Spielzug"] || 0) >= 50) {
                       handleLevelChange("Simulation" as Level);
                       setActiveTab("trainer");
@@ -1157,7 +1165,6 @@ export default function App(): React.JSX.Element {
                           </button>
                         )}
 
-                        {/* Separater Button für den neuen Strategie-Modus (IMMER SICHTBAR) */}
                         <button
                           onClick={() => setActiveTab("strategy")}
                           className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
@@ -1195,7 +1202,7 @@ export default function App(): React.JSX.Element {
                         {isSimulation ? "PRO RALLYE: Endlose Taktik-Simulation. Finde auf jede Situation die perfekte Antwort!" : 
                          level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach dem Schlag sofort deinen Laufweg zur Absicherung." : 
                          level === "Laufrichtung" ? "Ein guter Schlag nützt nichts ohne Feldabdeckung. Wähle dein Laufziel." : 
-                         level === "Schlag" ? "Wähle den richtigen Schlag":
+                         level === "Schlag" ? "Wähle den richtigen Schlag. Nutze das Tutorial um die Schläge kennenzulernen.":
                          "Analysiere das Szenario und spiele den richtigen Schlag und Trefferzone."}
                       </p>
 
@@ -1204,7 +1211,7 @@ export default function App(): React.JSX.Element {
                           <div className="text-[10px] font-bold text-red-400 px-2 py-1 bg-red-950/30 border border-red-900/50 rounded animate-pulse">
                             ⚠️ {feedbackMsg}
                           </div>
-                        ) : (easyMode || correctionMode) ? (
+                        ) : (easyMode || correctionMode) && level !== "Schlag" ? (
                           <div className="text-[10px] text-cyan-300 font-semibold flex flex-wrap gap-1.5 items-center bg-cyan-950/20 px-2 py-1 rounded border border-cyan-900/30">
                             {easyMode && <span>Erweiterte Zonen - 50% Punkte</span>}
                             {easyMode && correctionMode && <span className="text-slate-600 font-normal">|</span>}
@@ -1348,7 +1355,7 @@ export default function App(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* SHOT MODAL */}
+                {/* SHOT MODAL - JETZT MIT PROGRESSIVE DISCLOSURE */}
                 <AnimatePresence>
                   {isShotModalOpen && (
                     <motion.div
@@ -1369,11 +1376,14 @@ export default function App(): React.JSX.Element {
                       <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
                       
                       <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">Welchen Schlag wählst du?</h3>
+                        <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">
+                          {level === "Schlag" ? "Welcher Schlag passt hier?" : "Welchen Schlag wählst du?"}
+                        </h3>
                       </div>
                       
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-10">
-                        {SHOTS.map((shot) => {
+                      {/* Grid passt sich an die Anzahl der sichtbaren Schläge an */}
+                      <div className={`grid gap-2 overflow-y-auto custom-scrollbar pb-10 ${level === "Schlag" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`}>
+                        {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
                           let btnStyle = isSelected 
                             ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]" 
@@ -1387,7 +1397,7 @@ export default function App(): React.JSX.Element {
                                 handleShotClick(shot);
                                 setIsShotModalOpen(false); 
                               }}
-                              className={`w-full flex items-center justify-center py-3 px-1 rounded-lg border text-[9px] font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
+                              className={`w-full flex items-center justify-center py-4 px-1 rounded-lg border text-xs font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
                             >
                               {shot}
                             </button>

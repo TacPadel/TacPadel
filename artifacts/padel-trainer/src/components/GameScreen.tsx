@@ -10,6 +10,7 @@ import { soundManager } from '../lib/SoundManager';
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen"; 
+import GameTutorial from "./GameTutorial"; // <-- DEIN NEUES 3D-TUTORIAL
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
@@ -59,7 +60,7 @@ const evalRunTactics = (shot: string, runZone: string) => {
 };
 
 // ==========================================
-// --- NEU: CONTINUE KOSTEN BERECHNEN ---
+// --- CONTINUE KOSTEN BERECHNEN ---
 // ==========================================
 const getContinueFee = (tourId: string, currentRound: number) => {
   const tour = TOURNAMENTS.find(t => t.id === tourId);
@@ -72,63 +73,6 @@ const getContinueFee = (tourId: string, currentRound: number) => {
   
   return null;
 };
-
-// ==========================================
-// --- NEU: TUTORIAL MODAL KOMPONENTE ---
-// ==========================================
-function GameTutorialModal({ onComplete }: { onComplete: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md pointer-events-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(255,119,0,0.2)] max-w-lg w-full flex flex-col gap-6 relative overflow-hidden"
-      >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-red-500" />
-        
-        <div className="text-center">
-          <span className="text-4xl mb-2 block">🎾</span>
-          <h2 className="text-2xl font-black text-white uppercase tracking-widest">Match-Modus</h2>
-          <p className="text-orange-400 text-sm font-bold tracking-wider mt-1">Das Spielprinzip</p>
-        </div>
-
-        <div className="flex flex-col gap-4 text-sm text-slate-300 mt-2">
-          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">1</div>
-            <div>
-              <p className="font-bold text-white mb-1">Reagieren (Der Timer läuft)</p>
-              <p className="leading-snug">Sobald der Gegner schlägt, tickt die Zeit! Entscheide schnell, ob <b>Du</b> oder dein <b>Partner</b> den Ball nimmt, und wähle die richtige Laufzone, um den Ball zu erreichen.</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">2</div>
-            <div>
-              <p className="font-bold text-white mb-1">Schlag planen</p>
-              <p className="leading-snug">Hast du den Ball erreicht, wählst du deinen <b>Schlag</b> (z.B. Lob, Smash, Volley) und tippst auf das <b>Ziel</b> im gegnerischen Feld.</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">3</div>
-            <div>
-              <p className="font-bold text-white mb-1">Ausdauer im Blick behalten</p>
-              <p className="leading-snug">Jeder Laufweg kostet Energie. Ist die Ausdauer leer, häufen sich die Fehler! Nutze langsame taktische Schläge wie den <i>Lob</i>, um während des Ballwechsels Energie zu regenerieren.</p>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={onComplete}
-          className="w-full mt-2 py-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded-xl font-black text-sm tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(255,119,0,0.3)] hover:scale-[1.02] active:scale-95 transition-all"
-        >
-          Verstanden, ab auf den Court!
-        </button>
-      </motion.div>
-    </div>
-  );
-}
-// ==========================================
 
 export default function GameScreen() {
   const [playerScore, setPlayerScore] = useState<number>(0);
@@ -146,18 +90,18 @@ export default function GameScreen() {
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
 
-  // --- NEU: Zweite Chance (Continue) States ---
+  // --- Zweite Chance (Continue) States ---
   const [retryUsed, setRetryUsed] = useState<boolean>(false);
   const [isProcessingRetry, setIsProcessingRetry] = useState<boolean>(false);
   const currentTacPoints = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
 
-  // --- NEU: Exploit Warning State ---
+  // --- Exploit Warning State ---
   const [abandonWarning, setAbandonWarning] = useState<{
     action: "single" | "tour";
     tourParams?: { tourId: string; round: number; difficulty: number };
   } | null>(null);
 
-  // --- NEU: Tutorial State ---
+  // --- Tutorial State ---
   const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
@@ -174,7 +118,7 @@ export default function GameScreen() {
 
   const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
 
-  // --- NEU: Team & Partner States ---
+  // --- Team & Partner States ---
   const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
   const [partnerName, setPartnerName] = useState<string>("Partner");
   const [playerName, setPlayerName] = useState<string>("Du");
@@ -192,7 +136,7 @@ export default function GameScreen() {
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
-  // --- NEUER TIMER STATE ---
+  // --- TIMER STATE ---
   const [matchSeconds, setMatchSeconds] = useState<number>(0);
   const matchSecondsRef = useRef(matchSeconds);
 
@@ -1010,7 +954,7 @@ export default function GameScreen() {
   };
 
   // ==========================================
-  // --- NEU: KAUFFUNKTION ZWEITE CHANCE ---
+  // --- KAUFFUNKTION ZWEITE CHANCE ---
   // ==========================================
   const handleBuySecondChance = async () => {
     if (!activeTournamentId || isProcessingRetry) return;
@@ -1552,20 +1496,41 @@ export default function GameScreen() {
   const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
 
+  // --- NEU: Spielstand-Info für den Fortsetzen-Button auslesen ---
+  let savedMatchSubtext = "";
+  const savedGameStr = localStorage.getItem("tacpadel_savegame");
+  if (savedGameStr) {
+    try {
+      const parsed = JSON.parse(savedGameStr);
+      if (parsed.tournamentId) {
+        const tour = TOURNAMENTS.find(t => t.id === parsed.tournamentId);
+        const rName = parsed.tournamentRound === 3 ? "Finale" : parsed.tournamentRound === 2 ? "Halbfinale" : "Viertelfinale";
+        savedMatchSubtext = `🏆 ${tour?.name || 'Turnier'} (${rName})`;
+      } else {
+        savedMatchSubtext = `🎾 Einzelmatch vs ${parsed.activeAiProfile?.teamName || 'KI'}`;
+      }
+      savedMatchSubtext += ` | Score: ${parsed.playerScore}:${parsed.aiScore}`;
+    } catch (e) {
+      savedMatchSubtext = "Gespeichertes Match";
+    }
+  }
+
+  // ===============================================
+  // HIER IST DIE NEUE WEICHE FÜR DAS TUTORIAL
+  // ===============================================
+  if (showTutorial) {
+    return (
+      <GameTutorial onComplete={handleTutorialComplete} />
+    );
+  }
+
   return (
     <div 
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
 
-      {/* --- NEU: TUTORIAL MODAL --- */}
-      <AnimatePresence>
-        {showTutorial && (
-          <GameTutorialModal onComplete={handleTutorialComplete} />
-        )}
-      </AnimatePresence>
-
-      {/* --- NEU: ABANDON WARNING MODAL --- */}
+      {/* --- ABANDON WARNING MODAL --- */}
       <AnimatePresence>
         {abandonWarning && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md pointer-events-auto">
@@ -1633,13 +1598,17 @@ export default function GameScreen() {
                 </button>
               )}
 
-              {localStorage.getItem("tacpadel_savegame") && (
+              {savedGameStr && (
                 <button 
                   onClick={() => { if (loadGame()) setIsMenuOpen(false); else alert("Kein gültiger Speicherstand gefunden."); }}
-                  className="w-full max-w-sm py-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:scale-105 transition-all"
+                  className="w-full max-w-sm py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:scale-105 transition-all flex flex-col items-center justify-center gap-1.5"
                 >
-                  Match Fortsetzen
-                </button>)}
+                  <span className="font-black tracking-widest uppercase text-base">Match Fortsetzen</span>
+                  <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-widest bg-black/20 px-2 py-0.5 rounded border border-emerald-400/30 text-center">
+                    {savedMatchSubtext}
+                  </span>
+                </button>
+              )}
               
               {/* TP Tour Events Button */}
               <button 
@@ -1681,7 +1650,7 @@ export default function GameScreen() {
             transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }}
             className="fixed top-44 left-0 right-0 z-[140] pointer-events-none flex justify-center px-4"
           >
-            <div className="p-[2px] bg-gradient-to-r from-purple-500 via-[#050b14] to-fuchsia-500 shadow-[0_10px_30px_rgba(168,85,247,0.4)]" style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px)" }}>
+            <div className="p-[2px] bg-gradient-to-r from-purple-500 via-[#050b14] to-fuchsia-500 shadow-[0_10px_30px_rgba(168,85,247,0.4)]" style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
               <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
                 <div className="relative flex items-center justify-center shrink-0">
@@ -1783,7 +1752,7 @@ export default function GameScreen() {
                     </div>
                   </div>
 
-                  {/* NEU: ZWEITE CHANCE LOGIK (Nur bei Niederlage im Turnier) */}
+                  {/* ZWEITE CHANCE LOGIK (Nur bei Niederlage im Turnier) */}
                   {activeTournamentId && playerScore < aiScore && getContinueFee(activeTournamentId, activeTournamentRound) !== null && !retryUsed && (
                     <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
                       <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
@@ -1885,8 +1854,6 @@ export default function GameScreen() {
                      setShowGameOverUI(false); 
                      setActiveTournamentId(null); 
                      
-                     // NEU: Wenn der Spieler verloren hat und NICHT den Continue Button genutzt hat, 
-                     // wird er hier als "eliminated" markiert, wenn er zur Tour zurückkehrt.
                      if (playerScore < aiScore) {
                        supabase.auth.getSession().then(({ data: { session } }) => {
                          if (session?.user) {
@@ -1902,9 +1869,16 @@ export default function GameScreen() {
                    </button>
                 ) : (
                    <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
-                     <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                       Neues Match
-                     </button>
+                     {tacScore < 1500 ? (
+                       <button disabled className="w-full sm:w-auto px-8 sm:px-10 py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1 shrink-0">
+                         <span className="text-sm">🔒 Match (Ab 1500)</span>
+                         <span className="text-[8px] text-slate-500 normal-case tracking-normal">Sammle Erfahrung im Taktik-Trainer</span>
+                       </button>
+                     ) : (
+                       <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
+                         Neues Match
+                       </button>
+                     )}
                      <button 
                        onClick={() => { setShowGameOverUI(false); setIsMenuOpen(true); }} 
                        className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-white font-black tracking-widest uppercase rounded-xl border border-slate-700 shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
@@ -1995,7 +1969,6 @@ export default function GameScreen() {
         </AnimatePresence>
 
         <div className="absolute inset-0 z-10">
-          {/* HIER WIRD DIE AUSGEWÄHLTE ARENA ÜBERGEBEN */}
           <ScenarioCourt3D 
             key={`court-${introTrigger}`}
             arenaModel={currentArenaModel} 

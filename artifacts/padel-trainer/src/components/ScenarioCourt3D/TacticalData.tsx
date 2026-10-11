@@ -833,58 +833,48 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 
               case "DRIVE":
                 if (tRow >= 4 && oppsAtNet) {
-                  lineColor = "#ef4444"; 
-                } else if (tRow >= 4) {
-                  lineColor = "#f97316"; 
-                } else if (tCol === "A" || tCol === "E") {
-                  lineColor = "#34d399"; 
+                  lineColor = "#ef4444"; // Tödlich: Flacher Drive in die Arme der Netzspieler
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399"; // Alle anderen Drives sind grüne, solide Grundschläge!
                 }
                 break;
                 
               case "VOLLEY":
                 if (tRow >= 4) {
-                  // NEU: Stop-Volley (Dropshot) vs. "In den Mann spielen"
+                  // Stop-Volley (Dropshot) vs. "In den Mann spielen"
                   lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
-                } else if (tRow <= 2) {
-                  lineColor = "#34d399"; 
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#34d399"; // Alle tiefen und mittellangen Volleys sind GRÜN!
                 }
                 break;
 
               case "BLOCK":
-                if (tRow >= 4) {
-                  // NEU: Block am Netz (oder Dropshot-Block) ist jetzt immer eine perfekte Idee
-                  lineColor = "#34d399"; 
-                } else if (tRow <= 1) {
-                  lineColor = "#ef4444"; 
+                if (tRow <= 1) {
+                  lineColor = "#ef4444"; // Zu lang, wird zum Floater
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#34d399"; // Block am Netz abtropfen lassen ist eine sichere, GRÜNE Wahl!
                 }
                 break;
                 
               case "LOB":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444"; // Zu kurz ins Halbfeld (Geschenk für den Smash)
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399"; // Perfekter tiefer Lob über die Netzspieler
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316"; // Harmlos gegen Grundlinienspieler (Orange)
                 }
                 break;
                 
               case "CHIQUITA":
                 if (tRow <= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444"; // Ziel zu lang
                 } else if (hRow >= 4) {
-                  // NEU: Stoppball (Dejada) vom Netz aus!
-                  lineColor = oppsAtNet ? "#ef4444" : "#34d399";
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; // Stoppball vom Netz
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399"; // Giftig auf die Füße der Vorrückenden
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316"; // Sinnlos gegen Spieler, die schon hinten stehen
                 }
                 break;
                 
@@ -892,7 +882,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 if (tRow >= 3) {
                   lineColor = "#ef4444"; // Zu kurz
                 } else if (oppsAtNet) {
-                  lineColor = "#f97316"; // NEU: Riskanter Passierschlag, daher Orange statt Grün
+                  lineColor = "#f97316"; // Riskanter Passierschlag (Orange)
                 } else {
                   lineColor = "#34d399"; // Laser-Bajada ins freie Feld
                 }
@@ -900,31 +890,27 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 
               case "BANDEJA":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; // Zu kurz
-                } else if (oppsAtBack) {
-                  lineColor = "#34d399"; 
+                  lineColor = "#ef4444"; // Zu kurz (Geschenk für den Gegner)
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#34d399"; // Bandejas ins Halbfeld oder an die Wand sind GRÜN!
                 }
                 break;
                 
               case "VIBORA":
                 if (tRow >= 3) {
                   lineColor = "#ef4444"; // Zu kurz
-                } else if (oppsAtBack && (tCol === "A" || tCol === "E")) {
-                  lineColor = "#34d399"; 
+                } else if (tCol === "C") {
+                  lineColor = "#f97316"; // Durch die Mitte verliert sie ihren Seitenschnitt (Orange)
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#34d399"; // Satte Vibora in die Ecken (Grün)
                 }
                 break;
                 
               case "SMASH":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; // Zu steil
-                } else if (tRow === 3) {
-                  lineColor = "#f97316"; 
+                  lineColor = "#ef4444"; // Zu steil, landet meist im Netz
                 } else {
-                  lineColor = "#34d399"; // Krachend ans hintere Glas
+                  lineColor = "#34d399"; // Harter Smash in den Hintercourt ist grün!
                 }
                 break;
             }
