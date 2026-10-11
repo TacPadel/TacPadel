@@ -71,7 +71,7 @@ export default function HomeView({
   // Tab-Steuerung für das Leaderboard (All-Time vs Season)
   const [lbTab, setLbTab] = useState<"alltime" | "season">("alltime");
 
-  // --- ALL-TIME LEADERBOARD LOGIK ---
+  // --- ALL-TIME LEADERBOARD LOGIK (EINZEL / TAC-SCORE) ---
   const sortedLeaderboard = useMemo(() => {
     let playersList = (dbLeaderboard && dbLeaderboard.length > 0) ? [...dbLeaderboard] : [];
       
@@ -94,7 +94,7 @@ export default function HomeView({
     return playersList.sort((a, b) => b.score - a.score);
   }, [dbLeaderboard, userName, userEmail, userAvatar, displayScore]);
 
-  // --- SEASON LEADERBOARD LOGIK ---
+  // --- SEASON LEADERBOARD LOGIK (TURNIERE / TAC-POINTS) ---
   const sortedSeasonLeaderboard = useMemo(() => {
     let playersList = (dbSeasonLeaderboard && dbSeasonLeaderboard.length > 0) ? [...dbSeasonLeaderboard] : [];
       
@@ -117,11 +117,16 @@ export default function HomeView({
     return playersList.sort((a, b) => b.score - a.score);
   }, [dbSeasonLeaderboard, userName, userEmail, userAvatar, displayTacPoints]);
 
-  // --- AKTIVES LEADERBOARD BERECHNEN ---
+  // --- RANGLISTEN POSITIONEN BERECHNEN ---
+  const allTimeRank = sortedLeaderboard.findIndex(p => p.name === userName) + 1;
+  const seasonRank = sortedSeasonLeaderboard.findIndex(p => p.name === userName) + 1;
+
+  // --- AKTIVES LEADERBOARD FÜR DIE ANZEIGE ---
   const activeLeaderboard = lbTab === "alltime" ? sortedLeaderboard : sortedSeasonLeaderboard;
-  const currentUserRank = activeLeaderboard.findIndex(p => p.name === userName) + 1;
-  const isUserInTop5 = currentUserRank > 0 && currentUserRank <= 5;
-  const currentUserData = activeLeaderboard[currentUserRank - 1];
+  const activeRank = lbTab === "alltime" ? allTimeRank : seasonRank;
+  
+  const isUserInTop5 = activeRank > 0 && activeRank <= 5;
+  const currentUserData = activeLeaderboard[activeRank - 1];
   const top5Players = activeLeaderboard.slice(0, 5);
 
   const getMedal = (index: number) => {
@@ -159,7 +164,7 @@ export default function HomeView({
     >
       
       {/* ======================================================== */}
-      {/* 1. HERO SECTION (ANGEPASSTE REIHENFOLGE)                 */}
+      {/* 1. HERO SECTION (NEUES 2-SPALTEN DESIGN FÜR RANGLISTEN)  */}
       {/* ======================================================== */}
       <div className="w-full bg-[#040914]/90 border border-cyan-900/50 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-600 via-cyan-400 to-transparent" />
@@ -177,34 +182,34 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 md:gap-6 bg-[#030611] border border-slate-800 p-4 rounded-xl shadow-inner w-full md:w-auto">
-            {/* 1. TacScore */}
-            <div className="flex flex-col items-start md:items-end">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacScore</span>
-              <div className="text-2xl font-black text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] leading-none mt-1">
-                {displayScore}
+          <div className="flex items-center justify-between gap-4 md:gap-8 bg-[#030611] border border-slate-800 p-4 rounded-xl shadow-inner w-full md:w-auto">
+            
+            {/* 1. Einzel (TacScore) */}
+            <div className="flex flex-col items-start md:items-end flex-1 md:flex-auto">
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Einzel (All-Time)</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <div className="text-2xl md:text-3xl font-black text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] leading-none">
+                  {displayScore}
+                </div>
+                <span className="text-[10px] font-bold text-cyan-600">PTS</span>
               </div>
+              <div className="text-[10px] font-bold text-slate-400 mt-1">Rang: <span className="text-white">#{allTimeRank > 0 ? allTimeRank : "-"}</span></div>
             </div>
             
-            <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
+            <div className="h-10 w-px bg-slate-800 hidden md:block"></div>
             
-            {/* 2. Rank (Gehört zu TacScore) */}
-            <div className="flex flex-col items-start md:items-center">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Rang</span>
-              <div className="text-xl font-bold text-white mt-1">
-                {currentUserRank > 0 ? `#${currentUserRank}` : "-"}
+            {/* 2. Turniere (TacPoints) */}
+            <div className="flex flex-col items-end flex-1 md:flex-auto">
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Turniere (Season)</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <div className="text-2xl md:text-3xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none">
+                  {displayTacPoints}
+                </div>
+                <span className="text-[10px] font-bold text-orange-600">TP</span>
               </div>
+              <div className="text-[10px] font-bold text-slate-400 mt-1">Rang: <span className="text-white">#{seasonRank > 0 ? seasonRank : "-"}</span></div>
             </div>
 
-            <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
-            
-            {/* 3. TacPoints (Season) */}
-            <div className="flex flex-col items-start md:items-end">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints</span>
-              <div className="text-2xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none mt-1">
-                {displayTacPoints}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -290,18 +295,19 @@ export default function HomeView({
         {/* ======================================================== */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           <div className="flex justify-between items-end px-1">
-            <div className="flex gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <h3 
                 onClick={() => setLbTab("alltime")}
-                className={`text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-600 hover:text-slate-400'}`}
+                className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-600 hover:text-slate-400'}`}
               >
-                All-Time
+                Einzel (All-Time)
               </h3>
+              <span className="text-slate-700 font-black">|</span>
               <h3 
                 onClick={() => setLbTab("season")}
-                className={`text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'season' ? 'text-orange-400' : 'text-slate-600 hover:text-slate-400'}`}
+                className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'season' ? 'text-orange-400' : 'text-slate-600 hover:text-slate-400'}`}
               >
-                Season
+                Turniere (Season)
               </h3>
             </div>
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/50 px-2 py-1 rounded border border-slate-800">Top 5</span>
@@ -348,7 +354,7 @@ export default function HomeView({
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`font-black text-sm w-6 text-center ${lbTab === 'alltime' ? 'text-cyan-600' : 'text-orange-600'}`}>{currentUserRank}.</span>
+                    <span className={`font-black text-sm w-6 text-center ${lbTab === 'alltime' ? 'text-cyan-600' : 'text-orange-600'}`}>{activeRank}.</span>
                     {renderAvatar(currentUserData.avatar_url, currentUserData.name)}
                     <span className={`font-bold text-sm truncate max-w-[100px] sm:max-w-[150px] ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400'}`}>
                       {currentUserData.name}
