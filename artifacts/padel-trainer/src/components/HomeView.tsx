@@ -186,12 +186,12 @@ export default function HomeView({
             
             {/* 1. Einzel (TacScore) */}
             <div className="flex flex-col items-start md:items-end flex-1 md:flex-auto">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Einzel (All-Time)</span>
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacScore (All-Time)</span>
               <div className="flex items-baseline gap-1 mt-1">
                 <div className="text-2xl md:text-3xl font-black text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] leading-none">
                   {displayScore}
                 </div>
-                <span className="text-[10px] font-bold text-cyan-600">PTS</span>
+                <span className="text-[10px] font-bold text-cyan-600">TS</span>
               </div>
               <div className="text-[10px] font-bold text-slate-400 mt-1">Rang: <span className="text-white">#{allTimeRank > 0 ? allTimeRank : "-"}</span></div>
             </div>
@@ -200,7 +200,7 @@ export default function HomeView({
             
             {/* 2. Turniere (TacPoints) */}
             <div className="flex flex-col items-end flex-1 md:flex-auto">
-              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">Turniere (Season)</span>
+              <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints (TP Tour)</span>
               <div className="flex items-baseline gap-1 mt-1">
                 <div className="text-2xl md:text-3xl font-black text-orange-400 drop-shadow-[0_0_15px_rgba(255,165,0,0.4)] leading-none">
                   {displayTacPoints}
@@ -300,14 +300,14 @@ export default function HomeView({
                 onClick={() => setLbTab("alltime")}
                 className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-600 hover:text-slate-400'}`}
               >
-                Einzel (All-Time)
+                TacScore (All-Time)
               </h3>
               <span className="text-slate-700 font-black">|</span>
               <h3 
                 onClick={() => setLbTab("season")}
                 className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'season' ? 'text-orange-400' : 'text-slate-600 hover:text-slate-400'}`}
               >
-                Turniere (Season)
+                TacPoints (TP Tour)
               </h3>
             </div>
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/50 px-2 py-1 rounded border border-slate-800">Top 5</span>
