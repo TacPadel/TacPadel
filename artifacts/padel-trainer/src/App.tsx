@@ -54,10 +54,8 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
     if (!username.trim()) return;
     setIsSaving(true);
     
-    // 1. Auth-Metadaten aktualisieren
     await supabase.auth.updateUser({ data: { display_name: username } });
 
-    // 2. Namen UND Google-Profilbild in die Datenbank schreiben
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       await supabase
@@ -66,7 +64,6 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
           id: session.user.id, 
           email: session.user.email,
           display_name: username,
-          // NEU: Wir kopieren das Google-Profilbild in deine Datenbank!
           avatar_url: session.user.user_metadata?.avatar_url || null
         }, { onConflict: 'id' }); 
     }
@@ -242,7 +239,6 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const fetchLeaderboards = async () => {
-      // 1. All-Time Leaderboard (nach points sortiert)
       const { data: allData, error: errAll } = await supabase
         .from('user_stats')
         .select('id, email, points, tac_points, display_name, avatar_url')
@@ -267,7 +263,6 @@ export default function App(): React.JSX.Element {
         setDbLeaderboard(formattedAll);
       }
 
-      // 2. Season Leaderboard (nach tac_points sortiert)
       const { data: seasonData, error: errSeason } = await supabase
         .from('user_stats')
         .select('id, email, points, tac_points, display_name, avatar_url')
@@ -360,7 +355,7 @@ export default function App(): React.JSX.Element {
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
-  // NEU: Default auf true für anfängerfreundlichen Einstieg
+  // States
   const [easyMode, setEasyMode] = useState(true);
   const [correctionMode, setCorrectionMode] = useState(true);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -368,6 +363,19 @@ export default function App(): React.JSX.Element {
   const [hasRestored, setHasRestored] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+
+  // WICHTIG: Easy & Trainer Mode sind für das Level "Schlag" immer inaktiv!
+  const activeEasyMode = level === "Schlag" ? false : easyMode;
+  const activeCorrectionMode = level === "Schlag" ? false : correctionMode;
+
+  // NEU: Fortschritts-Check (Progression Lock) - Verhindert das Überspringen von Leveln
+  const isProgressionUnlocked = (l: string) => {
+    if (l === "Schlag") return true;
+    if (l === "Schlagrichtung") return (highestScores["Schlag"] || 0) >= 10;
+    if (l === "Laufrichtung") return (highestScores["Schlagrichtung"] || 0) >= 10;
+    if (l === "Spielzug") return (highestScores["Laufrichtung"] || 0) >= 10;
+    return true; // Simulation u.a. wird woanders geregelt
+  };
 
   useEffect(() => {
     if (isProgressLoaded && !lockedLevels.includes("Simulation" as Level)) {
@@ -482,11 +490,7 @@ export default function App(): React.JSX.Element {
     const isNativeApp = Capacitor.isNativePlatform();
 
     const handleDeepLink = async (url: string) => {
-      console.log("URL Erkannt: " + url.substring(0, 30));
-      
       if (url.includes('access_token=') || url.includes('code=')) {
-        console.log("Session wird verarbeitet...");
-        
         if (isNativeApp) {
           try { await Browser.close(); } catch (e) {} 
         }
@@ -513,8 +517,6 @@ export default function App(): React.JSX.Element {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        console.log("Login erfolgreich!");
-        
         if (isNativeApp) {
           try { Browser.close(); } catch (e) {} 
         }
@@ -551,8 +553,6 @@ export default function App(): React.JSX.Element {
 
   const handleGoogleLogin = async () => {
     const redirectUrl = 'https://tac-padel-api-server.vercel.app';
-
-    console.log("Starte Google OAuth mit Redirect zu:", redirectUrl);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -603,14 +603,11 @@ export default function App(): React.JSX.Element {
 
   const scenario = filteredScenarios[currentScenarioIndex] || filteredScenarios[0];
 
-  // NEU: Progressive Disclosure - Reduzierte Schlag-Auswahl im "Schlag"-Modus
   const visibleShots = useMemo(() => {
     if (level === "Schlag") {
       const correctShot = scenario.validShots[0];
-      // Wir filtern alle Schläge, entfernen den korrekten und mischen sie
       const otherShots = SHOTS.filter(s => s !== correctShot);
       const shuffledOthers = otherShots.sort(() => Math.random() - 0.5);
-      // Nimm 2 zufällige falsche und füge den richtigen hinzu, dann nochmal mischen für zufällige Position
       const reducedShots = [correctShot, ...shuffledOthers.slice(0, 2)].sort(() => Math.random() - 0.5);
       return reducedShots;
     }
@@ -618,19 +615,19 @@ export default function App(): React.JSX.Element {
   }, [level, scenario]);
 
   const acceptableZones = useMemo(() => {
-    if (!scenario || !easyMode || !scenario.bestZones) return [];
+    if (!scenario || !activeEasyMode || !scenario.bestZones) return [];
     let neighbors: string[] = [];
     scenario.bestZones.forEach((zone) => {
       neighbors.push(...getAdjacentZones(zone));
     });
     return Array.from(new Set(neighbors)).filter(z => !scenario.bestZones.includes(z));
-  }, [scenario, easyMode]);
+  }, [scenario, activeEasyMode]);
 
   const acceptableLaufZones = useMemo(() => {
-    if (!scenario || !scenario.laufZone || !easyMode) return [];
+    if (!scenario || !scenario.laufZone || !activeEasyMode) return [];
     const neighbors = getAdjacentZones(scenario.laufZone);
     return neighbors.filter(z => z !== scenario.laufZone);
-  }, [scenario, easyMode]);
+  }, [scenario, activeEasyMode]);
 
   const handleShotClick = (shot: string) => {
     if (hasSubmitted) return;
@@ -702,16 +699,18 @@ export default function App(): React.JSX.Element {
       setFeedbackMsg(null);
 
       let pointsEarned = 0;
-      if (level !== "Spielzug" && !isSimulation) {
-        if (easyMode && correctionMode) pointsEarned = 25;
-        else if (easyMode || correctionMode) pointsEarned = 50;
+      if (level === "Schlag") {
+        pointsEarned = 100;
+      } else if (level !== "Spielzug" && !isSimulation) {
+        if (activeEasyMode && activeCorrectionMode) pointsEarned = 25;
+        else if (activeEasyMode || activeCorrectionMode) pointsEarned = 50;
         else pointsEarned = 100;
       } else {
-        if (easyMode && correctionMode) {
+        if (activeEasyMode && activeCorrectionMode) {
           pointsEarned = 25;
-        } else if (correctionMode) {
+        } else if (activeCorrectionMode) {
           pointsEarned = 50; 
-        } else if (easyMode) {
+        } else if (activeEasyMode) {
           pointsEarned = 75;
         } else {
           pointsEarned = 100; 
@@ -726,7 +725,7 @@ export default function App(): React.JSX.Element {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
     } else {
-      if ((level === "Spielzug" || isSimulation) && !correctionMode) {
+      if ((level === "Spielzug" || isSimulation) && !activeCorrectionMode) {
         const newTotal = totalPoints - 100;
         addPoints(-100); 
         updateSupabaseScore(newTotal); 
@@ -736,7 +735,7 @@ export default function App(): React.JSX.Element {
         }
       }
         
-      if (correctionMode) {
+      if (activeCorrectionMode) {
         let errors = [];
         if (!isShotCorrect) errors.push("den Schlag");
         if ((level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && !isZoneCorrect) errors.push("die Zielzone");
@@ -795,11 +794,6 @@ export default function App(): React.JSX.Element {
     
     if (level === "Spielzug") {
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
-    }
-
-    if (level !== "Spielzug" && !isSimulation) {
-      const updatedLevels = Array.from(new Set([...lockedLevels, level]));
-      setLockedLevels(updatedLevels);
     }
   };
 
@@ -1061,7 +1055,16 @@ export default function App(): React.JSX.Element {
                       setAttempts(0);
                     } else {
                       const levels: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
-                      const unlockedLevels = levels.filter(l => !lockedLevels.includes(l as any) || l === "Spielzug");
+                      const unlockedLevels = levels.filter(l => {
+                        const progUnlocked = 
+                          l === "Schlag" ? true :
+                          l === "Schlagrichtung" ? (highestScores["Schlag"] || 0) >= 10 :
+                          l === "Laufrichtung" ? (highestScores["Schlagrichtung"] || 0) >= 10 :
+                          l === "Spielzug" ? (highestScores["Laufrichtung"] || 0) >= 10 : true;
+                        
+                        const penaltyLocked = lockedLevels.includes(l as any) && l !== "Spielzug";
+                        return progUnlocked && !penaltyLocked;
+                      });
                       const randomLevel = unlockedLevels[Math.floor(Math.random() * unlockedLevels.length)];
                       handleLevelChange(randomLevel);
                     }
@@ -1131,7 +1134,9 @@ export default function App(): React.JSX.Element {
                         {(highestScores["Spielzug"] || 0) < 50 ? (
                           // NORMALE LEVEL ZEIGEN, WENN SPIELZUG < 50
                           (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
-                            const isLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
+                            const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
+                            const isProgLocked = !isProgressionUnlocked(lvl);
+                            const isLocked = isPenaltyLocked || isProgLocked;
                             const isActive = level === lvl;
                             return (
                               <button
@@ -1211,11 +1216,11 @@ export default function App(): React.JSX.Element {
                           <div className="text-[10px] font-bold text-red-400 px-2 py-1 bg-red-950/30 border border-red-900/50 rounded animate-pulse">
                             ⚠️ {feedbackMsg}
                           </div>
-                        ) : (easyMode || correctionMode) && level !== "Schlag" ? (
+                        ) : (activeEasyMode || activeCorrectionMode) && level !== "Schlag" ? (
                           <div className="text-[10px] text-cyan-300 font-semibold flex flex-wrap gap-1.5 items-center bg-cyan-950/20 px-2 py-1 rounded border border-cyan-900/30">
-                            {easyMode && <span>Erweiterte Zonen - 50% Punkte</span>}
-                            {easyMode && correctionMode && <span className="text-slate-600 font-normal">|</span>}
-                            {correctionMode && <span>Korrekturen bei falscher Auswahl - 75% Punkte</span>}
+                            {activeEasyMode && <span>Erweiterte Zonen - 50% Punkte</span>}
+                            {activeEasyMode && activeCorrectionMode && <span className="text-slate-600 font-normal">|</span>}
+                            {activeCorrectionMode && <span>Korrekturen bei falscher Auswahl - 75% Punkte</span>}
                           </div>
                         ) : null}
                       </div>
@@ -1355,7 +1360,7 @@ export default function App(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* SHOT MODAL - JETZT MIT PROGRESSIVE DISCLOSURE */}
+                {/* SHOT MODAL */}
                 <AnimatePresence>
                   {isShotModalOpen && (
                     <motion.div
@@ -1381,7 +1386,6 @@ export default function App(): React.JSX.Element {
                         </h3>
                       </div>
                       
-                      {/* Grid passt sich an die Anzahl der sichtbaren Schläge an */}
                       <div className={`grid gap-2 overflow-y-auto custom-scrollbar pb-10 ${level === "Schlag" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`}>
                         {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
@@ -1484,7 +1488,9 @@ export default function App(): React.JSX.Element {
                             const currentIndex = levels.indexOf(level as any);
                             let nextLevel: Level = level; 
                             for (let i = currentIndex + 1; i < levels.length; i++) {
-                              if (!lockedLevels.includes(levels[i] as any)) {
+                              const isPenaltyLocked = lockedLevels.includes(levels[i] as any) && levels[i] !== "Spielzug";
+                              const isProgLocked = !isProgressionUnlocked(levels[i]);
+                              if (!isPenaltyLocked && !isProgLocked) {
                                 nextLevel = levels[i];
                                 break;
                               }
@@ -1494,7 +1500,7 @@ export default function App(): React.JSX.Element {
                         }}
                         className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
                       >
-                        {level === "Spielzug" ? "Pro Rallye Starten ➔" : "Nächstes Level Entsperren ➔"}
+                        {level === "Spielzug" ? "Pro Rallye Starten ➔" : "Nächstes Level Starten ➔"}
                       </button>
                     </motion.div>
                   )}
@@ -1503,7 +1509,7 @@ export default function App(): React.JSX.Element {
               </motion.div>
             )}
 
-            {/* LOGIN TAB - AKTUALISIERT */}
+            {/* LOGIN TAB */}
             {activeTab === "login" && (
               <motion.div
                 key="login-page"
