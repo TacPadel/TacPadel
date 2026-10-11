@@ -368,13 +368,13 @@ export default function App(): React.JSX.Element {
   const activeEasyMode = level === "Schlag" ? false : easyMode;
   const activeCorrectionMode = level === "Schlag" ? false : correctionMode;
 
-  // NEU: Fortschritts-Check (Progression Lock) - Verhindert das Überspringen von Leveln
+  // Fortschritts-Check (Progression Lock)
   const isProgressionUnlocked = (l: string) => {
     if (l === "Schlag") return true;
     if (l === "Schlagrichtung") return (highestScores["Schlag"] || 0) >= 10;
     if (l === "Laufrichtung") return (highestScores["Schlagrichtung"] || 0) >= 10;
     if (l === "Spielzug") return (highestScores["Laufrichtung"] || 0) >= 10;
-    return true; // Simulation u.a. wird woanders geregelt
+    return true; 
   };
 
   useEffect(() => {
@@ -795,6 +795,7 @@ export default function App(): React.JSX.Element {
     if (level === "Spielzug") {
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
     }
+    // HIER WURDE DER ALTE FEHLER ENTFERNT, DER LEVELS NACH ABSCHLUSS FALSCH GESPERRT HAT
   };
 
   const handleLevelChange = (newLevel: Level) => {
@@ -1117,7 +1118,17 @@ export default function App(): React.JSX.Element {
                   <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
                     <div className="flex items-center justify-between lg:justify-start lg:gap-8 w-full lg:w-auto">
                       <div className="flex flex-col">
-                        <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">Taktik-Trainer</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">Taktik-Trainer</span>
+                          {/* NEUER BUTTON UM DAS TUTORIAL MANUELL NOCHMAL ANZUSCHAUEN */}
+                          <button 
+                            onClick={() => setShowTutorial(true)}
+                            className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] hover:bg-slate-700 hover:text-white transition-colors"
+                            title="Tutorial anzeigen"
+                          >
+                            ❓
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="flex flex-col items-end lg:items-start pl-4 lg:pl-6 lg:border-l border-slate-700/50">
@@ -1360,7 +1371,7 @@ export default function App(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* SHOT MODAL */}
+                {/* SHOT MODAL - JETZT MIT PROGRESSIVE DISCLOSURE */}
                 <AnimatePresence>
                   {isShotModalOpen && (
                     <motion.div
@@ -1386,6 +1397,7 @@ export default function App(): React.JSX.Element {
                         </h3>
                       </div>
                       
+                      {/* Grid passt sich an die Anzahl der sichtbaren Schläge an */}
                       <div className={`grid gap-2 overflow-y-auto custom-scrollbar pb-10 ${level === "Schlag" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`}>
                         {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
