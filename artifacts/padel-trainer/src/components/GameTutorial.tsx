@@ -37,7 +37,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
 
   const [courtState, setCourtState] = useState({ 
     you: "D1", partner: "B4", opp1: "B1", opp2: "D1", 
-    ball: { side: "left" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
+    ball: { side: "right" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
   });
 
   const [animTrigger, setAnimTrigger] = useState(0);
@@ -149,9 +149,53 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
     >
       
       {/* ========================================= */}
-      {/* 3D COURT IM HINTERGRUND                   */}
+      {/* OBERER BEREICH: INFO-TEXTBOX                */}
       {/* ========================================= */}
-      <div className="absolute inset-0 z-10 pointer-events-none opacity-100">
+      <div className="absolute inset-x-0 top-0 sm:top-2 z-50 flex flex-col p-3 sm:p-4 pointer-events-none">
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={stepIndex}
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-2xl mx-auto bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto flex flex-col gap-2"
+          >
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
+                Schritt {stepIndex + 1} / 5
+              </span>
+            </div>
+            
+            <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+              {title}
+            </h2>
+            
+            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[50px] sm:min-h-[60px]">
+              {text}
+            </p>
+
+            <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
+              <button 
+                onClick={handleNextClick}
+                disabled={isAnimating}
+                className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
+                  isAnimating 
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
+                    : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
+                }`}
+              >
+                {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
+              </button>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* ========================================= */}
+      {/* MITTLERER BEREICH: 3D COURT               */}
+      {/* ========================================= */}
+      <div className="relative w-full flex-1 overflow-hidden pointer-events-none mt-auto">
         <ScenarioCourt3D 
           key={`tutorial-court-${animTrigger}`} 
           arenaModel="/TacPadel.glb" 
@@ -193,95 +237,49 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       </div>
 
       {/* ========================================= */}
-      {/* UNTERER BEREICH: FAKE UI & TEXTBOX        */}
+      {/* UNTERER BEREICH: FAKE ACTION BAR          */}
       {/* ========================================= */}
-      <div className="absolute inset-x-0 bottom-4 z-50 flex flex-col justify-end p-3 sm:p-6 pointer-events-none">
-        <div className="w-full max-w-2xl mx-auto flex flex-col gap-2 pointer-events-auto">
-          
-          {/* --- FAKE ACTION BAR (Sieht aus wie im echten Spiel) --- */}
-          <div className="w-full bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-3 lg:p-4 rounded-xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
-            
-            {/* Fake Timer Bar */}
-            <div className="flex items-center justify-between px-1 mb-2">
-              <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
-                DU (Schläger)
-              </span>
-              <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
-                <motion.div 
-                  initial={{ width: "100%" }} 
-                  animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
-                  transition={{ duration: 4, ease: "linear" }}
-                  className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
-                />
-              </div>
-            </div>
-
-            {/* Fake Buttons */}
-            <div className="grid grid-cols-3 gap-1.5 mb-2">
-              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-                <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
-                <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
-              </div>
-              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-                <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
-                <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
-              </div>
-              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-                <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
-                <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
-              </div>
-            </div>
-
-            {/* Fake Submit Button */}
-            <button disabled className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
-                mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
-                : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
-                : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-            }`}>
-              {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
-            </button>
-          </div>
-
-          {/* --- TEXTBOX --- */}
-          <AnimatePresence mode="wait">
+      <div className="w-full z-40 bg-[#050b18] border-t border-slate-700 p-2 sm:p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2 shrink-0 pointer-events-none">
+        
+        {/* Fake Timer Header */}
+        <div className="flex items-center justify-between px-1 mb-1 mt-1">
+          <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
+            DU (Schläger)
+          </span>
+          <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
             <motion.div 
-              key={stepIndex}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -20, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="w-full bg-[#050b18]/95 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2"
-            >
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
-                  Schritt {stepIndex + 1} / 5
-                </span>
-              </div>
-              
-              <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
-                {title}
-              </h2>
-              
-              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[60px]">
-                {text}
-              </p>
-
-              <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
-                <button 
-                  onClick={handleNextClick}
-                  disabled={isAnimating}
-                  className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
-                    isAnimating 
-                      ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
-                      : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
-                  }`}
-                >
-                  {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
-                </button>
-              </div>
-            </motion.div>
-          </AnimatePresence>
+              initial={{ width: "100%" }} 
+              animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
+              transition={{ duration: 4, ease: "linear" }}
+              className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
+            />
+          </div>
         </div>
+
+        {/* Fake Auswahl-Buttons */}
+        <div className="grid grid-cols-3 gap-1.5 mb-2">
+          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
+            <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
+          </div>
+          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
+            <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
+          </div>
+          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
+            <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
+          </div>
+        </div>
+
+        {/* Fake Submit Button */}
+        <button disabled className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
+            mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
+            : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
+            : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+        }`}>
+          {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
+        </button>
       </div>
 
     </div>
