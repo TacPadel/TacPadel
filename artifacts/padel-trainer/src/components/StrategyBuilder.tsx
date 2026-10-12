@@ -11,7 +11,7 @@ const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA",
 // ==========================================
 // ADMIN DASHBOARD
 // ==========================================
-function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTestStrategy: (strat: StrategySequence) => void }) {
+function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTestStrategy: (strat: StrategySequence, type: "admin" | "draft") => void }) {
   const [pendingStrats, setPendingStrats] = useState<any[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
       description: dbRow.description,
       steps: dbRow.steps
     };
-    onTestStrategy(stratToTest);
+    onTestStrategy(stratToTest, "admin");
   };
 
   return (
@@ -83,7 +83,7 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
 // ==========================================
 interface StrategyBuilderProps {
   onBack: () => void;
-  onTestStrategy: (strat: StrategySequence) => void;
+  onTestStrategy: (strat: StrategySequence, type: "admin" | "draft") => void;
   startInAdmin?: boolean; 
 }
 
@@ -102,9 +102,35 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
 
   // Steps State
   const [steps, setSteps] = useState<StrategyStep[]>([]);
-  
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  // Lade Auto-Save beim Start
+  useEffect(() => {
+    const saved = localStorage.getItem('padelStrategyDraft');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.title) setTitle(parsed.title);
+        if (parsed.theme) setTheme(parsed.theme);
+        if (parsed.difficulty) setDifficulty(parsed.difficulty);
+        if (parsed.description) setDescription(parsed.description);
+        if (parsed.steps) setSteps(parsed.steps);
+      } catch (e) {}
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  // Speichere automatisch jeden Fortschritt in LocalStorage
+  useEffect(() => {
+    if (draftLoaded) {
+      localStorage.setItem('padelStrategyDraft', JSON.stringify({ title, theme, difficulty, description, steps }));
+    }
+  }, [title, theme, difficulty, description, steps, draftLoaded]);
+
   // Current Editing Step State
   const [isEditingStep, setIsEditingStep] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null); // Speichert, ob wir gerade bearbeiten
+  
   const [playerTurn, setPlayerTurn] = useState<"you" | "ai">("you");
   const [stepDesc, setStepDesc] = useState("");
   const [stepExpl, setStepExpl] = useState("");
@@ -136,9 +162,41 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     setBallSide(turn === "you" ? "right" : "left");
   };
 
+  const openNewStep = () => {
+    setEditingIndex(null);
+    setPlayerTurn("you"); 
+    setStepDesc(""); 
+    setStepExpl("");
+    setIsEditingStep(true);
+  };
+
+  const handleEditStep = (index: number) => {
+    const s = steps[index];
+    setEditingIndex(index);
+    setPlayerTurn(s.playerTurn);
+    setStepDesc(s.description);
+    setStepExpl(s.stepExplanation);
+    setPosYou(s.positions.you); setPosPartner(s.positions.partner);
+    setPosOpp1(s.positions.opp1); setPosOpp2(s.positions.opp2);
+    setBallSide(s.positions.ball.side); setBallZone(s.positions.ball.zone);
+    setBallType(s.positions.ball.type || "DRIVE");
+    if (s.playerTurn === "you") {
+      setValidShots(s.validShots || ["DRIVE"]); setBestZones(s.bestZones || ["B2"]); setLaufZone(s.laufZone || "B2");
+    } else {
+      setAiHitter(s.aiHitter || "opp1"); setAiTarget(s.aiTarget || "B2"); setAiLaufZone(s.aiLaufZone || "D2");
+    }
+    setIsEditingStep(true);
+  };
+
+  const handleDeleteStep = (index: number) => {
+    const updated = steps.filter((_, i) => i !== index);
+    const reindexed = updated.map((s, i) => ({ ...s, stepId: i + 1 })); // Nummern korrigieren
+    setSteps(reindexed);
+  };
+
   const handleAddStep = () => {
     const newStep: StrategyStep = {
-      stepId: steps.length + 1,
+      stepId: editingIndex !== null ? editingIndex + 1 : steps.length + 1,
       playerTurn,
       description: stepDesc,
       stepExplanation: stepExpl,
@@ -150,8 +208,32 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
         ? { validShots, bestZones, laufZone } 
         : { aiHitter, aiShot: ballType, aiTarget, aiLaufZone })
     };
-    setSteps([...steps, newStep]);
+    
+    if (editingIndex !== null) {
+      // Existierenden ersetzen
+      const updated = [...steps];
+      updated[editingIndex] = newStep;
+      setSteps(updated);
+      setEditingIndex(null);
+    } else {
+      // Neuen hinzufügen
+      setSteps([...steps, newStep]);
+    }
     setIsEditingStep(false);
+  };
+
+  // Funktion zum Testen des Entwurfs
+  const handleTestDraft = () => {
+    if (steps.length === 0) return alert("Füge zuerst Züge hinzu, um sie zu testen!");
+    const stratToTest: StrategySequence = {
+      id: "DRAFT", 
+      title: `${title || "Entwurf"} (VORSCHAU)`, 
+      theme, 
+      difficulty, 
+      description, 
+      steps
+    };
+    onTestStrategy(stratToTest, "draft");
   };
 
   const handleSubmitStrategy = async () => {
@@ -179,6 +261,8 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
       console.error(error);
     } else {
       setSubmitStatus("success");
+      // Wenn erfolgreich eingereicht, löschen wir den Entwurf aus dem Speicher!
+      localStorage.removeItem('padelStrategyDraft');
       setTimeout(() => onBack(), 3000);
     }
   };
@@ -225,7 +309,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
       {!isEditingStep ? (
         <div className="flex flex-col gap-6">
           <div className="bg-[#050b18] p-6 rounded-xl border border-slate-800 flex flex-col gap-4">
-            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">1. Basis Infos</h3>
+            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">Basis Infos</h3>
             
             <input type="text" placeholder="Titel der Strategie..." value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500" />
             
@@ -250,25 +334,40 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
             
             <div className="flex flex-col gap-2">
               {steps.map((s, idx) => (
-                <div key={idx} className="bg-slate-900 p-3 rounded-lg border border-slate-700 flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-300">Zug {idx + 1}: {s.playerTurn === "you" ? "Du" : "Gegner"}</span>
-                  <span className="text-xs text-slate-500 truncate max-w-[200px]">{s.description}</span>
+                <div key={idx} className="bg-slate-900 p-3 rounded-lg border border-slate-700 flex justify-between items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-slate-300 block">Zug {idx + 1}: {s.playerTurn === "you" ? "Du" : "Gegner"}</span>
+                    <span className="text-xs text-slate-500 truncate block">{s.description}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEditStep(idx)} className="p-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded transition-colors text-xs">✏️</button>
+                    <button onClick={() => handleDeleteStep(idx)} className="p-2 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors text-xs">🗑️</button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <button onClick={() => setIsEditingStep(true)} className="w-full py-3 border border-dashed border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-950/30 transition-colors text-xs font-bold uppercase tracking-widest mt-2">
+            <button onClick={openNewStep} className="w-full py-3 border border-dashed border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-950/30 transition-colors text-xs font-bold uppercase tracking-widest mt-2">
               + Neuen Zug hinzufügen
             </button>
           </div>
 
-          <button 
-            onClick={handleSubmitStrategy} 
-            disabled={steps.length === 0 || !title || !description || isSubmitting}
-            className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:scale-[1.02] active:scale-95 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:hover:scale-100"
-          >
-            {isSubmitting ? "Wird gesendet..." : "Strategie Einreichen ➔"}
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={handleTestDraft} 
+              disabled={steps.length === 0} 
+              className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
+            >
+              Vorschau Testen 🎮
+            </button>
+            <button 
+              onClick={handleSubmitStrategy} 
+              disabled={steps.length === 0 || !title || !description || isSubmitting}
+              className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:scale-[1.02] active:scale-95 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:hover:scale-100"
+            >
+              {isSubmitting ? "Wird gesendet..." : "Einreichen ➔"}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6">
@@ -292,8 +391,8 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
           <div className="bg-[#050b18] p-5 rounded-xl border border-slate-800 flex flex-col gap-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
-              <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest">Zug konfigurieren</h3>
-              <button onClick={() => setIsEditingStep(false)} className="text-slate-500 hover:text-white text-xs">Abbrechen</button>
+              <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest">{editingIndex !== null ? "Zug bearbeiten" : "Zug erstellen"}</h3>
+              <button onClick={() => { setIsEditingStep(false); setEditingIndex(null); }} className="text-slate-500 hover:text-white text-xs">Abbrechen</button>
             </div>
 
             <div className="flex gap-2 bg-slate-900 p-1 rounded-lg">

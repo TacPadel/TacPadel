@@ -17,6 +17,11 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   const [currentView, setCurrentView] = useState<"list" | "builder">("list");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
+  // NEU: States für den Testmodus (Admin & Entwurf)
+  const [isTestMode, setIsTestMode] = useState(false);
+  const [testModeType, setTestModeType] = useState<"admin" | "draft" | null>(null);
+  const [builderStartInAdmin, setBuilderStartInAdmin] = useState(false);
+
   // State für ALLE Strategien (Lokal + Community)
   const [allStrategies, setAllStrategies] = useState<StrategySequence[]>(STRATEGIES);
 
@@ -40,7 +45,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
       if (data && data.length > 0) {
         const communityStrats: StrategySequence[] = data.map(dbRow => ({
           id: dbRow.id,
-          // Wir hängen den Namen des Erstellers direkt an den Titel an!
           title: `${dbRow.title} (von ${dbRow.creator_name})`, 
           theme: dbRow.theme as any,
           difficulty: dbRow.difficulty as any,
@@ -48,7 +52,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           steps: dbRow.steps
         }));
         
-        // Mische deine festen mit den neuen Community-Strategien
         setAllStrategies([...STRATEGIES, ...communityStrats]);
       }
     }
@@ -81,7 +84,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     setHasSubmitted(true);
 
     if (isAITurn) {
-      // KI macht immer alles richtig
       setStepResult("correct");
     } else {
       const isShotCorrect = activeStep.validShots?.includes(selectedShot!) ?? false;
@@ -108,7 +110,10 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         resetInputs();
       } else {
         setStrategyFinished(true);
-        onStrategyComplete(50); // Punkte wie von dir auf 50 gesetzt
+        // FIX: Punkte gibt es nur, wenn kein Testmodus aktiv ist!
+        if (!isTestMode) {
+          onStrategyComplete(50);
+        }
       }
     }
   };
@@ -126,9 +131,18 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     setCurrentStepIndex(0);
     setStrategyFinished(false);
     resetInputs();
+
+    // FIX: Automatischer Rücksprung nach dem Testen
+    if (isTestMode) {
+      setCurrentView("builder");
+      setBuilderStartInAdmin(testModeType === "admin");
+      setIsTestMode(false);
+      setTestModeType(null);
+    } else {
+      setBuilderStartInAdmin(false);
+    }
   };
 
-  // Hilfsfunktion für stylische Theme-Farben
   const getThemeStyles = (theme: string) => {
     switch(theme) {
       case "Offensive": 
@@ -142,9 +156,22 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     }
   };
 
-  // Wenn der Nutzer auf "+ Erstellen" geklickt hat, zeige den Builder:
   if (currentView === "builder") {
-    return <StrategyBuilder onBack={() => setCurrentView("list")} />;
+    return (
+      <StrategyBuilder 
+        startInAdmin={builderStartInAdmin}
+        onBack={() => {
+          setCurrentView("list");
+          setBuilderStartInAdmin(false);
+        }} 
+        onTestStrategy={(strat, type) => {
+          setIsTestMode(true);
+          setTestModeType(type);
+          setActiveStrategy(strat);
+          setCurrentView("list"); 
+        }}
+      />
+    );
   }
 
   if (!activeStrategy) {
@@ -171,7 +198,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik aufzubauen.
         </p>
 
-        {/* 4er Grid mit allen importierten Strategien */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           {allStrategies.map((strat) => (
             <div 
@@ -207,10 +233,11 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     return (
       <div className="w-full flex flex-col gap-4 text-slate-200 font-sans pb-24 lg:pb-4 relative">
         
-        {/* Header */}
         <div className="flex items-center justify-between bg-[#040914]/90 border border-purple-900/50 p-4 rounded-xl">
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-purple-400 tracking-widest uppercase">Aktuelle Strategie</span>
+            <span className={`text-[10px] font-bold tracking-widest uppercase ${isTestMode ? "text-blue-400" : "text-purple-400"}`}>
+              {isTestMode ? "🛡️ TESTMODUS" : "Aktuelle Strategie"}
+            </span>
             <span className="text-sm font-black text-white">{activeStrategy.title}</span>
           </div>
           <button onClick={leaveStrategy} className="text-xs bg-slate-900/50 text-slate-400 px-3 py-1.5 rounded-lg border border-slate-800 hover:text-white">
@@ -218,25 +245,20 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           </button>
         </div>
 
-        {/* Workspace: Briefing & Court */}
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-3 lg:gap-5">
-          
           <div className={`lg:col-span-4 flex flex-col bg-[#050b18]/80 border ${isAITurn ? 'border-red-900/50' : 'border-slate-800'} rounded-xl p-5 shadow-lg relative`}>
             <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${isAITurn ? 'bg-red-500' : 'bg-purple-500'}`} />
-            
             <div className="flex justify-between items-center mb-3">
               <h3 className={`text-[10px] font-black tracking-widest uppercase ${isAITurn ? 'text-red-400' : 'text-slate-400'}`}>
                 {isAITurn ? "Gegner am Zug" : "Dein Zug"}
               </h3>
               <span className="text-[10px] text-slate-500 font-bold">{currentStepIndex + 1} / {activeStrategy.steps.length}</span>
             </div>
-
             <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-4">
               {activeStep.description}
             </p>
           </div>
 
-          {/* 3D Court */}
           <div className="lg:col-span-8 h-[50vh] min-h-[400px] bg-[#030611] rounded-2xl border border-slate-800 relative overflow-hidden">
             <ScenarioCourt25
               level={"Strategie" as any} 
@@ -265,7 +287,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           </div>
         </div>
 
-        {/* Action Bar (Boden) */}
         {!hasSubmitted && (
           <div className={`fixed bottom-20 lg:sticky lg:bottom-4 left-4 right-4 lg:left-auto lg:right-auto z-40 bg-[#050b18]/95 backdrop-blur-xl border ${isAITurn ? 'border-red-900/50 shadow-[0_-10px_30px_rgba(220,38,38,0.2)]' : 'border-slate-700'} p-3 rounded-xl`}>
             
@@ -308,7 +329,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           </div>
         )}
 
-        {/* Shot Selection Modal */}
         <AnimatePresence>
           {isShotModalOpen && !isAITurn && (
             <motion.div
@@ -333,7 +353,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           )}
         </AnimatePresence>
 
-        {/* Result Overlay */}
         <AnimatePresence>
           {hasSubmitted && (
             <motion.div
@@ -366,9 +385,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     );
   }
 
-  // ==========================================
-  // VIEW 3: STRATEGIE ABGESCHLOSSEN
-  // ==========================================
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.9 }}
@@ -377,16 +393,18 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     >
       <span className="text-6xl mb-4">🏆</span>
       <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-500 uppercase tracking-widest">
-        Strategie Meister
+        {isTestMode ? "Test abgeschlossen" : "Strategie Meister"}
       </h2>
       <p className="text-slate-400 mt-2 mb-6">
-        Du hast alle Züge von "{activeStrategy?.title}" perfekt ausgeführt. +50 Punkte!
+        {isTestMode 
+          ? "Der Testlauf ist beendet. Im Testmodus werden keine Punkte vergeben." 
+          : `Du hast alle Züge von "${activeStrategy?.title}" perfekt ausgeführt. +50 Punkte!`}
       </p>
       <button 
         onClick={leaveStrategy}
         className="px-8 py-4 bg-gradient-to-r from-purple-600 to-cyan-600 hover:scale-105 transition-transform text-white uppercase font-black text-xs rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)]"
       >
-        Zurück zur Übersicht
+        {isTestMode ? "Zurück zum Entwurf" : "Zurück zur Übersicht"}
       </button>
     </motion.div>
   );
