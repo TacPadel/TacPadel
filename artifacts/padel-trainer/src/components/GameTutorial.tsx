@@ -8,102 +8,130 @@ interface GameTutorialProps {
   onComplete: () => void;
 }
 
-// Hilfsfunktion, um Pausen im Code zu erzwingen (in Millisekunden)
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Hilfsfunktion für millisekundengenaue Pausen im "Film"
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function GameTutorial({ onComplete }: GameTutorialProps) {
-  // --- UI STATES ---
+  // --- UI & TEXT STATES ---
   const [stepIndex, setStepIndex] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false); // Sperrt den "Weiter"-Button während einer Animation
-  const [title, setTitle] = useState("Willkommen");
-  const [text, setText] = useState("Im Match-Modus spielst du Sätze gegen die KI. Timing, die richtige Taktik und Ausdauer entscheiden über Sieg oder Niederlage.");
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [title, setTitle] = useState("1. Dein Aufschlag");
+  const [text, setText] = useState("Du hast Aufschlag. Ziele durch die Mitte (T-Linie), um den Winkel für den Return zu minimieren.");
 
-  // --- COURT STATES (Steuern die 3D Szene) ---
-  const [phase, setPhase] = useState<GamePhase>("ai_prepare");
-  const [isTimerActive, setIsTimerActive] = useState(false);
+  // --- FAKE ACTION BAR STATES ---
+  const [mockUi, setMockUi] = useState({
+    run: "D4" as string | null,
+    target: "C2" as string | null,
+    shot: "AUFSCHLAG" as string | null,
+    showTimer: false
+  });
+
+  // --- 3D COURT STATES ---
+  const [phase, setPhase] = useState<GamePhase>("player_planning");
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [turnResult, setTurnResult] = useState<TurnResult>(null);
   
-  const [commands, setCommands] = useState({ run: null as string | null, target: null as string | null, shot: null as string | null });
-  
+  const [tutZone, setTutZone] = useState<string | null>("C2");
+  const [tutLauf, setTutLauf] = useState<string | null>("D4");
+  const [tutShot, setTutShot] = useState<string | null>("AUFSCHLAG");
+
   const [courtState, setCourtState] = useState({ 
     you: "D1", partner: "B4", opp1: "B1", opp2: "D1", 
-    ball: { side: "right" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
+    ball: { side: "left" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
   });
 
+  const [animTrigger, setAnimTrigger] = useState(0);
+
   // =========================================================================
-  // HIER KANNST DU DAS TIMING FÜR JEDEN SCHRITT PERFEKT ANPASSEN!
+  // DAS REGIE-SKRIPT: HIER PASSIERT DIE MAGIE
   // =========================================================================
   const runStepAnimation = async (nextStep: number) => {
-    setIsAnimating(true); // Button sperren
+    setIsAnimating(true); // Sperrt den Weiter-Button
     setStepIndex(nextStep);
+    setAnimTrigger(prev => prev + 1); // Zwingt 3D-Kamera zum Neuladen
 
     if (nextStep === 1) {
-      setTitle("1. Reagieren (Zeitdruck!)");
-      setText("Dein Aufschlag wurde returniert! Der Ball fliegt flach auf dich zu. Ab jetzt tickt ein Timer! Du musst schnell handeln, bevor die Zeit abläuft.");
+      setTitle("Aufschlag ausgeführt");
+      setText("Perfekt. Der Ball fliegt zur T-Linie und du rückst sofort ans Netz vor, um den Druck zu erhöhen.");
       
-      // 1. Kurze Pause, damit der Spieler den Text anfangen kann zu lesen
-      await sleep(800); 
+      // 1. Aufschlag-Animation starten
+      setHasSubmitted(true);
+      setTurnResult("success");
+      setCourtState(prev => ({ 
+        ...prev, 
+        you: "D4", // Du rückst ans Netz vor
+        ball: { side: "right", zone: "C2", type: "AUFSCHLAG" } 
+      }));
 
-      // 2. Ball abfeuern (Gegner returnt von C2 auf dich an D4)
-      setPhase("timer_running");
-      setIsTimerActive(true);
-      setCourtState({ 
-        you: "D4", partner: "B4", opp1: "C2", opp2: "D1", 
-        ball: { side: "left", zone: "D4", type: "DRIVE" } 
-      });
-
-      // 3. Warten, bis der Ball bei dir ankommt (Timer-Dauer)
+      // 2. Warten, bis der Ball beim Gegner ist
       await sleep(2500); 
     } 
     
     else if (nextStep === 2) {
-      setTitle("2. Laufweg festlegen");
-      setText("Da du nach dem Aufschlag schon optimal am Netz stehst, wählen wir D4, um deine Position zu halten.");
+      setTitle("2. Gegner returniert");
+      setText("Der Gegner reagiert auf deinen Aufschlag. Er muss durch die Mitte returnieren. Beobachte seinen Schlag – der Timer startet!");
       
-      // 1. Spiel pausiert zum Planen
-      setPhase("player_planning");
-      setIsTimerActive(false);
+      // 1. Vorbereiten für den Return
+      setHasSubmitted(false);
+      setTurnResult(null);
+      setPhase("timer_running");
       
-      // 2. Kurze Pause für den visuellen Effekt
-      await sleep(600); 
+      // 2. UI zurücksetzen & Timer einblenden
+      setMockUi({ run: null, target: null, shot: null, showTimer: true });
+      setTutZone(null); setTutLauf(null); setTutShot(null);
 
-      // 3. Setze den Laufweg visuell
-      setCommands(prev => ({ ...prev, run: "D4" }));
+      // 3. Gegner schlägt
+      setCourtState({ 
+        you: "D4", partner: "B4", opp1: "C2", opp2: "D1", // Gegner opp1 tritt in die Mitte (C2)
+        ball: { side: "left", zone: "D4", type: "DRIVE" } // Ball fliegt flach auf dich zu
+      });
+      
+      // Warten, damit der Spieler sieht, wie der Balken schrumpft
+      await sleep(1500); 
     } 
     
     else if (nextStep === 3) {
-      setTitle("3. Schlagziel & Art");
-      setText("Jetzt markieren wir unser Schlagziel in der tiefen Ecke (A1), um den Gegner festzunageln, und wählen als Schlag den VOLLEY.");
+      setTitle("3. Volley vorbereiten");
+      setText("Der flache Return kommt auf dich zu. Wie von Geisterhand wählen wir tief in die Ecke (A1) und bereiten den Volley vor.");
       
+      setPhase("player_planning"); // Timer stoppt visuell
+      
+      // UI füllt sich Stück für Stück automatisch aus!
       await sleep(600);
-      
-      // Setze das Ziel und den Schlag
-      setCommands(prev => ({ ...prev, target: "A1", shot: "VOLLEY" }));
+      setMockUi(prev => ({ ...prev, run: "D4" }));
+      setTutLauf("D4");
+
+      await sleep(600);
+      setMockUi(prev => ({ ...prev, target: "A1" }));
+      setTutZone("A1");
+
+      await sleep(600);
+      setMockUi(prev => ({ ...prev, shot: "VOLLEY" }));
+      setTutShot("VOLLEY");
+
+      await sleep(400); // Kurz wirken lassen
     } 
     
     else if (nextStep === 4) {
-      setTitle("4. Ausführen & Ausdauer");
-      setText("Stark! Mit dem Volley hältst du den Druck aufrecht. Achte im echten Spiel immer auf deine Ausdauer, sonst machst du Fehler!");
+      setTitle("Klasse Spielzug!");
+      setText("Stark! Mit dem Volley hältst du den Druck aufrecht und zwingst die Gegner in die absolute Defensive. Genau so funktioniert ein Match!");
       
-      await sleep(400);
-
-      // 1. Dein Spieler schlägt den Ball
+      // 1. Timer ausblenden, Animation starten
+      setMockUi(prev => ({ ...prev, showTimer: false }));
       setHasSubmitted(true);
-      setPhase("player_animating");
-      setTurnResult("perfect");
+      setTurnResult("success");
       
-      // 2. Ball fliegt nach A1, Gegner rennt panisch nach B1
+      // 2. Du volleyierst, Gegner flüchtet zurück nach B1
       setCourtState({ 
         you: "D4", partner: "B4", opp1: "B1", opp2: "D1", 
         ball: { side: "right", zone: "A1", type: "VOLLEY" } 
       });
 
-      // 3. Warten, bis die Flug-Animation des Volleys fertig ist
-      await sleep(3000);
+      // 3. Warten, bis Volley einschlägt
+      await sleep(2500);
     }
 
-    setIsAnimating(false); // Button wieder freigeben
+    setIsAnimating(false); // Weiter-Button wieder freigeben
   };
 
   const handleNextClick = () => {
@@ -120,9 +148,12 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
       
-      {/* 3D COURT IM HINTERGRUND (Visuelle Vorschau) */}
+      {/* ========================================= */}
+      {/* 3D COURT IM HINTERGRUND                   */}
+      {/* ========================================= */}
       <div className="absolute inset-0 z-10 pointer-events-none opacity-100">
         <ScenarioCourt3D 
+          key={`tutorial-court-${animTrigger}`} 
           arenaModel="/TacPadel.glb" 
           playIntro={false}  
           gameOver={false} 
@@ -134,75 +165,123 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
           acceptableZones={[]}
           profiMode={false}
           
-          selectedZone={commands.target}
-          selectedLaufZone={commands.run} 
+          selectedZone={tutZone}
+          selectedLaufZone={tutLauf} 
           selectedPartnerZone={null}
           
           activeChar="you" 
           hitterId="you"
           
-          isTimerActive={isTimerActive} 
+          isTimerActive={mockUi.showTimer} 
           turnResult={turnResult}
-          previewShot={commands.shot}
-          timerDuration={2500} 
+          previewShot={tutShot}
+          timerDuration={4000} 
           
           onZoneClick={() => {}}
           onLaufZoneClick={() => {}}
           onPlayerClick={() => {}}
           
-          playerScore={0} 
-          aiScore={0}
+          playerScore={0} aiScore={0}
           isAiActive={phase === "ai_prepare"} 
           phase={phase} 
-          isTimerPhase={isTimerActive}
-          isPlayerTeamServe={false}
-
+          isTimerPhase={mockUi.showTimer}
+          isPlayerTeamServe={true}
           hidePlayerLabels={false}
-          userTeamName="Dein Team"
+          userTeamName="Du & Partner"
           activeAiProfile={AI_PROFILES[0]}
         />
       </div>
 
-      {/* OVERLAY MIT KOMPAKTER TEXTBOX FÜR HANDYS */}
+      {/* ========================================= */}
+      {/* UNTERER BEREICH: FAKE UI & TEXTBOX        */}
+      {/* ========================================= */}
       <div className="absolute inset-x-0 bottom-4 z-50 flex flex-col justify-end p-3 sm:p-6 pointer-events-none">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            key={stepIndex} // Die Box animiert kurz beim Textwechsel
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -20, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="w-full max-w-lg mx-auto bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.8)] pointer-events-auto flex flex-col gap-2"
-          >
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
-                Schritt {stepIndex + 1} / 5
+        <div className="w-full max-w-2xl mx-auto flex flex-col gap-2 pointer-events-auto">
+          
+          {/* --- FAKE ACTION BAR (Sieht aus wie im echten Spiel) --- */}
+          <div className="w-full bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-3 lg:p-4 rounded-xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
+            
+            {/* Fake Timer Bar */}
+            <div className="flex items-center justify-between px-1 mb-2">
+              <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
+                DU (Schläger)
               </span>
+              <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                <motion.div 
+                  initial={{ width: "100%" }} 
+                  animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
+                  transition={{ duration: 4, ease: "linear" }}
+                  className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
+                />
+              </div>
             </div>
-            
-            <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
-              {title}
-            </h2>
-            
-            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[60px]">
-              {text}
-            </p>
 
-            <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
-              <button 
-                onClick={handleNextClick}
-                disabled={isAnimating}
-                className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
-                  isAnimating 
-                    ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
-                    : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
-                }`}
-              >
-                {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
-              </button>
+            {/* Fake Buttons */}
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
+              </div>
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
+              </div>
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
+              </div>
             </div>
-          </motion.div>
-        </AnimatePresence>
+
+            {/* Fake Submit Button */}
+            <button disabled className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
+                mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
+                : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
+                : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            }`}>
+              {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
+            </button>
+          </div>
+
+          {/* --- TEXTBOX --- */}
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={stepIndex}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full bg-[#050b18]/95 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2"
+            >
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
+                  Schritt {stepIndex + 1} / 5
+                </span>
+              </div>
+              
+              <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+                {title}
+              </h2>
+              
+              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[60px]">
+                {text}
+              </p>
+
+              <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
+                <button 
+                  onClick={handleNextClick}
+                  disabled={isAnimating}
+                  className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
+                    isAnimating 
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
+                      : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
+                  }`}
+                >
+                  {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
+                </button>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
     </div>
