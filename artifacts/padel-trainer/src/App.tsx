@@ -841,12 +841,16 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLogout = async () => {
+    // 1. Supabase Session beenden
     await signOut(); 
-    clearActiveSession(); 
     
-    setActiveTab("home");
-    localStorage.setItem("tacpadel_activeTab", "home");
+    // 2. Den kompletten lokalen Cache des Geräts radikal leeren!
+    // Dadurch werden alle alten Scores, Trainer-Stände und Einstellungen gelöscht
+    localStorage.clear();
+    sessionStorage.clear();
     
+    // 3. Optional: Die aktiven Trainer-States in React zurücksetzen
+    clearActiveSession();
     setLevel("Schlag");
     setScore(0);
     setAttempts(0);
@@ -859,6 +863,11 @@ export default function App(): React.JSX.Element {
     setIsRetryPhase(false);
     setFeedbackMsg(null);
     setWrongPool([]);
+
+    // 4. DER WICHTIGSTE SCHRITT: Einen harten Reload der App erzwingen!
+    // Das leert den gesamten Arbeitsspeicher (RAM) von React. 
+    // Der nächste Nutzer startet mit einer 100% frischen App, als hätte er sie neu installiert.
+    window.location.reload(); 
   };
 
   return (
