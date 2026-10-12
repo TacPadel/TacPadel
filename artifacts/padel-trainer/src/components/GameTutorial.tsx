@@ -35,9 +35,10 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
   const [tutLauf, setTutLauf] = useState<string | null>("D4");
   const [tutShot, setTutShot] = useState<string | null>("AUFSCHLAG");
 
+  // Initialer State: Du bereitest Aufschlag vor (Ball ist bei dir = left)
   const [courtState, setCourtState] = useState({ 
     you: "D1", partner: "B4", opp1: "B1", opp2: "D1", 
-    ball: { side: "right" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
+    ball: { side: "left" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
   });
 
   const [animTrigger, setAnimTrigger] = useState(0);
@@ -54,7 +55,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       setTitle("Aufschlag ausgeführt");
       setText("Perfekt. Der Ball fliegt zur T-Linie und du rückst sofort ans Netz vor, um den Druck zu erhöhen.");
       
-      // 1. Aufschlag-Animation starten
+      // 1. Aufschlag-Animation starten (Ball fliegt zum Gegner = right)
       setHasSubmitted(true);
       setTurnResult("success");
       setCourtState(prev => ({ 
@@ -80,7 +81,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       setMockUi({ run: null, target: null, shot: null, showTimer: true });
       setTutZone(null); setTutLauf(null); setTutShot(null);
 
-      // 3. Gegner schlägt
+      // 3. Gegner schlägt (Ball fliegt zu dir = left)
       setCourtState({ 
         you: "D4", partner: "B4", opp1: "C2", opp2: "D1", // Gegner opp1 tritt in die Mitte (C2)
         ball: { side: "left", zone: "D4", type: "DRIVE" } // Ball fliegt flach auf dich zu
@@ -121,7 +122,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       setHasSubmitted(true);
       setTurnResult("success");
       
-      // 2. Du volleyierst, Gegner flüchtet zurück nach B1
+      // 2. Du volleyierst, Gegner flüchtet zurück nach B1 (Ball fliegt zum Gegner = right)
       setCourtState({ 
         you: "D4", partner: "B4", opp1: "B1", opp2: "D1", 
         ball: { side: "right", zone: "A1", type: "VOLLEY" } 
@@ -148,92 +149,96 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
       
-      {/* ========================================= */}
-      {/* OBERER BEREICH: INFO-TEXTBOX                */}
-      {/* ========================================= */}
-      <div className="absolute inset-x-0 top-0 sm:top-2 z-50 flex flex-col p-3 sm:p-4 pointer-events-none">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            key={stepIndex}
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -20, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="w-full max-w-2xl mx-auto bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto flex flex-col gap-2"
-          >
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
-                Schritt {stepIndex + 1} / 5
-              </span>
-            </div>
-            
-            <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
-              {title}
-            </h2>
-            
-            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[50px] sm:min-h-[60px]">
-              {text}
-            </p>
+      <div className="relative w-full flex-1 overflow-hidden pointer-events-none">
+        
+        {/* ========================================= */}
+        {/* OBERER BEREICH: INFO-TEXTBOX                */}
+        {/* ========================================= */}
+        <div className="absolute inset-x-0 top-0 sm:top-2 z-50 flex flex-col p-3 sm:p-4 pointer-events-none">
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={stepIndex}
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full max-w-2xl mx-auto bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto flex flex-col gap-2"
+            >
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
+                  Schritt {stepIndex + 1} / 5
+                </span>
+              </div>
+              
+              <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+                {title}
+              </h2>
+              
+              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[50px] sm:min-h-[60px]">
+                {text}
+              </p>
 
-            <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
-              <button 
-                onClick={handleNextClick}
-                disabled={isAnimating}
-                className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
-                  isAnimating 
-                    ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
-                    : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
-                }`}
-              >
-                {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
-              </button>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
+              <div className="flex justify-end pt-3 mt-1 border-t border-slate-700/50">
+                <button 
+                  onClick={handleNextClick}
+                  disabled={isAnimating}
+                  className={`w-full sm:w-auto px-6 py-3 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all ${
+                    isAnimating 
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
+                      : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
+                  }`}
+                >
+                  {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
+                </button>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
-      {/* ========================================= */}
-      {/* MITTLERER BEREICH: 3D COURT               */}
-      {/* ========================================= */}
-      <div className="relative w-full flex-1 overflow-hidden pointer-events-none mt-auto">
-        <ScenarioCourt3D 
-          key={`tutorial-court-${animTrigger}`} 
-          arenaModel="/TacPadel.glb" 
-          playIntro={false}  
-          gameOver={false} 
-          
-          level="Spielzug" 
-          positions={courtState as any} 
-          hasSubmitted={hasSubmitted}
-          bestZones={[]} 
-          acceptableZones={[]}
-          profiMode={false}
-          
-          selectedZone={tutZone}
-          selectedLaufZone={tutLauf} 
-          selectedPartnerZone={null}
-          
-          activeChar="you" 
-          hitterId="you"
-          
-          isTimerActive={mockUi.showTimer} 
-          turnResult={turnResult}
-          previewShot={tutShot}
-          timerDuration={4000} 
-          
-          onZoneClick={() => {}}
-          onLaufZoneClick={() => {}}
-          onPlayerClick={() => {}}
-          
-          playerScore={0} aiScore={0}
-          isAiActive={phase === "ai_prepare"} 
-          phase={phase} 
-          isTimerPhase={mockUi.showTimer}
-          isPlayerTeamServe={true}
-          hidePlayerLabels={false}
-          userTeamName="Du & Partner"
-          activeAiProfile={AI_PROFILES[0]}
-        />
+        {/* ========================================= */}
+        {/* MITTLERER BEREICH: 3D COURT               */}
+        {/* ========================================= */}
+        <div className="absolute inset-0 z-10">
+          <ScenarioCourt3D 
+            key={`tutorial-court-${animTrigger}`} 
+            arenaModel="/TacPadel.glb" 
+            playIntro={false}  
+            gameOver={false} 
+            
+            level="Spielzug" 
+            positions={courtState as any} 
+            hasSubmitted={hasSubmitted}
+            bestZones={[]} 
+            acceptableZones={[]}
+            profiMode={false}
+            
+            selectedZone={tutZone}
+            selectedLaufZone={tutLauf} 
+            selectedPartnerZone={null}
+            
+            activeChar="you" 
+            hitterId="you"
+            
+            isTimerActive={mockUi.showTimer} 
+            turnResult={turnResult}
+            previewShot={tutShot}
+            timerDuration={4000} 
+            
+            onZoneClick={() => {}}
+            onLaufZoneClick={() => {}}
+            onPlayerClick={() => {}}
+            
+            playerScore={0} aiScore={0}
+            isAiActive={phase === "ai_prepare"} 
+            phase={phase} 
+            isTimerPhase={mockUi.showTimer}
+            isPlayerTeamServe={true}
+            hidePlayerLabels={false}
+            userTeamName="Du & Partner"
+            activeAiProfile={AI_PROFILES[0]}
+          />
+        </div>
+
       </div>
 
       {/* ========================================= */}
