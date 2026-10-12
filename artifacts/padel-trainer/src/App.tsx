@@ -229,6 +229,7 @@ export default function App(): React.JSX.Element {
   const [authMsg, setAuthMsg] = useState<{type: 'error'|'success', text: string} | null>(null);
 
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
+  const [selectedPublicUserTab, setSelectedPublicUserTab] = useState<"single" | "tournament">("single");
 
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
@@ -924,11 +925,11 @@ export default function App(): React.JSX.Element {
         {selectedPublicUserId && (
           <PublicProfileModal
             userId={selectedPublicUserId}
+            defaultTab={selectedPublicUserTab} /* <-- DAS IST DAS FEHLENDE STÜCK */
             onClose={() => setSelectedPublicUserId(null)}
           />
         )}
       </AnimatePresence>
-
       {/* --- UNLOCK MODAL --- */}
       <AnimatePresence>
         {showUnlockModal && (
@@ -1006,7 +1007,11 @@ export default function App(): React.JSX.Element {
                   userAvatar={finalAvatarUrl} 
                   dbLeaderboard={dbLeaderboard.length > 0 ? dbLeaderboard : undefined}
                   dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} 
-                  onPlayerClick={(id) => setSelectedPublicUserId(id)}
+                  onPlayerClick={(id, listType) => {
+                    setSelectedPublicUserId(id);
+                    // NEU: Wenn es die Season-Liste ist, öffne das Turnier-Modal!
+                    setSelectedPublicUserTab(listType === "season" ? "tournament" : "single");
+                  }}
                   onQuickStart={(specificIndex?: number) => {
                     if ((highestScores["Spielzug"] || 0) >= 50) {
                       handleLevelChange("Simulation" as Level);
