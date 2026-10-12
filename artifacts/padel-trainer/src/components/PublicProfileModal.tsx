@@ -4,10 +4,11 @@ import { supabase } from '../lib/supabase';
 
 interface PublicProfileModalProps {
   userId: string;
+  defaultTab?: "single" | "tournament";
   onClose: () => void;
 }
 
-export default function PublicProfileModal({ userId, onClose }: PublicProfileModalProps) {
+export default function PublicProfileModal({ userId, defaultTab = "single", onClose }: PublicProfileModalProps) {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -17,6 +18,8 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
   const [losses, setLosses] = useState(0);
   const [aggStats, setAggStats] = useState({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
 
+  const isTourney = defaultTab === "tournament";
+
   useEffect(() => {
     const fetchUser = async () => {
       setLoading(true);
@@ -24,7 +27,7 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
       // 1. Profil laden
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points') // preferred_position wurde hier auch entfernt
+        .select('display_name, avatar_url, points, tac_points, team_name, preferred_position')
         .eq('id', userId)
         .maybeSingle();
 
@@ -33,13 +36,18 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
       // 2. Match-Historie für Stats laden
       const { data: historyData } = await supabase
         .from('match_history')
-        .select('result, aces, winners, unforced_errors, total_shots, shots_perfect')
+        .select('result, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
         .eq('user_id', userId);
 
       if (historyData && historyData.length > 0) {
+        // Filtern nach Einzel oder Turnier je nachdem wo geklickt wurde
+        const filteredHistory = historyData.filter(m => 
+          isTourney ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type)
+        );
+
         // Win/Loss
-        const w = historyData.filter(m => m.result === 'win').length;
-        const l = historyData.filter(m => m.result === 'loss').length;
+        const w = filteredHistory.filter(m => m.result === 'win').length;
+        const l = filteredHistory.filter(m => m.result === 'loss').length;
         setWins(w);
         setLosses(l);
         setWinRate((w + l) > 0 ? Math.round((w / (w + l)) * 100) : 0);
@@ -48,7 +56,7 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
         let tAces = 0, tWinners = 0, tUfe = 0, tTotalShots = 0, tPerfect = 0;
         let validMatchCount = 0;
 
-        historyData.forEach((match) => {
+        filteredHistory.forEach((match) => {
           if (match.total_shots > 0 || match.winners > 0 || match.unforced_errors > 0) {
              tAces += match.aces || 0;
              tWinners += match.winners || 0;
@@ -72,7 +80,16 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
     };
 
     if (userId) fetchUser();
-  }, [userId]);
+  }, [userId, isTourney]);
+
+  // UI-Farben und Texte basierend auf dem aufrufenden Leaderboard
+  const themeColor = isTourney ? "text-orange-400" : "text-cyan-400";
+  const themeBorder = isTourney ? "border-orange-500/50" : "border-cyan-500/50";
+  const themeBg = isTourney ? "bg-orange-900/30" : "bg-cyan-900/30";
+  const themeShadow = isTourney ? "shadow-[0_0_15px_rgba(255,165,0,0.3)]" : "shadow-[0_0_15px_rgba(6,182,212,0.3)]";
+  
+  const displayScore = isTourney ? (profile?.tac_points || 0) : (profile?.points || 0);
+  const scoreLabel = isTourney ? "TacPoints (Season)" : "TacScore (All-Time)";
 
   return (
     <AnimatePresence>
@@ -94,7 +111,7 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
 
           {loading ? (
             <div className="flex flex-col items-center justify-center h-48">
-              <span className="text-cyan-400 font-black tracking-widest uppercase animate-pulse">Scanne Spieler-Akte...</span>
+              <span className={`${themeColor} font-black tracking-widest uppercase animate-pulse`}>Scanne Spieler-Akte...</span>
             </div>
           ) : (
             <div className="flex flex-col gap-6 relative z-0">
@@ -103,22 +120,27 @@ export default function PublicProfileModal({ userId, onClose }: PublicProfileMod
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
                   {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="Avatar" className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)]" />
+                    <img src={profile.avatar_url} alt="Avatar" className={`w-24 h-24 rounded-full object-cover border-4 ${themeBorder} ${themeShadow}`} />
                   ) : (
-                    <div className="w-24 h-24 rounded-full bg-cyan-900/30 flex items-center justify-center text-4xl border-2 border-dashed border-cyan-500/50">👤</div>
+                    <div className={`w-24 h-24 rounded-full ${themeBg} flex items-center justify-center text-4xl border-2 border-dashed ${themeBorder}`}>👤</div>
                   )}
                 </div>
                 
                 <div className="text-center mt-2">
                   <h2 className="text-2xl font-black text-white">{profile?.display_name || 'Unbekannter Spieler'}</h2>
-                  <p className="text-purple-400 font-bold text-sm tracking-widest uppercase mt-1">{profile?.points || 0} Pkt.</p>
+                  <p className={`${themeColor} font-bold text-xs tracking-widest uppercase mt-1`}>{displayScore} {scoreLabel}</p>
+                </div>
+                
+                <div className="flex gap-2 justify-center mt-1">
+                  {profile?.team_name && <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">Team: {profile.team_name}</span>}
+                  {profile?.preferred_position && <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">Pos: {profile.preferred_position}</span>}
                 </div>
               </div>
 
               {/* MATCH BILANZ */}
               <div className="bg-[#050b18] border border-slate-800 rounded-2xl p-4 flex justify-between items-center shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
                 <div>
-                  <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz</h3>
+                  <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Bilanz ({isTourney ? 'Turniere' : 'Einzel'})</h3>
                   <div className="flex gap-3 text-[10px] font-black tracking-widest uppercase mt-2">
                     <span className="text-emerald-400">{wins} W</span>
                     <span className="text-slate-600">|</span>

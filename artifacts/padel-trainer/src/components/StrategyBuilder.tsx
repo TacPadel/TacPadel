@@ -9,9 +9,9 @@ const ZONES = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3", "B4", "B5", "C1",
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE", "VORBEREITUNG"];
 
 // ==========================================
-// ADMIN DASHBOARD (Nur für dich sichtbar)
+// ADMIN DASHBOARD
 // ==========================================
-function AdminDashboard({ onExit }: { onExit: () => void }) {
+function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTestStrategy: (strat: StrategySequence) => void }) {
   const [pendingStrats, setPendingStrats] = useState<any[]>([]);
 
   useEffect(() => {
@@ -35,6 +35,18 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
     setPendingStrats(pendingStrats.filter(s => s.id !== id));
   };
 
+  const handleTest = (dbRow: any) => {
+    const stratToTest: StrategySequence = {
+      id: dbRow.id,
+      title: `${dbRow.title} (ADMIN TEST)`,
+      theme: dbRow.theme as any,
+      difficulty: dbRow.difficulty as any,
+      description: dbRow.description,
+      steps: dbRow.steps
+    };
+    onTestStrategy(stratToTest);
+  };
+
   return (
     <div className="w-full bg-[#050b18] p-6 rounded-xl border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.1)]">
       <div className="flex justify-between items-center mb-6 border-b border-purple-900/50 pb-4">
@@ -54,9 +66,10 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
               <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">Eingereicht von: {strat.creator_name}</span>
             </div>
             <p className="text-sm text-slate-400 bg-slate-950/50 p-3 rounded-lg border border-slate-800">{strat.description}</p>
-            <div className="flex gap-3 mt-2">
-              <button onClick={() => handleApprove(strat.id)} className="flex-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600 hover:text-white px-4 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all">✅ Freigeben</button>
-              <button onClick={() => handleReject(strat.id)} className="flex-1 bg-red-600/20 text-red-400 border border-red-500/50 hover:bg-red-600 hover:text-white px-4 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all">❌ Ablehnen</button>
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => handleTest(strat)} className="flex-1 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">🎮 Testen</button>
+              <button onClick={() => handleApprove(strat.id)} className="flex-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">✅ Freigeben</button>
+              <button onClick={() => handleReject(strat.id)} className="flex-1 bg-red-600/20 text-red-400 border border-red-500/50 hover:bg-red-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">❌ Ablehnen</button>
             </div>
           </div>
         ))}
@@ -66,14 +79,20 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
 }
 
 // ==========================================
-// STRATEGY BUILDER HAUPTKOMPONENTE
+// STRATEGY BUILDER
 // ==========================================
-export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
+interface StrategyBuilderProps {
+  onBack: () => void;
+  onTestStrategy: (strat: StrategySequence) => void;
+  startInAdmin?: boolean; 
+}
+
+export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin = false }: StrategyBuilderProps) {
   const { user } = useAuth();
   
   // 🔥 HIER DEINE E-MAIL EINTRAGEN:
   const isAdmin = user?.email === 'caposion@gmail.com';
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(startInAdmin);
   
   // Basic Info State
   const [title, setTitle] = useState("");
@@ -95,7 +114,7 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
   const [posOpp1, setPosOpp1] = useState("B2");
   const [posOpp2, setPosOpp2] = useState("D2");
   
-  const [ballSide, setBallSide] = useState<"left" | "right">("right"); // right = deine Seite, left = Gegner
+  const [ballSide, setBallSide] = useState<"left" | "right">("right"); 
   const [ballZone, setBallZone] = useState("B2");
   const [ballType, setBallType] = useState("VORBEREITUNG");
 
@@ -112,7 +131,6 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
 
-  // Smarter Wechsel: Setzt den Ball automatisch auf die korrekte Spielfeldhälfte
   const handleTurnChange = (turn: "you" | "ai") => {
     setPlayerTurn(turn);
     setBallSide(turn === "you" ? "right" : "left");
@@ -125,10 +143,7 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
       description: stepDesc,
       stepExplanation: stepExpl,
       positions: {
-        you: posYou,
-        partner: posPartner,
-        opp1: posOpp1,
-        opp2: posOpp2,
+        you: posYou, partner: posPartner, opp1: posOpp1, opp2: posOpp2,
         ball: { side: ballSide, zone: ballZone, type: ballType }
       },
       ...(playerTurn === "you" 
@@ -168,17 +183,15 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
     }
   };
 
-  // Preview Data für das 3D-Feld
   const previewPositions = {
     you: posYou, partner: posPartner, opp1: posOpp1, opp2: posOpp2,
     ball: { side: ballSide as any, zone: ballZone, type: ballType }
   };
 
-  // Wenn der Admin-Modus aktiv ist
   if (showAdmin) {
     return (
       <div className="w-full flex flex-col gap-6 text-slate-200">
-        <AdminDashboard onExit={() => setShowAdmin(false)} />
+        <AdminDashboard onExit={() => setShowAdmin(false)} onTestStrategy={onTestStrategy} />
       </div>
     );
   }
@@ -202,12 +215,8 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
             Community Builder
           </h2>
         </div>
-        {/* Geheimer Admin-Button: Wird nur eingeblendet, wenn die E-Mail oben übereinstimmt */}
         {isAdmin && (
-          <button 
-            onClick={() => setShowAdmin(true)}
-            className="text-xs bg-purple-600/20 text-purple-400 border border-purple-500/50 px-4 py-2 rounded-lg font-bold hover:bg-purple-600 hover:text-white transition-all uppercase tracking-widest"
-          >
+          <button onClick={() => setShowAdmin(true)} className="text-xs bg-purple-600/20 text-purple-400 border border-purple-500/50 px-4 py-2 rounded-lg font-bold hover:bg-purple-600 hover:text-white transition-all uppercase tracking-widest">
             🛡️ Admin
           </button>
         )}
@@ -215,7 +224,6 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
 
       {!isEditingStep ? (
         <div className="flex flex-col gap-6">
-          {/* Basis-Informationen */}
           <div className="bg-[#050b18] p-6 rounded-xl border border-slate-800 flex flex-col gap-4">
             <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">1. Basis Infos</h3>
             
@@ -237,7 +245,6 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
             <textarea placeholder="Kurze Beschreibung für die Community..." value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500 h-24 resize-none" />
           </div>
 
-          {/* Übersicht der Schritte */}
           <div className="bg-[#050b18] p-6 rounded-xl border border-slate-800 flex flex-col gap-4">
             <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">2. Spielzüge ({steps.length})</h3>
             
@@ -264,10 +271,8 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
           </button>
         </div>
       ) : (
-        /* STEP EDITOR (Formular + Live Vorschau) */
         <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6">
           
-          {/* Linke Seite: Live Vorschau */}
           <div className="h-[50vh] lg:h-full min-h-[400px] bg-[#030611] rounded-2xl border border-slate-800 overflow-hidden sticky top-4">
             <ScenarioCourt25 
               level={"Strategie" as any}
@@ -284,7 +289,6 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
             />
           </div>
 
-          {/* Rechte Seite: Formular */}
           <div className="bg-[#050b18] p-5 rounded-xl border border-slate-800 flex flex-col gap-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
@@ -292,13 +296,11 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
               <button onClick={() => setIsEditingStep(false)} className="text-slate-500 hover:text-white text-xs">Abbrechen</button>
             </div>
 
-            {/* Wer ist dran? */}
             <div className="flex gap-2 bg-slate-900 p-1 rounded-lg">
               <button onClick={() => handleTurnChange("you")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "you" ? 'bg-cyan-600 text-white' : 'text-slate-500'}`}>Du bist dran</button>
               <button onClick={() => handleTurnChange("ai")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "ai" ? 'bg-red-600 text-white' : 'text-slate-500'}`}>Gegner ist dran</button>
             </div>
 
-            {/* Beschreibungen */}
             <div className="flex flex-col gap-2">
               <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Briefing (Was passiert gerade?)</label>
               <textarea value={stepDesc} onChange={e => setStepDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-md outline-none text-xs h-16" />
@@ -307,7 +309,6 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
               <textarea value={stepExpl} onChange={e => setStepExpl(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-md outline-none text-xs h-16" />
             </div>
 
-            {/* Positionen auf dem Feld */}
             <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
               <h4 className="text-[10px] text-cyan-400 font-bold uppercase mb-3">Spieler-Positionen</h4>
               <div className="grid grid-cols-2 gap-4">
@@ -332,15 +333,14 @@ export default function StrategyBuilder({ onBack }: { onBack: () => void }) {
               <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">Wo liegt der Ball (vor dem Schlag)?</h4>
               <div className="grid grid-cols-3 gap-2">
                 <select value={ballSide} onChange={e => setBallSide(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none text-orange-300">
-                  <option value="right">Oben (Gegner)</option>
-                  <option value="left">Unten (Bei dir)</option>
+                  <option value="right">Unten (Bei dir)</option>
+                  <option value="left">Oben (Gegner)</option>
                 </select>
                 <select value={ballZone} onChange={e => setBallZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 <select value={ballType} onChange={e => setBallType(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>
               </div>
             </div>
 
-            {/* Spezifische Einstellungen je nach Turn */}
             <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
               <h4 className="text-[10px] text-emerald-400 font-bold uppercase mb-3">Lösung (Was soll gespielt werden?)</h4>
               

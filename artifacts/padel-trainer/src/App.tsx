@@ -799,6 +799,7 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLevelChange = (newLevel: Level) => {
+    if (newLevel === level) return;
     clearActiveSession();
     setLevel(newLevel);
     
