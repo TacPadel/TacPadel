@@ -181,14 +181,27 @@ export const calculateSmartAITurn = (
             targetRow = 1; 
             targetCol = getStyleTarget(openCols);
         } else {
-            shot = aiHitRow === 1 ? "BAJADA" : "DRIVE"; 
+            shot = aiHitRow <= 2 ? "BAJADA" : "DRIVE"; 
             targetRow = 1;
             targetCol = getStyleTarget(openCols);
         }
     } else if (aiHitRow >= 3) {
-      const possibleShots = bothAtBack 
-        ? ["VOLLEY", "BANDEJA", "VIBORA", "SMASH"] 
-        : (bothAtNet ? ["BLOCK", "VOLLEY", "LOB"] : ["VOLLEY", "BANDEJA"]);
+      // FIX: KI hält sich an dieselben Positions- und Höhenregeln wie der Spieler!
+      // Bandeja/Vibora nur in Reihe 3 erlaubt; Überkopfbälle nur nach gegnerischem Lob.
+      const canPlayOverhead = incomingShot === "LOB";
+      const canPlayBandejaVibora = canPlayOverhead && aiHitRow === 3;
+
+      let possibleShots: string[] = [];
+      if (bothAtBack) {
+          possibleShots = ["VOLLEY"];
+          if (canPlayOverhead) possibleShots.push("SMASH");
+          if (canPlayBandejaVibora) possibleShots.push("BANDEJA", "VIBORA");
+      } else if (bothAtNet) {
+          possibleShots = ["BLOCK", "VOLLEY", "LOB"];
+      } else {
+          possibleShots = ["VOLLEY"];
+          if (canPlayBandejaVibora) possibleShots.push("BANDEJA");
+      }
       
       const filteredShots = possibleShots.filter(s => !aiShotHistory.slice(0, 2).includes(s));
       const shotPool = filteredShots.length > 0 ? filteredShots : possibleShots;
@@ -209,9 +222,7 @@ export const calculateSmartAITurn = (
       else if (shot === "BANDEJA") targetRow = 2;
       else targetRow = 1;
 
-      const nonLastCols = openCols.filter(col => col !== targetCol);
-      const targetColPool = nonLastCols.length > 0 ? nonLastCols : openCols;
-      targetCol = getStyleTarget(targetColPool);
+      targetCol = getStyleTarget(openCols);
 
     } else {
       if (bothAtNet) {
@@ -253,7 +264,7 @@ export const calculateSmartAITurn = (
       }
   }
 
-  let hitChance = 68;      
+  let hitChance = 68;       
   let perfectChance = 5;   
   let recoveryChance = 18; 
   let aiTitle = `KI SPIELT: ${shot}`;
@@ -492,7 +503,7 @@ export const evaluatePlayerShot = (
   const oppsAtNet = o1Row >= 3 || o2Row >= 3;
   const oppsAtBack = o1Row <= 2 && o2Row <= 2;
 
-  let hitChance = 65;      
+  let hitChance = 65;       
   let perfectChance = 8;   
   let recoveryChance = 16; 
   let title = "GUTE IDEE"; 
@@ -610,44 +621,44 @@ export const evaluatePlayerShot = (
     switch(shot) {
       case "LOB":
         if (tRow >= 3) { 
-            hitChance -= 10; recoveryChance += 40; title = "LOB ZU KURZ"; msg = "Taktik-Fehler: Ein Lob ins Halbfeld ist ein Geschenk für den gegnerischen Smash."; 
+            perfectChance = 0; hitChance -= 25; recoveryChance += 35; title = "LOB ZU KURZ"; msg = "Taktik-Fehler: Ein Lob ins Halbfeld ist ein Geschenk für den gegnerischen Smash."; 
         } else if (oppsAtNet) { 
             perfectChance += 10; hitChance += 5; title = "CLEVERER LOB"; msg = "Gute Idee! Ein tiefer Lob zwingt die Netzspieler wieder nach hinten."; 
         } else { 
-            hitChance -= 5; recoveryChance += 15; title = "HARMLOSER LOB"; msg = "Taktisch fragwürdig: Ein Lob gegen Spieler, die sowieso schon hinten stehen."; 
+            perfectChance = Math.max(0, perfectChance - 4); hitChance -= 10; recoveryChance += 15; title = "HARMLOSER LOB"; msg = "Taktisch fragwürdig: Ein Lob gegen Spieler, die sowieso schon hinten stehen."; 
         } break;
         
       case "CHIQUITA":
         if (tRow <= 3) { 
-            hitChance -= 15; recoveryChance += 25; title = "ZIEL ZU LANG"; msg = "Falsches Ziel: Eine Chiquita / Stoppball muss ganz kurz direkt hinter das Netz gelegt werden."; 
+            perfectChance = 0; hitChance -= 20; recoveryChance += 25; title = "ZIEL ZU LANG"; msg = "Falsches Ziel: Eine Chiquita / Stoppball muss ganz kurz direkt hinter das Netz gelegt werden."; 
         } else if (hRow >= 4) { 
             if (oppsAtNet) {
-                hitChance -= 10; recoveryChance += 25; title = "IN DEN SCHLÄGER"; msg = "Ein Stoppball direkt in die Füße von Netzspielern ist eine Einladung für einen direkten Konter!";
+                perfectChance = 0; hitChance -= 20; recoveryChance += 25; title = "IN DEN SCHLÄGER"; msg = "Ein Stoppball direkt in die Füße von Netzspielern ist eine Einladung für einen direkten Konter!";
             } else {
                 perfectChance += 20; hitChance += 5; title = "PERFEKTER STOPPBALL"; msg = "Genial! Du spielst den Ball vom Netz als unerreichbaren Stoppball (Dejada) in den leeren Raum.";
             }
         } else if (oppsAtNet) { 
             perfectChance += 12; hitChance += 5; title = "GIFTIGE CHIQUITA"; msg = "Taktisch stark! Du versuchst, den vorrückenden Gegnern auf die Füße zu zielen."; 
         } else { 
-            recoveryChance += 25; title = "SINNLOSE CHIQUITA"; msg = "Die Gegner stehen hinten und können diesen kurzen Ball locker erlaufen."; 
+            perfectChance = Math.max(0, perfectChance - 4); hitChance -= 15; recoveryChance += 25; title = "SINNLOSE CHIQUITA"; msg = "Die Gegner stehen hinten und können diesen kurzen Ball locker erlaufen."; 
         } break;
         
       case "SMASH":
         if (hRow <= 2) {
-            hitChance -= 25; recoveryChance += 35; title = "VON HINTEN?!"; msg = "Wahnsinn! Einen Smash von der Grundlinie zu versuchen, endet oft in einem sehr langsamen und unkontrollierten Ball.";
+            perfectChance = 0; hitChance -= 30; recoveryChance += 35; title = "VON HINTEN?!"; msg = "Wahnsinn! Einen Smash von der Grundlinie zu versuchen, endet oft in einem sehr langsamen und unkontrollierten Ball.";
         } else if (tRow >= 4) { 
-            hitChance -= 30; recoveryChance += 20; title = "ZIEL ZU STEIL"; msg = "Gefährlich! Den Smash extrem steil vor das eigene Netz zu ziehen, führt sehr oft zum Netzfehler."; 
+            perfectChance = 0; hitChance -= 30; recoveryChance += 20; title = "ZIEL ZU STEIL"; msg = "Gefährlich! Den Smash extrem steil vor das eigene Netz zu ziehen, führt sehr oft zum Netzfehler."; 
         } else { 
             perfectChance += 15; hitChance -= 5; title = "AGGRESSIVE WAHL"; msg = "Mutige Entscheidung! Ein harter Smash birgt leichtes Risiko, macht aber Druck."; 
         } break;
         
       case "BANDEJA":
         if (hRow <= 1) {
-             hitChance -= 15; recoveryChance += 35; title = "ZU WEIT HINTEN"; msg = "Falsche Position: Die Bandeja ist ein Aufbauschlag aus dem Halbfeld, nicht von der Grundlinie.";
+             perfectChance = 0; hitChance -= 20; recoveryChance += 35; title = "ZU WEIT HINTEN"; msg = "Falsche Position: Die Bandeja ist ein Aufbauschlag aus dem Halbfeld, nicht von der Grundlinie.";
         } else if (hRow >= 4) {
-             hitChance -= 15; recoveryChance += 20; title = "PLATZMANGEL AM NETZ"; msg = "Für eine Bandeja stehst du zu dicht am Netz (fehlender Platz für den Schwung). Hier musst du smashen oder volley spielen!";
+             perfectChance = 0; hitChance -= 20; recoveryChance += 25; title = "PLATZMANGEL AM NETZ"; msg = "Für eine Bandeja stehst du zu dicht am Netz (fehlender Platz für den Schwung). Hier musst du smashen oder volley spielen!";
         } else if (tRow >= 4) { 
-             hitChance -= 5; recoveryChance += 25; title = "ZIEL ZU KURZ"; msg = "Zu kurz gezielt! Bandejas müssen die Gegner zwingend an die Rückwand drängen."; 
+             perfectChance = 0; hitChance -= 15; recoveryChance += 25; title = "ZIEL ZU KURZ"; msg = "Zu kurz gezielt! Bandejas müssen die Gegner zwingend an die Rückwand drängen."; 
         } else if (oppsAtBack) { 
             perfectChance += 8; hitChance += 5; title = "STARKE IDEE"; msg = "Taktisch sauber: Eine tiefe Bandeja hilft euch, das Netz sicher zu verteidigen."; 
         } else { 
@@ -655,14 +666,14 @@ export const evaluatePlayerShot = (
         } break;
 
       case "VIBORA":
-        if (hRow <= 1) {  // <--- HIER DER FIX: Darf jetzt aus Reihe 2 und 3 gespielt werden!
-             hitChance -= 25; recoveryChance += 30; title = "VIBORA VON HINTEN?!"; msg = "Viel zu riskant! Eine Vibora von ganz hinten auszuführen, geht oft schief.";
+        if (hRow <= 1) {
+             perfectChance = 0; hitChance -= 25; recoveryChance += 30; title = "VIBORA VON HINTEN?!"; msg = "Viel zu riskant! Eine Vibora von ganz hinten auszuführen, geht oft schief.";
         } else if (hRow >= 4) {
-             hitChance -= 20; recoveryChance += 25; title = "PLATZMANGEL AM NETZ"; msg = "Viel zu nah am Netz für den Seitenschnitt der Vibora. Smash ihn lieber voll drauf!";
+             perfectChance = 0; hitChance -= 20; recoveryChance += 25; title = "PLATZMANGEL AM NETZ"; msg = "Viel zu nah am Netz für den Seitenschnitt der Vibora. Smash ihn lieber voll drauf!";
         } else if (tRow >= 3) { 
-             recoveryChance += 30; title = "ZIEL ZU KURZ"; msg = "Eine Vibora ins Halbfeld verfehlt ihren Zweck und wird zum Geschenk für den Gegner."; 
+             perfectChance = 0; hitChance -= 20; recoveryChance += 30; title = "ZIEL ZU KURZ"; msg = "Eine Vibora ins Halbfeld verfehlt ihren Zweck und wird zum Geschenk für den Gegner."; 
         } else if (tCol === "C") {
-             hitChance -= 5; recoveryChance += 20; title = "DURCH DIE MITTE"; msg = "Eine Vibora durch die Mitte verliert ihre Gefährlichkeit an der Seitenwand.";
+             hitChance -= 10; recoveryChance += 20; title = "DURCH DIE MITTE"; msg = "Eine Vibora durch die Mitte verliert ihre Gefährlichkeit an der Seitenwand.";
         } else if (oppsAtBack && (tCol === "A" || tCol === "E")) { 
             perfectChance += 12; hitChance += 5; title = "GIFTIGES ZIEL"; msg = "Taktisch perfekt: Du zielst die Vibora messerscharf tief in die Ecke."; 
         } else {
@@ -671,10 +682,10 @@ export const evaluatePlayerShot = (
         
       case "VOLLEY":
         if (hRow <= 2) {
-             hitChance -= 30; recoveryChance += 30; title = "VOLLEY VON HINTEN?!"; msg = "Ein taktischer Albtraum: Ein Volley von der Grundlinie ist völlig unkontrolliert.";
+             perfectChance = 0; hitChance -= 30; recoveryChance += 30; title = "VOLLEY VON HINTEN?!"; msg = "Ein taktischer Albtraum: Ein Volley von der Grundlinie ist völlig unkontrolliert.";
         } else if (tRow >= 4) { 
              if (oppsAtNet) {
-                 hitChance -= 15; recoveryChance += 25; title = "VOLL IN DEN MANN"; msg = "Sehr gefährlich: Ein langer Volley direkt auf die am Netz stehenden Gegner provoziert Konter."; 
+                 perfectChance = 0; hitChance -= 15; recoveryChance += 25; title = "VOLL IN DEN MANN"; msg = "Sehr gefährlich: Ein langer Volley direkt auf die am Netz stehenden Gegner provoziert Konter."; 
              } else {
                  perfectChance += 15; title = "VOLLEY-STOPP!"; msg = "Stark! Die Gegner sind hinten und du legst den Volley extrem kurz und weich ab (Stop-Volley).";
              }
@@ -686,22 +697,22 @@ export const evaluatePlayerShot = (
 
       case "BLOCK":
         if (hRow <= 2) {
-             hitChance -= 20; recoveryChance += 40; title = "BLOCK VON HINTEN?!"; msg = "Sinnlos: Ein Block macht nur ganz vorne direkt am Netz Sinn, um Härte abzufangen.";
+             perfectChance = 0; hitChance -= 25; recoveryChance += 35; title = "BLOCK VON HINTEN?!"; msg = "Sinnlos: Ein Block macht nur ganz vorne direkt am Netz Sinn, um Härte abzufangen.";
         } else if (tRow >= 4) { 
             perfectChance += 12; hitChance += 5; 
             title = oppsAtNet ? "STARKE IDEE" : "GENIALER DROPSHOT"; 
             msg = oppsAtNet ? "Genialer Plan: Den harten Ball extrem weich direkt vor die Füße der Angreifer abtropfen lassen." : "Hervorragend! Die Gegner stehen hinten und du blockst den Ball als tödlichen Stoppball unerreichbar kurz hin.";
         } else if (tRow <= 1) {
-            hitChance -= 5; recoveryChance += 30; title = "ZIEL ZU LANG"; msg = "Zu lang gezielt! Ein Block bis an die Grundlinie wird leicht zum langsamen Flugball für die Gegner.";
+            perfectChance = 0; hitChance -= 15; recoveryChance += 30; title = "ZIEL ZU LANG"; msg = "Zu lang gezielt! Ein Block bis an die Grundlinie wird leicht zum langsamen Flugball für die Gegner.";
         } else { 
             hitChance += 5; title = "SICHERER BLOCK"; msg = "Gute taktische Entscheidung, um das gegnerische Tempo weich aus dem Ball zu nehmen."; 
         } break;
         
       case "DRIVE":
         if (hRow >= 4) { 
-            hitChance -= 20; recoveryChance += 35; title = "DRIVE AM NETZ?!"; msg = "Sehr fehleranfällig: Ein Grundschlag direkt am Netz. Hier muss dringend ein Volley oder Block her!"; 
+            perfectChance = 0; hitChance -= 25; recoveryChance += 35; title = "DRIVE AM NETZ?!"; msg = "Sehr fehleranfällig: Ein Grundschlag direkt am Netz. Hier muss dringend ein Volley oder Block her!"; 
         } else if (tRow >= 4 && oppsAtNet) { 
-            hitChance -= 10; recoveryChance += 25; title = "GEFÄHRLICHES ZIEL"; msg = "Ein flacher Drive direkt in die Arme der Netzspieler führt meist zum sofortigen Konter."; 
+            perfectChance = 0; hitChance -= 15; recoveryChance += 25; title = "GEFÄHRLICHES ZIEL"; msg = "Ein flacher Drive direkt in die Arme der Netzspieler führt meist zum sofortigen Konter."; 
         } else if (tCol === "A" || tCol === "E") {
             hitChance += 5; perfectChance += 5; title = "GUTE PLATZIERUNG"; msg = "Eine schöne taktische Idee, den Drive präzise an die Außenlinie zu ziehen.";
         } else { 
@@ -710,16 +721,14 @@ export const evaluatePlayerShot = (
         
       case "BAJADA":
         if (hRow >= 3) { 
-            hitChance -= 30; recoveryChance += 30; title = "BAJADA IM FELD?!"; msg = "Eine Bajada (Wand-Smash) kann man nur spielen, wenn man GANZ HINTEN an der Scheibe klebt!";
+            perfectChance = 0; hitChance -= 30; recoveryChance += 30; title = "BAJADA IM FELD?!"; msg = "Eine Bajada (Wand-Smash) kann man nur spielen, wenn man GANZ HINTEN an der Scheibe klebt!";
         } else if (tRow >= 3) { 
-            hitChance -= 10; recoveryChance += 30; title = "BAJADA ZU KURZ!"; msg = "Eine Bajada so kurz gezogen landet oft im Netz oder verhungert auf halbem Weg."; 
+            perfectChance = 0; hitChance -= 20; recoveryChance += 30; title = "BAJADA ZU KURZ!"; msg = "Eine Bajada so kurz gezogen landet oft im Netz oder verhungert auf halbem Weg."; 
         } else if (oppsAtNet) { 
-            // NEU: Gegner sind am Netz. Eine harte Bajada ist jetzt ein hochriskanter Passierschlag!
             perfectChance += 15; hitChance -= 15; recoveryChance += 10; 
             title = "RISKANTER KONTER!"; 
             msg = "Gegner am Netz! Du hämmerst die Bajada voll drauf. Wenn sie durchkommt, fantastisch – wenn nicht, frisst du den direkten Volley-Konter.";
         } else { 
-            // Gegner sind hinten, freie Bahn für die Laser-Bajada
             perfectChance += 12; hitChance += 5; title = "LASER-BAJADA!"; msg = "Aggressive Bajada direkt aus der hintersten Ecke gepfeffert! Perfekt, um jetzt ans Netz aufzurücken."; 
         } break;
         
@@ -738,7 +747,7 @@ export const evaluatePlayerShot = (
                     perfectChance = 20; 
                     recoveryChance = 0; 
                     title = "AGGRESSIVER 1. AUFSCHLAG"; 
-                    msg = "Risiko auf die Linie! 15% Chance auf ein Ass, aber 20% Risiko für einen Fehler.";
+                    msg = "Risiko auf die Linie! 20% Chance auf ein Ass, aber 15% Risiko für einen Fehler.";
                 } else {
                     hitChance = 87; perfectChance = 6; recoveryChance = 0;
                     title = "SICHERER 1. AUFSCHLAG"; 
@@ -752,7 +761,7 @@ export const evaluatePlayerShot = (
                     title = "RISKANTES ZIEL (2. AUFSCHLAG)"; 
                     msg = "Viel zu riskant für einen zweiten Aufschlag! Führt extrem oft zum Doppelfehler.";
                 } else {
-                    hitChance = 92; perfectChance = 0; recoveryChance = 0;
+                    hitChance = 95; perfectChance = 0; recoveryChance = 0;
                     title = "SOUVERÄNER 2. AUFSCHLAG"; 
                     msg = "Gute taktische Entscheidung! Ein sicherer 2. Aufschlag, um den Doppelfehler souverän zu vermeiden.";
                 }
@@ -781,18 +790,21 @@ export const evaluatePlayerShot = (
         }
     }
 
-    let penalty = 0;
-    if (tacScore >= 3000 && tacScore < 4000) {
-        penalty = ((tacScore - 3000) / 1000) * 1.5; 
-    } else if (tacScore >= 4000) {
-        penalty = Math.min(4.0, 1.5 + ((tacScore - 4000) / 100) * 0.2);
-    }
-    
-    hitChance -= penalty;
-    perfectChance -= penalty;
-    
-    if (tacScore >= 3000) {
-         recoveryChance += 5; 
+    // FIX: TacScore-Penalty und Wackler-Malus greifen nur im offenen Ballwechsel, nicht beim Aufschlag!
+    if (shot !== "AUFSCHLAG") {
+      let penalty = 0;
+      if (tacScore >= 3000 && tacScore < 4000) {
+          penalty = ((tacScore - 3000) / 1000) * 1.5; 
+      } else if (tacScore >= 4000) {
+          penalty = Math.min(4.0, 1.5 + ((tacScore - 4000) / 100) * 0.2);
+      }
+      
+      hitChance -= penalty;
+      perfectChance = Math.max(0, perfectChance - penalty);
+      
+      if (tacScore >= 3000) {
+           recoveryChance += 5; 
+      }
     }
   }
 

@@ -786,15 +786,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           lineColor = "rgba(255, 255, 255, 0.6)"; 
         } else {
           
-          // --- NEU: WO SCHLÄGT DER SPIELER WIRKLICH? ---
-          // Wir bewerten den Schlag von der Position, zu der der Spieler läuft!
-          let hitFromZoneId = props.positions[props.hitterId] || props.positions.you;
-          
-          if (props.hitterId === "you" && props.selectedLaufZone) {
-              hitFromZoneId = props.selectedLaufZone;
-          } else if (props.hitterId === "partner" && props.selectedPartnerZone) {
-              hitFromZoneId = props.selectedPartnerZone;
-          }
+          // Vor dem Absenden zählt die aktuelle Position, während der Flug-Animation (isLocked) der gespeicherte Abschlagpunkt des Balls!
+          const hitFromZoneId = isLocked 
+            ? (props.positions.ball.zone || props.positions[props.hitterId] || props.positions.you)
+            : (props.positions[props.hitterId] || props.positions.you);
           
           const hCol = hitFromZoneId[0];
           const hRow = parseInt(hitFromZoneId[1]);
@@ -826,17 +821,18 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           // --- 2. SCHLAG-SPEZIFISCHE BEWERTUNG ---
           else {
             switch(upperSType) {
-              case "AUFSCHLAG":
-                if (tRow === 3) {
-                  const isCross = (hCol === "B" && ["C", "D", "E"].includes(tCol)) || 
-                                  (hCol === "D" && ["A", "B", "C"].includes(tCol));
-                  lineColor = isCross ? "#34d399" : "#ef4444"; 
-                } else if (tRow === 2) {
-                  lineColor = "#f97316"; 
+              case "AUFSCHLAG": {
+                const isCross = (["A", "B"].includes(hCol) && ["C", "D", "E"].includes(tCol)) || 
+                                (["D", "E"].includes(hCol) && ["A", "B", "C"].includes(tCol));
+                if (!isCross || (tRow !== 2 && tRow !== 3)) {
+                  lineColor = "#ef4444"; // Regelfehler: Nicht diagonal oder falsche Reihe
+                } else if (tRow === 2 || ["A", "C", "E"].includes(tCol)) {
+                  lineColor = "#f97316"; // Riskanter Aufschlag auf die Linie
                 } else {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#34d399"; // Sicherer Aufschlag ins Feld
                 }
                 break;
+              }
                 
               case "DRIVE":
                 if (tRow >= 4 && oppsAtNet) {

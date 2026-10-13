@@ -46,14 +46,24 @@ const getZoneDist = (z1: string, z2: string) => {
   return Math.abs(c1 - c2) + Math.abs(r1 - r2);
 };
 
-const evalRunTactics = (shot: string, runZone: string) => {
+// --- FIX 1: Aktualisierte Laufweg-Taktik (inkl. BLOCK & dynamischer BAJADA) ---
+const evalRunTactics = (shot: string, runZone: string, oppsAtNet: boolean = false) => {
   if (!shot || !runZone) return 0;
   const r = parseInt(runZone[1]);
   const s = shot.toUpperCase();
-  if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA"].includes(s)) {
+  
+  // 1. Netzschläge & Offensive (inkl. BLOCK) -> Belohnung fürs Vorrücken/Am-Netz-Bleiben
+  if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(s)) {
     return r >= 3 ? 3 : 0; 
   }
-  if (["DRIVE", "BLOCK", "BAJADA"].includes(s)) {
+  
+  // 2. Dynamische Bajada -> Gegner am Netz = hinten bleiben | Gegner hinten = Netz stürmen
+  if (s === "BAJADA") {
+    return oppsAtNet ? (r <= 2 ? 3 : 0) : (r >= 3 ? 3 : 0);
+  }
+
+  // 3. Defensive Grundschläge -> Hinten absichern
+  if (["DRIVE"].includes(s)) {
     return r <= 2 ? 3 : 0; 
   }
   return 0;
@@ -675,7 +685,7 @@ export default function GameScreen() {
         setValidInterceptZones(brain.interceptZones);
         setAiTarget(brain.target);
 
-      const GLOBAL_SPEED_FACTOR = 0.75; 
+        const GLOBAL_SPEED_FACTOR = 0.75; 
         let calcDuration = brain.flightTimeMs * GLOBAL_SPEED_FACTOR;
         
         if (activeAiProfile.style === "aggressive" && finalAiResult !== "error_net" && finalAiResult !== "error_out") {
@@ -1008,14 +1018,17 @@ export default function GameScreen() {
     const recoveryYouRun = commands.you.run || courtState.you;
     const recoveryPartnerRun = commands.partner.run || courtState.partner;
     
-    // --- AUSDAUER-BERECHNUNG BEIM SCHLAG ---
+    // --- FIX 2: AUSDAUER-BERECHNUNG BEIM SCHLAG (inkl. oppsAtNet für Bajada) ---
     if (staminaModeEnabled) {
       const STAMINA_COST_PER_SHOT = 2; // Pauschaler Abzug für den aktiven Schläger (Phase 1)
+      const o1Row = parseInt(courtState.opp1[1]);
+      const o2Row = parseInt(courtState.opp2[1]);
+      const oppsAtNet = o1Row >= 3 || o2Row >= 3;
 
       const youDist = getZoneDist(courtState.you, recoveryYouRun);
       const partnerDist = getZoneDist(courtState.partner, recoveryPartnerRun);
-      const youRegen = evalRunTactics(chosenShot, recoveryYouRun);
-      const partnerRegen = evalRunTactics(chosenShot, recoveryPartnerRun);
+      const youRegen = evalRunTactics(chosenShot, recoveryYouRun, oppsAtNet);
+      const partnerRegen = evalRunTactics(chosenShot, recoveryPartnerRun, oppsAtNet);
 
       setStamina(s => ({
         ...s,
@@ -1033,7 +1046,15 @@ export default function GameScreen() {
 
     const isPlayerServingTurn = courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
     const isPlayerReturningTurn = courtState.ball.type === "AUFSCHLAG" && (serverId === "opp1" || serverId === "opp2");
-    const isDugOut = aiTrajectoryRef.current.isWallHit && hitFromPos === aiTrajectoryRef.current.impactZone;
+    
+    // --- FIX 3: Korrekte Notschlag-Prüfung (verhindert unfaire Wackler auf Reihe 1) ---
+    const isDugOut = Boolean(
+      aiTrajectoryRef.current.isWallHit && 
+      aiTrajectoryRef.current.reboundZone && 
+      aiTrajectoryRef.current.reboundZone !== aiTrajectoryRef.current.impactZone && 
+      hitFromPos === aiTrajectoryRef.current.impactZone &&
+      chosenShot !== "BAJADA"
+    );
 
     let currentTurnResult: TurnResult = "success";
     let message = "";
@@ -1162,7 +1183,7 @@ export default function GameScreen() {
         newPlayerScore += 1; 
         newStats.ai.unforcedErrors += 1; 
       } else {
-        newAiScore += 1;             
+        newAiScore += 1;               
         newStats.player.unforcedErrors += 1; 
       }
       setActiveScenario(null); 
@@ -1172,7 +1193,7 @@ export default function GameScreen() {
         newAiScore += 1;    
         if (isAce) newStats.ai.aces += 1; else newStats.ai.winners += 1;
       } else {
-        newPlayerScore += 1;          
+        newPlayerScore += 1;           
         if (isAce) newStats.player.aces += 1; else newStats.player.winners += 1;
       }
       setActiveScenario(null); 
@@ -1412,8 +1433,9 @@ export default function GameScreen() {
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (!isNewMatch) {
+         // --- FIX 4: Korrekter Rundenskalierungs-Faktor (* 100 statt * 500) ---
          const aiTargetScore = activeTournamentId 
-             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 500) 
+             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
              : tacScore;
          newStamina = {
            you: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.you + 1),
@@ -1615,7 +1637,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* TP TOUR SCREEN OVERLAY                               */}
+      {/* TP TOUR SCREEN OVERLAY                              */}
       {/* =================================================== */}
       <AnimatePresence>
         {isTourOpen && (
