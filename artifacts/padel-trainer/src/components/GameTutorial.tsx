@@ -35,7 +35,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
   const [tutLauf, setTutLauf] = useState<string | null>("D4");
   const [tutShot, setTutShot] = useState<string | null>("AUFSCHLAG");
 
-  // Initialer State: Du bereitest Aufschlag vor (Ball ist bei dir = left)
+  // Initialer State: Du bereitest Aufschlag vor. (left = Deine Seite, unten)
   const [courtState, setCourtState] = useState({ 
     you: "D1", partner: "B4", opp1: "B1", opp2: "D1", 
     ball: { side: "left" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
@@ -55,7 +55,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       setTitle("Aufschlag ausgeführt");
       setText("Perfekt. Der Ball fliegt zur T-Linie und du rückst sofort ans Netz vor, um den Druck zu erhöhen.");
       
-      // 1. Aufschlag-Animation starten (Ball fliegt zum Gegner = right)
+      // 1. Aufschlag-Animation starten (Ball fliegt auf Gegner-Seite = right)
       setHasSubmitted(true);
       setTurnResult("success");
       setCourtState(prev => ({ 
@@ -149,20 +149,111 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
       
-      <div className="relative w-full flex-1 overflow-hidden pointer-events-none">
+      {/* ========================================= */}
+      {/* OBERER BEREICH: 3D COURT (FLEX-1)         */}
+      {/* ========================================= */}
+      <div className="relative w-full flex-1 overflow-hidden z-10 bg-[#030611]">
+        <ScenarioCourt3D 
+          key={`tutorial-court-${animTrigger}`} 
+          arenaModel="/TacPadel.glb" 
+          playIntro={false}  
+          gameOver={false} 
+          
+          level="Spielzug" 
+          positions={courtState as any} 
+          hasSubmitted={hasSubmitted}
+          bestZones={[]} 
+          acceptableZones={[]}
+          profiMode={false}
+          
+          selectedZone={tutZone}
+          selectedLaufZone={tutLauf} 
+          selectedPartnerZone={null}
+          
+          activeChar="you" 
+          hitterId="you"
+          
+          isTimerActive={mockUi.showTimer} 
+          turnResult={turnResult}
+          previewShot={tutShot}
+          timerDuration={4000} 
+          
+          onZoneClick={() => {}}
+          onLaufZoneClick={() => {}}
+          onPlayerClick={() => {}}
+          
+          playerScore={0} aiScore={0}
+          isAiActive={phase === "ai_prepare"} 
+          phase={phase} 
+          isTimerPhase={mockUi.showTimer}
+          isPlayerTeamServe={true}
+          hidePlayerLabels={false}
+          userTeamName="Du & Partner"
+          activeAiProfile={AI_PROFILES[0]}
+        />
+      </div>
+
+      {/* ========================================= */}
+      {/* UNTERER BEREICH: ACTION BAR & TEXTBOX     */}
+      {/* ========================================= */}
+      <div className="w-full z-40 bg-[#050b18] border-t border-slate-700 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] shrink-0 pb-16">
         
-        {/* ========================================= */}
-        {/* OBERER BEREICH: INFO-TEXTBOX                */}
-        {/* ========================================= */}
-        <div className="absolute inset-x-0 top-0 sm:top-2 z-50 flex flex-col p-3 sm:p-4 pointer-events-none">
+        {/* --- 1. Fake Action Bar --- */}
+        <div className="p-2 sm:p-3 border-b border-slate-800">
+          <div className="max-w-2xl mx-auto flex flex-col gap-2">
+            
+            {/* Fake Timer Header */}
+            <div className="flex items-center justify-between px-1 mb-1 mt-1">
+              <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
+                DU (Schläger)
+              </span>
+              <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                <motion.div 
+                  initial={{ width: "100%" }} 
+                  animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
+                  transition={{ duration: 4, ease: "linear" }}
+                  className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
+                />
+              </div>
+            </div>
+
+            {/* Fake Auswahl-Buttons */}
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
+              </div>
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
+              </div>
+              <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+                <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
+                <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
+              </div>
+            </div>
+
+            {/* Fake Submit Button */}
+            <button disabled className={`w-full py-2 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
+                mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
+                : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
+                : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            }`}>
+              {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
+            </button>
+          </div>
+        </div>
+
+        {/* --- 2. Info Textbox --- */}
+        <div className="p-3 sm:p-5 bg-gradient-to-b from-[#050b18] to-black">
           <AnimatePresence mode="wait">
             <motion.div 
               key={stepIndex}
-              initial={{ y: -20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -20, opacity: 0 }}
+              initial={{ x: 20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -20, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="w-full max-w-2xl mx-auto bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/50 p-4 sm:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto flex flex-col gap-2"
+              className="w-full max-w-2xl mx-auto flex flex-col gap-2"
             >
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
@@ -194,97 +285,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
             </motion.div>
           </AnimatePresence>
         </div>
-
-        {/* ========================================= */}
-        {/* MITTLERER BEREICH: 3D COURT               */}
-        {/* ========================================= */}
-        <div className="absolute inset-0 z-10">
-          <ScenarioCourt3D 
-            key={`tutorial-court-${animTrigger}`} 
-            arenaModel="/TacPadel.glb" 
-            playIntro={false}  
-            gameOver={false} 
-            
-            level="Spielzug" 
-            positions={courtState as any} 
-            hasSubmitted={hasSubmitted}
-            bestZones={[]} 
-            acceptableZones={[]}
-            profiMode={false}
-            
-            selectedZone={tutZone}
-            selectedLaufZone={tutLauf} 
-            selectedPartnerZone={null}
-            
-            activeChar="you" 
-            hitterId="you"
-            
-            isTimerActive={mockUi.showTimer} 
-            turnResult={turnResult}
-            previewShot={tutShot}
-            timerDuration={4000} 
-            
-            onZoneClick={() => {}}
-            onLaufZoneClick={() => {}}
-            onPlayerClick={() => {}}
-            
-            playerScore={0} aiScore={0}
-            isAiActive={phase === "ai_prepare"} 
-            phase={phase} 
-            isTimerPhase={mockUi.showTimer}
-            isPlayerTeamServe={true}
-            hidePlayerLabels={false}
-            userTeamName="Du & Partner"
-            activeAiProfile={AI_PROFILES[0]}
-          />
-        </div>
-
-      </div>
-
-      {/* ========================================= */}
-      {/* UNTERER BEREICH: FAKE ACTION BAR          */}
-      {/* ========================================= */}
-      <div className="w-full z-40 bg-[#050b18] border-t border-slate-700 p-2 sm:p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2 shrink-0 pointer-events-none">
         
-        {/* Fake Timer Header */}
-        <div className="flex items-center justify-between px-1 mb-1 mt-1">
-          <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
-            DU (Schläger)
-          </span>
-          <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
-            <motion.div 
-              initial={{ width: "100%" }} 
-              animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
-              transition={{ duration: 4, ease: "linear" }}
-              className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
-            />
-          </div>
-        </div>
-
-        {/* Fake Auswahl-Buttons */}
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-            <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
-            <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
-          </div>
-          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-            <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
-            <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
-          </div>
-          <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-            <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
-            <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
-          </div>
-        </div>
-
-        {/* Fake Submit Button */}
-        <button disabled className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
-            mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
-            : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
-            : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-        }`}>
-          {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
-        </button>
       </div>
 
     </div>
