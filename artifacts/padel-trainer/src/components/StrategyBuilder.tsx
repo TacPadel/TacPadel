@@ -129,7 +129,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
 
   // Current Editing Step State
   const [isEditingStep, setIsEditingStep] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null); // Speichert, ob wir gerade bearbeiten
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   
   const [playerTurn, setPlayerTurn] = useState<"you" | "ai">("you");
   const [stepDesc, setStepDesc] = useState("");
@@ -140,7 +140,8 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   const [posOpp1, setPosOpp1] = useState("B2");
   const [posOpp2, setPosOpp2] = useState("D2");
   
-  const [ballSide, setBallSide] = useState<"left" | "right">("right"); 
+  // FIX 1: "left" = Unten (Deine Seite), "right" = Oben (Gegner)
+  const [ballSide, setBallSide] = useState<"left" | "right">("left"); 
   const [ballZone, setBallZone] = useState("B2");
   const [ballType, setBallType] = useState("VORBEREITUNG");
 
@@ -157,14 +158,17 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
 
+  // FIX 2: Wenn DU dran bist -> "left" (Unten), wenn GEGNER dran ist -> "right" (Oben)
   const handleTurnChange = (turn: "you" | "ai") => {
     setPlayerTurn(turn);
-    setBallSide(turn === "you" ? "right" : "left");
+    setBallSide(turn === "you" ? "left" : "right");
   };
 
+  // FIX 3: Beim Anlegen eines neuen Zugs ebenfalls auf "left" (Unten) setzen
   const openNewStep = () => {
     setEditingIndex(null);
     setPlayerTurn("you"); 
+    setBallSide("left");
     setStepDesc(""); 
     setStepExpl("");
     setIsEditingStep(true);
@@ -190,7 +194,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
 
   const handleDeleteStep = (index: number) => {
     const updated = steps.filter((_, i) => i !== index);
-    const reindexed = updated.map((s, i) => ({ ...s, stepId: i + 1 })); // Nummern korrigieren
+    const reindexed = updated.map((s, i) => ({ ...s, stepId: i + 1 }));
     setSteps(reindexed);
   };
 
@@ -210,19 +214,16 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     };
     
     if (editingIndex !== null) {
-      // Existierenden ersetzen
       const updated = [...steps];
       updated[editingIndex] = newStep;
       setSteps(updated);
       setEditingIndex(null);
     } else {
-      // Neuen hinzufügen
       setSteps([...steps, newStep]);
     }
     setIsEditingStep(false);
   };
 
-  // Funktion zum Testen des Entwurfs
   const handleTestDraft = () => {
     if (steps.length === 0) return alert("Füge zuerst Züge hinzu, um sie zu testen!");
     const stratToTest: StrategySequence = {
@@ -261,7 +262,6 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
       console.error(error);
     } else {
       setSubmitStatus("success");
-      // Wenn erfolgreich eingereicht, löschen wir den Entwurf aus dem Speicher!
       localStorage.removeItem('padelStrategyDraft');
       setTimeout(() => onBack(), 3000);
     }
@@ -431,9 +431,10 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
 
               <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">Wo liegt der Ball (vor dem Schlag)?</h4>
               <div className="grid grid-cols-3 gap-2">
+                {/* FIX 4: Dropdown Optionen passend zu "left" (Unten) und "right" (Oben) */}
                 <select value={ballSide} onChange={e => setBallSide(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none text-orange-300">
-                  <option value="right">Unten (Bei dir)</option>
-                  <option value="left">Oben (Gegner)</option>
+                  <option value="left">Unten (Bei dir)</option>
+                  <option value="right">Oben (Gegner)</option>
                 </select>
                 <select value={ballZone} onChange={e => setBallZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 <select value={ballType} onChange={e => setBallType(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>
