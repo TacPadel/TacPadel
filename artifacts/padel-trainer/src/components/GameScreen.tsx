@@ -1008,7 +1008,10 @@ export default function GameScreen() {
     const recoveryYouRun = commands.you.run || courtState.you;
     const recoveryPartnerRun = commands.partner.run || courtState.partner;
     
+    // --- AUSDAUER-BERECHNUNG BEIM SCHLAG ---
     if (staminaModeEnabled) {
+      const STAMINA_COST_PER_SHOT = 2; // Pauschaler Abzug für den aktiven Schläger (Phase 1)
+
       const youDist = getZoneDist(courtState.you, recoveryYouRun);
       const partnerDist = getZoneDist(courtState.partner, recoveryPartnerRun);
       const youRegen = evalRunTactics(chosenShot, recoveryYouRun);
@@ -1016,8 +1019,8 @@ export default function GameScreen() {
 
       setStamina(s => ({
         ...s,
-        you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.you - youDist + youRegen)),
-        partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.partner - partnerDist + partnerRegen))
+        you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.you - youDist + youRegen - (hitterId === "you" ? STAMINA_COST_PER_SHOT : 0))),
+        partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.partner - partnerDist + partnerRegen - (hitterId === "partner" ? STAMINA_COST_PER_SHOT : 0)))
       }));
     }
 

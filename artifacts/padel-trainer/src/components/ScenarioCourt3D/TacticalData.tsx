@@ -786,8 +786,15 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           lineColor = "rgba(255, 255, 255, 0.6)"; 
         } else {
           
-          const hitterPosZone = props.positions[props.hitterId] || props.positions.you;
-          const hitFromZoneId = hitterPosZone;
+          // --- NEU: WO SCHLÄGT DER SPIELER WIRKLICH? ---
+          // Wir bewerten den Schlag von der Position, zu der der Spieler läuft!
+          let hitFromZoneId = props.positions[props.hitterId] || props.positions.you;
+          
+          if (props.hitterId === "you" && props.selectedLaufZone) {
+              hitFromZoneId = props.selectedLaufZone;
+          } else if (props.hitterId === "partner" && props.selectedPartnerZone) {
+              hitFromZoneId = props.selectedPartnerZone;
+          }
           
           const hCol = hitFromZoneId[0];
           const hRow = parseInt(hitFromZoneId[1]);
