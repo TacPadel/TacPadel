@@ -15,8 +15,10 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
   // --- UI & TEXT STATES ---
   const [stepIndex, setStepIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [title, setTitle] = useState("1. Dein Aufschlag");
-  const [text, setText] = useState("Du hast Aufschlag. Ziele durch die Mitte (T-Linie), um den Winkel für den Return zu minimieren.");
+  const [title, setTitle] = useState("1. Aufschlag planen");
+  const [text, setText] = useState(
+    "Du schlägst von hinten rechts (D1) auf. Wir zielen durch die Mitte auf die T-Linie (C2), um dem Gegner die Winkel zu nehmen, und rücken direkt ans Netz (D4) vor."
+  );
 
   // --- FAKE ACTION BAR STATES ---
   const [mockUi, setMockUi] = useState({
@@ -28,7 +30,6 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
 
   // --- 3D COURT STATES ---
   const [phase, setPhase] = useState<GamePhase>("player_planning");
-  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [turnResult, setTurnResult] = useState<TurnResult>(null);
   const [timerDuration, setTimerDuration] = useState(2500);
   
@@ -36,112 +37,159 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
   const [tutLauf, setTutLauf] = useState<string | null>("D4");
   const [tutShot, setTutShot] = useState<string | null>("AUFSCHLAG");
 
-  // Initialer State: Du bereitest Aufschlag vor. 
-  // left = Deine Seite (Startpunkt des Aufschlags)
+  // Initialer State: Du stehst auf D1, Ball liegt bei dir (side: "left")
   const [courtState, setCourtState] = useState({ 
     you: "D1", partner: "B4", opp1: "B1", opp2: "D1", 
-    ball: { side: "left" as "left"|"right", zone: "D1", type: "PREPARE_SERVE" } 
+    ball: { side: "left" as "left" | "right", zone: "D1", type: "PREPARE_SERVE" } 
   });
 
-  // Logik für den 3D Court, um zu wissen, wer gerade am Zug ist
+  // Exakte Hilfsvariablen wie in der echten GameScreen.tsx
   const isTimerPhase = phase === "timer_running";
-  const isAiActive = phase === "ai_prepare" || phase === "timer_running" || (phase === "player_animating" && courtState.ball.side === "right");
+  const isAiActive = phase === "ai_prepare" || phase === "timer_running";
   const isAnimPhase = phase === "player_animating" || phase === "timer_running";
 
   // =========================================================================
-  // DAS REGIE-SKRIPT: HIER PASSIERT DIE MAGIE
+  // DAS REGIE-SKRIPT: EXAKTER SPIELABLAUF WIE IM ECHTEN MATCH
   // =========================================================================
   const runStepAnimation = async (nextStep: number) => {
-    setIsAnimating(true); // Sperrt den Weiter-Button
+    setIsAnimating(true); // Sperrt den Weiter-Button während die Animation läuft
     setStepIndex(nextStep);
 
+    // -------------------------------------------------------------------------
+    // SCHRITT 2: AUFSCHLAG AUSFÜHREN (Ball fliegt von D1 -> C2, du läufst -> D4)
+    // -------------------------------------------------------------------------
     if (nextStep === 1) {
-      setTitle("2. Aufschlag ausgeführt");
-      setText("Perfekt. Der Ball fliegt zur T-Linie und du rückst sofort ans Netz vor, um den Druck zu erhöhen.");
+      setTitle("2. Aufschlag & Netzangriff");
+      setText(
+        "Zug ausgeführt! Während dein Aufschlag über das Netz auf C2 fliegt, sprintet deine Figur automatisch in die gewählte Laufzone (D4) ans Netz."
+      );
       
-      // 1. Aufschlag-Animation starten 
-      // Ball startet bei dir (left, D1) und fliegt zum Ziel (tutZone = C2)
       setTimerDuration(2500);
-      setHasSubmitted(true);
       setTurnResult("success");
-      setPhase("player_animating");
-      setCourtState(prev => ({ 
-        ...prev, 
-        you: "D4", // Du rückst ans Netz vor
-        ball: { side: "left", zone: "D1", type: "AUFSCHLAG" } 
-      }));
+      setPhase("player_animating"); // Macht isAnimPhase (hasSubmitted) = true -> Ball fliegt!
+      
+      setCourtState({ 
+        you: "D4", // Du läufst vor ans Netz
+        partner: "B4", 
+        opp1: "B1", 
+        opp2: "D1", 
+        ball: { side: "left", zone: "D1", type: "AUFSCHLAG" } // Startpunkt des Balls
+      });
 
-      // 2. Warten, bis der Ball beim Gegner ist
-      await sleep(2500); 
+      // Warten, bis der Aufschlag beim Gegner gelandet ist
+      await sleep(2600); 
+
+      // WICHTIG: Kurzer Reset in "ai_prepare" (hasSubmitted = false), 
+      // damit der Ball offiziell oben beim Gegner (right, C2) ankommt!
+      setPhase("ai_prepare");
+      setTurnResult(null);
+      setTutZone(null);
+      setTutLauf(null);
+      setTutShot(null);
+      setCourtState({
+        you: "D4", partner: "B4", opp1: "B1", opp2: "D1",
+        ball: { side: "right", zone: "C2", type: "AUFSCHLAG" }
+      });
     } 
     
+    // -------------------------------------------------------------------------
+    // SCHRITT 3: GEGNER RETURNIERT (Ball fliegt von C2 -> D4, Timer läuft!)
+    // -------------------------------------------------------------------------
     else if (nextStep === 2) {
-      setTitle("3. Gegner returniert");
-      setText("Der Gegner reagiert auf deinen Aufschlag. Er muss durch die Mitte returnieren. Beobachte seinen Schlag – der Timer startet!");
+      setTitle("3. Gegner schlägt (Timer läuft!)");
+      setText(
+        "Der Gegner läuft zum Ball (C2) und spielt ihn flach auf dich zurück. Sobald er schlägt, läuft der Timer: Du musst schnell deine Laufzone (D4) antippen, um den Ball anzunehmen!"
+      );
       
-      // 1. Vorbereiten für den Return
-      setHasSubmitted(false);
-      setTurnResult(null);
-      setPhase("timer_running");
-      
-      // 2. UI zurücksetzen & Timer einblenden
+      // UI leeren
+      setMockUi({ run: null, target: null, shot: null, showTimer: false });
+      await sleep(300);
+
+      // Gegner schlägt! Phase wechselt von "ai_prepare" auf "timer_running" -> hasSubmitted wird true!
+      setTimerDuration(2800);
+      setTutZone("D4"); // Ziel des Gegners ist deine Position D4
       setMockUi({ run: null, target: null, shot: null, showTimer: true });
-      setTutZone("D4"); // Der Gegner zielt auf D4 (zu dir ans Netz)
-      setTutLauf(null); 
+      
+      setCourtState({ 
+        you: "D4", 
+        partner: "B4", 
+        opp1: "C2", // Gegner 1 ist in die Mitte auf C2 gelaufen
+        opp2: "D1", 
+        ball: { side: "right", zone: "C2", type: "DRIVE" } // Startpunkt beim Gegner oben
+      });
+      setPhase("timer_running"); // Startet den Ballflug von C2 nach D4!
+      
+      // Nach 1 Sekunde (während der Ball fliegt) wählt der Spieler D4 zum Abfangen
+      await sleep(1000);
+      setTutLauf("D4");
+      setMockUi(prev => ({ ...prev, run: "D4" }));
+
+      // Restliche Flugzeit abwarten, bis der Ball bei dir am Netz ist
+      await sleep(1800); 
+    } 
+    
+    // -------------------------------------------------------------------------
+    // SCHRITT 4: VOLLEY AM NETZ PLANEN (Ball ist jetzt bei dir auf D4!)
+    // -------------------------------------------------------------------------
+    else if (nextStep === 3) {
+      setTitle("4. Volley planen");
+      setText(
+        "Du hast den Ball auf D4 abgefangen! Jetzt läuft kein Timer mehr und du kannst deinen Angriff planen: Wir bleiben am Netz (D4), zielen tief in die Ecke (A1) und wählen den VOLLEY."
+      );
+      
+      // WICHTIG: Ball ist jetzt auf deiner Seite (side: "left") in Zone D4!
+      setPhase("player_planning"); // Macht hasSubmitted = false
+      setMockUi({ run: null, target: null, shot: null, showTimer: false });
+      setTutZone(null);
+      setTutLauf(null);
       setTutShot(null);
 
-      // 3. Gegner schlägt
-      // Ball startet beim Gegner (right, C2)
       setCourtState({ 
-        you: "D4", partner: "B4", opp1: "C2", opp2: "D1", // Gegner opp1 tritt in die Mitte (C2)
-        ball: { side: "right", zone: "C2", type: "DRIVE" } 
+        you: "D4", 
+        partner: "B4", 
+        opp1: "C2", 
+        opp2: "D1", 
+        ball: { side: "left", zone: "D4", type: "DRIVE" } // Ball liegt jetzt vor dir am Netz!
       });
       
-      // Warten, damit der Spieler sieht, wie der Balken schrumpft
-      await sleep(1500); 
-    } 
-    
-    else if (nextStep === 3) {
-      setTitle("4. Volley vorbereiten");
-      setText("Der flache Return kommt auf dich zu. Wie von Geisterhand wählen wir tief in die Ecke (A1) und bereiten den Volley vor.");
-      
-      setPhase("player_planning"); // Timer stoppt visuell
-      setMockUi(prev => ({ ...prev, showTimer: false }));
-      
-      // UI füllt sich Stück für Stück automatisch aus!
-      await sleep(500);
+      // UI füllt sich Schritt für Schritt wie von Geisterhand
+      await sleep(600);
       setMockUi(prev => ({ ...prev, run: "D4" }));
       setTutLauf("D4");
 
-      await sleep(500);
+      await sleep(600);
       setMockUi(prev => ({ ...prev, target: "A1" }));
       setTutZone("A1");
 
-      await sleep(500);
+      await sleep(600);
       setMockUi(prev => ({ ...prev, shot: "VOLLEY" }));
-      setTutShot("VOLLEY");
+      setTutShot("VOLLEY"); // Zeichnet die Vorschau-Linie von deinem D4 zum gegnerischen A1!
 
-      await sleep(400); // Kurz wirken lassen
+      await sleep(400);
     } 
     
+    // -------------------------------------------------------------------------
+    // SCHRITT 5: VOLLEY AUSFÜHREN (Ball fliegt von D4 -> A1)
+    // -------------------------------------------------------------------------
     else if (nextStep === 4) {
-      setTitle("5. Klasse Spielzug!");
-      setText("Stark! Mit dem Volley hältst du den Druck aufrecht und zwingst die Gegner in die absolute Defensive. Genau so funktioniert ein Match!");
+      setTitle("5. Punktabschluss!");
+      setText(
+        "Stark! Du führst den Zug aus: Dein Volley fliegt scharf in die Ecke (A1) und zwingt die Gegner in die Defensive. Damit kennst du den kompletten Ablauf!"
+      );
       
-      // 1. Timer ausblenden, Animation starten
       setTimerDuration(2500);
-      setHasSubmitted(true);
-      setPhase("player_animating");
-      setTurnResult("success");
+      setTurnResult("perfect");
+      setPhase("player_animating"); // Macht hasSubmitted = true -> Volley fliegt los!
       
-      // 2. Du volleyierst, Gegner flüchtet zurück nach B1
-      // Ball startet bei dir (left, D4) und fliegt zum Ziel (A1)
+      // Ball startet bei dir (left, D4) und fliegt nach A1 (tutZone), Gegner rennt nach B1 zurück
       setCourtState({ 
-        you: "D4", partner: "B4", opp1: "B1", opp2: "D1", 
+        you: "D4", 
+        partner: "B4", 
+        opp1: "B1", 
+        opp2: "D1", 
         ball: { side: "left", zone: "D4", type: "VOLLEY" } 
       });
 
-      // 3. Warten, bis Volley einschlägt
       await sleep(2500);
     }
 
@@ -165,32 +213,31 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       {/* ========================================= */}
       {/* 1. OBERER BEREICH: 3D COURT (FLEX-1)      */}
       {/* ========================================= */}
-      {/* Wichtig: "flex-1 relative" und "absolute inset-0" sorgen dafür, dass das Feld seinen vollen Platz nutzt! */}
       <div className="relative w-full flex-1 overflow-hidden pointer-events-none bg-[#030611]">
         <div className="absolute inset-0 z-10">
           <ScenarioCourt3D 
-            key="tutorial-court-static" // Statischer Key = Kein Blackscreen mehr beim Neuladen
+            key="tutorial-court-static"
             arenaModel="/TacPadel.glb" 
             playIntro={false}  
             gameOver={false} 
             
             level="Spielzug" 
             positions={courtState as any} 
-            hasSubmitted={hasSubmitted}
+            hasSubmitted={isAnimPhase}
             bestZones={[]} 
             acceptableZones={[]}
             profiMode={false}
             
-            selectedZone={tutZone}
+            selectedZone={phase === "ai_prepare" ? null : tutZone}
             selectedLaufZone={tutLauf} 
             selectedPartnerZone={null}
             
             activeChar={isAiActive ? "opp1" : "you"} 
             hitterId={isAiActive ? "opp1" : "you"}
             
-            isTimerActive={mockUi.showTimer} 
+            isTimerActive={isTimerPhase} 
             turnResult={turnResult}
-            previewShot={tutShot}
+            previewShot={phase === "player_planning" ? tutShot : null}
             timerDuration={timerDuration} 
             
             onZoneClick={() => {}}
@@ -218,29 +265,30 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
           {/* Fake Timer Header */}
           <div className="flex items-center justify-between px-1 mb-1 mt-1">
             <span className="text-[9px] font-black tracking-widest uppercase text-purple-400">
-              DU (Schläger)
+              {isTimerPhase ? "REAKTION (BALL KOMMT!)" : "DU (SCHLÄGER)"}
             </span>
             <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
               <motion.div 
+                key={`timer-${mockUi.showTimer}`}
                 initial={{ width: "100%" }} 
                 animate={{ width: mockUi.showTimer ? "0%" : "100%" }} 
-                transition={{ duration: 1.5, ease: "linear" }}
-                className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-50'}`} 
+                transition={{ duration: mockUi.showTimer ? 2.8 : 0, ease: "linear" }}
+                className={`h-full ${mockUi.showTimer ? 'bg-emerald-500' : 'bg-slate-700 opacity-30'}`} 
               />
             </div>
           </div>
 
           {/* Fake Auswahl-Buttons */}
           <div className="grid grid-cols-3 gap-1.5 mb-2">
-            <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.run ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className={`p-1.5 rounded border text-center transition-colors duration-300 ${mockUi.run ? 'border-purple-500 bg-purple-950/40 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : 'border-slate-800 bg-slate-900/40'}`}>
               <div className="text-[7px] font-black uppercase text-purple-400">Laufzone</div>
               <div className="text-[9px] font-bold text-white truncate">{mockUi.run || "-"}</div>
             </div>
-            <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className={`p-1.5 rounded border text-center transition-colors duration-300 ${mockUi.target ? 'border-emerald-500 bg-emerald-950/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-800 bg-slate-900/40'}`}>
               <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
               <div className="text-[9px] font-bold text-white truncate">{mockUi.target || "-"}</div>
             </div>
-            <div className={`p-1.5 rounded border text-center transition-colors duration-500 ${mockUi.shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
+            <div className={`p-1.5 rounded border text-center transition-colors duration-300 ${mockUi.shot ? 'border-orange-500 bg-orange-950/40 shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-slate-800 bg-slate-900/40'}`}>
               <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
               <div className="text-[9px] font-bold text-white truncate">{mockUi.shot || "-"}</div>
             </div>
@@ -248,11 +296,11 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
 
           {/* Fake Submit Button */}
           <button disabled className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
-              mockUi.showTimer ? "bg-slate-900 text-slate-700 border-slate-800" 
-              : hasSubmitted ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
+              isTimerPhase ? "bg-amber-950/40 text-amber-400 border-amber-500/50 animate-pulse" 
+              : phase === "player_animating" ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50" 
               : "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
           }`}>
-            {mockUi.showTimer ? "Zeit läuft..." : hasSubmitted ? "Wird ausgeführt..." : "Zug ausführen"}
+            {isTimerPhase ? "Laufweg wählen (Timer läuft...)" : phase === "player_animating" ? "Ball im Flug..." : "Zug ausführen"}
           </button>
         </div>
       </div>
@@ -260,7 +308,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       {/* ========================================= */}
       {/* 3. UNTERER BEREICH: INFO TEXTBOX          */}
       {/* ========================================= */}
-      <div className="w-full bg-[#030611] p-4 sm:p-6 shrink-0 border-t border-slate-800 z-50">
+      <div className="w-full bg-[#030611] p-4 sm:p-5 shrink-0 border-t border-cyan-500/30 z-50">
         <AnimatePresence mode="wait">
           <motion.div 
             key={stepIndex}
@@ -270,21 +318,21 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
             transition={{ duration: 0.2 }}
             className="w-full max-w-2xl mx-auto flex flex-col gap-2"
           >
-            <div className="flex justify-between items-center mb-1">
+            <div className="flex justify-between items-center mb-0.5">
               <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/50 px-2 py-1 rounded border border-cyan-900/50">
                 Schritt {stepIndex + 1} / 5
               </span>
             </div>
             
-            <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+            <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
               {title}
             </h2>
             
-            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[50px] sm:min-h-[60px]">
+            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium min-h-[48px]">
               {text}
             </p>
 
-            <div className="flex justify-end pt-3 mt-1 border-t border-slate-800">
+            <div className="flex justify-end pt-2 mt-1 border-t border-slate-800">
               <button 
                 onClick={handleNextClick}
                 disabled={isAnimating}
@@ -294,7 +342,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
                     : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:scale-105 active:scale-95"
                 }`}
               >
-                {isAnimating ? "Warten..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
+                {isAnimating ? "Animation läuft..." : stepIndex === 4 ? "Tutorial beenden ➔" : "Weiter ➔"}
               </button>
             </div>
           </motion.div>
