@@ -12,6 +12,9 @@ interface GameTutorialProps {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function GameTutorial({ onComplete }: GameTutorialProps) {
+  // --- NEU: Zeigt zuerst dein ursprüngliches Erklär-Fenster an ---
+  const [showIntroModal, setShowIntroModal] = useState(true);
+
   // --- UI & TEXT STATES ---
   const [stepIndex, setStepIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -79,7 +82,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
       // Warten, bis der Aufschlag beim Gegner gelandet ist
       await sleep(2600); 
 
-      // WICHTIG: Kurzer Reset in "ai_prepare" (hasSubmitted = false), 
+      // Kurzer Reset in "ai_prepare" (hasSubmitted = false), 
       // damit der Ball offiziell oben beim Gegner (right, C2) ankommt!
       setPhase("ai_prepare");
       setTurnResult(null);
@@ -137,7 +140,7 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
         "Du hast den Ball auf D4 abgefangen! Jetzt läuft kein Timer mehr und du kannst deinen Angriff planen: Wir bleiben am Netz (D4), zielen tief in die Ecke (A1) und wählen den VOLLEY."
       );
       
-      // WICHTIG: Ball ist jetzt auf deiner Seite (side: "left") in Zone D4!
+      // Ball ist jetzt auf deiner Seite (side: "left") in Zone D4!
       setPhase("player_planning"); // Macht hasSubmitted = false
       setMockUi({ run: null, target: null, shot: null, showTimer: false });
       setTutZone(null);
@@ -206,14 +209,101 @@ export default function GameTutorial({ onComplete }: GameTutorialProps) {
 
   return (
     <div 
-      className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none overflow-hidden" 
+      className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none relative overflow-hidden" 
       style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
     >
+
+      {/* =================================================== */}
+      {/* 0. INTRO MODAL (DAS URSPRÜNGLICHE ERKLÄR-FENSTER)   */}
+      {/* =================================================== */}
+      <AnimatePresence>
+        {showIntroModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md pointer-events-auto overflow-y-auto"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(255,119,0,0.2)] max-w-lg w-full flex flex-col gap-5 relative overflow-hidden my-auto"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-red-500" />
+              
+              <div className="text-center">
+                <span className="inline-block px-3 py-1 mb-2 rounded-full bg-orange-500/10 border border-orange-500/30 text-[10px] font-black text-orange-400 uppercase tracking-widest">
+                  🎓 Tutorial
+                </span>
+                <h2 className="text-2xl font-black text-white uppercase tracking-widest">Match-Modus</h2>
+                <p className="text-orange-400 text-sm font-bold tracking-wider mt-1">Das Spielprinzip in 3 Schritten</p>
+              </div>
+
+              <div className="flex flex-col gap-3 text-sm text-slate-300">
+                <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                  <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">1</div>
+                  <div>
+                    <p className="font-bold text-white mb-1">Reagieren (Der Timer läuft)</p>
+                    <p className="leading-snug text-xs sm:text-sm">Sobald der Gegner schlägt, tickt die Zeit! Entscheide schnell, ob <b>Du</b> oder dein <b>Partner</b> den Ball nimmt, und wähle die richtige Laufzone, um den Ball zu erreichen.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                  <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">2</div>
+                  <div>
+                    <p className="font-bold text-white mb-1">Schlag planen</p>
+                    <p className="leading-snug text-xs sm:text-sm">Hast du den Ball erreicht, wählst du deinen <b>Schlag</b> (z.B. Lob, Smash, Volley) und tippst auf das <b>Ziel</b> im gegnerischen Feld.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                  <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">3</div>
+                  <div>
+                    <p className="font-bold text-white mb-1">Ausdauer im Blick behalten</p>
+                    <p className="leading-snug text-xs sm:text-sm">Jeder Laufweg kostet Energie. Ist die Ausdauer leer, häufen sich die Fehler! Nutze langsame taktische Schläge wie den <i>Lob</i>, um während des Ballwechsels Energie zu regenerieren.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 mt-1">
+                <button
+                  onClick={() => setShowIntroModal(false)}
+                  className="w-full py-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded-xl font-black text-xs sm:text-sm tracking-[0.15em] uppercase shadow-[0_0_20px_rgba(255,119,0,0.3)] hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  Beispiel-Spielzug anschauen ➔
+                </button>
+                <button
+                  onClick={onComplete}
+                  className="w-full py-2 text-slate-500 hover:text-slate-300 font-bold text-[10px] uppercase tracking-widest transition-colors"
+                >
+                  Direkt zum Menü überspringen
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* ========================================= */}
       {/* 1. OBERER BEREICH: 3D COURT (FLEX-1)      */}
       {/* ========================================= */}
       <div className="relative w-full flex-1 overflow-hidden pointer-events-none bg-[#030611]">
+        
+        {/* Kleines Banner oben am Rand, damit man immer sieht, dass es das Tutorial ist */}
+        <div className="absolute top-3 left-3 right-3 z-30 flex justify-between items-center pointer-events-auto">
+          <div className="bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 px-3 py-1 rounded-full flex items-center gap-2 shadow-lg">
+            <span className="text-xs">🎓</span>
+            <span className="text-[10px] font-black text-cyan-300 uppercase tracking-widest">Tutorial-Beispiel</span>
+          </div>
+          <button
+            onClick={onComplete}
+            className="bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md border border-slate-700 px-3 py-1 rounded-full text-[9px] font-bold text-slate-400 hover:text-white uppercase tracking-wider transition-all"
+          >
+            Beenden ✕
+          </button>
+        </div>
+
         <div className="absolute inset-0 z-10">
           <ScenarioCourt3D 
             key="tutorial-court-static"
