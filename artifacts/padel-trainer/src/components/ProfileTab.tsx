@@ -62,7 +62,6 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
     for (let i = 0; i <= spiralSegments; i++) {
       const t = i / spiralSegments; // 0.0 bis 1.0
       
-      // [HIER WURDE ES ANGEPASST]
       // Startet unten eng (0.15) am Griff und öffnet sich auf 0.45 (breit) um den Schläger
       const radius = 0.15 + (t * 0.4); 
       
@@ -108,28 +107,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
             <cylinderGeometry args={[0.67, 0.67, 0.02, 6]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
-          
-          {/*<group position={[0, 0, 0.61]} rotation={[-0.2, 0, 0]}>
-            <mesh position={[0, 0, -0.02]}>
-              <boxGeometry args={[0.4, 0.2, 0.01]} />
-              <meshStandardMaterial color="#020617" />
-            </mesh>
-            <Text 
-              fontSize={0.15} 
-              color="#ffffff" 
-              font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-              fontWeight="bold"
-            >
-              TP
-            </Text>
-          </group>*/}
         </group>
-
-        {/* === DYNAMISCHER SWOOSH BOGEN IM HINTERGRUND === 
-        <mesh position={[0, 1.4, -0.15]} rotation={[0, 0, Math.PI / 4]}>
-          <torusGeometry args={[0.85, 0.015, 16, 64, Math.PI * 1.2]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
-        </mesh>*/}
 
         {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
@@ -289,6 +267,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.user_metadata?.avatar_url || null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // --- States für Kontolöschung ---
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [showExplanations, setShowExplanations] = useState(() => localStorage.getItem("tacpadel_show_explanations") !== "false");
   const toggleExplanations = () => {
@@ -548,6 +530,33 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
+  // --- Funktion zum vollständigen Löschen des Kontos ---
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      setMessage(null);
+
+      // 1. Alle verknüpften Spieldaten aus den Tabellen löschen
+      await supabase.from('match_history').delete().eq('user_id', user.id);
+      await supabase.from('tour_progress').delete().eq('user_id', user.id);
+      await supabase.from('user_stats').delete().eq('id', user.id);
+
+      // 2. Auth-Konto über die Datenbank-Funktion (RPC) entfernen
+      const { error: rpcError } = await supabase.rpc('delete_user');
+      if (rpcError) {
+        console.warn("Hinweis bei RPC delete_user:", rpcError.message);
+      }
+
+      // 3. Lokale Daten bereinigen & Nutzer abmelden
+      localStorage.clear();
+      await supabase.auth.signOut();
+    } catch (error: any) {
+      setMessage({ type: 'error', text: "Fehler beim Löschen: " + error.message });
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   const toggleSound = () => {
     const newState = !soundEnabled;
     setSoundEnabled(newState);
@@ -804,7 +813,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
               <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
               <div className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
-                  style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
+                   style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
             </div>
 
             {/* TRON 3D CABINET CONTAINER */}
@@ -1002,6 +1011,58 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ========================================= */}
+      {/* 8. KONTO & DATENSCHUTZ (KONTO LÖSCHEN)    */}
+      {/* ========================================= */}
+      <div className="w-full bg-[#030611]/80 border border-red-950/50 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col text-center sm:text-left">
+            <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">Konto & Datenschutz</h3>
+            <span className="text-[9px] text-slate-600 font-bold mt-1">Account und alle gespeicherten Spielstände dauerhaft entfernen</span>
+          </div>
+
+          {!showDeleteConfirm && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2.5 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-[10px] font-black text-red-400 uppercase tracking-widest transition-all shrink-0"
+            >
+              Konto löschen
+            </button>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-red-950/20 border border-red-500/40 rounded-lg p-4 flex flex-col gap-3 overflow-hidden"
+            >
+              <p className="text-xs font-bold text-red-300 text-center sm:text-left leading-relaxed">
+                Bist du sicher? Dein gesamter Fortschritt (TacScore, Trophäen, Match-Historie und Account) wird <span className="underline font-black text-white">sofort und unwiderruflich</span> gelöscht.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-end gap-2.5 mt-1">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-black text-slate-300 uppercase tracking-widest transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-[10px] font-black text-white uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all disabled:opacity-50"
+                >
+                  {isDeleting ? "Löscht..." : "Ja, endgültig löschen"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <button onClick={() => setActiveTab("home")} className="text-[10px] text-slate-500 hover:text-slate-300 font-bold uppercase tracking-widest transition-colors mt-2">
