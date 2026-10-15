@@ -70,7 +70,8 @@ export const calculateBallTrajectory = (targetZone: string, shotType: string, hi
   let remainingDist = zDist * powerMultiplier;
   let curZ = tZ;
   
-  if (curZ + remainingDist >= 10 && !["CHIQUITA", "BLOCK", "VOLLEY", "LOB"].includes(sType)) {
+  // FIX: Aufschlag und normaler Drive prallen nicht als harte Wand-Kracher zurück (verhindert falsche Notschläge auf Reihe 2)
+  if (curZ + remainingDist >= 10 && !["CHIQUITA", "BLOCK", "VOLLEY", "LOB", "AUFSCHLAG", "DRIVE"].includes(sType)) {
       isWallHit = true;
       remainingDist -= (10 - curZ); 
       curZ = 10 - remainingDist;    
@@ -788,6 +789,18 @@ export const evaluatePlayerShot = (
                 hitChance += 5;    
             }
         }
+    }
+
+    // NEU: Saubere Returns belohnen (ein taktisch kontrollierter Return wackelt im Padel selten)
+    if (isReturnTurn && !isDugOut && hitChance >= hitChanceBeforeCheck) {
+      hitChance += 8;
+      recoveryChance = Math.max(5, recoveryChance - 8);
+    }
+
+    // Falls es wirklich ein Notschlag war, im Titel und Text sichtbar beibehalten!
+    if (isDugOut) {
+      title = `NOTSCHLAG (${title})`;
+      msg = `Halbflug-Notschlag vor der Wand! ${msg}`;
     }
 
     // FIX: TacScore-Penalty und Wackler-Malus greifen nur im offenen Ballwechsel, nicht beim Aufschlag!
