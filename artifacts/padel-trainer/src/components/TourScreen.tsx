@@ -265,10 +265,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         // Punkte in user_stats updaten
         await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
         
-        // 2. Status in DB wieder auf "active" und Runde auf 1 setzen
+        // 2. Status in DB wieder auf "active", Runde auf 1 UND retry_used auf false setzen
         await supabase.from("tour_progress").update({ 
           status: "active", 
-          current_round: 1 
+          current_round: 1,
+          retry_used: false // <-- NEU: Joker für den neuen Run wieder freigeben
         }).eq("user_id", session.user.id).eq("tournament_id", tour.id);
       }
 

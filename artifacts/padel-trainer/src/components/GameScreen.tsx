@@ -488,7 +488,7 @@ export default function GameScreen() {
     return false;
   };
 
-  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
+  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0, isRematch: boolean = false) => {
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
@@ -496,8 +496,10 @@ export default function GameScreen() {
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
 
-    const randomIndex = Math.floor(Math.random() * AI_PROFILES.length);
-    const selectedProfile = AI_PROFILES[randomIndex];
+    // NEU: Beim direkten Re-Match bleibt das KI-Team identisch, sonst wird neu gemischt
+    const selectedProfile = isRematch 
+      ? activeAiProfile 
+      : AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
     setActiveAiProfile(selectedProfile);
 
     setPlayerScore(0);
@@ -509,8 +511,32 @@ export default function GameScreen() {
     setAiShotHistory([]);
     setEarnedTP(0);
 
-    if (round === 1) {
-       setRetryUsed(false);
+    // --- Synchronisation Revanche-Status mit DB ---
+    if (isRematch) {
+      setRetryUsed(true);
+    } else {
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user && tourId) {
+            const { data } = await supabase
+              .from("tour_progress")
+              .select("retry_used")
+              .eq("user_id", session.user.id)
+              .eq("tournament_id", tourId)
+              .single();
+            if (data) {
+              setRetryUsed(Boolean(data.retry_used));
+            } else {
+              setRetryUsed(false);
+            }
+          } else {
+            setRetryUsed(false);
+          }
+        } catch (err) {
+          setRetryUsed(false);
+        }
+      })();
     }
 
     const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
@@ -727,7 +753,7 @@ export default function GameScreen() {
           };
           
           if (isAiServing) {
-            // NEU: Australische Aufstellung – KI-Aufschläger läuft nach dem Aufschlag direkt ans Netz (opp1 -> B4, opp2 -> D4)
+            // Australische Aufstellung – KI-Aufschläger läuft nach dem Aufschlag direkt ans Netz (opp1 -> B4, opp2 -> D4)
             nextState[currentAiHitter] = currentAiHitter === "opp1" ? "B4" : "D4";
           } else {
             nextState[currentAiHitter] = ballLandedAt;
@@ -974,22 +1000,22 @@ export default function GameScreen() {
 
       if (pointsError) throw pointsError;
 
-      // 2. Retry in tour_progress markieren (Status MUSS 'playing' bleiben, falls er vorher kurz auf eliminated gesetzt wurde)
+      // 2. Retry in tour_progress markieren & Status auf 'active' halten (für TourScreen-Anzeige)
       const { error: progressError } = await supabase
         .from('tour_progress')
-        .update({ retry_used: true, status: 'playing' })
+        .update({ retry_used: true, status: 'active', current_round: activeTournamentRound })
         .eq('user_id', session.user.id)
         .eq('tournament_id', activeTournamentId);
 
       if (progressError) throw progressError;
 
-      // 3. Match neu starten (Gleiche Runde, gleiches Turnier)
+      // 3. Match neu starten (Gleiche Runde, gleiches Turnier, gleicher Gegner = true)
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
       setRetryUsed(true);
       setIsProcessingRetry(false);
       
-      // Match Reset auslösen
-      handleStartTournamentMatch(activeTournamentId, activeTournamentRound, activeTournamentDifficulty);
+      // Match Reset als echtes Re-Match auslösen
+      handleStartTournamentMatch(activeTournamentId, activeTournamentRound, activeTournamentDifficulty, true);
 
     } catch (error) {
       console.error("Fehler beim Kauf der zweiten Chance:", error);
@@ -1188,7 +1214,7 @@ export default function GameScreen() {
         newPlayerScore += 1; 
         newStats.ai.unforcedErrors += 1; 
       } else {
-        newAiScore += 1;               
+        newAiScore += 1;                
         newStats.player.unforcedErrors += 1; 
       }
       setActiveScenario(null); 
@@ -1198,7 +1224,7 @@ export default function GameScreen() {
         newAiScore += 1;    
         if (isAce) newStats.ai.aces += 1; else newStats.ai.winners += 1;
       } else {
-        newPlayerScore += 1;           
+        newPlayerScore += 1;            
         if (isAce) newStats.player.aces += 1; else newStats.player.winners += 1;
       }
       setActiveScenario(null); 
@@ -1291,13 +1317,21 @@ export default function GameScreen() {
                   }
                   await supabase.from("tour_progress").update({ status: "won" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
                 } else {
-                  await supabase.from("tour_progress").update({ current_round: activeTournamentRound + 1 }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
+                  // --- Runde +1 und Status explizit auf "active" setzen (für TourScreen-Badge) ---
+                  await supabase
+                    .from("tour_progress")
+                    .update({ current_round: activeTournamentRound + 1, status: "active" })
+                    .eq("user_id", session.user.id)
+                    .eq("tournament_id", activeTournamentId);
                 }
               } else {
-                const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
-                if (savedTourStamina[activeTournamentId]) {
-                  delete savedTourStamina[activeTournamentId];
-                  localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                // BONUS-DETAIL: Stamina bei Niederlage nur sofort löschen, wenn kein Re-Match mehr möglich ist!
+                if (activeTournamentRound === 3 || retryUsed) {
+                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  if (savedTourStamina[activeTournamentId]) {
+                    delete savedTourStamina[activeTournamentId];
+                    localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                  }
                 }
               }
 
@@ -1869,17 +1903,25 @@ export default function GameScreen() {
                 
                 {activeTournamentId ? (
                    <button onClick={() => { 
+                     const tourIdToClean = activeTournamentId;
                      setIsTourOpen(true); 
                      setShowGameOverUI(false); 
                      setActiveTournamentId(null); 
                      
                      if (playerScore < aiScore) {
+                       // BONUS-DETAIL: Wenn der Spieler endgültig aufgibt, gespeicherte Turnier-Ausdauer löschen
+                       const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                       if (tourIdToClean && savedTourStamina[tourIdToClean]) {
+                         delete savedTourStamina[tourIdToClean];
+                         localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                       }
+
                        supabase.auth.getSession().then(({ data: { session } }) => {
                          if (session?.user) {
                            supabase.from("tour_progress")
                              .update({ status: "eliminated" })
                              .eq("user_id", session.user.id)
-                             .eq("tournament_id", activeTournamentId);
+                             .eq("tournament_id", tourIdToClean);
                          }
                        });
                      }
