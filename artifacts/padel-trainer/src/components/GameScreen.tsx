@@ -726,7 +726,10 @@ export default function GameScreen() {
             ball: { side: "right" as const, zone: ballLandedAt, type: brain.shot }
           };
           
-          if (!isAiServing) {
+          if (isAiServing) {
+            // NEU: Australische Aufstellung – KI-Aufschläger läuft nach dem Aufschlag direkt ans Netz (opp1 -> B4, opp2 -> D4)
+            nextState[currentAiHitter] = currentAiHitter === "opp1" ? "B4" : "D4";
+          } else {
             nextState[currentAiHitter] = ballLandedAt;
             const pId = currentAiHitter === "opp1" ? "opp2" : "opp1";
             let pTarget = brain.opp2Target || "C2"; 
@@ -1047,9 +1050,11 @@ export default function GameScreen() {
     const isPlayerServingTurn = courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
     const isPlayerReturningTurn = courtState.ball.type === "AUFSCHLAG" && (serverId === "opp1" || serverId === "opp2");
     
-    // --- FIX 3: Korrekte Notschlag-Prüfung (verhindert unfaire Wackler auf Reihe 1) ---
+    // --- FIX 3: Korrekte Notschlag-Prüfung (greift niemals beim Return und nur bei echten Wandbällen auf Reihe 1) ---
     const isDugOut = Boolean(
+      !isPlayerReturningTurn &&
       aiTrajectoryRef.current.isWallHit && 
+      aiTrajectoryRef.current.impactZone[1] === "1" &&
       aiTrajectoryRef.current.reboundZone && 
       aiTrajectoryRef.current.reboundZone !== aiTrajectoryRef.current.impactZone && 
       hitFromPos === aiTrajectoryRef.current.impactZone &&
