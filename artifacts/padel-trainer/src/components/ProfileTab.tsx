@@ -1014,23 +1014,34 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 8. KONTO & DATENSCHUTZ (KONTO LÖSCHEN)    */}
+      {/* 8. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-red-950/50 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex flex-col text-center sm:text-left">
             <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">Konto & Datenschutz</h3>
-            <span className="text-[9px] text-slate-600 font-bold mt-1">Account und alle gespeicherten Spielstände dauerhaft entfernen</span>
+            <span className="text-[9px] text-slate-600 font-bold mt-1">Datenschutzerklärung einsehen oder Account dauerhaft entfernen</span>
           </div>
 
-          {!showDeleteConfirm && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-4 py-2.5 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-[10px] font-black text-red-400 uppercase tracking-widest transition-all shrink-0"
+          <div className="flex flex-wrap justify-center items-center gap-2.5 shrink-0">
+            <a
+              href="https://tac-padel-api.server.vercel.app/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 rounded-lg text-[10px] font-black text-slate-300 hover:text-cyan-400 uppercase tracking-widest transition-all"
             >
-              Konto löschen
-            </button>
-          )}
+              Datenschutz ↗
+            </a>
+
+            {!showDeleteConfirm && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-4 py-2.5 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-[10px] font-black text-red-400 uppercase tracking-widest transition-all"
+              >
+                Konto löschen
+              </button>
+            )}
+          </div>
         </div>
 
         <AnimatePresence>

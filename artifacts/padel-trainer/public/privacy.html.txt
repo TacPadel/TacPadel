@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datenschutzerklärung & Kontolöschung – TacPadel</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #040914;
+      color: #cbd5e1;
+      line-height: 1.6;
+      margin: 0;
+      padding: 24px 16px;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: #0a1122;
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    h1 { color: #ffffff; font-size: 1.75rem; margin-top: 0; }
+    h2 { color: #22d3ee; font-size: 1.2rem; margin-top: 2rem; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
+    h3 { color: #f8fafc; font-size: 1rem; margin-top: 1.2rem; }
+    p, li { font-size: 0.95rem; color: #94a3b8; }
+    strong { color: #e2e8f0; }
+    a { color: #22d3ee; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .delete-box {
+      background: rgba(127, 29, 29, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 2rem;
+    }
+    .delete-box h2 { color: #f87171; margin-top: 0; border-color: rgba(239, 68, 68, 0.3); }
+    .badge {
+      display: inline-block;
+      background: rgba(6, 182, 212, 0.15);
+      color: #22d3ee;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      font-size: 0.75rem;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="badge">TacPadel App</span>
+    <h1>Datenschutzerklärung</h1>
+    <p><strong>Stand:</strong> Oktober 2026</p>
+
+    <h2>1. Verantwortlicher</h2>
+    <p>
+      Verantwortlich für die Datenverarbeitung im Zusammenhang mit der App <strong>TacPadel</strong> ist:<br /><br />
+      <strong>Boris Sredojevic</strong><br />
+      Brunnenstraße 26<br />
+      47623 Kevelaer<br />
+      Deutschland<br />
+      E-Mail: <a href="mailto:support@tacpadel.com">support@tacpadel.com</a>
+    </p>
+
+    <h2>2. Welche Daten wir erfassen und wofür</h2>
+    <p>Wenn du TacPadel nutzt, verarbeiten wir nur die Daten, die für die Bereitstellung des Spiels, deines Spielerprofils und der Ranglisten zwingend erforderlich sind (Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO – Vertragserfüllung bzw. Bereitstellung der App-Funktionen):</p>
+    <ul>
+      <li><strong>Konto- & Authentifizierungsdaten:</strong> Bei der Registrierung werden deine E-Mail-Adresse, ein verschlüsseltes Passwort sowie eine eindeutige Nutzer-ID (UUID) gespeichert, um deinen Login zu ermöglichen.</li>
+      <li><strong>Spielprofil & Spielstände:</strong> Dein frei wählbarer Spielername, dein Teamname sowie deine Spielstatistiken (TacScore, TacPoints, Match-Historie in <code>match_history</code>, gewonnene Trophäen in <code>tour_progress</code> und Einstellungen in <code>user_stats</code>) werden gespeichert, um deinen Fortschritt geräteübergreifend zu synchronisieren und in der Rangliste anzuzeigen.</li>
+      <li><strong>Profilbild (Optional):</strong> Wenn du freiwillig ein Profilbild (Avatar) hochlädst, wird diese Bilddatei in unserem Cloud-Speicher hinterlegt und deinem Profil zugeordnet (Art. 6 Abs. 1 lit. a DSGVO – Einwilligung).</li>
+      <li><strong>Lokale Gerätedaten (LocalStorage):</strong> Auf deinem Endgerät speichern wir lokal Einstellungen wie Audio-/Musik-Präferenzen, Anzeigeoptionen und Zwischenstände, damit die App schneller lädt.</li>
+    </ul>
+
+    <h2>3. Hosting & Datenbank (Supabase)</h2>
+    <p>
+      Für die Authentifizierung, Datenbank und den Dateispeicher nutzen wir den Dienst <strong>Supabase</strong> (Supabase Inc., 970 Toa Payoh North #07-04, Singapore 318992). Sämtliche Datenübertragungen zwischen der App und den Servern erfolgen verschlüsselt über HTTPS/TLS. Es findet kein Verkauf und keine Weitergabe deiner Daten zu Werbezwecken an Dritte statt.
+    </p>
+
+    <!-- ================================================= -->
+    <!-- ABSCHNITT FÜR GOOGLE PLAY KONTO-LÖSCHUNG          -->
+    <!-- ================================================= -->
+    <div id="delete-account" class="delete-box">
+      <h2>4. Anleitung zur Kontolöschung (Account & Daten löschen)</h2>
+      <p>Du kannst dein TacPadel-Konto und alle damit verbundenen Daten jederzeit vollständig und unwiderruflich löschen. Dir stehen dafür zwei Wege zur Verfügung:</p>
+
+      <h3>Weg A: Direkt in der TacPadel-App (Sofortige Löschung)</h3>
+      <ol>
+        <li>Öffne die App <strong>TacPadel</strong> und melde dich an.</li>
+        <li>Wechsle in den Reiter <strong>Profil (Spieler-Akte)</strong>.</li>
+        <li>Scrolle ganz nach unten zum Abschnitt <strong>„Konto & Datenschutz“</strong>.</li>
+        <li>Tippe auf <strong>„Konto löschen“</strong> und bestätige mit <strong>„Ja, endgültig löschen“</strong>.</li>
+      </ol>
+
+      <h3>Weg B: Per E-Mail (Falls du die App bereits deinstalliert hast)</h3>
+      <p>
+        Sende eine kurze, formlose E-Mail von der E-Mail-Adresse, mit der du bei TacPadel registriert bist, mit dem Betreff <strong>„TacPadel Konto löschen“</strong> an:<br />
+        <a href="mailto:support@tacpadel.com?subject=TacPadel%20Konto%20l%C3%B6schen"><strong>support@tacpadel.com</strong></a>
+      </p>
+
+      <h3>Welche Daten werden gelöscht und wie lange dauert es?</h3>
+      <ul>
+        <li><strong>Gelöschte Daten:</strong> Dein Login-Konto (E-Mail-Adresse & Nutzer-ID), dein Spielerprofil (<code>user_stats</code>), deine gesamte Match-Historie (<code>match_history</code>), deine Turniererfolge/Trophäen (<code>tour_progress</code>) sowie dein hochgeladenes Profilbild.</li>
+        <li><strong>Aufbewahrungsfrist:</strong> Bei Löschung über die App werden die Daten <strong>sofort</strong> gelöscht. Bei einer Anfrage per E-Mail erfolgt die vollständige Löschung innerhalb von maximal <strong>7 Werktagen</strong>. Nach der Löschung werden keinerlei personenbezogene Daten weiter aufbewahrt.</li>
+      </ul>
+    </div>
+
+    <h2>5. Deine Rechte nach der DSGVO</h2>
+    <p>
+      Du hast jederzeit das Recht auf unentgeltliche <strong>Auskunft</strong> über deine gespeicherten personenbezogenen Daten (Art. 15 DSGVO), auf <strong>Berichtigung</strong> (Art. 16 DSGVO), auf <strong>Löschung</strong> (Art. 17 DSGVO), auf <strong>Einschränkung der Verarbeitung</strong> (Art. 18 DSGVO) sowie auf <strong>Datenübertragbarkeit</strong> (Art. 20 DSGVO). Zudem steht dir ein Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde zu. Wende dich für alle Anliegen einfach an die oben genannte E-Mail-Adresse.
+    </p>
+  </div>
+</body>
+</html>
