@@ -115,5 +115,5 @@
       Du hast jederzeit das Recht auf unentgeltliche <strong>Auskunft</strong> über deine gespeicherten personenbezogenen Daten (Art. 15 DSGVO), auf <strong>Berichtigung</strong> (Art. 16 DSGVO), auf <strong>Löschung</strong> (Art. 17 DSGVO), auf <strong>Einschränkung der Verarbeitung</strong> (Art. 18 DSGVO) sowie auf <strong>Datenübertragbarkeit</strong> (Art. 20 DSGVO). Zudem steht dir ein Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde zu. Wende dich für alle Anliegen einfach an die oben genannte E-Mail-Adresse.
     </p>
   </div>
-</body>
+</body> 
 </html>

@@ -191,7 +191,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
                   rel="noopener noreferrer"
                   className="px-4 py-2 bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400 transition-colors"
                 >
-                  📄 Vollständige Datenschutzerklärung ↗
+                  Vollständige Datenschutzerklärung ↗
                 </a>
                 <a
                   href="https://tac-padel-api-server.vercel.app/privacy.html#delete-account"
@@ -199,7 +199,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
                   rel="noopener noreferrer"
                   className="px-4 py-2 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-xs font-bold text-red-400 transition-colors"
                 >
-                  🗑️ Info zur Kontolöschung ↗
+                  Info zur Kontolöschung ↗
                 </a>
               </div>
               
