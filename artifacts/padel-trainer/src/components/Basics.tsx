@@ -180,7 +180,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
               </p>
               
               <p>
-                Passwörter werden ausschließlich verschlüsselt verarbeitet. Wir geben deine Daten nicht zu Werbezwecken an Dritte weiter. Du kannst deinen Account und alle damit verbundenen Daten jederzeit direkt in der App (im Profil-Tab ganz unten) oder per E-Mail an <a href="mailto:admin@tacpadel.de" className="text-cyan-400 hover:underline">admin@tacpadel.de</a> vollständig löschen.
+                Passwörter werden ausschließlich verschlüsselt verarbeitet. Wir geben deine Daten nicht zu Werbezwecken an Dritte weiter. Du kannst deinen Account und alle damit verbundenen Daten jederzeit direkt in der App (im Profil-Tab ganz unten) oder per E-Mail an <a href="mailto:support@tacpadel.com" className="text-cyan-400 hover:underline">supprot@tacpadel.com</a> vollständig löschen.
               </p>
 
               {/* Direkte Links zur vollständigen Datenschutzerklärung für Google Play */}

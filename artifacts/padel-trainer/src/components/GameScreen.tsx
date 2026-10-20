@@ -127,6 +127,11 @@ export default function GameScreen() {
   const [partnerName, setPartnerName] = useState<string>("Partner");
   const [playerName, setPlayerName] = useState<string>("Du");
 
+  // --- NEU: User-ID Tracking für Gast-Erkennung & Savegame-Schutz ---
+  const [userId, setUserId] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
   const [introTrigger, setIntroTrigger] = useState(0); 
   const [playIntro, setPlayIntro] = useState<boolean>(false);
   
@@ -214,6 +219,22 @@ export default function GameScreen() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+          setUserId(session.user.id);
+          userIdRef.current = session.user.id;
+
+          // Prüfen, ob ein altes Gast-Savegame oder ein fremdes Savegame existiert -> sofort löschen!
+          const rawSave = localStorage.getItem("tacpadel_savegame");
+          if (rawSave) {
+            try {
+              const parsedSave = JSON.parse(rawSave);
+              if (parsedSave.userId !== session.user.id) {
+                localStorage.removeItem("tacpadel_savegame");
+              }
+            } catch {
+              localStorage.removeItem("tacpadel_savegame");
+            }
+          }
+
           const { data, error } = await supabase
             .from("user_stats")
             .select("points, team_name, partner_id, display_name") 
@@ -237,6 +258,17 @@ export default function GameScreen() {
             }
             return; 
           }
+        } else {
+          // GAST-MODUS: Keine alten Spielstände übernehmen
+          setUserId(null);
+          userIdRef.current = null;
+          setPlayerName("Gast");
+          setUserTeamName("Team Gast");
+          localStorage.removeItem("tacpadel_savegame");
+          localStorage.removeItem("tacpadel_tour_stamina");
+          localStorage.removeItem("tacpadel_score");
+          localStorage.removeItem("tacpadel_tac_points");
+          return;
         }
       } catch (err) {
         console.log("Konnte Daten nicht von Supabase laden, nutze lokalen Speicher.");
@@ -253,6 +285,22 @@ export default function GameScreen() {
       }
     };
     fetchUserScore();
+
+    // CLEANUP BEIM VERLASSEN DES SCREENS / TAB-WECHSEL FÜR GÄSTE
+    const clearGuestData = () => {
+      if (!userIdRef.current) {
+        localStorage.removeItem("tacpadel_savegame");
+        localStorage.removeItem("tacpadel_tour_stamina");
+        localStorage.removeItem("tacpadel_score");
+        localStorage.removeItem("tacpadel_tac_points");
+      }
+    };
+
+    window.addEventListener("beforeunload", clearGuestData);
+    return () => {
+      window.removeEventListener("beforeunload", clearGuestData);
+      clearGuestData();
+    };
   }, []);
 
   useEffect(() => {
@@ -367,7 +415,9 @@ export default function GameScreen() {
     const finalScore = Math.max(0, tacScore + scoreChange);
     
     setTacScore(finalScore);
-    localStorage.setItem("tacpadel_score", finalScore.toString());
+    if (userIdRef.current) {
+      localStorage.setItem("tacpadel_score", finalScore.toString());
+    }
     setLastScoreChange(scoreChange);
     
     try {
@@ -400,19 +450,33 @@ export default function GameScreen() {
     localStorage.removeItem("tacpadel_savegame");
   };
 
+  const hasOwnSavegame = () => {
+    if (!userIdRef.current) return false;
+    const raw = localStorage.getItem("tacpadel_savegame");
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed.userId === userIdRef.current;
+    } catch {
+      return false;
+    }
+  };
+
   const attemptStartNewGame = () => {
-    if (localStorage.getItem("tacpadel_savegame")) {
+    if (hasOwnSavegame()) {
       setAbandonWarning({ action: "single" });
     } else {
+      localStorage.removeItem("tacpadel_savegame");
       setIsMenuOpen(false);
       startNewGame();
     }
   };
 
   const attemptStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0) => {
-    if (localStorage.getItem("tacpadel_savegame")) {
+    if (hasOwnSavegame()) {
       setAbandonWarning({ action: "tour", tourParams: { tourId, round, difficulty } });
     } else {
+      localStorage.removeItem("tacpadel_savegame");
       handleStartTournamentMatch(tourId, round, difficulty);
     }
   };
@@ -431,10 +495,21 @@ export default function GameScreen() {
   };
 
   const loadGame = () => {
+    if (!userIdRef.current) {
+      localStorage.removeItem("tacpadel_savegame");
+      return false;
+    }
+
     const savedData = localStorage.getItem("tacpadel_savegame");
     if (savedData) {
       const parsed = JSON.parse(savedData);
       
+      // Sicherheits-Check: Gehört das Savegame wirklich dem eingeloggten Account?
+      if (parsed.userId !== userIdRef.current) {
+        localStorage.removeItem("tacpadel_savegame");
+        return false;
+      }
+
       setActiveTournamentId(parsed.tournamentId || null);
       setActiveTournamentRound(parsed.tournamentRound || 1);
       setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
@@ -496,7 +571,7 @@ export default function GameScreen() {
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
 
-    // NEU: Beim direkten Re-Match bleibt das KI-Team identisch, sonst wird neu gemischt
+    // Beim direkten Re-Match bleibt das KI-Team identisch, sonst wird neu gemischt
     const selectedProfile = isRematch 
       ? activeAiProfile 
       : AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
@@ -1214,7 +1289,7 @@ export default function GameScreen() {
         newPlayerScore += 1; 
         newStats.ai.unforcedErrors += 1; 
       } else {
-        newAiScore += 1;                
+        newAiScore += 1;               
         newStats.player.unforcedErrors += 1; 
       }
       setActiveScenario(null); 
@@ -1224,7 +1299,7 @@ export default function GameScreen() {
         newAiScore += 1;    
         if (isAce) newStats.ai.aces += 1; else newStats.ai.winners += 1;
       } else {
-        newPlayerScore += 1;            
+        newPlayerScore += 1;           
         if (isAce) newStats.player.aces += 1; else newStats.player.winners += 1;
       }
       setActiveScenario(null); 
@@ -1282,7 +1357,9 @@ export default function GameScreen() {
         setLastScoreChange(scoreChange);
         const finalScore = Math.max(0, tacScore + scoreChange);
         setTacScore(finalScore);
-        localStorage.setItem("tacpadel_score", finalScore.toString());
+        if (userIdRef.current) {
+          localStorage.setItem("tacpadel_score", finalScore.toString());
+        }
         setEarnedTP(tpReward);
 
         (async () => {
@@ -1325,7 +1402,7 @@ export default function GameScreen() {
                     .eq("tournament_id", activeTournamentId);
                 }
               } else {
-                // BONUS-DETAIL: Stamina bei Niederlage nur sofort löschen, wenn kein Re-Match mehr möglich ist!
+                // Stamina bei Niederlage nur sofort löschen, wenn kein Re-Match mehr möglich ist!
                 if (activeTournamentRound === 3 || retryUsed) {
                   const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                   if (savedTourStamina[activeTournamentId]) {
@@ -1366,7 +1443,9 @@ export default function GameScreen() {
         
         const finalScore = Math.max(0, tacScore + scoreChange);
         setTacScore(finalScore);
-        localStorage.setItem("tacpadel_score", finalScore.toString());
+        if (userIdRef.current) {
+          localStorage.setItem("tacpadel_score", finalScore.toString());
+        }
         setEarnedTP(0);
 
         (async () => {
@@ -1486,20 +1565,26 @@ export default function GameScreen() {
       }
     }
 
-    const gameStateToSave = {
-      playerScore: pScore,
-      aiScore: aScore,
-      courtState: nextCourt,
-      phase: nextPhase,
-      matchStats: stats,
-      stamina: staminaModeEnabled ? newStamina : undefined,
-      tournamentId: activeTournamentId,
-      tournamentRound: activeTournamentRound,
-      tournamentDifficulty: activeTournamentDifficulty,
-      activeAiProfile,
-      matchSeconds: matchSecondsRef.current // <-- TIMER LOKAL SPEICHERN
-    };
-    localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
+    // --- NEU: NUR SPEICHERN, WENN DER SPIELER EINGELOGGT IST! ---
+    if (userIdRef.current) {
+      const gameStateToSave = {
+        userId: userIdRef.current, // Account-Bindung
+        playerScore: pScore,
+        aiScore: aScore,
+        courtState: nextCourt,
+        phase: nextPhase,
+        matchStats: stats,
+        stamina: staminaModeEnabled ? newStamina : undefined,
+        tournamentId: activeTournamentId,
+        tournamentRound: activeTournamentRound,
+        tournamentDifficulty: activeTournamentDifficulty,
+        activeAiProfile,
+        matchSeconds: matchSecondsRef.current // <-- TIMER LOKAL SPEICHERN
+      };
+      localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
+    } else {
+      localStorage.removeItem("tacpadel_savegame");
+    }
   };
 
   const suppId = hitterId === "you" ? "partner" : "you";
@@ -1535,26 +1620,32 @@ export default function GameScreen() {
     );
   };
 
-  // --- NEU: Arena anhand des Turniers bestimmen ---
+  // --- Arena anhand des Turniers bestimmen ---
   const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
 
-  // --- Spielstand-Info für den Fortsetzen-Button auslesen ---
+  // --- Spielstand-Info für den Fortsetzen-Button auslesen (nur für eingeloggte User mit eigenem Savegame) ---
   let savedMatchSubtext = "";
-  const savedGameStr = localStorage.getItem("tacpadel_savegame");
-  if (savedGameStr) {
+  let hasValidSave = false;
+  const savedGameStr = userId ? localStorage.getItem("tacpadel_savegame") : null;
+  if (savedGameStr && userId) {
     try {
       const parsed = JSON.parse(savedGameStr);
-      if (parsed.tournamentId) {
-        const tour = TOURNAMENTS.find(t => t.id === parsed.tournamentId);
-        const rName = parsed.tournamentRound === 3 ? "Finale" : parsed.tournamentRound === 2 ? "Halbfinale" : "Viertelfinale";
-        savedMatchSubtext = `🏆 ${tour?.name || 'Turnier'} (${rName})`;
+      if (parsed.userId === userId) {
+        hasValidSave = true;
+        if (parsed.tournamentId) {
+          const tour = TOURNAMENTS.find(t => t.id === parsed.tournamentId);
+          const rName = parsed.tournamentRound === 3 ? "Finale" : parsed.tournamentRound === 2 ? "Halbfinale" : "Viertelfinale";
+          savedMatchSubtext = `🏆 ${tour?.name || 'Turnier'} (${rName})`;
+        } else {
+          savedMatchSubtext = `🎾 Einzelmatch vs ${parsed.activeAiProfile?.teamName || 'KI'}`;
+        }
+        savedMatchSubtext += ` | Score: ${parsed.playerScore}:${parsed.aiScore}`;
       } else {
-        savedMatchSubtext = `🎾 Einzelmatch vs ${parsed.activeAiProfile?.teamName || 'KI'}`;
+        localStorage.removeItem("tacpadel_savegame");
       }
-      savedMatchSubtext += ` | Score: ${parsed.playerScore}:${parsed.aiScore}`;
     } catch (e) {
-      savedMatchSubtext = "Gespeichertes Match";
+      localStorage.removeItem("tacpadel_savegame");
     }
   }
 
@@ -1616,7 +1707,7 @@ export default function GameScreen() {
         {isMenuOpen && !isTourOpen && (
           <div className="absolute inset-0 z-[200] bg-[#050b18] rounded-2xl overflow-hidden pointer-events-auto">
             
-            {/* --- NEU: TUTORIAL BUTTON IN DER ECKE --- */}
+            {/* --- TUTORIAL BUTTON IN DER ECKE --- */}
             <button
               onClick={() => setShowTutorial(true)}
               title="Tutorial wiederholen"
@@ -1631,6 +1722,18 @@ export default function GameScreen() {
             </div>
             <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-4 w-full">
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
+
+              {/* --- NEU: GAST-MODUS HINWEIS & LOGIN-ANREIZ --- */}
+              {!userId && (
+                <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-center backdrop-blur-md shadow-lg">
+                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">
+                    ⚠️ Gast-Modus aktiv
+                  </p>
+                  <p className="text-[10px] text-slate-300 leading-snug">
+                    Dein Fortschritt und laufende Matches werden beim Verlassen gelöscht. Logge dich ein, um Punkte, Ränge und Turniere dauerhaft zu sichern!
+                  </p>
+                </div>
+              )}
               
               {tacScore < 1500 ? (
                 <button 
@@ -1651,7 +1754,7 @@ export default function GameScreen() {
                 </button>
               )}
 
-              {savedGameStr && (
+              {hasValidSave && (
                 <button 
                   onClick={() => { if (loadGame()) setIsMenuOpen(false); else alert("Kein gültiger Speicherstand gefunden."); }}
                   className="w-full max-w-sm py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:scale-105 transition-all flex flex-col items-center justify-center gap-1.5"
@@ -1909,7 +2012,7 @@ export default function GameScreen() {
                      setActiveTournamentId(null); 
                      
                      if (playerScore < aiScore) {
-                       // BONUS-DETAIL: Wenn der Spieler endgültig aufgibt, gespeicherte Turnier-Ausdauer löschen
+                       // Wenn der Spieler endgültig aufgibt, gespeicherte Turnier-Ausdauer löschen
                        const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                        if (tourIdToClean && savedTourStamina[tourIdToClean]) {
                          delete savedTourStamina[tourIdToClean];

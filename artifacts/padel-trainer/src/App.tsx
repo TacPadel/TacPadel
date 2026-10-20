@@ -378,6 +378,58 @@ export default function App(): React.JSX.Element {
     return true; 
   };
 
+  // =========================================================================
+  // --- NEU: GAST-MODUS CLEANUP BEIM VERLASSEN DER SEITE ODER TAB-WECHSEL ---
+  // =========================================================================
+  useEffect(() => {
+    if (!user) {
+      // 1. Jegliche Match-Speicherstände von Gästen sofort entfernen
+      localStorage.removeItem("tacpadel_savegame");
+      localStorage.removeItem("tacpadel_tour_stamina");
+      localStorage.removeItem("tacpadel_score");
+      localStorage.removeItem("tacpadel_tac_points");
+      clearActiveSession();
+
+      // 2. Sobald der Gast den Trainer- oder Strategie-Tab verlässt -> Fortschritt zurücksetzen
+      if (activeTab !== "trainer" && activeTab !== "strategy") {
+        if (totalPoints !== 0) {
+          addPoints(-totalPoints);
+        }
+        const initialCount = SCENARIOS.filter(s => s.id <= 10).length;
+        const pool = shuffleIndices(initialCount);
+        setLevel("Schlag");
+        setRotation([pool[0], pool.slice(1)]);
+        setScore(0);
+        setRoundsPlayed(0);
+        setWrongPool([]);
+        setIsRetryPhase(false);
+        setGameOver(false);
+        setShowRetryBanner(false);
+        setHasSubmitted(false);
+        setSelectedShot(null);
+        setSelectedZone(null);
+        setSelectedLaufZone(null);
+        setFeedbackMsg(null);
+        setAttempts(0);
+      }
+    }
+  }, [activeTab, user]);
+
+  useEffect(() => {
+    const handleGuestUnload = () => {
+      if (!user) {
+        localStorage.removeItem("tacpadel_savegame");
+        localStorage.removeItem("tacpadel_tour_stamina");
+        localStorage.removeItem("tacpadel_score");
+        localStorage.removeItem("tacpadel_tac_points");
+        clearActiveSession();
+      }
+    };
+    window.addEventListener("beforeunload", handleGuestUnload);
+    return () => window.removeEventListener("beforeunload", handleGuestUnload);
+  }, [user, clearActiveSession]);
+  // =========================================================================
+
   useEffect(() => {
     if (isProgressLoaded && !lockedLevels.includes("Simulation" as Level)) {
       const highestSpielzug = highestScores["Spielzug"] || 0;
@@ -417,7 +469,8 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     if (isProgressLoaded && !hasRestored) {
-      if (activeSession) {
+      // NUR wiederherstellen, wenn ein Benutzer eingeloggt ist!
+      if (activeSession && user) {
         setLevel(activeSession.level);
         setScore(activeSession.score);
         setRotation([activeSession.currentScenarioIndex, activeSession.rotationPool]);
@@ -432,10 +485,12 @@ export default function App(): React.JSX.Element {
         setFeedbackMsg(activeSession.feedbackMsg || null);
         
         setActiveTab("home"); 
+      } else if (!user) {
+        clearActiveSession();
       }
       setHasRestored(true);
     }
-  }, [isProgressLoaded, activeSession, hasRestored]);
+  }, [isProgressLoaded, activeSession, hasRestored, user, clearActiveSession]);
 
   useEffect(() => {
     if (hasRestored && user && !gameOver) {
@@ -692,7 +747,9 @@ export default function App(): React.JSX.Element {
       
       setScore((s) => {
         const newScore = s + 1;
-        updateHighScore(level, newScore);
+        if (user) {
+          updateHighScore(level, newScore);
+        }
         return newScore;
       });
 
@@ -718,15 +775,17 @@ export default function App(): React.JSX.Element {
         }
       }
       
-      const newTotal = totalPoints + pointsEarned;
-      addPoints(pointsEarned);
-      updateSupabaseScore(newTotal);
+      if (user) {
+        const newTotal = totalPoints + pointsEarned;
+        addPoints(pointsEarned);
+        updateSupabaseScore(newTotal);
+      }
 
       if (level === "Schlag" && scenario.validShots.length === 1) {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
     } else {
-      if ((level === "Spielzug" || isSimulation) && !activeCorrectionMode) {
+      if ((level === "Spielzug" || isSimulation) && !activeCorrectionMode && user) {
         const newTotal = totalPoints - 100;
         addPoints(-100); 
         updateSupabaseScore(newTotal); 
@@ -793,10 +852,9 @@ export default function App(): React.JSX.Element {
 
     setGameOver(true);
     
-    if (level === "Spielzug") {
+    if (level === "Spielzug" && user) {
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
     }
-    // HIER WURDE DER ALTE FEHLER ENTFERNT, DER LEVELS NACH ABSCHLUSS FALSCH GESPERRT HAT
   };
 
   const handleLevelChange = (newLevel: Level) => {
@@ -845,11 +903,10 @@ export default function App(): React.JSX.Element {
     await signOut(); 
     
     // 2. Den kompletten lokalen Cache des Geräts radikal leeren!
-    // Dadurch werden alle alten Scores, Trainer-Stände und Einstellungen gelöscht
     localStorage.clear();
     sessionStorage.clear();
     
-    // 3. Optional: Die aktiven Trainer-States in React zurücksetzen
+    // 3. Die aktiven Trainer-States in React zurücksetzen
     clearActiveSession();
     setLevel("Schlag");
     setScore(0);
@@ -864,9 +921,7 @@ export default function App(): React.JSX.Element {
     setFeedbackMsg(null);
     setWrongPool([]);
 
-    // 4. DER WICHTIGSTE SCHRITT: Einen harten Reload der App erzwingen!
-    // Das leert den gesamten Arbeitsspeicher (RAM) von React. 
-    // Der nächste Nutzer startet mit einer 100% frischen App, als hätte er sie neu installiert.
+    // 4. Harten Reload der App erzwingen
     window.location.reload(); 
   };
 
@@ -934,7 +989,7 @@ export default function App(): React.JSX.Element {
         {selectedPublicUserId && (
           <PublicProfileModal
             userId={selectedPublicUserId}
-            defaultTab={selectedPublicUserTab} /* <-- DAS IST DAS FEHLENDE STÜCK */
+            defaultTab={selectedPublicUserTab}
             onClose={() => setSelectedPublicUserId(null)}
           />
         )}
@@ -1009,8 +1064,8 @@ export default function App(): React.JSX.Element {
               >
                 <HomeView 
                   setActiveTab={setActiveTab} 
-                  currentScore={totalPoints}
-                  currentTacPoints={dbProfile?.tac_points || 0} 
+                  currentScore={user ? totalPoints : 0}
+                  currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0} 
                   userName={finalUserName}
                   userEmail={user?.email || ""}
                   userAvatar={finalAvatarUrl} 
@@ -1018,7 +1073,6 @@ export default function App(): React.JSX.Element {
                   dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} 
                   onPlayerClick={(id, listType) => {
                     setSelectedPublicUserId(id);
-                    // NEU: Wenn es die Season-Liste ist, öffne das Turnier-Modal!
                     setSelectedPublicUserTab(listType === "season" ? "tournament" : "single");
                   }}
                   onQuickStart={(specificIndex?: number) => {
@@ -1103,9 +1157,11 @@ export default function App(): React.JSX.Element {
                 <StrategyTrainer 
                   onBack={() => setActiveTab("trainer")}
                   onStrategyComplete={(points) => {
-                    const newTotal = totalPoints + points;
-                    addPoints(points);
-                    updateSupabaseScore(newTotal);
+                    if (user) {
+                      const newTotal = totalPoints + points;
+                      addPoints(points);
+                      updateSupabaseScore(newTotal);
+                    }
                   }}
                 />
               </motion.div>
@@ -1126,6 +1182,26 @@ export default function App(): React.JSX.Element {
                 transition={{ duration: 0.3 }}
                 className="w-full max-w-[1400px] mx-auto flex flex-col gap-4 text-slate-200 font-sans select-none pb-18"
               >
+                {/* NEU: GAST-HINWEIS IM TRAINER */}
+                {!user && (
+                  <div className="w-full bg-amber-950/40 border border-amber-500/40 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg mt-2">
+                    <div className="text-center sm:text-left">
+                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">
+                        ⚠️ Gast-Modus aktiv
+                      </span>
+                      <span className="text-xs text-slate-300">
+                        Dein Fortschritt und deine Punkte werden beim Verlassen des Trainers zurückgesetzt.
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("login")}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-[10px] uppercase tracking-widest rounded-lg shrink-0 transition-transform hover:scale-105 active:scale-95"
+                    >
+                      Jetzt einloggen ➔
+                    </button>
+                  </div>
+                )}
+
                 {/* 1. MASTER DASHBOARD */}
                 <div className="w-full bg-[#040914]/90 border border-orange-900/50 backdrop-blur-md p-4 lg:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden mt-2">
                   <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-orange-500/80 to-transparent" />
@@ -1135,7 +1211,7 @@ export default function App(): React.JSX.Element {
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                           <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">Taktik-Trainer</span>
-                          {/* NEUER BUTTON UM DAS TUTORIAL MANUELL NOCHMAL ANZUSCHAUEN */}
+                          {/* BUTTON UM DAS TUTORIAL MANUELL NOCHMAL ANZUSCHAUEN */}
                           <button 
                             onClick={() => setShowTutorial(true)}
                             className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] hover:bg-slate-700 hover:text-white transition-colors"
@@ -1149,7 +1225,7 @@ export default function App(): React.JSX.Element {
                       <div className="flex flex-col items-end lg:items-start pl-4 lg:pl-6 lg:border-l border-slate-700/50">
                         <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">Total Score</span>
                         <div className="text-xl lg:text-2xl leading-none font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.4)]">
-                          {totalPoints}
+                          {user ? totalPoints : 0}
                         </div>
                       </div>
                     </div>
@@ -1386,7 +1462,7 @@ export default function App(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* SHOT MODAL - JETZT MIT PROGRESSIVE DISCLOSURE */}
+                {/* SHOT MODAL - MIT PROGRESSIVE DISCLOSURE */}
                 <AnimatePresence>
                   {isShotModalOpen && (
                     <motion.div
@@ -1412,7 +1488,6 @@ export default function App(): React.JSX.Element {
                         </h3>
                       </div>
                       
-                      {/* Grid passt sich an die Anzahl der sichtbaren Schläge an */}
                       <div className={`grid gap-2 overflow-y-auto custom-scrollbar pb-10 ${level === "Schlag" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`}>
                         {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
