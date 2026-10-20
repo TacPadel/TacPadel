@@ -149,59 +149,85 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
           transition={{ duration: 0.2 }}
           className="w-full flex flex-col gap-4 text-slate-200 font-sans pb-24"
         >
-          <div className="bg-[#030611]/80 border border-slate-800/80 rounded-2xl p-6 lg:p-8 shadow-lg max-w-4xl mx-auto w-full mt-2">
-            
-            <button
-              onClick={() => setShowLegal(false)}
-              className="mb-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-cyan-400 transition-colors"
-            >
-              ← Zurück zum Lexikon
-            </button>
-            
-            <h2 className="text-xl font-bold text-cyan-400 mb-4">Haftungsausschluss (Disclaimer)</h2>
+          <h2 className="text-xl font-bold text-cyan-400 mb-4">Haftungsausschluss (Disclaimer)</h2>
             
             <div className="text-sm text-slate-400 space-y-4 leading-relaxed">
-              <p><strong className="text-slate-200">1. Gesundheitsrisiko & Verletzungsgefahr</strong><br/>
-              Padel-Tennis ist ein körperlich anspruchsvoller und dynamischer Sport. Die Nutzung der TacPadel App und die Ausführung der darin beschriebenen Schläge, Laufwege und Taktiken erfolgen ausdrücklich auf eigene Gefahr. Wir übernehmen keine Haftung für Verletzungen, körperliche Beschwerden oder Sachschäden, die durch das Nachspielen der Trainingsszenarien entstehen. Bitte wärme dich vor jedem Spiel ausreichend auf und passe die Intensität deinem persönlichen Fitnesslevel an.</p>
+              <p>
+                <strong className="text-slate-200">1. Gesundheitsrisiko & Verletzungsgefahr</strong><br/>
+                Padel-Tennis ist ein körperlich anspruchsvoller und dynamischer Sport. Die Nutzung der TacPadel App und die Ausführung der darin beschriebenen Schläge, Laufwege und Taktiken erfolgen ausdrücklich auf eigene Gefahr. Wir übernehmen keine Haftung für Verletzungen, körperliche Beschwerden oder Sachschäden, die durch das Nachspielen der Trainingsszenarien entstehen. Bitte wärme dich vor jedem Spiel ausreichend auf und passe die Intensität deinem persönlichen Fitnesslevel an.
+              </p>
               
-              <p><strong className="text-slate-200">2. Keine professionelle Beratung</strong><br/>
-              Die Inhalte, Tipps und Taktiken in dieser App dienen ausschließlich zu Informations- und Trainingszwecken. Sie ersetzen kein professionelles Training bei einem zertifizierten Padel-Coach oder medizinischen Rat bei Verletzungen.</p>
+              <p>
+                <strong className="text-slate-200">2. Keine professionelle Beratung</strong><br/>
+                Die Inhalte, Tipps und Taktiken in dieser App dienen ausschließlich zu Informations- und Trainingszwecken. Sie ersetzen kein professionelles Training bei einem zertifizierten Padel-Coach oder medizinischen Rat bei Verletzungen.
+              </p>
               
-              <p><strong className="text-slate-200">3. Haftung für Inhalte</strong><br/>
-              Die in dieser App dargestellten Taktiken und Szenarien wurden mit größter Sorgfalt erstellt. Dennoch übernehmen wir keine Gewähr für die Richtigkeit, Vollständigkeit oder garantierte Erfolge der Inhalte auf dem Platz.</p>
+              <p>
+                <strong className="text-slate-200">3. Haftung für Inhalte</strong><br/>
+                Die in dieser App dargestellten Taktiken und Szenarien wurden mit größter Sorgfalt erstellt. Dennoch übernehmen wir keine Gewähr für die Richtigkeit, Vollständigkeit oder garantierte Erfolge der Inhalte auf dem Platz.
+              </p>
               
               <h2 className="text-xl font-bold text-cyan-400 mb-4 mt-8">Datenschutzhinweise</h2>            
               
-              <p>Wir nehmen den Schutz deiner Daten ernst. Für die Nutzung der App und die Speicherung deines TacScores wird ein Account erstellt. Dabei werden grundlegende Daten (wie z.B. deine E-Mail-Adresse, dein gewählter Benutzername und deine erspielten Match-Ergebnisse) auf sicheren Servern unseres Datenbank-Dienstleisters (Supabase) gespeichert, damit du von verschiedenen Geräten auf deinen Spielstand zugreifen kannst.</p>
+              <p>
+                <strong className="text-slate-200">Nutzung als Gast (ohne Anmeldung):</strong><br/>
+                Du kannst das Grundlagen-Training und Einzel-Matches komplett ohne Registrierung spielen. Im Gast-Modus werden keinerlei personenbezogene Daten an unsere Server übertragen; deine Audio- und Spieleinstellungen werden lediglich lokal auf deinem Gerät (im LocalStorage) gespeichert.
+              </p>
+
+              <p>
+                <strong className="text-slate-200">Nutzung mit Spieler-Account:</strong><br/>
+                Für die dauerhafte Speicherung deines TacScores, die Teilnahme an der TP-Tour und die globale Rangliste kannst du freiwillig einen Account erstellen. Dabei werden deine E-Mail-Adresse, dein gewählter Spielername, ein optionales Profilbild und deine Spielstatistiken verschlüsselt auf den Servern unseres Datenbank-Dienstleisters (Supabase) gespeichert, damit du geräteübergreifend auf deinen Spielstand zugreifen kannst.
+              </p>
               
-              <p>Passwörter werden verschlüsselt verarbeitet. Wir geben deine Daten nicht zu Werbezwecken an Dritte weiter. Du kannst jederzeit die Löschung deines Accounts und aller damit verbundenen Daten anfragen.</p>
+              <p>
+                Passwörter werden ausschließlich verschlüsselt verarbeitet. Wir geben deine Daten nicht zu Werbezwecken an Dritte weiter. Du kannst deinen Account und alle damit verbundenen Daten jederzeit direkt in der App (im Profil-Tab ganz unten) oder per E-Mail an <a href="mailto:admin@tacpadel.de" className="text-cyan-400 hover:underline">admin@tacpadel.de</a> vollständig löschen.
+              </p>
+
+              {/* Direkte Links zur vollständigen Datenschutzerklärung für Google Play */}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <a
+                  href="https://tac-padel-api-server.vercel.app/privacy.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400 transition-colors"
+                >
+                  📄 Vollständige Datenschutzerklärung ↗
+                </a>
+                <a
+                  href="https://tac-padel-api-server.vercel.app/privacy.html#delete-account"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-xs font-bold text-red-400 transition-colors"
+                >
+                  🗑️ Info zur Kontolöschung ↗
+                </a>
+              </div>
               
               <div className="w-full h-px bg-slate-800 my-6" />
               
               <h2 className="text-xl font-bold text-cyan-400 mb-4">Impressum</h2>
-              <p>Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz)<br/><br/>
-              <strong className="text-slate-200">Betreiber der App:</strong><br/>
-              TacPadel<br/>
-              Boris Sredojevic<br/>
-              Brunnenstr. 26<br/>
-              47623 Kevelaer<br/>
-              <br/>
-              <strong className="text-slate-200">Kontakt:</strong><br/>
-              Telefon: +49 123 456789<br/>
-              E-Mail: admin@tacpadel.de<br/>
-              <br/>
-              <strong className="text-slate-200">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV:</strong><br/>
-              Boris Sredojevic<br/>
-              Brunnenstr. 26<br/>
-              47623 Kevelaer<br/>
-              <br/>
-              <strong className="text-slate-200">EU-Streitschlichtung:</strong><br/>
-              Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit: https://ec.europa.eu/consumers/odr/.
-              Unsere E-Mail-Adresse finden Sie oben im Impressum.<br/>
-              <br/>
-              <strong className="text-slate-200">Verbraucherstreitbeilegung/Universalschlichtungsstelle:</strong><br/>
-              Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>
-            </div>
+              <p>
+                Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz)<br/><br/>
+                <strong className="text-slate-200">Betreiber der App:</strong><br/>
+                TacPadel<br/>
+                Boris Sredojevic<br/>
+                Brunnenstr. 26<br/>
+                47623 Kevelaer<br/>
+                Deutschland<br/>
+                <br/>
+                <strong className="text-slate-200">Kontakt:</strong><br/>
+                Telefon: +49 172 1977728<br/>
+                E-Mail: <a href="mailto:support@tacpadel.com" className="text-cyan-400 hover:underline">support@tacpadel.com</a><br/>
+                <br/>
+                <strong className="text-slate-200">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV:</strong><br/>
+                Boris Sredojevic<br/>
+                Brunnenstr. 26<br/>
+                47623 Kevelaer<br/>
+                <br/>
+                <strong className="text-slate-200">Verbraucherstreitbeilegung / Universalschlichtungsstelle:</strong><br/>
+                Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.
+              </p>
+            
           </div>
         </motion.div>
       ) : (

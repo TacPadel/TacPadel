@@ -1025,7 +1025,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
           <div className="flex flex-wrap justify-center items-center gap-2.5 shrink-0">
             <a
-              href="https://tac-padel-api.server.vercel.app/privacy.html"
+              href="https://tac-padel-api-server.vercel.app/privacy.html"
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2.5 bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 rounded-lg text-[10px] font-black text-slate-300 hover:text-cyan-400 uppercase tracking-widest transition-all"
