@@ -209,7 +209,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
               <p>
                 Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz)<br/><br/>
                 <strong className="text-slate-200">Betreiber der App:</strong><br/>
-                TacPadel<br/>
+                TacPadel Academy<br/>
                 Boris Sredojevic<br/>
                 Brunnenstr. 26<br/>
                 47623 Kevelaer<br/>
