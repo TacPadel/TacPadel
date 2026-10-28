@@ -733,7 +733,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              👤 Dein Spind
+              Dein Spind
             </button>
             <button
               onClick={() => setActive3DView('trophies')}
@@ -743,7 +743,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              <span>🏆 Trophäen-Vault</span>
+              <span>Trophäen-Vault</span>
               <span className="px-1.5 py-0.5 text-[9px] rounded bg-black/40 text-purple-200">
                 {wonTrophies.length} Titel
               </span>
