@@ -1,53 +1,73 @@
-import React, { useRef, useEffect, useMemo } from "react";
+import React, { useRef, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Text } from "@react-three/drei";
 
 import { AiProfile } from "../../engine/AiProfiles"; 
 
-// --- Die offiziellen weißen Padel-Linien als 3D-Objekte ---
-function OfficialCourtLines() {
+// =========================================================
+// HILFSFUNKTION: Schwache / Ältere Geräte erkennen
+// =========================================================
+const detectLowEndDevice = (): boolean => {
+  try {
+    const manualSetting = localStorage.getItem("tacpadel_low_perf");
+    if (manualSetting === "true") return true;
+    if (manualSetting === "false") return false;
+
+    const nav = navigator as any;
+    if (nav.deviceMemory && nav.deviceMemory <= 4) return true;
+    if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
+  } catch (e) {}
+  return false;
+};
+
+// --- Die offiziellen weißen Padel-Linien als 3D-Objekte (Geometrie & Material geteilt) ---
+const OfficialCourtLines = React.memo(function OfficialCourtLines() {
   const thickness = 0.05; 
   const height = 0.025;   
   
-  const LineMaterial = <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1} />;
+  const lineMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: "#ffffff",
+    emissive: "#ffffff",
+    emissiveIntensity: 1
+  }), []);
 
   return (
     <group position={[0, height, 0]}>
       {/* Außenlinien */}
-      <mesh position={[0, 0, 9.975]}><boxGeometry args={[10, thickness, thickness]} />{LineMaterial}</mesh>
-      <mesh position={[0, 0, -9.975]}><boxGeometry args={[10, thickness, thickness]} />{LineMaterial}</mesh>
-      <mesh position={[4.975, 0, 0]}><boxGeometry args={[thickness, thickness, 20]} />{LineMaterial}</mesh>
-      <mesh position={[-4.975, 0, 0]}><boxGeometry args={[thickness, thickness, 20]} />{LineMaterial}</mesh>
+      <mesh position={[0, 0, 9.975]} material={lineMaterial}><boxGeometry args={[10, thickness, thickness]} /></mesh>
+      <mesh position={[0, 0, -9.975]} material={lineMaterial}><boxGeometry args={[10, thickness, thickness]} /></mesh>
+      <mesh position={[4.975, 0, 0]} material={lineMaterial}><boxGeometry args={[thickness, thickness, 20]} /></mesh>
+      <mesh position={[-4.975, 0, 0]} material={lineMaterial}><boxGeometry args={[thickness, thickness, 20]} /></mesh>
       
       {/* Aufschlaglinien */}
-      <mesh position={[0, 0, 6.95]}><boxGeometry args={[10, thickness, thickness]} />{LineMaterial}</mesh>
-      <mesh position={[0, 0, -6.95]}><boxGeometry args={[10, thickness, thickness]} />{LineMaterial}</mesh>
+      <mesh position={[0, 0, 6.95]} material={lineMaterial}><boxGeometry args={[10, thickness, thickness]} /></mesh>
+      <mesh position={[0, 0, -6.95]} material={lineMaterial}><boxGeometry args={[10, thickness, thickness]} /></mesh>
       
       {/* Mittellinie */}
-      <mesh position={[0, 0, 0]}><boxGeometry args={[thickness, thickness, 13.9]} />{LineMaterial}</mesh>
+      <mesh position={[0, 0, 0]} material={lineMaterial}><boxGeometry args={[thickness, thickness, 13.9]} /></mesh>
     </group>
   );
-}
+});
 
-/// --- DER OVALE, DREHENDE HOLOGRAMM-BANNER ---
-function HologramBanner() {
+// --- DER OVALE, DREHENDE HOLOGRAMM-BANNER ---
+const HologramBanner = React.memo(function HologramBanner({ lowQuality }: { lowQuality: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
 
   useFrame((_, delta) => {
     if (groupRef.current) {
-      groupRef.current.rotation.y += delta * 0.15; 
+      groupRef.current.rotation.y += Math.min(delta, 0.1) * 0.15; 
     }
   });
 
   const radius = 14; 
-  const textCount = 6; 
+  const textCount = lowQuality ? 4 : 6; 
 
   return (
     <group position={[0, 9, 5]} rotation={[0, 0, 0]} scale={[1.1, 1, 1.3]}>
       <group ref={groupRef}>
         <mesh>
-          <cylinderGeometry args={[radius, radius, 1.5, 64, 1, true]} />
+          <cylinderGeometry args={[radius, radius, 1.5, lowQuality ? 32 : 64, 1, true]} />
           <meshStandardMaterial 
             color="#00f0ff" 
             emissive="#00f0ff"
@@ -98,10 +118,10 @@ function HologramBanner() {
       </group>
     </group>
   );
-}
+});
 
 // --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Mit Team-Name) ---
-function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { userTeamName?: string, aiTeamName?: string }) {
+const TribuneBanners = React.memo(function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { userTeamName?: string, aiTeamName?: string }) {
   const leftRef = useRef<THREE.Group>(null);
   const rightRef = useRef<THREE.Group>(null);
 
@@ -121,7 +141,7 @@ function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { use
           letterSpacing={0.1}
           fillOpacity={0}
           strokeWidth={0.03}
-          strokeColor="#f97316" // Orange
+          strokeColor="#f97316"
           material-toneMapped={false}
         >
           {userTeamName.toUpperCase()}
@@ -136,7 +156,7 @@ function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { use
           letterSpacing={0.1}
           fillOpacity={0}
           strokeWidth={0.03}
-          strokeColor="#00f0ff" // Cyan
+          strokeColor="#00f0ff"
           material-toneMapped={false}
         >
           {aiTeamName.toUpperCase()}
@@ -144,11 +164,12 @@ function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { use
       </group>
     </group>
   );
-}
+});
 
-// --- ANIMIERTE 3D-MEEPLE-ZUSCHAUER ---
-function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string, aiScore: number | string }) {
-  const count = 450; 
+// --- HOCHOPTIMIERTE 3D-MEEPLE-ZUSCHAUER ---
+function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: number | string, aiScore: number | string, lowQuality: boolean }) {
+  // Auf älteren Geräten 180 statt 450 Zuschauer -> spart 60% Instanzen
+  const count = lowQuality ? 180 : 450; 
   
   const headRef = useRef<THREE.InstancedMesh>(null);
   const torsoRef = useRef<THREE.InstancedMesh>(null);
@@ -160,6 +181,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
   const cheerIntensity = useRef(2.5); 
   const prevPlayerScore = useRef(playerScore);
   const prevAiScore = useRef(aiScore);
+  const staticPlacedRef = useRef(false);
 
   useEffect(() => {
     if (playerScore !== prevPlayerScore.current || aiScore !== prevAiScore.current) {
@@ -169,6 +191,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     }
   }, [playerScore, aiScore]);
 
+  // Statische Positionen & Blickrichtungen EINMALIG berechnen (kein lookAt() mehr in useFrame!)
   const crowdData = useMemo(() => {
     const data = [];
     const rowsCount = 4.5; 
@@ -177,6 +200,7 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
     const startY = -0.6;      
     const stepY = 0.3;        
     const fansPerStand = count / 3; 
+    const tempObj = new THREE.Object3D();
 
     for (let i = 0; i < count; i++) {
       const rowIndex = Math.floor(Math.random() * rowsCount);
@@ -205,10 +229,33 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
       }
 
       const scale = 0.8 + Math.random() * 0.2;
-      const rotY = (Math.random() - 0.5) * 0.4;
-      data.push({ x, y, z, scale, rotY, baseColor, isBackStand });
+      const randomYaw = (Math.random() - 0.5) * 0.4;
+
+      // Blickrichtung einmalig vorab bestimmen
+      tempObj.position.set(x, y, z);
+      if (isBackStand) {
+        tempObj.lookAt(x, y, 0);
+      } else {
+        tempObj.lookAt(0, y, z);
+      }
+      const finalRotY = tempObj.rotation.y + randomYaw;
+
+      data.push({ x, y, z, scale, finalRotY, baseColor });
     }
     return data;
+  }, [count]);
+
+  // Direkte Referenzen statt 2.700 getObjectByName()-Aufrufe pro Frame
+  const dummyParts = useMemo(() => {
+    const group = new THREE.Group();
+    const head = new THREE.Object3D(); head.position.set(0, 0.55, 0);
+    const torso = new THREE.Object3D(); torso.position.set(0, 0.1, 0);
+    const lArm = new THREE.Object3D(); lArm.position.set(-0.22, 0.05, 0);
+    const rArm = new THREE.Object3D(); rArm.position.set(0.22, 0.05, 0);
+    const lLeg = new THREE.Object3D(); lLeg.position.set(-0.08, -0.35, 0);
+    const rLeg = new THREE.Object3D(); rLeg.position.set(0.08, -0.35, 0);
+    group.add(head, torso, lArm, rArm, lLeg, rLeg);
+    return { group, head, torso, lArm, rArm, lLeg, rLeg };
   }, []);
 
   useEffect(() => {
@@ -221,54 +268,41 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
       refs.forEach(ref => ref.current!.setColorAt(i, color));
     }
     refs.forEach(ref => { if (ref.current!.instanceColor) ref.current!.instanceColor.needsUpdate = true; });
-  }, [crowdData]);
-
-  const dummyGroup = useMemo(() => {
-    const g = new THREE.Group();
-    const head = new THREE.Object3D(); head.name = "head"; head.position.set(0, 0.55, 0);
-    const torso = new THREE.Object3D(); torso.name = "torso"; torso.position.set(0, 0.1, 0);
-    const lArm = new THREE.Object3D(); lArm.name = "lArm"; lArm.position.set(-0.22, 0.05, 0);
-    const rArm = new THREE.Object3D(); rArm.name = "rArm"; rArm.position.set(0.22, 0.05, 0);
-    const lLeg = new THREE.Object3D(); lLeg.name = "lLeg"; lLeg.position.set(-0.08, -0.35, 0);
-    const rLeg = new THREE.Object3D(); lLeg.name = "rLeg"; lLeg.position.set(0.08, -0.35, 0);
-    g.add(head, torso, lArm, rArm, lLeg, rLeg);
-    return g;
-  }, []);
+    staticPlacedRef.current = false;
+  }, [crowdData, count]);
 
   useFrame((state, delta) => {
-    const refs = [headRef, torsoRef, lArmRef, rArmRef, lLegRef, rLegRef];
-    if (refs.some(ref => !ref.current)) return;
+    if (!headRef.current || !torsoRef.current || !lArmRef.current || !rArmRef.current || !lLegRef.current || !rLegRef.current) return;
 
+    // Im Low-Quality-Modus: Wenn der Jubel vorbei ist und die Figuren stehen, 0% CPU verbrauchen!
+    if (lowQuality && cheerIntensity.current === 0 && staticPlacedRef.current) {
+      return;
+    }
+
+    const safeDelta = Math.min(delta, 0.1);
     if (cheerIntensity.current > 0.01) {
-      cheerIntensity.current -= delta * 0.3; 
+      cheerIntensity.current -= safeDelta * 0.3; 
     } else {
       cheerIntensity.current = 0;
+      staticPlacedRef.current = true;
     }
 
     const t = state.clock.elapsedTime;
-    const lArm = dummyGroup.getObjectByName("lArm")!;
-    const rArm = dummyGroup.getObjectByName("rArm")!;
+    const isCheering = cheerIntensity.current > 0;
+    const cheerFactor = Math.min(1, cheerIntensity.current);
+    const { group, head, torso, lArm, rArm, lLeg, rLeg } = dummyParts;
 
     for (let i = 0; i < count; i++) {
       const data = crowdData[i];
-      const idle = Math.sin(t * 2 + i) * 0.02; 
-      const jump = cheerIntensity.current > 0 
-        ? Math.max(0, Math.sin(t * 15 + i)) * 0.25 * Math.min(1, cheerIntensity.current) 
-        : 0;
+      const idle = lowQuality ? 0 : Math.sin(t * 2 + i) * 0.02; 
+      const jump = isCheering ? Math.max(0, Math.sin(t * 15 + i)) * 0.25 * cheerFactor : 0;
 
-      dummyGroup.position.set(data.x, data.y + idle + jump, data.z);
-      
-      if (data.isBackStand) {
-        dummyGroup.lookAt(data.x, dummyGroup.position.y, 0);
-      } else {
-        dummyGroup.lookAt(0, dummyGroup.position.y, data.z);
-      }
-      
-      dummyGroup.rotation.y += data.rotY;
-      dummyGroup.scale.set(data.scale, data.scale, data.scale);
+      group.position.set(data.x, data.y + idle + jump, data.z);
+      group.rotation.set(0, data.finalRotY, 0);
+      group.scale.setScalar(data.scale);
 
-      const armRaise = cheerIntensity.current > 0 
-        ? (Math.sin(t * 12 + i) * 0.5 + 0.5) * Math.PI * 0.8 * Math.min(1, cheerIntensity.current)
+      const armRaise = isCheering 
+        ? (Math.sin(t * 12 + i) * 0.5 + 0.5) * Math.PI * 0.8 * cheerFactor
         : 0;
 
       lArm.rotation.x = -armRaise;
@@ -276,40 +310,51 @@ function SpectatorCrowd({ playerScore, aiScore }: { playerScore: number | string
       lArm.rotation.z = armRaise * 0.15;
       rArm.rotation.z = -armRaise * 0.15;
 
-      dummyGroup.updateMatrixWorld(true);
-      refs.forEach(ref => {
-        const part = dummyGroup.getObjectByName(ref.current!.name);
-        if (part) ref.current!.setMatrixAt(i, part.matrixWorld);
-      });
+      group.updateMatrixWorld(true);
+
+      headRef.current.setMatrixAt(i, head.matrixWorld);
+      torsoRef.current.setMatrixAt(i, torso.matrixWorld);
+      lArmRef.current.setMatrixAt(i, lArm.matrixWorld);
+      rArmRef.current.setMatrixAt(i, rArm.matrixWorld);
+      lLegRef.current.setMatrixAt(i, lLeg.matrixWorld);
+      rLegRef.current.setMatrixAt(i, rLeg.matrixWorld);
     }
 
-    refs.forEach(ref => { ref.current!.instanceMatrix.needsUpdate = true; });
+    headRef.current.instanceMatrix.needsUpdate = true;
+    torsoRef.current.instanceMatrix.needsUpdate = true;
+    lArmRef.current.instanceMatrix.needsUpdate = true;
+    rArmRef.current.instanceMatrix.needsUpdate = true;
+    lLegRef.current.instanceMatrix.needsUpdate = true;
+    rLegRef.current.instanceMatrix.needsUpdate = true;
   });
+
+  const sphereSegs = lowQuality ? 8 : 12;
+  const capSegs = lowQuality ? 4 : 8;
 
   return (
     <group>
-      <instancedMesh ref={headRef} name="head" args={[undefined, undefined, count]} frustumCulled={false}>
-        <sphereGeometry args={[0.15, 12, 12]} />
+      <instancedMesh ref={headRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <sphereGeometry args={[0.15, sphereSegs, sphereSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={torsoRef} name="torso" args={[undefined, undefined, count]} frustumCulled={false}>
-        <capsuleGeometry args={[0.12, 0.3, 4, 8]} />
+      <instancedMesh ref={torsoRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.12, 0.3, 2, capSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={lArmRef} name="lArm" args={[undefined, undefined, count]} frustumCulled={false}>
-        <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
+      <instancedMesh ref={lArmRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.06, 0.25, 2, capSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={rArmRef} name="rArm" args={[undefined, undefined, count]} frustumCulled={false}>
-        <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
+      <instancedMesh ref={rArmRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.06, 0.25, 2, capSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={lLegRef} name="lLeg" args={[undefined, undefined, count]} frustumCulled={false}>
-        <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
+      <instancedMesh ref={lLegRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.06, 0.25, 2, capSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={rLegRef} name="rLeg" args={[undefined, undefined, count]} frustumCulled={false}>
-        <capsuleGeometry args={[0.06, 0.25, 4, 8]} />
+      <instancedMesh ref={rLegRef} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.06, 0.25, 2, capSegs]} />
         <meshStandardMaterial transparent opacity={0.8} toneMapped={false} />
       </instancedMesh>
     </group>
@@ -331,7 +376,6 @@ export interface ScoreboardProps {
   activeAiProfile?: AiProfile; 
   targetScore?: number; 
   matchTitle?: string;
-  // NEU: Arena-Model Prop hinzufügen
   arenaModel?: string; 
 }
 
@@ -351,34 +395,42 @@ export default function CourtFloor(props: ScoreboardProps) {
     activeAiProfile,
     targetScore = 10,
     matchTitle = "Match-Tiebreak",
-    arenaModel = "/TacPadel.glb" // Standardwert, falls nicht übergeben
+    arenaModel = "/TacPadel.glb"
   } = props;
 
-  // Dynamisches Laden des Models anstelle der harten Verdrahtung
+  const [lowQuality] = useState<boolean>(() => detectLowEndDevice());
+
+  // Dynamisches Laden des Models
   const { scene } = useGLTF(arenaModel);
 
   useEffect(() => {
     // WICHTIG: Den Abdunklungs-Shader nur anwenden, wenn es die Standard-Arena ist!
-    if (arenaModel !== "/TacPadel.glb") return;
+    if (arenaModel === "/TacPadel.glb") {
+      scene.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const name = child.name.toLowerCase();
+          const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
 
-    scene.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        const name = child.name.toLowerCase();
-        const isCourt = name.includes("zone") || name.includes("court") || name.includes("floor") || name.includes("grass") || name.includes("feld");
-
-        if (!isCourt) {
-          child.material.color = new THREE.Color("#020308"); 
-          child.material.roughness = 0.15; 
-          child.material.metalness = 0.85; 
-          child.material.envMapIntensity = 2.0; 
-        } else {
-          child.material.roughness = 0.3; 
-          child.material.metalness = 0.1; 
-          child.material.envMapIntensity = 1.0; 
+          if (!isCourt) {
+            child.material.color = new THREE.Color("#020308"); 
+            child.material.roughness = 0.15; 
+            child.material.metalness = 0.85; 
+            child.material.envMapIntensity = 2.0; 
+          } else {
+            child.material.roughness = 0.3; 
+            child.material.metalness = 0.1; 
+            child.material.envMapIntensity = 1.0; 
+          }
         }
-        child.material.needsUpdate = true;
+      });
+    }
+
+    // VRAM-Schutz: Wenn eine Turnier-Arena verlassen wird, aus dem Cache räumen
+    return () => {
+      if (arenaModel !== "/TacPadel.glb") {
+        useGLTF.clear(arenaModel);
       }
-    });
+    };
   }, [scene, arenaModel]);
 
   const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
@@ -389,9 +441,9 @@ export default function CourtFloor(props: ScoreboardProps) {
     <group name="Environment">
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
       <OfficialCourtLines />
-      <HologramBanner />
+      <HologramBanner lowQuality={lowQuality} />
       <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
-      <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} />
+      <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} lowQuality={lowQuality} />
 
       {/* DIE GROSSE LED-SCOREBOARD-WAND IM HINTERGRUND */}
       <group position={[0.25, 6.38, -11.7]} rotation={[0, 0, 0]}>

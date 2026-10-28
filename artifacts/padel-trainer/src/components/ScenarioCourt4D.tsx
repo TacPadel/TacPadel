@@ -1,12 +1,28 @@
 import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Environment, Text } from "@react-three/drei";
+import { OrbitControls, Html, Environment, Text, PerformanceMonitor, AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
 import * as THREE from "three";
 
 import { supabase } from "../lib/supabase";
 import Effects from "../components/ScenarioCourt3D/Effects";
 import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
+
+// =========================================================
+// HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
+// =========================================================
+const detectLowEndDevice = (): boolean => {
+  try {
+    const manualSetting = localStorage.getItem("tacpadel_low_perf");
+    if (manualSetting === "true") return true;
+    if (manualSetting === "false") return false;
+
+    const nav = navigator as any;
+    if (nav.deviceMemory && nav.deviceMemory <= 4) return true;
+    if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
+  } catch (e) {}
+  return false;
+};
 
 // =========================================================
 // 1. DYNAMISCHE ACTION-KAMERA (Fliegt zur gegnerischen Seite)
@@ -210,14 +226,16 @@ function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObjec
   ]);
 
   useFrame((_, delta) => {
+    const safeDelta = Math.min(delta, 0.1);
+
     if (!props.isPreparingShot && !props.hasSubmitted) {
       flightTimer.current = 0;
       cameraBallProgress.current = 0;
       targetPos.current.set(0, 12.5, 23);
       targetLook.current.set(0, -0.5, -2);
      
-      camera.position.lerp(targetPos.current, 4.0 * delta);
-      currentLook.current.lerp(targetLook.current, 4.0 * delta);
+      camera.position.lerp(targetPos.current, 4.0 * safeDelta);
+      currentLook.current.lerp(targetLook.current, 4.0 * safeDelta);
      
       if (props.controlsRef.current) {
         props.controlsRef.current.enabled = true;
@@ -259,14 +277,14 @@ function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObjec
       targetPos.current.set(camCoords.x, 2.0, camCoords.z);
       targetLook.current.set(start.x, 1.0, start.z + (dirZ * 4.0));
 
-      camera.position.lerp(targetPos.current, 5.0 * delta);
-      currentLook.current.lerp(targetLook.current, 5.0 * delta);
+      camera.position.lerp(targetPos.current, 5.0 * safeDelta);
+      currentLook.current.lerp(targetLook.current, 5.0 * safeDelta);
       camera.lookAt(currentLook.current);
       return;
     }
 
     if (props.hasSubmitted) {
-      flightTimer.current += delta;
+      flightTimer.current += safeDelta;
      
       const startCamPos = new THREE.Vector3(camCoords.x, 2.0, camCoords.z);
       const c3Coords = getZoneCenter3D(targetSide, "C3");
@@ -277,8 +295,8 @@ function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObjec
       if (flightTimer.current < DELAY_TIME) {
         targetPos.current.copy(startCamPos);
         targetLook.current.set(start.x, 1.0, start.z + (dirZ * 4.0));
-        camera.position.lerp(targetPos.current, 8.0 * delta);
-        currentLook.current.lerp(targetLook.current, 8.0 * delta);
+        camera.position.lerp(targetPos.current, 8.0 * safeDelta);
+        currentLook.current.lerp(targetLook.current, 8.0 * safeDelta);
       }
       else {
         const timeInSeconds = (props.timerDuration || 3000) / 1000;
@@ -291,13 +309,13 @@ function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObjec
           currentTrackingSpeed = baseSpeed * 0.50;
         }
 
-        cameraBallProgress.current += delta * currentTrackingSpeed;
+        cameraBallProgress.current += safeDelta * currentTrackingSpeed;
         const p = cameraBallProgress.current;
 
         const maxCurves = Math.max(1, curves.length);
         const moveProgress = Math.min(1.0, p / maxCurves);
         targetPos.current.copy(startCamPos).lerp(c3Pos, moveProgress);
-        camera.position.lerp(targetPos.current, 10.0 * delta);
+        camera.position.lerp(targetPos.current, 10.0 * safeDelta);
 
         if (curves.length > 0) {
           let currentCurveIndex = Math.floor(p);
@@ -311,7 +329,7 @@ function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObjec
         } else {
           targetLook.current.set(0, 0.5, 0);
         }
-        currentLook.current.lerp(targetLook.current, 15.0 * delta);
+        currentLook.current.lerp(targetLook.current, 15.0 * safeDelta);
       }
       camera.lookAt(currentLook.current);
     }
@@ -388,6 +406,10 @@ export default function ScenarioCourt4D(props: Props) {
   const [playerName, setPlayerName] = useState("Gast");
   const controlsRef = useRef<any>(null);
 
+  // --- NEU: DYNAMISCHE PERFORMANCE-ANPASSUNG ---
+  const [lowQuality, setLowQuality] = useState<boolean>(() => detectLowEndDevice());
+  const [dpr, setDpr] = useState<number>(() => (detectLowEndDevice() ? 0.85 : 1.25));
+
   useEffect(() => {
     if (props.onIntroFinished) {
       props.onIntroFinished();
@@ -423,16 +445,45 @@ export default function ScenarioCourt4D(props: Props) {
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas
-          dpr={[1, 1.5]}
+          dpr={dpr}
           camera={{ position: [0, 12.5, 23.0], fov: 45 }}
           gl={{
             antialias: false,
+            stencil: false,
+            depth: true,
+            precision: lowQuality ? "mediump" : "highp",
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.0,
             powerPreference: "high-performance"
           }}
+          onCreated={({ gl }) => {
+            gl.domElement.addEventListener("webglcontextlost", (e) => {
+              e.preventDefault();
+              console.warn("WebGL Context lost in ScenarioCourt4D – aktiviere Low-Quality Modus");
+              setLowQuality(true);
+              setDpr(0.7);
+            }, false);
+          }}
           className="w-full h-full cursor-crosshair"
         >
+          <PerformanceMonitor
+            onDecline={() => {
+              setLowQuality(true);
+              setDpr(0.75);
+            }}
+            onFallback={() => {
+              setLowQuality(true);
+              setDpr(0.65);
+            }}
+            onIncline={() => {
+              if (!detectLowEndDevice()) {
+                setDpr(1.3);
+              }
+            }}
+          />
+          <AdaptiveDpr pixelated />
+          <AdaptiveEvents />
+
           <color attach="background" args={['#010205']} />
          
           {!props.gameOver && (
@@ -448,7 +499,7 @@ export default function ScenarioCourt4D(props: Props) {
               enabled={!props.hasSubmitted && !props.isPreparingShot}
               enablePan={true}
               enableZoom={true}
-              enableDamping={true}
+              enableDamping={!lowQuality}
               dampingFactor={0.05}
               minDistance={8}
               maxDistance={27}
@@ -461,12 +512,17 @@ export default function ScenarioCourt4D(props: Props) {
             />
           )}
          
-          <ambientLight intensity={0.1} color="#080d1e" />
-          <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
-          <Environment preset="city" environmentIntensity={0.5} />
+          <ambientLight intensity={lowQuality ? 0.6 : 0.1} color="#080d1e" />
+          <directionalLight position={[0, 20, -10]} intensity={lowQuality ? 1.8 : 1.2} color="#ffffff" castShadow={false} />
+          
+          {lowQuality ? (
+            <hemisphereLight args={["#38bdf8", "#020617", 1.2]} />
+          ) : (
+            <Environment preset="city" environmentIntensity={0.5} />
+          )}
 
           <Suspense fallback={<Html center className="text-white font-bold tracking-widest">LADE ARENA...</Html>}>
-            <Effects />
+            {!lowQuality && <Effects />}
             <CourtFloor
               serverId={props.hitterId}
               playerScore={props.playerScore}

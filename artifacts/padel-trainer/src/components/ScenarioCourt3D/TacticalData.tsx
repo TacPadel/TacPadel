@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useEffect, memo } from "react";
 import * as THREE from "three";
 import { Plane, Html, QuadraticBezierLine, Cylinder, Sphere, Ring, Edges, Text, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
@@ -141,7 +141,7 @@ function calculatePreviewTrajectory(startPos: THREE.Vector3, targetPos: THREE.Ve
   return segments;
 }
 
-function AnimatedBall({
+const AnimatedBall = memo(function AnimatedBall({
   startPos, targetPos, schlagTyp, isAnimating, isNetCrash, isWallDirectCrash, flightTimeMs, isCaughtInAir, isCinematicMode
 }: {
   startPos: THREE.Vector3, targetPos: THREE.Vector3 | null, schlagTyp: string,
@@ -294,13 +294,15 @@ function AnimatedBall({
     return { curves: resultCurves, lengths: lens, totalLength: tLen, effectiveLength: effectiveLen };
   }, [startPos.x, startPos.z, targetPos?.x, targetPos?.z, schlagTyp, isNetCrash, isWallDirectCrash, isCaughtInAir]);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (!ballRef.current) return;
+    const safeDelta = Math.min(delta, 0.1);
+
     if (isAnimating && curves.length > 0 && effectiveLength > 0) {
       
       if (isCinematicMode) {
         if (delayTimer.current < 1.3) {
-          delayTimer.current += delta;
+          delayTimer.current += safeDelta;
           ballRef.current.position.set(startPos.x, 1.5, startPos.z);
           return;
         }
@@ -330,7 +332,7 @@ function AnimatedBall({
 
       const currentSpeed = baseSpeed * currentFriction;
 
-      distanceRef.current += currentSpeed * delta;
+      distanceRef.current += currentSpeed * safeDelta;
       let currentDist = distanceRef.current;
       
       if (currentDist >= totalLength) {
@@ -359,14 +361,14 @@ function AnimatedBall({
 
   return (
     <mesh ref={ballRef} position={[startPos.x, 1.5, startPos.z]}>
-      <sphereGeometry args={[0.15, 16, 16]} />
+      <sphereGeometry args={[0.15, 12, 12]} />
       <meshStandardMaterial color="#ccff00" emissive="#ccff00" emissiveIntensity={5} />
-      <pointLight color="#ccff00" intensity={2} distance={3} />
+      <pointLight color="#ccff00" intensity={1.5} distance={2.5} />
     </mesh>
   );
-}
+});
 
-function Real3DPlayer({
+const Real3DPlayer = memo(function Real3DPlayer({
   position, type, label, isGlowing, isHitter, onClick, disabled, modelUrl, rotation, hidePlayerLabels
 }: {
   position: THREE.Vector3, type: string, label: string,
@@ -382,10 +384,11 @@ function Real3DPlayer({
     if (groupRef.current) groupRef.current.position.set(position.x, 0, position.z);
   }, []);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (groupRef.current) {
+      const safeDelta = Math.min(delta, 0.1);
       const targetPos = new THREE.Vector3(position.x, 0, position.z);
-      groupRef.current.position.lerp(targetPos, 6.0 * delta);
+      groupRef.current.position.lerp(targetPos, 6.0 * safeDelta);
     }
   });
 
@@ -407,18 +410,18 @@ function Real3DPlayer({
       onPointerOut={(e) => { if (isInteractive) { e.stopPropagation(); document.body.style.cursor = 'default'; } }}
     >
       
-      <Ring args={[0.45, 0.5, 32]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+      <Ring args={[0.45, 0.5, 24]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <meshBasicMaterial color={baseColor} side={THREE.DoubleSide} transparent opacity={isGlowing ? 1 : 0.15} />
       </Ring>
 
       {isGlowing && (
         <group>
-          <Ring args={[0.65, 0.68, 32]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <Ring args={[0.65, 0.68, 24]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
             <meshBasicMaterial color={baseColor} side={THREE.DoubleSide} transparent opacity={0.7} />
           </Ring>
 
           <mesh position={[0, 0.6, 0]}>
-            <cylinderGeometry args={[0.55, 0.65, 1.2, 32, 1, true]} />
+            <cylinderGeometry args={[0.55, 0.65, 1.2, 16, 1, true]} />
             <shaderMaterial
               transparent
               depthWrite={false}
@@ -445,14 +448,14 @@ function Real3DPlayer({
             />
           </mesh>
           
-          <pointLight color={baseColor} intensity={2.5} distance={2.5} position={[0, 1.0, 0.5]} />
+          <pointLight color={baseColor} intensity={2.0} distance={2.0} position={[0, 1.0, 0.5]} />
         </group>
       )}
 
       <primitive object={clonedScene} scale={1.4} rotation={rotation || [0, 0, 0]} />
 
       <mesh position={[0, 1.6, 0]}>
-        <cylinderGeometry args={[0.45, 0.45, 3.2, 16]} />
+        <cylinderGeometry args={[0.45, 0.45, 3.2, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
@@ -479,11 +482,10 @@ function Real3DPlayer({
       )}
     </group>
   );
-}
+});
 
 export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; }) {
   
-  // Nutze entweder playerName, userName (wie in HomeView) oder als Fallback "DU"
   const currentUserName = props.playerName || props.userName || "DU";
 
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
@@ -508,29 +510,22 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
     
     const runRow = parseInt(runZone[1]);
 
-    // NEU: Gegner-Positionen auslesen für smarte Laufwege
     const o1Row = parseInt(props.positions.opp1[1]);
     const o2Row = parseInt(props.positions.opp2[1]);
     const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
 
-    // 1. Offensive Schläge & Netzspiel (Hier MUSST du auf Reihe 3, 4 oder 5 stehen)
-    // "BLOCK" ist jetzt hier drin!
     if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(shot)) {
         return runRow >= 3;
     }
     
-    // 2. Die neue, dynamische Bajada-Mechanik (HIER WAR DEIN ROTER FEHLER!)
     if (shot === "BAJADA") {
         if (oppsAtNet) {
-            // Gegner am Netz = Riskanter Passierschlag. Wir bleiben zur Absicherung hinten!
             return runRow <= 2; 
         } else {
-            // Gegner hinten = Laser-Bajada. Wir stürmen mit dem Schwung das Netz!
             return runRow >= 3; 
         }
     }
     
-    // 3. Defensive Grundschläge (Hinten absichern)
     if (["DRIVE"].includes(shot)) {
         return runRow <= 2;
     }
@@ -605,7 +600,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
             <group position={[posLeft.x, posLeft.y, posLeft.z]}>
               <Plane args={[1.95, 1.95]} rotation={[-Math.PI / 2, 0, 0]}
                  onClick={(e) => { e.stopPropagation(); if (!isLocked && props.onLaufZoneClick) props.onLaufZoneClick(zoneId); }}
-                  >
+                >
                 <meshStandardMaterial 
                   color={colorLeft} 
                   emissive={colorLeft} 
@@ -616,10 +611,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 />
                 
                 <Edges 
-                  linewidth={opLeft > 0 ? 2 : 1.5} 
+                  linewidth={opLeft > 0 ? 2 : 1} 
                   color={opLeft > 0 ? new THREE.Color(colorLeft).multiplyScalar(2) : defaultEdgeColor} 
                   transparent 
-                  opacity={opLeft > 0 ? 1 : 0.25} 
+                  opacity={opLeft > 0 ? 1 : 0.2} 
                 />
               </Plane>
             </group>
@@ -638,10 +633,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 />
                 
                 <Edges 
-                  linewidth={opRight > 0 ? 2 : 1.5} 
+                  linewidth={opRight > 0 ? 2 : 1} 
                   color={opRight > 0 ? new THREE.Color(colorRight).multiplyScalar(2) : defaultEdgeColor}
                   transparent 
-                  opacity={opRight > 0 ? 1 : 0.25} 
+                  opacity={opRight > 0 ? 1 : 0.2} 
                 />
               </Plane>
             </group>
@@ -741,7 +736,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
            }
          }
          
-         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={5} dashed dashScale={5} />;
+         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
       })()}
 
       {props.selectedPartnerZone && (() => {
@@ -760,7 +755,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
            }
          }
          
-         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={5} dashed dashScale={5} />;
+         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
       })()}
 
       {(() => {
@@ -786,12 +781,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           lineColor = "rgba(255, 255, 255, 0.6)"; 
         } else {
           
-          // Vor dem Absenden zählt die aktuelle Position, während der Flug-Animation (isLocked) der gespeicherte Abschlagpunkt des Balls!
           const hitFromZoneId = isLocked 
             ? (props.positions.ball.zone || props.positions[props.hitterId] || props.positions.you)
             : (props.positions[props.hitterId] || props.positions.you);
           
-          const hCol = hitFromZoneId[0];
           const hRow = parseInt(hitFromZoneId[1]);
           const tCol = targetZoneId[0];
           const tRow = parseInt(targetZoneId[1]);
@@ -800,120 +793,116 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           const o1Row = parseInt(props.positions.opp1[1]);
           const o2Row = parseInt(props.positions.opp2[1]);
           const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
-          const oppsAtBack = o1Row <= 2 && o2Row <= 2; 
 
-          // --- 1. GLOBALE POSITIONS-VERBOTE (FEHLER) ---
           if (["VOLLEY", "BLOCK", "SMASH"].includes(upperSType) && hRow <= 2) {
-            lineColor = "#ef4444"; // Überkopfbälle/Volleys von hinten verboten
+            lineColor = "#ef4444"; 
           } 
           else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow <= 1) {
-            lineColor = "#ef4444"; // Bandeja/Vibora ganz hinten an der Wand (Reihe 1) verboten
+            lineColor = "#ef4444"; 
           }
           else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow >= 4) {
-            lineColor = "#ef4444"; // Bandeja/Vibora ganz vorne (Reihe 4 und 5) verboten wegen Platzmangel
+            lineColor = "#ef4444"; 
           }
           else if (upperSType === "BAJADA" && hRow >= 3) {
-            lineColor = "#ef4444"; // Bajada muss von ganz hinten (Reihe 1 oder 2) gespielt werden
+            lineColor = "#ef4444"; 
           }
           else if (upperSType === "DRIVE" && hRow >= 4) {
-            lineColor = "#ef4444"; // Drive am Netz verboten (muss Volley sein)
+            lineColor = "#ef4444"; 
           }
-          // --- 2. SCHLAG-SPEZIFISCHE BEWERTUNG ---
           else {
             switch(upperSType) {
               case "AUFSCHLAG": {
-                const isCross = (["A", "B"].includes(hCol) && ["C", "D", "E"].includes(tCol)) || 
-                                (["D", "E"].includes(hCol) && ["A", "B", "C"].includes(tCol));
+                const isCross = (["A", "B"].includes(hitFromZoneId[0]) && ["C", "D", "E"].includes(tCol)) || 
+                                (["D", "E"].includes(hitFromZoneId[0]) && ["A", "B", "C"].includes(tCol));
                 if (!isCross || (tRow !== 2 && tRow !== 3)) {
-                  lineColor = "#ef4444"; // Regelfehler: Nicht diagonal oder falsche Reihe
+                  lineColor = "#ef4444"; 
                 } else if (tRow === 2 || ["A", "C", "E"].includes(tCol)) {
-                  lineColor = "#f97316"; // Riskanter Aufschlag auf die Linie
+                  lineColor = "#f97316"; 
                 } else {
-                  lineColor = "#34d399"; // Sicherer Aufschlag ins Feld
+                  lineColor = "#34d399"; 
                 }
                 break;
               }
                 
               case "DRIVE":
                 if (tRow >= 4 && oppsAtNet) {
-                  lineColor = "#ef4444"; // Tödlich: Flacher Drive in die Arme der Netzspieler
+                  lineColor = "#ef4444"; 
                 } else {
-                  lineColor = "#34d399"; // Alle anderen Drives sind grüne, solide Grundschläge!
+                  lineColor = "#34d399"; 
                 }
                 break;
                 
               case "VOLLEY":
                 if (tRow >= 4) {
-                  // Stop-Volley (Dropshot) vs. "In den Mann spielen"
                   lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
                 } else {
-                  lineColor = "#34d399"; // Alle tiefen und mittellangen Volleys sind GRÜN!
+                  lineColor = "#34d399"; 
                 }
                 break;
 
               case "BLOCK":
                 if (tRow <= 1) {
-                  lineColor = "#ef4444"; // Zu lang, wird zum Floater
+                  lineColor = "#ef4444"; 
                 } else {
-                  lineColor = "#34d399"; // Block am Netz abtropfen lassen ist eine sichere, GRÜNE Wahl!
+                  lineColor = "#34d399"; 
                 }
                 break;
                 
               case "LOB":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; // Zu kurz ins Halbfeld (Geschenk für den Smash)
+                  lineColor = "#ef4444"; 
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; // Perfekter tiefer Lob über die Netzspieler
+                  lineColor = "#34d399"; 
                 } else {
-                  lineColor = "#f97316"; // Harmlos gegen Grundlinienspieler (Orange)
+                  lineColor = "#f97316"; 
                 }
                 break;
                 
               case "CHIQUITA":
                 if (tRow <= 3) {
-                  lineColor = "#ef4444"; // Ziel zu lang
+                  lineColor = "#ef4444"; 
                 } else if (hRow >= 4) {
-                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; // Stoppball vom Netz
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; // Giftig auf die Füße der Vorrückenden
+                  lineColor = "#34d399"; 
                 } else {
-                  lineColor = "#f97316"; // Sinnlos gegen Spieler, die schon hinten stehen
+                  lineColor = "#f97316"; 
                 }
                 break;
                 
               case "BAJADA":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; // Zu kurz
+                  lineColor = "#ef4444"; 
                 } else if (oppsAtNet) {
-                  lineColor = "#f97316"; // Riskanter Passierschlag (Orange)
+                  lineColor = "#f97316"; 
                 } else {
-                  lineColor = "#34d399"; // Laser-Bajada ins freie Feld
+                  lineColor = "#34d399"; 
                 }
                 break;
                 
               case "BANDEJA":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; // Zu kurz (Geschenk für den Gegner)
+                  lineColor = "#ef4444"; 
                 } else {
-                  lineColor = "#34d399"; // Bandejas ins Halbfeld oder an die Wand sind GRÜN!
+                  lineColor = "#34d399"; 
                 }
                 break;
                 
               case "VIBORA":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; // Zu kurz
+                  lineColor = "#ef4444"; 
                 } else if (tCol === "C") {
-                  lineColor = "#f97316"; // Durch die Mitte verliert sie ihren Seitenschnitt (Orange)
+                  lineColor = "#f97316"; 
                 } else {
-                  lineColor = "#34d399"; // Satte Vibora in die Ecken (Grün)
+                  lineColor = "#34d399"; 
                 }
                 break;
                 
               case "SMASH":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; // Zu steil, landet meist im Netz
+                  lineColor = "#ef4444"; 
                 } else {
-                  lineColor = "#34d399"; // Harter Smash in den Hintercourt ist grün!
+                  lineColor = "#34d399"; 
                 }
                 break;
             }
@@ -923,7 +912,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         const segments = calculatePreviewTrajectory(startPos, targetPos, sType);
         
         return (
-          <group key={`preview-${startZoneId}-${targetZoneId}-${sType}-${lineColor}`}>
+          <group key={`preview-${startPos.x}-${targetPos.x}-${sType}-${lineColor}`}>
             {segments.map((seg, idx) => (
               <QuadraticBezierLine 
                 key={`seg-${idx}`}
@@ -931,7 +920,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
                 end={[seg.end.x, seg.end.y, seg.end.z]} 
                 mid={[seg.mid.x, seg.mid.y, seg.mid.z]} 
                 color={lineColor} 
-                lineWidth={props.previewShot ? (idx === 0 ? 5 : 2) : 2} 
+                lineWidth={props.previewShot ? (idx === 0 ? 4 : 2) : 2} 
                 dashed 
                 dashScale={props.previewShot ? 15 : 5} 
                 transparent={true}

@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Environment } from "@react-three/drei";
+import { OrbitControls, Html, Environment, PerformanceMonitor, AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
 import * as THREE from "three"; 
 
 import { supabase } from "../../lib/supabase";
@@ -8,15 +8,31 @@ import { supabase } from "../../lib/supabase";
 import Effects from "./Effects";
 import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
-import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles"; // AI_PROFILES hinzugefügt
+import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles";
 
 // =========================================================
-// 1. CINEMATIC INTRO KAMERA (Drohnen-Flug mit Pause)
+// HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
+// =========================================================
+const detectLowEndDevice = (): boolean => {
+  try {
+    const manualSetting = localStorage.getItem("tacpadel_low_perf");
+    if (manualSetting === "true") return true;
+    if (manualSetting === "false") return false;
+
+    const nav = navigator as any;
+    // Weniger oder gleich 4 GB RAM oder <= 4 CPU-Kerne
+    if (nav.deviceMemory && nav.deviceMemory <= 4) return true;
+    if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
+  } catch (e) {}
+  return false;
+};
+
+// =========================================================
+// 1. CINEMATIC INTRO KAMERA (Optimiert mit useRef statt useState!)
 // =========================================================
 function IntroCamera({ onFinished }: { onFinished: () => void }) {
-  const { camera } = useThree();
-  const [introProgress, setIntroProgress] = useState(0);
-  
+  const progressRef = useRef(0);
+  const finishedRef = useRef(false);
   const delayTimer = useRef(0);
   
   const cameraPath = useMemo(() => new THREE.CatmullRomCurve3([
@@ -38,7 +54,11 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
   ]), []);
 
   useFrame((state, delta) => {
-    delayTimer.current += delta;
+    if (finishedRef.current) return;
+
+    // Delta deckeln, damit die Kamera bei kurzen Lade-Rucklern nicht springt
+    const safeDelta = Math.min(delta, 0.1);
+    delayTimer.current += safeDelta;
 
     if (delayTimer.current < 1.2) {
       state.camera.position.copy(cameraPath.getPointAt(0));
@@ -47,17 +67,17 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     }
 
     const speed = 0.15; 
-    let newProgress = introProgress + delta * speed;
+    progressRef.current += safeDelta * speed;
 
-    if (newProgress >= 1) {
+    if (progressRef.current >= 1) {
+      progressRef.current = 1;
+      finishedRef.current = true;
       onFinished();
       return;
     }
 
-    setIntroProgress(newProgress);
-
-    const camPos = cameraPath.getPointAt(newProgress);
-    const lookTarget = lookAtPath.getPointAt(newProgress);
+    const camPos = cameraPath.getPointAt(progressRef.current);
+    const lookTarget = lookAtPath.getPointAt(progressRef.current);
 
     state.camera.position.copy(camPos);
     state.camera.lookAt(lookTarget);
@@ -70,7 +90,6 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
 // 1b. CINEMATIC OUTRO KAMERA (Perfekter Crash-Flug)
 // =========================================================
 function OutroCamera({ onCrash }: { onCrash: () => void }) {
-  const { camera } = useThree();
   const progressRef = useRef(0); 
   const hasCrashed = useRef(false);
   
@@ -89,8 +108,9 @@ function OutroCamera({ onCrash }: { onCrash: () => void }) {
   ]), []);
 
   useFrame((state, delta) => {
+    const safeDelta = Math.min(delta, 0.1);
     const speed = 0.35; 
-    progressRef.current += delta * speed;
+    progressRef.current += safeDelta * speed;
 
     if (progressRef.current >= 0.90 && !hasCrashed.current) {
       hasCrashed.current = true;
@@ -158,7 +178,8 @@ function DynamicActionCamera({
   useFrame((_, delta) => {
     if (!hasSubmitted) return;
 
-    timeSinceSubmit.current += delta;
+    const safeDelta = Math.min(delta, 0.1);
+    timeSinceSubmit.current += safeDelta;
 
     const sType = shotType?.toUpperCase() || "";
     const isPerfect = turnResult === "perfect";
@@ -194,8 +215,8 @@ function DynamicActionCamera({
       targetLook.current.set(0, 0, -2);
     }
 
-    camera.position.lerp(targetPos.current, speed * delta);
-    currentLook.current.lerp(targetLook.current, speed * delta);
+    camera.position.lerp(targetPos.current, speed * safeDelta);
+    currentLook.current.lerp(targetLook.current, speed * safeDelta);
     camera.lookAt(currentLook.current);
 
     if (isFinisher && timeSinceSubmit.current > 0.35) {
@@ -277,7 +298,6 @@ export interface Props {
   targetScore?: number;
   matchTitle?: string;
 
-  // NEU HINZUGEFÜGT FÜR TURNIER-ARENEN (aus GameScreen)
   arenaModel?: string; 
 }
 
@@ -285,8 +305,11 @@ export default function ScenarioCourt3D(props: Props) {
   const [introFinished, setIntroFinished] = useState(false);
   const [playerName, setPlayerName] = useState("Gast");
   const [partnerName, setPartnerName] = useState("Partner"); 
-  
   const [blackout, setBlackout] = useState(false);
+
+  // --- NEU: DYNAMISCHE PERFORMANCE-ANPASSUNG ---
+  const [lowQuality, setLowQuality] = useState<boolean>(() => detectLowEndDevice());
+  const [dpr, setDpr] = useState<number>(() => (detectLowEndDevice() ? 0.85 : 1.25));
   
   const controlsRef = useRef<any>(null);
 
@@ -338,21 +361,61 @@ export default function ScenarioCourt3D(props: Props) {
       {/* 3D CANVAS-SCHICHT */}
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas 
-          dpr={[1, 1.5]}
+          dpr={dpr}
           camera={{ position: [0, 12.5, 23.0], fov: 45 }} 
           gl={{ 
             antialias: false, 
+            stencil: false,
+            depth: true,
+            precision: lowQuality ? "mediump" : "highp",
             toneMapping: THREE.ACESFilmicToneMapping, 
             toneMappingExposure: 1.0, 
             powerPreference: "high-performance" 
           }}
+          onCreated={({ gl }) => {
+            // Verhindert kompletten App-Absturz, falls Android kurz den WebGL-Kontext verliert
+            gl.domElement.addEventListener("webglcontextlost", (e) => {
+              e.preventDefault();
+              console.warn("WebGL Context lost – schalte auf Low-Quality Modus");
+              setLowQuality(true);
+              setDpr(0.7);
+            }, false);
+          }}
           className="w-full h-full cursor-crosshair"
         >
+          {/* Automatischer FPS-Wächter */}
+          <PerformanceMonitor
+            onDecline={() => {
+              // Bei FPS-Einbruch sofort Post-Processing abschalten & Auflösung senken
+              setLowQuality(true);
+              setDpr(0.75);
+            }}
+            onFallback={() => {
+              // Falls das Handy dauerhaft kämpft -> minimaler Rettungs-Modus
+              setLowQuality(true);
+              setDpr(0.65);
+            }}
+            onIncline={() => {
+              // Nur hochregeln, wenn das Gerät nicht als Low-End eingestuft ist
+              if (!detectLowEndDevice()) {
+                setDpr(1.35);
+              }
+            }}
+          />
+          <AdaptiveDpr pixelated />
+          <AdaptiveEvents />
+
           <color attach="background" args={['#010205']} />
           
-          <ambientLight intensity={0.1} color="#080d1e" />
-          <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
-          <Environment preset="city" environmentIntensity={0.5} />
+          <ambientLight intensity={lowQuality ? 0.6 : 0.1} color="#080d1e" />
+          <directionalLight position={[0, 20, -10]} intensity={lowQuality ? 1.8 : 1.2} color="#ffffff" castShadow={false} />
+          
+          {/* Auf schwachen Geräten leichtes HemisphereLight statt schwerer HDRI-Textur */}
+          {lowQuality ? (
+            <hemisphereLight args={["#38bdf8", "#020617", 1.2]} />
+          ) : (
+            <Environment preset="city" environmentIntensity={0.5} />
+          )}
 
           <Suspense fallback={<Html center className="text-white font-bold tracking-widest uppercase">Arena lädt...</Html>}>
             
@@ -383,7 +446,7 @@ export default function ScenarioCourt3D(props: Props) {
                 enabled={!props.hasSubmitted} 
                 enablePan={true} 
                 enableZoom={true} 
-                enableDamping={true} 
+                enableDamping={!lowQuality} 
                 dampingFactor={0.05}
                 minDistance={8} 
                 maxDistance={27} 
@@ -401,7 +464,9 @@ export default function ScenarioCourt3D(props: Props) {
               <OutroCamera onCrash={() => setBlackout(true)} />
             )}
             
-            <Effects />
+            {/* Post-Processing (Bloom etc.) nur auf starken Geräten aktivieren! */}
+            {!lowQuality && <Effects />}
+
             <CourtFloor 
               serverId={props.hitterId} 
               playerScore={props.playerScore} 
@@ -416,7 +481,7 @@ export default function ScenarioCourt3D(props: Props) {
               activeAiProfile={props.activeAiProfile} 
               targetScore={props.targetScore}
               matchTitle={props.matchTitle}
-              arenaModel={props.arenaModel} // <-- WICHTIG: Hier wird das dynamische Modell durchgereicht!
+              arenaModel={props.arenaModel}
             /> 
             
             <TacticalData 

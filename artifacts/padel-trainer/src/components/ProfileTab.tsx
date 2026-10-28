@@ -6,9 +6,25 @@ import * as THREE from 'three';
 
 // --- Imports für KI-Profile & 3D ---
 import { AI_PROFILES } from '../engine/AiProfiles'; 
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Text } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
+
+// =========================================================
+// HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
+// =========================================================
+const detectLowEndDevice = (): boolean => {
+  try {
+    const manualSetting = localStorage.getItem("tacpadel_low_perf");
+    if (manualSetting === "true") return true;
+    if (manualSetting === "false") return false;
+
+    const nav = navigator as any;
+    if (nav.deviceMemory && nav.deviceMemory <= 4) return true;
+    if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
+  } catch (e) {}
+  return false;
+};
 
 // ==========================================
 // --- RPG MOCK DATENBANK (Reines UI-Mockup) ---
@@ -36,14 +52,39 @@ const getPartnerModifiers = (partnerId: string) => {
 };
 
 // ==========================================
+// --- KAMERA-WECHSLER FÜR DEN KOMBINIERTEN CANVAS ---
+// ==========================================
+function CameraSwitcher({ mode, controlsRef }: { mode: 'locker' | 'trophies', controlsRef: React.MutableRefObject<any> }) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    if (mode === 'locker') {
+      camera.position.set(0, 1.2, 4);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, 0, 0);
+        controlsRef.current.update();
+      }
+    } else {
+      camera.position.set(0, 2.5, 16);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, 2, 0);
+        controlsRef.current.update();
+      }
+    }
+  }, [mode, camera, controlsRef]);
+
+  return null;
+}
+
+// ==========================================
 // --- 3D TRON TROPHIES (Hologramm Style Bild-getreu) ---
 // ==========================================
-function TronTrophy({ position, tourId, onClick }: { position: [number, number, number], tourId: string, onClick: (id: string) => void }) {
+function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [number, number, number], tourId: string, onClick: (id: string) => void, lowQuality?: boolean }) {
   const ref = useRef<any>(null);
   
   // Sanfte Rotation der gesamten Trophäe
-  useFrame((state, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.4;
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += Math.min(delta, 0.1) * 0.4;
   });
 
   const idLower = tourId.toLowerCase();
@@ -52,6 +93,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
   
   const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
   const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
+  const tubeSteps = lowQuality ? 32 : 64;
 
   // --- ENERGIE-STRUDEL (VON UNTEN NACH OBEN BREITER) ---
   const { curve1, curve2 } = useMemo(() => {
@@ -62,9 +104,8 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
     for (let i = 0; i <= spiralSegments; i++) {
       const t = i / spiralSegments; // 0.0 bis 1.0
       
-      // Startet unten eng (0.15) am Griff und öffnet sich auf 0.45 (breit) um den Schläger
+      // Startet unten eng (0.15) am Griff und öffnet sich auf 0.55 um den Schläger
       const radius = 0.15 + (t * 0.4); 
-      
       const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
       
       // Erste Linie
@@ -112,16 +153,16 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
         {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
           <mesh>
-            <tubeGeometry args={[curve1, 64, 0.012, 8, false]} />
+            <tubeGeometry args={[curve1, tubeSteps, 0.012, 8, false]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
           <mesh>
-            <tubeGeometry args={[curve2, 64, 0.012, 8, false]} />
+            <tubeGeometry args={[curve2, tubeSteps, 0.012, 8, false]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.5} />
           </mesh>
         </group>
 
-        {/* === HOLOGRAPHISCHER PADLESCHLÄGER === */}
+        {/* === HOLOGRAPHISCHER PADELSCHLÄGER === */}
         <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 8]}>
           
           <mesh position={[0, 0.3, 0]}>
@@ -135,11 +176,11 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
           
           <group position={[0, 1.1, 0]}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.5, 0.5, 0.03, 32]} />
+              <cylinderGeometry args={[0.5, 0.5, 0.03, lowQuality ? 20 : 32]} />
               <meshStandardMaterial color="#020617" transparent opacity={0.7} roughness={0.2} metalness={0.9} />
             </mesh>
             <mesh rotation={[0, 0, 0]}>
-              <torusGeometry args={[0.5, 0.035, 16, 64]} />
+              <torusGeometry args={[0.5, 0.035, 16, lowQuality ? 32 : 64]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} />
             </mesh>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
@@ -176,7 +217,7 @@ function TronTrophy({ position, tourId, onClick }: { position: [number, number, 
 }
 
 // --- NEUER VITRINENSCHRANK ---
-function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophyClick: (id: string) => void }) {
+function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string[], onTrophyClick: (id: string) => void, lowQuality?: boolean }) {
   const cols = 3; 
   const minShelves = 4; 
   const numShelves = Math.max(minShelves, Math.ceil(trophies.length / cols));
@@ -190,7 +231,7 @@ function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophy
     <group position={[0, -2, 0]}> 
       
       {/* Tron Boden-Grid */}
-      <gridHelper args={[40, 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
+      <gridHelper args={[40, lowQuality ? 20 : 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
       
       {/* Vitrinen-Bodenplatte (Sockel) */}
       <mesh position={[0, -0.1, 0]}>
@@ -242,7 +283,8 @@ function TronCabinet({ trophies, onTrophyClick }: { trophies: string[], onTrophy
             key={`${tourId}-${idx}`} 
             tourId={tourId} 
             position={[xPos, yPos + 0.025, 0]} // +0.025 damit sie direkt auf dem Boden stehen
-            onClick={onTrophyClick} 
+            onClick={onTrophyClick}
+            lowQuality={lowQuality}
           />
         );
       })}
@@ -271,6 +313,21 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   // --- States für Kontolöschung ---
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- NEU: Umschalter für den gemeinsamen 3D-Canvas (Verhindert doppelte WebGL-Kontexte) ---
+  const [active3DView, setActive3DView] = useState<'locker' | 'trophies'>('locker');
+  const controlsRef = useRef<any>(null);
+
+  // --- NEU: Performance-Modus (Auf neuen Handys sofort false = Beste Qualität) ---
+  const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
+  const [dpr, setDpr] = useState<number>(() => (detectLowEndDevice() ? 0.8 : 1.25));
+
+  const toggleLowPerf = () => {
+    const newState = !lowPerfMode;
+    setLowPerfMode(newState);
+    setDpr(newState ? 0.8 : 1.25);
+    localStorage.setItem("tacpadel_low_perf", String(newState));
+  };
 
   const [showExplanations, setShowExplanations] = useState(() => localStorage.getItem("tacpadel_show_explanations") !== "false");
   const toggleExplanations = () => {
@@ -479,9 +536,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const newName = username.trim();
     const newTeam = teamName.trim();
     
-    // Nur speichern, wenn sich wirklich etwas geändert hat
     if (newName === savedUsername && newTeam === savedTeamName) return;
-    if (!newName || !newTeam) return; // Nichts speichern, wenn leer
+    if (!newName || !newTeam) return;
     
     setIsSaving(true);
     setMessage(null);
@@ -587,7 +643,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
       transition={{ duration: 0.18 }}
-      className="flex flex-col items-center justify-start p-4 sm:p-8 bg-[#040914]/90 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl max-w-3xl mx-auto mt-6 mb-24 gap-6 w-full"
+      className={`flex flex-col items-center justify-start p-4 sm:p-8 ${lowPerfMode ? 'bg-[#040914]' : 'bg-[#040914]/90 backdrop-blur-md'} border border-slate-800 rounded-2xl shadow-2xl max-w-3xl mx-auto mt-6 mb-24 gap-6 w-full`}
     >
       
       {/* ========================================= */}
@@ -661,34 +717,189 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full h-px bg-slate-800/60 my-2" />
 
       {/* ======================================================== */}
-      {/* 1.5 3D UMKLEIDEKABINE (Locker Room)                      */}
+      {/* 1.5 KOMBINIERTER 3D SHOWROOM (Spind & Trophäen-Vault)    */}
+      {/* Ein einziger Canvas verhindert VRAM-Crashes!             */}
       {/* ======================================================== */}
       <div className="w-full bg-[#050b14] border border-slate-800 rounded-2xl p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase">Dein Spind</h3>
-          <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">3D Ansicht</span>
+        
+        {/* Umschalter zwischen Spind und Trophäen */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="flex bg-[#03060c] p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
+            <button
+              onClick={() => { setActive3DView('locker'); setActiveTrophyBanner(null); }}
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                active3DView === 'locker'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              👤 Dein Spind
+            </button>
+            <button
+              onClick={() => setActive3DView('trophies')}
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
+                active3DView === 'trophies'
+                  ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <span>🏆 Trophäen-Vault</span>
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-black/40 text-purple-200">
+                {wonTrophies.length} Titel
+              </span>
+            </button>
+          </div>
+
+          <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">
+            {lowPerfMode ? "3D Eco-Modus" : "3D Ansicht"}
+          </span>
         </div>
-        <div className="w-full h-64 sm:h-72 bg-[#03060c] rounded-xl border border-slate-800/80 overflow-hidden relative shadow-inner cursor-grab active:cursor-grabbing">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-cyan-500/40 blur-[40px] pointer-events-none" />
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-orange-500/40 blur-[40px] pointer-events-none" />
-          <Canvas camera={{ position: [0, 1.2, 4], fov: 45 }}>
-            <ambientLight intensity={2.5} />
-            <directionalLight position={[0, 1.5, 3]} intensity={2.5} color="#ffffff" />
-            <spotLight position={[0, 4, 1]} intensity={3.0} angle={0.8} penumbra={1} />
-            <pointLight position={[-1.5, 1.5, 1.5]} intensity={15} color="#00f0ff" distance={10} />
-            <pointLight position={[1.5, 1.5, 1.5]} intensity={15} color="#ff7700" distance={10} />
-            <React.Suspense fallback={null}>
-              <PlayerShow />
-            </React.Suspense>
-            <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} minPolarAngle={Math.PI / 2.5} maxPolarAngle={Math.PI / 2} />
+
+        {/* Tour Ranking Fortschrittsbalken */}
+        <div className="w-full bg-[#030611]/90 border border-slate-800/80 rounded-xl p-3.5 flex flex-col gap-1.5">
+          <div className="flex justify-between items-end">
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Open</span>
+            <span className="text-[11px] font-black tracking-widest text-purple-400">{currentScore} TacScore</span>
+            <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Major</span>
+          </div>
+          <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden relative">
+            <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
+            <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
+            <div 
+              className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
+              style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} 
+            />
+          </div>
+        </div>
+
+        {/* GEMEINSAMER 3D CANVAS CONTAINER */}
+        <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-64 sm:h-72 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
+          
+          {active3DView === 'locker' && !lowPerfMode && (
+            <>
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-cyan-500/40 blur-[40px] pointer-events-none" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-orange-500/40 blur-[40px] pointer-events-none" />
+            </>
+          )}
+
+          {active3DView === 'trophies' && (
+            <div className="absolute top-3 left-4 z-10 pointer-events-none">
+              <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">Tron Trophäen-Vault</span>
+            </div>
+          )}
+
+          {active3DView === 'trophies' && wonTrophies.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Vault noch leer</span>
+            </div>
+          )}
+
+          <Canvas 
+            dpr={dpr}
+            camera={{ position: [0, 1.2, 4], fov: 45 }}
+            gl={{
+              antialias: !lowPerfMode,
+              powerPreference: "high-performance",
+              precision: lowPerfMode ? "mediump" : "highp"
+            }}
+            onCreated={({ gl }) => {
+              gl.domElement.addEventListener("webglcontextlost", (e) => {
+                e.preventDefault();
+                setLowPerfMode(true);
+                setDpr(0.7);
+              }, false);
+            }}
+          >
+            <PerformanceMonitor
+              onDecline={() => {
+                setLowPerfMode(true);
+                setDpr(0.75);
+              }}
+              onFallback={() => {
+                setLowPerfMode(true);
+                setDpr(0.65);
+              }}
+              onIncline={() => {
+                if (!detectLowEndDevice()) {
+                  setDpr(1.5);
+                }
+              }}
+            />
+            <AdaptiveDpr pixelated />
+
+            <CameraSwitcher mode={active3DView} controlsRef={controlsRef} />
+
+            {active3DView === 'locker' ? (
+              <>
+                <ambientLight intensity={2.5} />
+                <directionalLight position={[0, 1.5, 3]} intensity={2.5} color="#ffffff" />
+                {!lowPerfMode && (
+                  <>
+                    <spotLight position={[0, 4, 1]} intensity={3.0} angle={0.8} penumbra={1} />
+                    <pointLight position={[-1.5, 1.5, 1.5]} intensity={15} color="#00f0ff" distance={10} />
+                    <pointLight position={[1.5, 1.5, 1.5]} intensity={15} color="#ff7700" distance={10} />
+                  </>
+                )}
+                <React.Suspense fallback={null}>
+                  <PlayerShow />
+                </React.Suspense>
+                <OrbitControls 
+                  ref={controlsRef}
+                  enableZoom={false} 
+                  enablePan={false} 
+                  autoRotate 
+                  autoRotateSpeed={0.5} 
+                  minPolarAngle={Math.PI / 2.5} 
+                  maxPolarAngle={Math.PI / 2} 
+                />
+              </>
+            ) : (
+              <>
+                <ambientLight intensity={lowPerfMode ? 1.4 : 0.8} />
+                <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
+                <React.Suspense fallback={null}>
+                  <TronCabinet 
+                    trophies={wonTrophies} 
+                    onTrophyClick={(id) => setActiveTrophyBanner(id)} 
+                    lowQuality={lowPerfMode}
+                  />
+                </React.Suspense>
+                <OrbitControls 
+                  ref={controlsRef}
+                  target={[0, 2, 0]} 
+                  enableZoom={true} 
+                  maxDistance={14} 
+                  minDistance={3} 
+                  maxPolarAngle={Math.PI / 2 + 0.05} 
+                  minPolarAngle={Math.PI / 4} 
+                />
+              </>
+            )}
           </Canvas>
+
+          {/* DYNAMISCHES BANNER OVERLAY */}
+          <AnimatePresence>
+            {active3DView === 'trophies' && activeTrophyBanner && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20, scale: 0.9 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                onClick={() => setActiveTrophyBanner(null)}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-slate-900/95 border border-cyan-500/50 rounded-xl p-4 shadow-[0_0_20px_rgba(6,182,212,0.4)] cursor-pointer z-20 flex flex-col items-center text-center"
+              >
+                <span className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-1">Sieger</span>
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">{formatTourName(activeTrophyBanner)}</h4>
+                <span className="text-[8px] text-slate-400 mt-2">Klicken zum Schließen</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
       {/* ========================================= */}
-      {/* 2. STATS, AUSRÜSTUNG & ROADMAP/TROPHÄEN   */}
+      {/* 2. STATS & AUSRÜSTUNG                     */}
       {/* ========================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
@@ -790,80 +1001,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               
             </div>
 
-          </div>
-        </div>
-
-        {/* --- 3D TROPHÄENSCHRANK --- */}
-        <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between mt-2">
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[10px] font-black tracking-widest text-purple-400 uppercase">Tour Ranking & Trophäen</h3>
-              <span className="text-[10px] font-bold text-purple-300 bg-purple-900/30 px-2 py-1 rounded border border-purple-500/30">
-                {wonTrophies.length} Titel
-              </span>
-            </div>
-            
-            <div className="flex justify-between items-end mb-1">
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Open</span>
-              <span className="text-[11px] font-black tracking-widest text-purple-400">{currentScore} TacScore</span>
-              <span className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Major</span>
-            </div>
-            
-            <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden mb-4 relative">
-              <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
-              <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
-              <div className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
-                   style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} />
-            </div>
-
-            {/* TRON 3D CABINET CONTAINER */}
-            <div className="w-full bg-[#020408] rounded-xl border border-cyan-900/50 p-0 h-[380px] relative overflow-hidden shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]">
-              <div className="absolute top-3 left-4 z-10 pointer-events-none">
-                <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">Tron Trophäen-Vault</span>
-              </div>
-
-              {wonTrophies.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                  <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Vault noch leer</span>
-                </div>
-              )}
-
-              <Canvas camera={{ position: [0, 2.5, 16], fov: 45 }}>
-                <ambientLight intensity={0.8} />
-                <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
-                
-                <React.Suspense fallback={null}>
-                  <TronCabinet trophies={wonTrophies} onTrophyClick={(id) => setActiveTrophyBanner(id)} />
-                </React.Suspense>
-                
-                <OrbitControls 
-                  target={[0, 2, 0]} 
-                  enableZoom={true} 
-                  maxDistance={14} 
-                  minDistance={3} 
-                  maxPolarAngle={Math.PI / 2 + 0.05} 
-                  minPolarAngle={Math.PI / 4} 
-                />
-              </Canvas>
-
-              {/* DYNAMISCHES BANNER OVERLAY */}
-              <AnimatePresence>
-                {activeTrophyBanner && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20, scale: 0.9 }} 
-                    animate={{ opacity: 1, y: 0, scale: 1 }} 
-                    exit={{ opacity: 0, y: 20, scale: 0.9 }}
-                    onClick={() => setActiveTrophyBanner(null)}
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-slate-900/95 border border-cyan-500/50 rounded-xl p-4 shadow-[0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md cursor-pointer z-20 flex flex-col items-center text-center"
-                  >
-                    <span className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-1">Sieger</span>
-                    <h4 className="text-sm font-black text-white uppercase tracking-wider">{formatTourName(activeTrophyBanner)}</h4>
-                    <span className="text-[8px] text-slate-400 mt-2">Klicken zum Schließen</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-            
           </div>
         </div>
       </div>
@@ -996,18 +1133,24 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 7. SPIELMECHANIK SETTINGS                 */}
+      {/* 7. SPIELMECHANIK & GRAFIK SETTINGS        */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik</h3>
-          <span className="text-[9px] text-slate-600 font-bold mt-1">Simulations-Limits und Mechaniken steuern</span>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik & Grafik</h3>
+          <span className="text-[9px] text-slate-600 font-bold mt-1">Simulations-Limits und Performance-Modus für ältere Geräte</span>
         </div>
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ausdauer</span>
             <button onClick={toggleStamina} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${staminaEnabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: staminaEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Perf.-Modus</span>
+            <button onClick={toggleLowPerf} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${lowPerfMode ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'bg-slate-700'}`}>
+              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: lowPerfMode ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
         </div>
