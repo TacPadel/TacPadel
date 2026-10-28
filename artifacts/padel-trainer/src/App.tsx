@@ -551,11 +551,16 @@ export default function App(): React.JSX.Element {
           try { await Browser.close(); } catch (e) {} 
         }
         
-        const rawParams = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
-        const params = new URLSearchParams(rawParams);
-        const code = params.get('code');
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
+        // Sicherstellen, dass sowohl ?code= (PKCE) als auch #access_token= (Implicit) zuverlässig erkannt werden
+        const hashPart = url.includes('#') ? url.split('#')[1] : '';
+        const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+
+        const hashParams = new URLSearchParams(hashPart);
+        const queryParams = new URLSearchParams(queryPart);
+
+        const code = queryParams.get('code') || hashParams.get('code');
+        const access_token = hashParams.get('access_token') || queryParams.get('access_token');
+        const refresh_token = hashParams.get('refresh_token') || queryParams.get('refresh_token');
 
         try {
           if (code) {
@@ -608,22 +613,33 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const handleGoogleLogin = async () => {
-    const redirectUrl = 'https://tac-padel-api-server.vercel.app';
+    const isNative = Capacitor.isNativePlatform();
+
+    // Nutzt auf Android & iOS (Capacitor) den bereits in Supabase erlaubten Pfad tacpadel://callback/
+    const redirectUrl = isNative
+      ? 'tacpadel://callback/'
+      : window.location.origin;
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: redirectUrl,
+        skipBrowserRedirect: isNative,
       }
     });
 
     if (error) {
       console.log("OAuth Fehler: " + error.message);
+      setAuthMsg({ type: 'error', text: "Google-Login fehlgeschlagen: " + error.message });
       return;
     }
 
     if (data?.url) {
-      window.location.href = data.url;
+      if (isNative) {
+        await Browser.open({ url: data.url });
+      } else {
+        window.location.href = data.url;
+      }
     }
   };
 
@@ -632,8 +648,19 @@ export default function App(): React.JSX.Element {
     setAuthLoading(true);
     setAuthMsg(null);
 
+    const isNative = Capacitor.isNativePlatform();
+    const redirectUrl = isNative
+      ? 'tacpadel://callback/'
+      : window.location.origin;
+
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+        }
+      });
       if (error) {
         setAuthMsg({ type: 'error', text: error.message });
       } else {

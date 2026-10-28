@@ -17,19 +17,19 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch">
 
-            <!-- 1. DIESER BLOCK WAR VERSCHWUNDEN: Sorgt für das Icon auf dem Startbildschirm -->
+            <!-- 1. Sorgt für das Icon auf dem Startbildschirm -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 2. UNSER LOGIN-BLOCK: Sorgt für die Rückkehr nach Supabase -->
-            <intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="tacpadel" android:host="callback" />
-</intent-filter>
+            <!-- 2. Sorgt für die Rückkehr nach dem Supabase / Google Login -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tacpadel" android:host="callback" />
+            </intent-filter>
 
         </activity>
 
@@ -45,6 +45,5 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>
