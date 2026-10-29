@@ -1,113 +1,222 @@
-import { useState, useEffect } from 'react';
-import { supabase } from './supabase';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from './supabase';
 
-export type Level = "Schlag" | "Schlagrichtung" | "Laufrichtung" | "Spielzug" | "Simulation";
+export type Level =
+  | 'Schlag'
+  | 'Schlagrichtung'
+  | 'Laufrichtung'
+  | 'Spielzug'
+  | 'Simulation'
+  | 'Strategie';
 
-// 1. Definiere das Interface VOR der Funktion
-export interface ProgressHookReturn {
-  lockedLevels: Level[];
-  setLockedLevels: (levels: Level[] | ((prev: Level[]) => Level[])) => Promise<void>;
-  highestScores: Record<string, number>;
-  updateHighScore: (level: Level, score: number) => Promise<void>;
-  activeSession: any;
-  saveActiveSession: (session: any) => Promise<void>;
-  clearActiveSession: () => Promise<void>;
-  isProgressLoaded: boolean;
+export interface ActiveSession {
+  level: Level;
+  score: number;
+  currentScenarioIndex: number;
+  rotationPool: number[];
+  wrongPool: number[];
+  isRetryPhase: boolean;
+  roundsPlayed: number;
+  hasSubmitted: boolean;
+  selectedShot: string | null;
+  selectedZone: string | null;
+  selectedLaufZone: string | null;
+  attempts: number;
+  feedbackMsg: string | null;
 }
 
-// 2. Weise dem Hook diesen Rückgabetyp zu
-export function useProgress(): ProgressHookReturn {
-  const { user } = useAuth();
-  const [lockedLevelsState, setLockedLevelsState] = useState<Level[]>([]);
-  const [highestScores, setHighestScoresState] = useState<Record<string, number>>({
-    Schlag: 0, Schlagrichtung: 0, Laufrichtung: 0, Spielzug: 0, Simulation: 0,
-  });
-  
-  // NEU: Session-States
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const [isProgressLoaded, setIsProgressLoaded] = useState(false);
+const DEFAULT_HIGH_SCORES: Record<string, number> = {
+  Schlag: 0,
+  Schlagrichtung: 0,
+  Laufrichtung: 0,
+  Spielzug: 0,
+  Simulation: 0
+};
 
+const DEFAULT_LOCKED_LEVELS: Level[] = ['Simulation'];
+
+// Alte globale Keys, die im Gast-Modus restlos gelöscht werden
+const LEGACY_GUEST_KEYS = [
+  'tacpadel_highestScores',
+  'tacpadel_highscores',
+  'tacpadel_lockedLevels',
+  'tacpadel_activeSession',
+  'tacpadel_progress'
+];
+
+export function useProgress() {
+  const { user } = useAuth();
+
+  const [highestScores, setHighestScores] = useState<Record<string, number>>(DEFAULT_HIGH_SCORES);
+  const [lockedLevels, setLockedLevelsState] = useState<Level[]>(DEFAULT_LOCKED_LEVELS);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [isProgressLoaded, setIsProgressLoaded] = useState<boolean>(false);
+
+  // Hilfsfunktion: Löscht alle ungebundenen Gast-Daten aus dem localStorage
+  const clearGuestStorage = useCallback(() => {
+    LEGACY_GUEST_KEYS.forEach((key) => localStorage.removeItem(key));
+  }, []);
+
+  // 1. Fortschritt beim Start oder Login/Logout laden
   useEffect(() => {
+    setIsProgressLoaded(false);
+
+    // GAST-MODUS: Alles auf Anfang setzen und nichts aus dem localStorage laden
     if (!user) {
-      setLockedLevelsState([]);
-      setHighestScoresState({ Schlag: 0, Schlagrichtung: 0, Laufrichtung: 0, Spielzug: 0, Simulation: 0 });
+      clearGuestStorage();
+      setHighestScores(DEFAULT_HIGH_SCORES);
+      setLockedLevelsState(DEFAULT_LOCKED_LEVELS);
       setActiveSession(null);
-      setIsProgressLoaded(false);
+      setIsProgressLoaded(true);
       return;
     }
 
-    const fetchProgress = async () => {
-      const { data, error } = await supabase
-        .from('user_progress')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+    // EINGELOGGTER NUTZER: Eigene Keys anhand der User-ID verwenden
+    const scoresKey = `tacpadel_highestScores_${user.id}`;
+    const lockedKey = `tacpadel_lockedLevels_${user.id}`;
+    const sessionKey = `tacpadel_activeSession_${user.id}`;
 
-      if (data) {
-        // HIER WIRD EXPLIZIT GECASTET:
-        const levels = (data.locked_levels as string[] || []) as Level[];
-        setLockedLevelsState(levels);
-        
-        setHighestScoresState(data.highest_scores || {
-          Schlag: 0, Schlagrichtung: 0, Laufrichtung: 0, Spielzug: 0, Simulation: 0,
-        });
-        setActiveSession(data.active_session);
-      } else if (error && error.code === 'PGRST116') {
-        await supabase.from('user_progress').insert([{ user_id: user.id }]);
+    // Alte globale Gast-Einträge löschen, damit nichts vermischt wird
+    clearGuestStorage();
+
+    // A) Highscores laden (aus localStorage oder Supabase user_metadata)
+    let loadedScores = { ...DEFAULT_HIGH_SCORES };
+    const savedScoresStr = localStorage.getItem(scoresKey);
+    if (savedScoresStr) {
+      try {
+        loadedScores = { ...DEFAULT_HIGH_SCORES, ...JSON.parse(savedScoresStr) };
+      } catch (e) {
+        console.error('Fehler beim Lesen der Highscores:', e);
       }
-      setIsProgressLoaded(true);
+    } else if (user.user_metadata?.highest_scores) {
+      loadedScores = { ...DEFAULT_HIGH_SCORES, ...user.user_metadata.highest_scores };
+      localStorage.setItem(scoresKey, JSON.stringify(loadedScores));
+    }
+    setHighestScores(loadedScores);
+
+    // B) Gesperrte Level laden
+    let loadedLocked: Level[] = [...DEFAULT_LOCKED_LEVELS];
+    const savedLockedStr = localStorage.getItem(lockedKey);
+    if (savedLockedStr) {
+      try {
+        loadedLocked = JSON.parse(savedLockedStr);
+      } catch (e) {
+        console.error('Fehler beim Lesen der gesperrten Level:', e);
+      }
+    } else if (Array.isArray(user.user_metadata?.locked_levels)) {
+      loadedLocked = user.user_metadata.locked_levels;
+      localStorage.setItem(lockedKey, JSON.stringify(loadedLocked));
+    }
+    setLockedLevelsState(loadedLocked);
+
+    // C) Aktive Sitzung laden
+    const savedSessionStr = localStorage.getItem(sessionKey);
+    if (savedSessionStr) {
+      try {
+        setActiveSession(JSON.parse(savedSessionStr));
+      } catch (e) {
+        localStorage.removeItem(sessionKey);
+        setActiveSession(null);
+      }
+    } else {
+      setActiveSession(null);
+    }
+
+    setIsProgressLoaded(true);
+  }, [user, clearGuestStorage]);
+
+  // 2. Cleanup beim Schließen des Tabs im Gast-Modus
+  useEffect(() => {
+    if (user) return;
+
+    const handleUnload = () => {
+      clearGuestStorage();
     };
 
-    fetchProgress();
-  }, [user]);
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      clearGuestStorage();
+    };
+  }, [user, clearGuestStorage]);
 
-  const setLockedLevels = async (newLevels: Level[] | ((prev: Level[]) => Level[])) => {
-    setLockedLevelsState(prev => {
-      const updated = typeof newLevels === 'function' ? newLevels(prev) : newLevels;
-      if (user) {
-        supabase.from('user_progress').update({ locked_levels: updated }).eq('user_id', user.id).then();
-      }
-      return updated;
-    });
-  };
+  // 3. Highscore aktualisieren
+  const updateHighScore = useCallback(
+    (level: Level, newScore: number) => {
+      setHighestScores((prev) => {
+        const currentBest = prev[level] || 0;
+        if (newScore <= currentBest) return prev;
 
-  const updateHighScore = async (level: Level, currentScore: number) => {
-    setHighestScoresState(prev => {
-      if (currentScore > (prev[level] || 0)) {
-        const newScores = { ...prev, [level]: currentScore };
+        const updated = { ...prev, [level]: newScore };
+
+        // NUR dauerhaft speichern, wenn der Spieler eingeloggt ist!
         if (user) {
-          supabase.from('user_progress').update({ highest_scores: newScores }).eq('user_id', user.id).then();
+          localStorage.setItem(`tacpadel_highestScores_${user.id}`, JSON.stringify(updated));
+          supabase.auth.updateUser({
+            data: { highest_scores: updated }
+          }).catch(() => {});
+        } else {
+          clearGuestStorage();
         }
-        return newScores;
+
+        return updated;
+      });
+    },
+    [user, clearGuestStorage]
+  );
+
+  // 4. Gesperrte Level setzen
+  const setLockedLevels: React.Dispatch<React.SetStateAction<Level[]>> = useCallback(
+    (value) => {
+      setLockedLevelsState((prev) => {
+        const nextLocked = typeof value === 'function' ? value(prev) : value;
+
+        if (user) {
+          localStorage.setItem(`tacpadel_lockedLevels_${user.id}`, JSON.stringify(nextLocked));
+          supabase.auth.updateUser({
+            data: { locked_levels: nextLocked }
+          }).catch(() => {});
+        } else {
+          clearGuestStorage();
+        }
+
+        return nextLocked;
+      });
+    },
+    [user, clearGuestStorage]
+  );
+
+  // 5. Aktive Trainer-Sitzung speichern (Nur für eingeloggte Spieler)
+  const saveActiveSession = useCallback(
+    (sessionData: ActiveSession) => {
+      if (!user) {
+        clearGuestStorage();
+        return;
       }
-      return prev;
-    });
-  };
+      setActiveSession(sessionData);
+      localStorage.setItem(`tacpadel_activeSession_${user.id}`, JSON.stringify(sessionData));
+    },
+    [user, clearGuestStorage]
+  );
 
-  // NEU: Session-Speicherung in Supabase
-  const saveActiveSession = async (sessionData: any) => {
-    setActiveSession(sessionData);
-    if (user) {
-      supabase.from('user_progress').update({ active_session: sessionData }).eq('user_id', user.id).then();
-    }
-  };
-
-  const clearActiveSession = async () => {
+  // 6. Aktive Sitzung löschen
+  const clearActiveSession = useCallback(() => {
     setActiveSession(null);
+    clearGuestStorage();
     if (user) {
-      supabase.from('user_progress').update({ active_session: null }).eq('user_id', user.id).then();
+      localStorage.removeItem(`tacpadel_activeSession_${user.id}`);
     }
-  };
+  }, [user, clearGuestStorage]);
 
-  return { 
-    lockedLevels: lockedLevelsState, 
-    setLockedLevels, 
-    highestScores, 
-    updateHighScore, 
-    activeSession, 
-    saveActiveSession, 
-    clearActiveSession, 
-    isProgressLoaded 
+  return {
+    lockedLevels,
+    setLockedLevels,
+    highestScores,
+    updateHighScore,
+    activeSession,
+    saveActiveSession,
+    clearActiveSession,
+    isProgressLoaded
   };
 }
