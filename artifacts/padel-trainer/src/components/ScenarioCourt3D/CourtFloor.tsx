@@ -377,6 +377,7 @@ export interface ScoreboardProps {
   targetScore?: number; 
   matchTitle?: string;
   arenaModel?: string; 
+  hideCrowd?: boolean; // <-- NEU: Steuert das Ausblenden der Zuschauer
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
@@ -395,10 +396,17 @@ export default function CourtFloor(props: ScoreboardProps) {
     activeAiProfile,
     targetScore = 10,
     matchTitle = "Match-Tiebreak",
-    arenaModel = "/TacPadel.glb"
+    arenaModel = "/TacPadel.glb",
+    hideCrowd
   } = props;
 
   const [lowQuality] = useState<boolean>(() => detectLowEndDevice());
+
+  // Automatische Erkennung:
+  // In ScenarioCourt4D ist isSimulationMode === true.
+  // In ScenarioCourt25 wird kein partnerName übergeben (props.partnerName === undefined).
+  // Nur in ScenarioCourt3D werden partnerName & Match-Daten übergeben -> Zuschauer nur dort sichtbar!
+  const shouldHideCrowd = hideCrowd ?? (isSimulationMode || props.partnerName === undefined);
 
   // Dynamisches Laden des Models
   const { scene } = useGLTF(arenaModel);
@@ -443,7 +451,11 @@ export default function CourtFloor(props: ScoreboardProps) {
       <OfficialCourtLines />
       <HologramBanner lowQuality={lowQuality} />
       <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
-      <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} lowQuality={lowQuality} />
+      
+      {/* Zuschauer werden nur in ScenarioCourt3D gerendert */}
+      {!shouldHideCrowd && (
+        <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} lowQuality={lowQuality} />
+      )}
 
       {/* DIE GROSSE LED-SCOREBOARD-WAND IM HINTERGRUND */}
       <group position={[0.25, 6.38, -11.7]} rotation={[0, 0, 0]}>

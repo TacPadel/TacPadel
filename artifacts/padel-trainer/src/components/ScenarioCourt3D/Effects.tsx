@@ -1,9 +1,13 @@
 import React from 'react';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 
-export default function Effects() {
+export default function Effects({ lowQuality = false }: { lowQuality?: boolean }) {
   return (
-    <EffectComposer disableNormalPass={true}>
+    <EffectComposer 
+      disableNormalPass={true}
+      // Standardmäßig 8 (dein scharfer Original-Look), nur im Eco-Modus 0
+      multisampling={lowQuality ? 0 : 8}
+    >
       <Bloom 
         mipmapBlur={true} 
         intensity={1.5} 

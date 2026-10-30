@@ -8,6 +8,20 @@ import Effects from "../components/ScenarioCourt3D/Effects";
 import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
 
+// Nur noch aktivieren, wenn der User den Schalter im Profil explizit umlegt
+// oder das Gerät extrem wenig RAM (<= 2 GB) hat!
+const isEcoModeEnabled = (): boolean => {
+  try {
+    const manualSetting = localStorage.getItem("tacpadel_low_perf");
+    if (manualSetting === "true") return true;
+    if (manualSetting === "false") return false;
+
+    const nav = navigator as any;
+    if (nav.deviceMemory && nav.deviceMemory <= 2) return true;
+  } catch (e) {}
+  return false;
+};
+
 export interface PlayerPositions {
   you: string;
   partner: string;
@@ -21,7 +35,6 @@ export interface PlayerPositions {
 }
 
 export interface Props {
-  // HIER IST DER FIX: "Strategie" wurde als offizielles Level hinzugefügt!
   level: "Schlag" | "Schlagrichtung" | "Laufrichtung" | "Spielzug" | "Strategie";
   positions: PlayerPositions;
   selectedZone: string | null;
@@ -63,9 +76,6 @@ export interface Props {
   onIntroFinished?: () => void;
 }
 
-// ==========================================
-// 1. ZONEN-BERECHNUNG & RASTER
-// ==========================================
 const getMarkingPosition = (zoneId: string, side: "left" | "right"): THREE.Vector3 => {
   if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0.02, 0);
   
@@ -107,27 +117,25 @@ const getMarkingPosition = (zoneId: string, side: "left" | "right"): THREE.Vecto
   return new THREE.Vector3(x + offsetX, 0.02, z + offsetZ);
 };
 
-function StaticCourtMarkings({ level, profiMode }: { level: string, profiMode?: boolean }) {
-  const letters = ["A", "B", "C", "D", "E"]; 
-  const zones: string[] = [];
-  
-  letters.forEach(letter => {
-    for (let i = 1; i <= 5; i++) {
-      zones.push(`${letter}${i}`);
-    }
-  });
+const ALL_ZONES: string[] = [];
+["A", "B", "C", "D", "E"].forEach(letter => {
+  for (let i = 1; i <= 5; i++) {
+    ALL_ZONES.push(`${letter}${i}`);
+  }
+});
 
+const StaticCourtMarkings = React.memo(function StaticCourtMarkings({ level, profiMode }: { level: string, profiMode?: boolean }) {
   const showPlayerSide = level === "Schlag" || profiMode;
   const showOpponentSide = level !== "Schlag";
 
   return (
     <group>
-      {showPlayerSide && zones.map((zone) => (
+      {showPlayerSide && ALL_ZONES.map((zone) => (
         <Text key={`right-${zone}`} position={getMarkingPosition(zone, "right")} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.45} color="#ffffff" fillOpacity={0.65} anchorX="center" anchorY="middle" material-toneMapped={false}>
           {zone}
         </Text>
       ))}
-      {showOpponentSide && zones.map((zone) => {
+      {showOpponentSide && ALL_ZONES.map((zone) => {
         const pos = getMarkingPosition(zone, "left");
         pos.y = 0.03; 
         return (
@@ -138,11 +146,8 @@ function StaticCourtMarkings({ level, profiMode }: { level: string, profiMode?: 
       })}
     </group>
   );
-}
+});
 
-// ==========================================
-// 2. SCHWEBENDE HOLOGRAMM-TEXTE 
-// ==========================================
 function FloatingPrompts({ level, profiMode, selectedZone, selectedLaufZone, hasSubmitted }: Props) {
   const zielZoneRef = useRef<any>(null);
   const laufZoneRef = useRef<any>(null);
@@ -197,13 +202,10 @@ function FloatingPrompts({ level, profiMode, selectedZone, selectedLaufZone, has
   );
 }
 
-// ==========================================
-// 3. LED-PANEL & FILTER (ABSOLUT SYNCHRON ZUR UI)
-// ==========================================
-function HidePlayerLabels() {
+function HidePlayerLabels({ trigger }: { trigger: any }) {
   const { scene } = useThree();
   useEffect(() => {
-    const hideInterval = setInterval(() => {
+    const hideLabels = () => {
       scene.traverse((obj: any) => {
         if (obj.text && typeof obj.text === 'string') {
           const t = obj.text.toLowerCase().trim();
@@ -212,9 +214,15 @@ function HidePlayerLabels() {
           }
         }
       });
-    }, 200);
-    return () => clearInterval(hideInterval);
-  }, [scene]);
+    };
+    hideLabels();
+    const t1 = setTimeout(hideLabels, 150);
+    const t2 = setTimeout(hideLabels, 600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [scene, trigger]);
   return null;
 }
 
@@ -227,7 +235,6 @@ function StadiumLEDScreen(props: Props) {
       const words = ["SUPER!", "KLASSE!", "STARK!", "PERFEKT!", "BOMBE!", "GENIAL!", "SAUBER!"];
       setMotivationText(words[Math.floor(Math.random() * words.length)]);
 
-      // 100% SICHERES FALLBACK: Lese den Erfolg direkt aus der externen UI (Mission Erfolgreich)
       const checkDOM = () => {
         const text = document.body.textContent?.toUpperCase() || "";
         if (text.includes("MISSION ERFOLGREICH")) {
@@ -270,7 +277,6 @@ function StadiumLEDScreen(props: Props) {
 
     let isSuccess = false;
 
-    // Normale Logik-Prüfung der Zonen (funktioniert bei Laufrichtung / Spielzug am besten)
     if (currentLevel === "laufrichtung") {
       isSuccess = (perfLauf === selLauf) || acceptLauf.includes(selLauf);
     } else if (props.profiMode) {
@@ -280,11 +286,9 @@ function StadiumLEDScreen(props: Props) {
       const laufOk = !needsLauf || perfLauf === selLauf || acceptLauf.includes(selLauf);
       isSuccess = targetOk && laufOk;
     } else if (currentLevel === "schlag") {
-      // Wenn im Schlag-Modus ausnahmsweise mal eine Zone existiert
       if (selZone && (best.includes(selZone) || accept.includes(selZone))) {
         isSuccess = true;
       } else {
-        // Interne Textanalyse als Reserve
         const res = (props.turnResult || "").toLowerCase();
         const hasError = res.startsWith("falsch") || 
                          res.startsWith("leider") || 
@@ -297,7 +301,6 @@ function StadiumLEDScreen(props: Props) {
       isSuccess = best.includes(selZone) || accept.includes(selZone);
     }
 
-    // 🔥 DER ABSOLUTE OVERRIDE: Wenn die UI unten "Erfolgreich" sagt, wird alles auf Richtig gesetzt
     if (domSuccess === true) {
       isSuccess = true;
     }
@@ -331,12 +334,10 @@ function StadiumLEDScreen(props: Props) {
   );
 }
 
-// ==========================================
-// 4. HAUPTKOMPONENTE
-// ==========================================
 export default function ScenarioCourt25(props: Props) {
   const [playerName, setPlayerName] = useState("Gast");
   const controlsRef = useRef<any>(null);
+  const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
 
   useEffect(() => {
     const fetchName = async () => {
@@ -355,7 +356,7 @@ export default function ScenarioCourt25(props: Props) {
   }, []);
 
   useEffect(() => {
-    const hideHtmlInterval = setInterval(() => {
+    const hideHtmlElements = () => {
       const container = document.querySelector('.tactical-25-container');
       if (container) {
         const elements = container.querySelectorAll('div, span');
@@ -373,33 +374,48 @@ export default function ScenarioCourt25(props: Props) {
           }
         });
       }
-    }, 200);
-    return () => clearInterval(hideHtmlInterval);
-  }, []);
+    };
+
+    hideHtmlElements();
+    const t1 = setTimeout(hideHtmlElements, 150);
+    const t2 = setTimeout(hideHtmlElements, 600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [props.positions, props.level, playerName]);
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none tactical-25-container">
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas 
-          dpr={[1, 1.5]}
+          // IMMER mindestens 1.0 (gestochen scharf!), auf normalen Geräten bis 1.5
+          dpr={ecoMode ? 1.0 : [1, 1.5]}
           camera={{ position: [0, 15.0, 20.0], fov: 52 }} 
           gl={{ 
-            antialias: false, 
+            antialias: true, // Verhindert die Treppchen an den schrägen Platzlinien!
             toneMapping: THREE.ACESFilmicToneMapping, 
             toneMappingExposure: 1.0, 
             powerPreference: "high-performance" 
+          }}
+          onCreated={({ gl }) => {
+            gl.domElement.addEventListener("webglcontextlost", (e) => {
+              e.preventDefault();
+              setEcoMode(true);
+            }, false);
           }}
           className="w-full h-full"
         >
           <color attach="background" args={['#010205']} />
           <OrbitControls ref={controlsRef} enablePan={false} enableZoom={false} enableRotate={false} target={[0, 0, -2]} />
           
+          {/* Original-Beleuchtung & Spiegelungen bleiben IMMER aktiv für den echten Look! */}
           <ambientLight intensity={0.1} color="#080d1e" />
           <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
           <Environment preset="city" environmentIntensity={0.5} />
 
           <Suspense fallback={<Html center className="text-white text-xs font-bold tracking-widest uppercase">Lade Arena...</Html>}>
-            <Effects />
+            <Effects lowQuality={ecoMode} />
             <CourtFloor 
               serverId={props.hitterId} 
               playerScore={props.playerScore} 
@@ -412,14 +428,10 @@ export default function ScenarioCourt25(props: Props) {
             /> 
             
             <StaticCourtMarkings level={props.level} profiMode={props.profiMode} />
-            
             <FloatingPrompts {...props} />
-            
             <StadiumLEDScreen {...props} />
-
-            <HidePlayerLabels />
-            {/* as any zwingt TypeScript, die neuen Props an die externe Komponente weiterzugeben */}
-            <TacticalData {...(props as any)} />
+            <HidePlayerLabels trigger={props.positions} />
+            <TacticalData {...(props as any)} hidePlayerLabels={true} />
           </Suspense>
         </Canvas>
       </div>
