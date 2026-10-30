@@ -379,54 +379,8 @@ export default function App(): React.JSX.Element {
   };
 
   // =========================================================================
-  // --- GAST-MODUS CLEANUP (Wartet erst, bis Supabase fertig geladen hat) ---
+  // --- SAUBERER GAST-UNLOAD (Löscht temporäre Daten NUR bei echten Gästen) ---
   // =========================================================================
-  useEffect(() => {
-    let isMounted = true;
-
-    const checkGuestCleanup = async () => {
-      // Prüfen, ob Supabase gerade noch im Hintergrund die Session wiederherstellt
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Wenn ein User eingeloggt ist (oder noch geladen wird), NICHTS als Gast löschen!
-      if (session?.user || !isMounted) return;
-
-      // Nur ausführen, wenn WIRKLICH kein User da ist (echter Gast-Modus):
-      localStorage.removeItem("tacpadel_savegame");
-      localStorage.removeItem("tacpadel_tour_stamina");
-      localStorage.removeItem("tacpadel_score");
-      localStorage.removeItem("tacpadel_tac_points");
-
-      if (activeTab !== "trainer" && activeTab !== "strategy") {
-        if (totalPoints !== 0) {
-          addPoints(-totalPoints);
-        }
-        const initialCount = SCENARIOS.filter(s => s.id <= 10).length;
-        const pool = shuffleIndices(initialCount);
-        setLevel("Schlag");
-        setRotation([pool[0], pool.slice(1)]);
-        setScore(0);
-        setRoundsPlayed(0);
-        setWrongPool([]);
-        setIsRetryPhase(false);
-        setGameOver(false);
-        setShowRetryBanner(false);
-        setHasSubmitted(false);
-        setSelectedShot(null);
-        setSelectedZone(null);
-        setSelectedLaufZone(null);
-        setFeedbackMsg(null);
-        setAttempts(0);
-      }
-    };
-
-    checkGuestCleanup();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeTab, user]);
-
   useEffect(() => {
     const handleGuestUnload = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1437,6 +1391,7 @@ export default function App(): React.JSX.Element {
                         onLaufZoneClick={handleLaufZoneClick}
                         activeChar="you"
                         hitterId="you"
+                        feedbackMsg={feedbackMsg} 
                       />
                     </div>
                   </div>

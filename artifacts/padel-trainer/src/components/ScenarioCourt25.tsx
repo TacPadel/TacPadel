@@ -21,7 +21,6 @@ export interface PlayerPositions {
 }
 
 export interface Props {
-  // HIER IST DER FIX: "Strategie" wurde als offizielles Level hinzugefügt!
   level: "Schlag" | "Schlagrichtung" | "Laufrichtung" | "Spielzug" | "Strategie";
   positions: PlayerPositions;
   selectedZone: string | null;
@@ -409,6 +408,7 @@ export default function ScenarioCourt25(props: Props) {
               isTimerPhase={props.isTimerPhase}
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
+              hideCrowd={true}
             /> 
             
             <StaticCourtMarkings level={props.level} profiMode={props.profiMode} />
