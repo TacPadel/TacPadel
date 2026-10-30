@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Environment, Text, PerformanceMonitor, AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
+import { OrbitControls, Html, Environment } from "@react-three/drei";
 import * as THREE from "three";
 
 import { supabase } from "../lib/supabase";
@@ -9,17 +9,16 @@ import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
 
 // =========================================================
-// HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
+// HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
 // =========================================================
-const detectLowEndDevice = (): boolean => {
+const isEcoModeEnabled = (): boolean => {
   try {
     const manualSetting = localStorage.getItem("tacpadel_low_perf");
     if (manualSetting === "true") return true;
     if (manualSetting === "false") return false;
 
     const nav = navigator as any;
-    if (nav.deviceMemory && nav.deviceMemory <= 4) return true;
-    if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
+    if (nav.deviceMemory && nav.deviceMemory <= 2) return true;
   } catch (e) {}
   return false;
 };
@@ -405,10 +404,7 @@ export interface Props {
 export default function ScenarioCourt4D(props: Props) {
   const [playerName, setPlayerName] = useState("Gast");
   const controlsRef = useRef<any>(null);
-
-  // --- NEU: DYNAMISCHE PERFORMANCE-ANPASSUNG ---
-  const [lowQuality, setLowQuality] = useState<boolean>(() => detectLowEndDevice());
-  const [dpr, setDpr] = useState<number>(() => (detectLowEndDevice() ? 0.85 : 1.25));
+  const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
 
   useEffect(() => {
     if (props.onIntroFinished) {
@@ -445,13 +441,10 @@ export default function ScenarioCourt4D(props: Props) {
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas
-          dpr={dpr}
+          dpr={ecoMode ? 1.0 : [1, 1.5]}
           camera={{ position: [0, 12.5, 23.0], fov: 45 }}
           gl={{
-            antialias: false,
-            stencil: false,
-            depth: true,
-            precision: lowQuality ? "mediump" : "highp",
+            antialias: true,
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.0,
             powerPreference: "high-performance"
@@ -459,31 +452,11 @@ export default function ScenarioCourt4D(props: Props) {
           onCreated={({ gl }) => {
             gl.domElement.addEventListener("webglcontextlost", (e) => {
               e.preventDefault();
-              console.warn("WebGL Context lost in ScenarioCourt4D – aktiviere Low-Quality Modus");
-              setLowQuality(true);
-              setDpr(0.7);
+              setEcoMode(true);
             }, false);
           }}
           className="w-full h-full cursor-crosshair"
         >
-          <PerformanceMonitor
-            onDecline={() => {
-              setLowQuality(true);
-              setDpr(0.75);
-            }}
-            onFallback={() => {
-              setLowQuality(true);
-              setDpr(0.65);
-            }}
-            onIncline={() => {
-              if (!detectLowEndDevice()) {
-                setDpr(1.3);
-              }
-            }}
-          />
-          <AdaptiveDpr pixelated />
-          <AdaptiveEvents />
-
           <color attach="background" args={['#010205']} />
          
           {!props.gameOver && (
@@ -499,7 +472,7 @@ export default function ScenarioCourt4D(props: Props) {
               enabled={!props.hasSubmitted && !props.isPreparingShot}
               enablePan={true}
               enableZoom={true}
-              enableDamping={!lowQuality}
+              enableDamping={true}
               dampingFactor={0.05}
               minDistance={8}
               maxDistance={27}
@@ -512,17 +485,12 @@ export default function ScenarioCourt4D(props: Props) {
             />
           )}
          
-          <ambientLight intensity={lowQuality ? 0.6 : 0.1} color="#080d1e" />
-          <directionalLight position={[0, 20, -10]} intensity={lowQuality ? 1.8 : 1.2} color="#ffffff" castShadow={false} />
-          
-          {lowQuality ? (
-            <hemisphereLight args={["#38bdf8", "#020617", 1.2]} />
-          ) : (
-            <Environment preset="city" environmentIntensity={0.5} />
-          )}
+          <ambientLight intensity={0.1} color="#080d1e" />
+          <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
+          <Environment preset="city" environmentIntensity={0.5} />
 
           <Suspense fallback={<Html center className="text-white font-bold tracking-widest">LADE ARENA...</Html>}>
-            {!lowQuality && <Effects />}
+            <Effects />
             <CourtFloor
               serverId={props.hitterId}
               playerScore={props.playerScore}
