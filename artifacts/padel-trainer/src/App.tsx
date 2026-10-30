@@ -20,6 +20,7 @@ import { DBPlayer } from "./components/HomeView";
 import ProfileTab from './components/ProfileTab';
 import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
+import ScenarioCourt4D from "./components/ScenarioCourt4D";
 import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
 
@@ -379,18 +380,24 @@ export default function App(): React.JSX.Element {
   };
 
   // =========================================================================
-  // --- NEU: GAST-MODUS CLEANUP BEIM VERLASSEN DER SEITE ODER TAB-WECHSEL ---
+  // --- GAST-MODUS CLEANUP (Wartet erst, bis Supabase fertig geladen hat) ---
   // =========================================================================
   useEffect(() => {
-    if (!user) {
-      // 1. Jegliche Match-Speicherstände von Gästen sofort entfernen
+    let isMounted = true;
+
+    const checkGuestCleanup = async () => {
+      // Prüfen, ob Supabase gerade noch im Hintergrund die Session wiederherstellt
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Wenn ein User eingeloggt ist (oder noch geladen wird), NICHTS als Gast löschen!
+      if (session?.user || !isMounted) return;
+
+      // Nur ausführen, wenn WIRKLICH kein User da ist (echter Gast-Modus):
       localStorage.removeItem("tacpadel_savegame");
       localStorage.removeItem("tacpadel_tour_stamina");
       localStorage.removeItem("tacpadel_score");
       localStorage.removeItem("tacpadel_tac_points");
-      clearActiveSession();
 
-      // 2. Sobald der Gast den Trainer- oder Strategie-Tab verlässt -> Fortschritt zurücksetzen
       if (activeTab !== "trainer" && activeTab !== "strategy") {
         if (totalPoints !== 0) {
           addPoints(-totalPoints);
@@ -412,12 +419,19 @@ export default function App(): React.JSX.Element {
         setFeedbackMsg(null);
         setAttempts(0);
       }
-    }
+    };
+
+    checkGuestCleanup();
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeTab, user]);
 
   useEffect(() => {
-    const handleGuestUnload = () => {
-      if (!user) {
+    const handleGuestUnload = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
         localStorage.removeItem("tacpadel_savegame");
         localStorage.removeItem("tacpadel_tour_stamina");
         localStorage.removeItem("tacpadel_score");
@@ -427,7 +441,7 @@ export default function App(): React.JSX.Element {
     };
     window.addEventListener("beforeunload", handleGuestUnload);
     return () => window.removeEventListener("beforeunload", handleGuestUnload);
-  }, [user, clearActiveSession]);
+  }, [clearActiveSession]);
   // =========================================================================
 
   useEffect(() => {
@@ -468,8 +482,8 @@ export default function App(): React.JSX.Element {
   };
 
   useEffect(() => {
+    // Warten, bis Supabase-Progress fertig geladen ist UND die Session steht
     if (isProgressLoaded && !hasRestored) {
-      // NUR wiederherstellen, wenn ein Benutzer eingeloggt ist!
       if (activeSession && user) {
         setLevel(activeSession.level);
         setScore(activeSession.score);
@@ -551,7 +565,6 @@ export default function App(): React.JSX.Element {
           try { await Browser.close(); } catch (e) {} 
         }
         
-        // Sicherstellen, dass sowohl ?code= (PKCE) als auch #access_token= (Implicit) zuverlässig erkannt werden
         const hashPart = url.includes('#') ? url.split('#')[1] : '';
         const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
 
@@ -615,7 +628,6 @@ export default function App(): React.JSX.Element {
   const handleGoogleLogin = async () => {
     const isNative = Capacitor.isNativePlatform();
 
-    // Nutzt auf Android & iOS (Capacitor) den bereits in Supabase erlaubten Pfad tacpadel://callback/
     const redirectUrl = isNative
       ? 'tacpadel://callback/'
       : window.location.origin;
@@ -1209,26 +1221,6 @@ export default function App(): React.JSX.Element {
                 transition={{ duration: 0.3 }}
                 className="w-full max-w-[1400px] mx-auto flex flex-col gap-4 text-slate-200 font-sans select-none pb-18"
               >
-                {/* NEU: GAST-HINWEIS IM TRAINER */}
-                {!user && (
-                  <div className="w-full bg-amber-950/40 border border-amber-500/40 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg mt-2">
-                    <div className="text-center sm:text-left">
-                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">
-                        ⚠️ Gast-Modus aktiv
-                      </span>
-                      <span className="text-xs text-slate-300">
-                        Dein Fortschritt und deine Punkte werden beim Verlassen des Trainers zurückgesetzt.
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab("login")}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-[10px] uppercase tracking-widest rounded-lg shrink-0 transition-transform hover:scale-105 active:scale-95"
-                    >
-                      Jetzt einloggen ➔
-                    </button>
-                  </div>
-                )}
-
                 {/* 1. MASTER DASHBOARD */}
                 <div className="w-full bg-[#040914]/90 border border-orange-900/50 backdrop-blur-md p-4 lg:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden mt-2">
                   <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-orange-500/80 to-transparent" />
@@ -1334,7 +1326,7 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col w-full">
                       <p className="text-xs text-slate-400 leading-relaxed mb-1.5">
                         {isSimulation ? "PRO RALLYE: Endlose Taktik-Simulation. Finde auf jede Situation die perfekte Antwort!" : 
-                         level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach dem Schlag sofort deinen Laufweg zur Absicherung." : 
+                         level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach the Schlag sofort deinen Laufweg zur Absicherung." : 
                          level === "Laufrichtung" ? "Ein guter Schlag nützt nichts ohne Feldabdeckung. Wähle dein Laufziel." : 
                          level === "Schlag" ? "Wähle den richtigen Schlag. Nutze das Tutorial um die Schläge kennenzulernen.":
                          "Analysiere das Szenario und spiele den richtigen Schlag und Trefferzone."}
@@ -1421,7 +1413,7 @@ export default function App(): React.JSX.Element {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-cyan-500/5 blur-[100px] rounded-full pointer-events-none" />
                     
                     <div className="absolute inset-0 w-full h-full pb-1 lg:pb-2">
-                      <ScenarioCourt25
+                      <ScenarioCourt4D
                         level={level as any}
                         positions={{
                           you: scenario.positions.you,
@@ -1446,7 +1438,6 @@ export default function App(): React.JSX.Element {
                         onLaufZoneClick={handleLaufZoneClick}
                         activeChar="you"
                         hitterId="you"
-                        feedbackMsg={feedbackMsg} 
                       />
                     </div>
                   </div>

@@ -1,107 +1,80 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabase';
-
-const STORAGE_KEYS = ['tacpadel_score', 'tacpadel_points', 'tacpadel_tac_points'];
+import { useAuth } from './AuthContext';
 
 export function usePoints() {
   const { user } = useAuth();
   const [points, setPoints] = useState<number>(0);
 
-  // Hilfsfunktion: Löscht alle lokalen Punkte-Speicherstände
-  const clearLocalGuestPoints = useCallback(() => {
-    STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-  }, []);
-
-  // 1. Punkte beim Start oder Account-Wechsel laden
   useEffect(() => {
+    if (!user) {
+      setPoints(0);
+      return;
+    }
+
     let isMounted = true;
 
-    const loadPoints = async () => {
-      // GAST-MODUS: Lokalen Speicher sofort bereinigen & bei 0 starten
-      if (!user) {
-        clearLocalGuestPoints();
-        if (isMounted) setPoints(0);
-        return;
-      }
+    const fetchPoints = async () => {
+      // 1. Versuche, die Punkte des Users abzufragen
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('points')
+        .eq('id', user.id)
+        .single();
 
-      // EINGELOGGTER SPIELER: Zuerst aus Supabase laden (Single Source of Truth)
-      try {
-        const { data, error } = await supabase
+      if (!isMounted) return;
+
+      if (error && error.code === 'PGRST116') {
+        // PGRST116 bedeutet: "Es wurde keine Zeile gefunden."
+        // Legt beim ersten Login automatisch eine neue Zeile an:
+        const { data: insertData } = await supabase
           .from('user_stats')
+          .insert([{ id: user.id, email: user.email, points: 0 }])
           .select('points')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (!error && data && typeof data.points === 'number') {
-          if (isMounted) {
-            setPoints(data.points);
-            localStorage.setItem('tacpadel_score', data.points.toString());
-          }
-          return;
+          .single();
+          
+        if (insertData && isMounted) {
+          setPoints(insertData.points);
+          localStorage.setItem('tacpadel_score', insertData.points.toString());
         }
-      } catch (err) {
-        console.error('Fehler beim Laden der Punkte aus Supabase:', err);
-      }
-
-      // Fallback für eingeloggte User (falls kurzzeitig offline)
-      const saved = localStorage.getItem('tacpadel_score');
-      if (saved && isMounted) {
-        setPoints(parseInt(saved, 10) || 0);
+      } else if (data) {
+        // Zeile existiert bereits, wir setzen die Punkte
+        setPoints(data.points);
+        localStorage.setItem('tacpadel_score', data.points.toString());
       }
     };
 
-    loadPoints();
+    fetchPoints();
 
     return () => {
       isMounted = false;
     };
-  }, [user, clearLocalGuestPoints]);
+  }, [user?.id]);
 
-  // 2. Sicherheits-Cleanup, wenn ein Gast den Tab schließt oder neu lädt
-  useEffect(() => {
-    if (user) return;
+  // Diese Funktion rufst du auf, wenn der User ein Szenario gelöst hat
+  const addPoints = useCallback(async (amountToAdd: number) => {
+    // Im Gast-Modus nichts in Supabase speichern!
+    if (!user) {
+      setPoints(prev => Math.max(0, prev + amountToAdd));
+      return;
+    }
 
-    const handleUnload = () => {
-      clearLocalGuestPoints();
-    };
+    const newTotal = Math.max(0, points + amountToAdd);
+    setPoints(newTotal); // Anzeige sofort aktualisieren
+    localStorage.setItem('tacpadel_score', newTotal.toString());
 
-    window.addEventListener('beforeunload', handleUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      clearLocalGuestPoints();
-    };
-  }, [user, clearLocalGuestPoints]);
+    // Danach den neuen Wert in der Datenbank speichern
+    await supabase
+      .from('user_stats')
+      .update({ points: newTotal })
+      .eq('id', user.id);
+  }, [user, points]);
 
-  // 3. Punkte hinzufügen / abziehen
-  const addPoints = useCallback(
-    (amount: number) => {
-      setPoints((prev) => {
-        const nextPoints = Math.max(0, prev + amount);
+  const resetGuestPoints = useCallback(() => {
+    if (!user) {
+      setPoints(0);
+    }
+  }, [user]);
 
-        // NUR im localStorage speichern, wenn der Spieler wirklich eingeloggt ist!
-        if (user) {
-          localStorage.setItem('tacpadel_score', nextPoints.toString());
-        } else {
-          clearLocalGuestPoints();
-        }
-
-        return nextPoints;
-      });
-    },
-    [user, clearLocalGuestPoints]
-  );
-
-  // 4. Punkte manuell zurücksetzen
-  const resetPoints = useCallback(() => {
-    setPoints(0);
-    clearLocalGuestPoints();
-  }, [clearLocalGuestPoints]);
-
-  return {
-    points,
-    addPoints,
-    setPoints,
-    resetPoints
-  };
+  return { points, addPoints, resetGuestPoints };
 }
