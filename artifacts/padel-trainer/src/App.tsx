@@ -20,7 +20,6 @@ import { DBPlayer } from "./components/HomeView";
 import ProfileTab from './components/ProfileTab';
 import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
-import ScenarioCourt4D from "./components/ScenarioCourt4D";
 import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
 
@@ -1413,7 +1412,7 @@ export default function App(): React.JSX.Element {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-cyan-500/5 blur-[100px] rounded-full pointer-events-none" />
                     
                     <div className="absolute inset-0 w-full h-full pb-1 lg:pb-2">
-                      <ScenarioCourt4D
+                      <ScenarioCourt25
                         level={level as any}
                         positions={{
                           you: scenario.positions.you,
