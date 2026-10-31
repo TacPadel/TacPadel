@@ -13,15 +13,15 @@ workflows:
     scripts:
       - name: Install and Build Web App
         script: |
-          # Node-Umgebung für den Container laden
-          node --version
-          npm --version
+          # Node-Umgebung explizit aktivieren
+          export PATH="$HOME/.nvm/versions/node/v22.11.0/bin:$PATH"
           
           cd artifacts/padel-trainer
           npm install --legacy-peer-deps
           npm run build
       - name: Sync Capacitor for iOS
         script: |
+          export PATH="$HOME/.nvm/versions/node/v22.11.0/bin:$PATH"
           cd artifacts/padel-trainer
           npx cap sync ios
       - name: Increment build number
