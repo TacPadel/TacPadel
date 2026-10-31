@@ -11,11 +11,10 @@ workflows:
         XCODE_SCHEME: "App"
       node: 22
     scripts:
-      - name: Install and Build Web App with pnpm
+      - name: Install pnpm globally and Build Web App
         script: |
-          # Corepack aktivieren, damit pnpm sofort bereitsteht
-          corepack enable
-          corepack prepare pnpm@latest --activate
+          # Corepack umgehen und pnpm direkt über npm installieren
+          npm install -g pnpm
           
           # Im Hauptverzeichnis die Workspace-Abhängigkeiten installieren
           pnpm install
@@ -25,7 +24,7 @@ workflows:
           pnpm run build
       - name: Sync Capacitor for iOS
         script: |
-          corepack enable
+          npm install -g pnpm
           cd artifacts/padel-trainer
           pnpm exec cap sync ios
       - name: Increment build number
