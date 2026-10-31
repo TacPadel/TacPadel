@@ -37,7 +37,7 @@ const TOUR_UNLOCK_SCORE = 2000;
 
 interface TourScreenProps {
   onClose: () => void;
-  onStartMatch?: (tournamentId: string, currentRound: number, baseDifficulty: number, reward: number) => void;
+  onStartMatch?: (tournamentId: string, currentRound: number, baseDifficulty: number, reward?: number) => void;
 }
 
 // -----------------------------------------------------------
@@ -182,7 +182,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       console.error(err);
     } finally {
       setLoadingLeaderboard(false);
-    }
+    };
   };
 
   const handlePlayerClick = async (player: LeaderboardEntry) => {
@@ -243,7 +243,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   };
 
   // -----------------------------------------------------------
-  // AKTUALISIERT: Re-Buy / Straf-Logik (Verwendet getRetryFee)
+  // Re-Buy / Straf-Logik (Verwendet getRetryFee)
   // -----------------------------------------------------------
   const handleRetryTournament = async (tour: Tournament) => {
     const retryFee = getRetryFee(tour);
@@ -260,6 +260,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       const newTacPoints = tacPoints - retryFee;
       setTacPoints(newTacPoints);
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+
+      // Gespeicherte Ausdauer für diesen Turnier-Run zurücksetzen (frischer Start in Runde 1)
+      const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+      if (savedTourStamina[tour.id]) {
+        delete savedTourStamina[tour.id];
+        localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+      }
       
       if (session?.user) {
         // Punkte in user_stats updaten
@@ -269,7 +276,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         await supabase.from("tour_progress").update({ 
           status: "active", 
           current_round: 1,
-          retry_used: false // <-- NEU: Joker für den neuen Run wieder freigeben
+          retry_used: false // Joker für den neuen Run wieder freigeben
         }).eq("user_id", session.user.id).eq("tournament_id", tour.id);
       }
 
@@ -491,14 +498,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               >
                 <span>Pro Supporter Pass (Demnächst)</span>
               </button>
-              {/* 
-<button 
-  disabled
-  className="w-full py-4 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-blue-500/30 text-blue-400/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
->
-  <span>Video schauen (Demnächst)</span>
-</button>
-*/}
             </div>
           </motion.div>
 
@@ -681,7 +680,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-slate-400 text-xs shrink-0">VF</div>
                             <div className="flex-1">
                               <p className="text-sm font-bold text-white uppercase tracking-wider">Viertelfinale</p>
-                              <p className="text-[10px] text-slate-500">1 Tiebreak bis 10</p>
+                              <p className="text-[10px] text-slate-500">1 Tiebreak bis 6</p>
                             </div>
                             <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.vf.styles}`}>{bracket.vf.text}</div>
                           </div>
@@ -692,7 +691,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center font-black text-slate-600 text-xs shrink-0">HF</div>
                             <div className="flex-1">
                               <p className="text-sm font-bold text-slate-300 uppercase tracking-wider">Halbfinale</p>
-                              <p className="text-[10px] text-slate-500">Gegen Seed #2</p>
+                              <p className="text-[10px] text-slate-500">1 Tiebreak bis 8 • Gegen Seed #2</p>
                             </div>
                             <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.hf.styles}`}>{bracket.hf.text}</div>
                           </div>
@@ -703,7 +702,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             <div className="w-8 h-8 rounded-full bg-amber-900/20 border border-amber-700/30 flex items-center justify-center font-black text-amber-600/50 text-xs shrink-0">F</div>
                             <div className="flex-1">
                               <p className="text-sm font-bold text-amber-500/50 uppercase tracking-wider">Finale</p>
-                              <p className="text-[10px] text-slate-500">Boss KI Team</p>
+                              <p className="text-[10px] text-slate-500">1 Tiebreak bis 10 • Boss KI Team</p>
                             </div>
                             <div className={`px-3 py-1 text-[10px] font-black uppercase rounded ${bracket.f.styles}`}>{bracket.f.text}</div>
                           </div>
