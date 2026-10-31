@@ -21,18 +21,16 @@ workflows:
           cd artifacts/padel-trainer
           pnpm run build
           pnpm exec cap sync ios
-      - name: Set up Apple code signing
-        script: |
-          xcode-project use-profiles --project "$XCODE_PROJECT"
       - name: Increment build number
         script: |
           cd artifacts/padel-trainer/ios/App
           agvtool new-version -all $(($BUILD_NUMBER + 1))
-      - name: Build IPA for App Store and TestFlight
+      - name: Build IPA with Automatic Signing
         script: |
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+            --scheme "$XCODE_SCHEME" \
+            --archive-flags="-allowProvisioningUpdates"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
