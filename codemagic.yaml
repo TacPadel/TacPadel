@@ -11,20 +11,21 @@ workflows:
         XCODE_SCHEME: "App"
       node: 22
     scripts:
-      - name: Install pnpm globally and Build Web App
+      - name: Install pnpm and Build Web App
         script: |
-          # Corepack umgehen und pnpm direkt über npm installieren
-          npm install -g pnpm
+          # Störende Yarn-Vorgabe auf dem Cloud-Mac löschen und pnpm erzwingen
+          rm -f /Users/builder/package.json
+          export COREPACK_ENABLE_STRICT=0
+          npm install -g pnpm --force
           
-          # Im Hauptverzeichnis die Workspace-Abhängigkeiten installieren
+          # Im Hauptverzeichnis alle Workspace-Pakete (inkl. catalog:) installieren
           pnpm install
           
-          # Web-App im Unterordner bauen
+          # Web-App bauen
           cd artifacts/padel-trainer
           pnpm run build
       - name: Sync Capacitor for iOS
         script: |
-          npm install -g pnpm
           cd artifacts/padel-trainer
           pnpm exec cap sync ios
       - name: Increment build number
@@ -36,7 +37,7 @@ workflows:
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --allowProvisioningUpdates
+            --archive-flags="-allowProvisioningUpdates"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
