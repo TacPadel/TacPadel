@@ -239,6 +239,7 @@ function StadiumLEDScreen(props: Props) {
       return () => clearTimeout(timer);
     } else {
       setDomSuccess(null);
+      return undefined;
     }
   }, [props.hasSubmitted, props.turnResult]);
 
