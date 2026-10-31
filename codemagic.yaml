@@ -25,7 +25,7 @@ workflows:
         script: |
           cd artifacts/padel-trainer/ios/App
           agvtool new-version -all $(($BUILD_NUMBER + 1))
-      - name: Build IPA with Automatic Signing
+      - name: Build IPA for TestFlight
         script: |
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
