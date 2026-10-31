@@ -11,12 +11,13 @@ workflows:
         XCODE_SCHEME: "App"
       node: 22
     scripts:
-      - name: Install dependencies and sync Capacitor
+      - name: Build Web App with pnpm filter
         script: |
           corepack enable
+          pnpm --filter padel-trainer run build
+      - name: Sync Capacitor for iOS
+        script: |
           cd artifacts/padel-trainer
-          pnpm install
-          pnpm run build
           pnpm exec cap sync ios
       - name: Increment build number
         script: |
@@ -27,7 +28,7 @@ workflows:
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --archive-flags="-allowProvisioningUpdates"
+            --allowProvisioningUpdates
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
