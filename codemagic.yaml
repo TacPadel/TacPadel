@@ -14,8 +14,8 @@ workflows:
       - name: Install dependencies and sync Capacitor
         script: |
           corepack enable
-          pnpm install
           cd artifacts/padel-trainer
+          pnpm install
           pnpm run build
           pnpm exec cap sync ios
       - name: Increment build number
