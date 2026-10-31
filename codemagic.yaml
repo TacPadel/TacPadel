@@ -11,22 +11,23 @@ workflows:
         XCODE_SCHEME: "App"
       node: 22
     scripts:
-      - name: Install and Build Web App
+      - name: Install and Build Web App with pnpm
         script: |
-          # Nutze den festen Systempfad zu Node.js und npm
-          export NODE_HOME="/usr/local/bin"
-          export PATH="$NODE_HOME:$PATH"
+          # Corepack aktivieren, damit pnpm sofort bereitsteht
+          corepack enable
+          corepack prepare pnpm@latest --activate
           
+          # Im Hauptverzeichnis die Workspace-Abhängigkeiten installieren
+          pnpm install
+          
+          # Web-App im Unterordner bauen
           cd artifacts/padel-trainer
-          npm install --legacy-peer-deps
-          npm run build
+          pnpm run build
       - name: Sync Capacitor for iOS
         script: |
-          export NODE_HOME="/usr/local/bin"
-          export PATH="$NODE_HOME:$PATH"
-          
+          corepack enable
           cd artifacts/padel-trainer
-          npx cap sync ios
+          pnpm exec cap sync ios
       - name: Increment build number
         script: |
           cd artifacts/padel-trainer/ios/App
