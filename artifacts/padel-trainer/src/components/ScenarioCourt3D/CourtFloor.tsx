@@ -394,8 +394,8 @@ export default function CourtFloor(props: ScoreboardProps) {
     userTeamName = "Dein Team",
     isSimulationMode = false,
     activeAiProfile,
-    targetScore = 10,
-    matchTitle = "Match-Tiebreak",
+    targetScore = 7,
+    matchTitle = "Tiebreak",
     arenaModel = "/TacPadel.glb",
     hideCrowd
   } = props;

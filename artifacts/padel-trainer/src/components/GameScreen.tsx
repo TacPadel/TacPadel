@@ -10,7 +10,7 @@ import { soundManager } from '../lib/SoundManager';
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen"; 
-import GameTutorial from "./GameTutorial"; // <-- NEU: Unser animiertes 3D Tutorial!
+import GameTutorial from "./GameTutorial";
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
@@ -127,7 +127,7 @@ export default function GameScreen() {
   const [partnerName, setPartnerName] = useState<string>("Partner");
   const [playerName, setPlayerName] = useState<string>("Du");
 
-  // --- NEU: User-ID Tracking für Gast-Erkennung & Savegame-Schutz ---
+  // --- User-ID Tracking für Gast-Erkennung & Savegame-Schutz ---
   const [userId, setUserId] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
@@ -144,6 +144,15 @@ export default function GameScreen() {
   const [shotHistory, setShotHistory] = useState<string[]>([]);
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
+
+  // --- NEU: Dynamisches Punktelimit & Titel für Einzelmatch (7) vs. Turnier (6 / 8 / 10) ---
+  const currentTargetScore = activeTournamentId
+    ? (activeTournamentRound === 1 ? 6 : activeTournamentRound === 2 ? 8 : 10)
+    : 7;
+
+  const currentMatchTitle = activeTournamentId
+    ? (activeTournamentRound === 3 ? "Finale" : activeTournamentRound === 2 ? "Halbfinale" : "Viertelfinale")
+    : "Tiebreak";
 
   const [matchSeconds, setMatchSeconds] = useState<number>(0);
   const matchSecondsRef = useRef(matchSeconds);
@@ -1319,12 +1328,8 @@ export default function GameScreen() {
     setAiScore(newAiScore);
     setMatchStats(newStats); 
 
-    let targetScore = 10; 
-    if (activeTournamentId) {
-      if (activeTournamentRound === 1) targetScore = 6;
-      else if (activeTournamentRound === 2) targetScore = 8;
-      else if (activeTournamentRound === 3) targetScore = 10;
-    }
+    // Einzelmatch geht bis 7 Punkte, Turniere bleiben bei 6 (VF), 8 (HF) und 10 (Finale)
+    const targetScore = currentTargetScore;
 
     if ((newPlayerScore >= targetScore && newPlayerScore - newAiScore >= 2) || (newAiScore >= targetScore && newAiScore - newPlayerScore >= 2)) {
       
@@ -1423,7 +1428,7 @@ export default function GameScreen() {
                 unforced_errors: newStats.player.unforcedErrors,
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
-                duration_seconds: matchSecondsRef.current, // <-- TIMER GESPEICHERT
+                duration_seconds: matchSecondsRef.current,
                 match_type: "tournament",
                 tac_points: currentTacPoints 
               });
@@ -1464,7 +1469,7 @@ export default function GameScreen() {
                 unforced_errors: newStats.player.unforcedErrors,
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
-                duration_seconds: matchSecondsRef.current, // <-- TIMER GESPEICHERT
+                duration_seconds: matchSecondsRef.current,
                 match_type: "single"
               });
             }
@@ -1565,7 +1570,7 @@ export default function GameScreen() {
       }
     }
 
-    // --- NEU: NUR SPEICHERN, WENN DER SPIELER EINGELOGGT IST! ---
+    // --- NUR SPEICHERN, WENN DER SPIELER EINGELOGGT IST! ---
     if (userIdRef.current) {
       const gameStateToSave = {
         userId: userIdRef.current, // Account-Bindung
@@ -1579,7 +1584,7 @@ export default function GameScreen() {
         tournamentRound: activeTournamentRound,
         tournamentDifficulty: activeTournamentDifficulty,
         activeAiProfile,
-        matchSeconds: matchSecondsRef.current // <-- TIMER LOKAL SPEICHERN
+        matchSeconds: matchSecondsRef.current
       };
       localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
     } else {
@@ -1723,7 +1728,7 @@ export default function GameScreen() {
             <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-4 w-full">
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
 
-              {/* --- NEU: GAST-MODUS HINWEIS & LOGIN-ANREIZ --- */}
+              {/* --- GAST-MODUS HINWEIS & LOGIN-ANREIZ --- */}
               {!userId && (
                 <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-center backdrop-blur-md shadow-lg">
                   <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">
@@ -2012,7 +2017,6 @@ export default function GameScreen() {
                      setActiveTournamentId(null); 
                      
                      if (playerScore < aiScore) {
-                       // Wenn der Spieler endgültig aufgibt, gespeicherte Turnier-Ausdauer löschen
                        const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                        if (tourIdToClean && savedTourStamina[tourIdToClean]) {
                          delete savedTourStamina[tourIdToClean];
@@ -2133,7 +2137,7 @@ export default function GameScreen() {
         </AnimatePresence>
 
         <div className="absolute inset-0 z-10">
-          {/* HIER WIRD DIE AUSGEWÄHLTE ARENA ÜBERGEBEN */}
+          {/* HIER WERDEN ARENA, TARGETSCORE UND MATCHTITLE ÜBERGEBEN */}
           <ScenarioCourt3D 
             key={`court-${introTrigger}`}
             arenaModel={currentArenaModel} 
@@ -2184,6 +2188,8 @@ export default function GameScreen() {
             hidePlayerLabels={!showNameTags}
             userTeamName={userTeamName}
             activeAiProfile={activeAiProfile}
+            targetScore={currentTargetScore}
+            matchTitle={currentMatchTitle}
           />
         </div>
       </div>
