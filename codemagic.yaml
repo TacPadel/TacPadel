@@ -18,8 +18,11 @@ workflows:
           export COREPACK_ENABLE_STRICT=0
           npm install -g pnpm --force
           
-          # Im Hauptverzeichnis alle Workspace-Pakete (inkl. catalog:) installieren
+          # Im Hauptverzeichnis alle Workspace-Pakete installieren
           pnpm install
+          
+          # Fehlende native macOS-M2-Module für Rollup und LightningCSS nachladen
+          pnpm add -D -w @rollup/rollup-darwin-arm64@4.62.0 lightningcss-darwin-arm64@1.32.0
           
           # Web-App bauen
           cd artifacts/padel-trainer
