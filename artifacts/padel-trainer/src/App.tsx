@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import SplashScreen from "./components/SplashScreen";
 import Navigation from "./components/Navigation";
 import HomeView from "./components/HomeView";
@@ -24,6 +24,7 @@ import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
+const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 
 type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
 
@@ -44,6 +45,26 @@ const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number =
   let z = 4 - ((num - 1) * 2);
 
   return new THREE.Vector3(x, yHeight, z);
+};
+
+// Ermittelt anhand der Highscores und Sperren das aktuell zu spielende Level
+const getTargetProgressionLevel = (scores: Record<string, number>, locked: Level[]): Level => {
+  if ((scores["Spielzug"] || 0) >= 50) return "Simulation";
+
+  for (const lvl of TRAINER_SEQUENCE) {
+    const progUnlocked =
+      lvl === "Schlag" ? true :
+      lvl === "Schlagrichtung" ? (scores["Schlag"] || 0) >= 10 :
+      lvl === "Laufrichtung" ? (scores["Schlagrichtung"] || 0) >= 10 :
+      (scores["Laufrichtung"] || 0) >= 10;
+
+    const isClosed = locked.includes(lvl) && lvl !== "Spielzug";
+    if (progUnlocked && !isClosed) {
+      return lvl;
+    }
+  }
+
+  return "Spielzug";
 };
 
 function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void }) {
@@ -398,15 +419,6 @@ export default function App(): React.JSX.Element {
   // =========================================================================
 
   useEffect(() => {
-    if (isProgressLoaded && !lockedLevels.includes("Simulation" as Level)) {
-      const highestSpielzug = highestScores["Spielzug"] || 0;
-      if (highestSpielzug < 50) {
-        setLockedLevels(prev => [...prev, "Simulation" as Level]);
-      }
-    }
-  }, [isProgressLoaded, highestScores, lockedLevels, setLockedLevels]);
-
-  useEffect(() => {
     if (user && !user.user_metadata?.display_name) {
       const hasSeen = sessionStorage.getItem('hasSeenWelcome');
       if (!hasSeen) {
@@ -434,10 +446,79 @@ export default function App(): React.JSX.Element {
     setShowTutorial(false);
   };
 
+  // Hilfsfunktion: Initialisiert den Szenario-Pool für ein bestimmtes Level
+  const initPoolForLevel = (targetLevel: Level) => {
+    const isNewSim = (targetLevel as string) === "Simulation";
+    const filteredPool = SCENARIOS.filter(s => {
+      if (targetLevel === "Schlag") return s.id <= 10;
+      if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30; 
+      if (targetLevel === "Laufrichtung") return s.id >= 31 && s.id <= 61;
+      if (targetLevel === "Spielzug") return s.id >= 62;
+      if (isNewSim) return true; 
+      return true;
+    });
+
+    if (isNewSim) {
+      const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+      const globalIndex = SCENARIOS.findIndex(s => s.id === randomScenario.id);
+      setRotation([globalIndex, []]);
+    } else {
+      const allIndices = shuffleIndices(filteredPool.length);
+      const maxQ = targetLevel === "Spielzug" ? 50 : 10; 
+      const limitedIndices = allIndices.slice(0, maxQ);
+      setRotation([limitedIndices[0], limitedIndices.slice(1)]);
+    }
+  };
+
+  // =========================================================================
+  // --- WIEDERHERSTELLUNG & AUTO-SYNCHRONISATION DER GESPERRTEN LEVEL ---
+  // =========================================================================
   useEffect(() => {
-    // Warten, bis Supabase-Progress fertig geladen ist UND die Session steht
     if (isProgressLoaded && !hasRestored) {
-      if (activeSession && user) {
+      // 1. Prüfen, welche Vorstufen laut Highscore bereits abgeschlossen sind (>= 10)
+      const syncedLocks = new Set<Level>(lockedLevels);
+
+      if ((highestScores["Spielzug"] || 0) < 50) {
+        syncedLocks.add("Simulation");
+      } else {
+        syncedLocks.delete("Simulation");
+      }
+
+      // Falls keine Straf-Freischaltung aktiv ist, alle bereits geschafften Vorstufen schließen
+      const isCurrentlyReplayingUnlocked =
+        activeSession &&
+        activeSession.score > 0 &&
+        activeSession.score < 10 &&
+        !lockedLevels.includes(activeSession.level);
+
+      (["Schlag", "Schlagrichtung", "Laufrichtung"] as Level[]).forEach((lvl) => {
+        if ((highestScores[lvl] || 0) >= 10) {
+          if (!(isCurrentlyReplayingUnlocked && activeSession?.level === lvl)) {
+            syncedLocks.add(lvl);
+          }
+        }
+      });
+
+      const finalLocks = Array.from(syncedLocks);
+      if (
+        finalLocks.length !== lockedLevels.length ||
+        finalLocks.some((l) => !lockedLevels.includes(l))
+      ) {
+        setLockedLevels(finalLocks);
+      }
+
+      // 2. Prüfen, ob eine gültige (nicht bereits abgeschlossene) Sitzung vorliegt
+      const hasValidActiveSession =
+        activeSession &&
+        user &&
+        !(
+          activeSession.level !== "Spielzug" &&
+          activeSession.level !== "Simulation" &&
+          finalLocks.includes(activeSession.level) &&
+          (activeSession.score || 0) === 0
+        );
+
+      if (hasValidActiveSession) {
         setLevel(activeSession.level);
         setScore(activeSession.score);
         setRotation([activeSession.currentScenarioIndex, activeSession.rotationPool]);
@@ -450,14 +531,19 @@ export default function App(): React.JSX.Element {
         setSelectedLaufZone(activeSession.selectedLaufZone || null);
         setAttempts(activeSession.attempts || 0);
         setFeedbackMsg(activeSession.feedbackMsg || null);
-        
-        setActiveTab("home"); 
-      } else if (!user) {
-        clearActiveSession();
+      } else {
+        // Automatisch in das aktuell offene Fortschritts-Level führen
+        const targetLvl = getTargetProgressionLevel(highestScores, finalLocks);
+        setLevel(targetLvl);
+        initPoolForLevel(targetLvl);
+        if (!user) {
+          clearActiveSession();
+        }
       }
+
       setHasRestored(true);
     }
-  }, [isProgressLoaded, activeSession, hasRestored, user, clearActiveSession]);
+  }, [isProgressLoaded, activeSession, hasRestored, user, highestScores, lockedLevels, setLockedLevels, clearActiveSession]);
 
   useEffect(() => {
     if (hasRestored && user && !gameOver) {
@@ -480,7 +566,7 @@ export default function App(): React.JSX.Element {
     if (gameOver && hasRestored) {
       clearActiveSession();
     }
-  }, [hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver]);
+  }, [level, score, hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver]);
 
   useEffect(() => {
     if (user && activeTab === "login") {
@@ -737,13 +823,10 @@ export default function App(): React.JSX.Element {
     if (isFullyCorrect) {
       setHasSubmitted(true);
       
-      setScore((s) => {
-        const newScore = s + 1;
-        if (user) {
-          updateHighScore(level, newScore);
-        }
-        return newScore;
-      });
+      const newScore = score + 1;
+      setScore(newScore);
+      // Highscore immer im State aktualisieren (useProgress speichert nur für eingeloggte User in Supabase)
+      updateHighScore(level, newScore);
 
       setRoundsPlayed((r) => r + 1);
       setFeedbackMsg(null);
@@ -782,7 +865,8 @@ export default function App(): React.JSX.Element {
         addPoints(-100); 
         updateSupabaseScore(newTotal); 
         
-        if (newTotal < 2500 && lockedLevels.length > 0) {
+        const unlockable = lockedLevels.filter(l => l !== "Simulation");
+        if (newTotal < 2500 && unlockable.length > 0) {
           setShowUnlockModal(true);
         }
       }
@@ -825,12 +909,15 @@ export default function App(): React.JSX.Element {
     setFeedbackMsg(null);
     setAttempts(0);
 
-    if (rotationPool.length > 0) {
+    const targetScore = level === "Spielzug" ? 50 : 10;
+
+    // Solange Ziel-Score noch nicht erreicht ist und noch Fragen im Pool sind -> nächste Frage
+    if (score < targetScore && rotationPool.length > 0) {
       setRotation([rotationPool[0], rotationPool.slice(1)]);
       return;
     }
 
-    const targetScore = level === "Spielzug" ? 50 : 10; 
+    // Falls Fehler gemacht wurden und Score < targetScore -> Wiederholungsrunde
     if (score < targetScore && wrongPool.length > 0) {
       const retryIndices = shuffleIndices(wrongPool.length).map((i) => wrongPool[i]);
       const [next, ...rest] = retryIndices; 
@@ -842,39 +929,32 @@ export default function App(): React.JSX.Element {
       return;
     }
 
+    // Sicherheits-Fallback: Falls Pool leer, aber targetScore noch nicht voll -> neue Fragen nachladen
+    if (score < targetScore) {
+      const needed = targetScore - score;
+      const freshIndices = shuffleIndices(filteredScenarios.length, currentScenarioIndex).slice(0, needed);
+      setRotation([freshIndices[0], freshIndices.slice(1)]);
+      return;
+    }
+
+    // LEVEL ERFOLGREICH ABGESCHLOSSEN (targetScore erreicht!)
+    updateHighScore(level, targetScore);
     setGameOver(true);
     
-    if (level === "Spielzug" && user) {
+    if (level === "Spielzug") {
+      // Simulation freischalten
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
+    } else if (level === "Schlag" || level === "Schlagrichtung" || level === "Laufrichtung") {
+      // Abgeschlossenes Level schließen (in lockedLevels eintragen)
+      setLockedLevels(prev => prev.includes(level) ? prev : [...prev, level]);
     }
   };
 
-  const handleLevelChange = (newLevel: Level) => {
-    if (newLevel === level) return;
+  const handleLevelChange = (newLevel: Level, force: boolean = false) => {
+    if (newLevel === level && !force && !gameOver) return;
     clearActiveSession();
     setLevel(newLevel);
-    
-    const isNewSim = (newLevel as string) === "Simulation";
-    
-    const filteredPool = SCENARIOS.filter(s => {
-      if (newLevel === "Schlag") return s.id <= 10;
-      if (newLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30; 
-      if (newLevel === "Laufrichtung") return s.id >= 31 && s.id <= 61;
-      if (newLevel === "Spielzug") return s.id >= 62;
-      if (isNewSim) return true; 
-      return true;
-    });
-
-    if (isNewSim) {
-       const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
-       const globalIndex = SCENARIOS.findIndex(s => s.id === randomScenario.id);
-       setRotation([globalIndex, []]);
-    } else {
-       const allIndices = shuffleIndices(filteredPool.length);
-       const maxQ = newLevel === "Spielzug" ? 50 : 10; 
-       const limitedIndices = allIndices.slice(0, maxQ);
-       setRotation([limitedIndices[0], limitedIndices.slice(1)]);
-    }
+    initPoolForLevel(newLevel);
     
     setSelectedShot(null);
     setSelectedZone(null);
@@ -1004,13 +1084,13 @@ export default function App(): React.JSX.Element {
                 Dein Score ist unter 2500 Punkte gefallen. Wähle eine gesperrte Trainingsart, um sie wieder freizuschalten und neue Punkte zu sammeln:
               </p>
               <div className="flex flex-col gap-3 mt-4">
-                {lockedLevels.map(lvl => (
+                {lockedLevels.filter(lvl => lvl !== "Simulation").map(lvl => (
                   <button
                     key={lvl}
                     onClick={() => {
                       setLockedLevels(prev => prev.filter(l => l !== lvl));
                       setShowUnlockModal(false);
-                      handleLevelChange(lvl);
+                      handleLevelChange(lvl, true);
                     }}
                     className="px-4 py-3.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow flex items-center justify-between"
                   >
@@ -1069,7 +1149,7 @@ export default function App(): React.JSX.Element {
                   }}
                   onQuickStart={(specificIndex?: number) => {
                     if ((highestScores["Spielzug"] || 0) >= 50) {
-                      handleLevelChange("Simulation" as Level);
+                      handleLevelChange("Simulation" as Level, true);
                       setActiveTab("trainer");
                       return;
                     }
@@ -1116,19 +1196,8 @@ export default function App(): React.JSX.Element {
                       setFeedbackMsg(null);
                       setAttempts(0);
                     } else {
-                      const levels: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
-                      const unlockedLevels = levels.filter(l => {
-                        const progUnlocked = 
-                          l === "Schlag" ? true :
-                          l === "Schlagrichtung" ? (highestScores["Schlag"] || 0) >= 10 :
-                          l === "Laufrichtung" ? (highestScores["Schlagrichtung"] || 0) >= 10 :
-                          l === "Spielzug" ? (highestScores["Laufrichtung"] || 0) >= 10 : true;
-                        
-                        const penaltyLocked = lockedLevels.includes(l as any) && l !== "Spielzug";
-                        return progUnlocked && !penaltyLocked;
-                      });
-                      const randomLevel = unlockedLevels[Math.floor(Math.random() * unlockedLevels.length)];
-                      handleLevelChange(randomLevel);
+                      const nextOpenLevel = getTargetProgressionLevel(highestScores, lockedLevels);
+                      handleLevelChange(nextOpenLevel, true);
                     }
                     setActiveTab("trainer");
                   }}
@@ -1279,7 +1348,7 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col w-full">
                       <p className="text-xs text-slate-400 leading-relaxed mb-1.5">
                         {isSimulation ? "PRO RALLYE: Endlose Taktik-Simulation. Finde auf jede Situation die perfekte Antwort!" : 
-                         level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach the Schlag sofort deinen Laufweg zur Absicherung." : 
+                         level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach dem Schlag sofort deinen Laufweg zur Absicherung." : 
                          level === "Laufrichtung" ? "Ein guter Schlag nützt nichts ohne Feldabdeckung. Wähle dein Laufziel." : 
                          level === "Schlag" ? "Wähle den richtigen Schlag. Nutze das Tutorial um die Schläge kennenzulernen.":
                          "Analysiere das Szenario und spiele den richtigen Schlag und Trefferzone."}
@@ -1556,20 +1625,29 @@ export default function App(): React.JSX.Element {
                       <button 
                         onClick={() => {
                           if (level === "Spielzug") {
-                            handleLevelChange("Simulation" as Level);
+                            setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
+                            handleLevelChange("Simulation" as Level, true);
                           } else {
-                            const levels: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
-                            const currentIndex = levels.indexOf(level as any);
-                            let nextLevel: Level = level; 
-                            for (let i = currentIndex + 1; i < levels.length; i++) {
-                              const isPenaltyLocked = lockedLevels.includes(levels[i] as any) && levels[i] !== "Spielzug";
-                              const isProgLocked = !isProgressionUnlocked(levels[i]);
-                              if (!isPenaltyLocked && !isProgLocked) {
-                                nextLevel = levels[i];
+                            // Aktuelles Level sicher schließen
+                            const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
+                            setLockedLevels(updatedLocks);
+
+                            // Nächstes offenes Level in der Reihenfolge bestimmen
+                            const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
+                            const currentIndex = TRAINER_SEQUENCE.indexOf(level);
+                            let nextLevel: Level = "Spielzug";
+
+                            for (let i = currentIndex + 1; i < TRAINER_SEQUENCE.length; i++) {
+                              const candidate = TRAINER_SEQUENCE[i];
+                              const isClosed = updatedLocks.includes(candidate) && candidate !== "Spielzug";
+                              if (!isClosed) {
+                                nextLevel = candidate;
                                 break;
                               }
                             }
-                            handleLevelChange(nextLevel);
+
+                            updateHighScore(level, updatedScores[level]);
+                            handleLevelChange(nextLevel, true);
                           }
                         }}
                         className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"

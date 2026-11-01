@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/AuthContext";
 import ScenarioCourt25 from "./ScenarioCourt25";
@@ -13,36 +12,87 @@ const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA",
 // ==========================================
 function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTestStrategy: (strat: StrategySequence, type: "admin" | "draft") => void }) {
   const [pendingStrats, setPendingStrats] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchPending() {
-      const { data } = await supabase
+  const fetchPending = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+
+    const { data, error } = await supabase
+      .from('community_strategies')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      // Falls die Tabelle keine created_at Spalte hat, Fallback ohne Sortierung
+      const fallback = await supabase
         .from('community_strategies')
         .select('*')
         .eq('status', 'pending');
-      if (data) setPendingStrats(data);
+
+      if (fallback.error) {
+        setErrorMsg(fallback.error.message);
+      } else if (fallback.data) {
+        setPendingStrats(fallback.data);
+      }
+    } else if (data) {
+      setPendingStrats(data);
     }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
     fetchPending();
   }, []);
 
   const handleApprove = async (id: string) => {
-    await supabase.from('community_strategies').update({ status: 'approved' }).eq('id', id);
-    setPendingStrats(pendingStrats.filter(s => s.id !== id));
+    const { data, error } = await supabase
+      .from('community_strategies')
+      .update({ status: 'approved' })
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      alert("Fehler beim Freigeben: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Keine Berechtigung zum Ändern! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
+      return;
+    }
+    setPendingStrats(prev => prev.filter(s => s.id !== id));
   };
 
   const handleReject = async (id: string) => {
-    await supabase.from('community_strategies').update({ status: 'rejected' }).eq('id', id);
-    setPendingStrats(pendingStrats.filter(s => s.id !== id));
+    const { data, error } = await supabase
+      .from('community_strategies')
+      .update({ status: 'rejected' })
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      alert("Fehler beim Ablehnen: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert("Keine Berechtigung zum Ändern! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
+      return;
+    }
+    setPendingStrats(prev => prev.filter(s => s.id !== id));
   };
 
   const handleTest = (dbRow: any) => {
+    const parsedSteps = typeof dbRow.steps === "string" ? JSON.parse(dbRow.steps) : dbRow.steps;
     const stratToTest: StrategySequence = {
       id: dbRow.id,
       title: `${dbRow.title} (ADMIN TEST)`,
       theme: dbRow.theme as any,
       difficulty: dbRow.difficulty as any,
       description: dbRow.description,
-      steps: dbRow.steps
+      steps: parsedSteps || []
     };
     onTestStrategy(stratToTest, "admin");
   };
@@ -50,22 +100,52 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
   return (
     <div className="w-full bg-[#050b18] p-6 rounded-xl border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.1)]">
       <div className="flex justify-between items-center mb-6 border-b border-purple-900/50 pb-4">
-        <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest">Admin: Prüf-Zentrale</h2>
-        <button onClick={onExit} className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-colors">Schließen</button>
+        <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest">
+          Admin: Prüf-Zentrale
+        </h2>
+        <div className="flex gap-2">
+          <button onClick={fetchPending} className="text-xs bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/40 text-purple-300 px-3 py-2 rounded-lg font-bold transition-colors">
+            ↻ Neu laden
+          </button>
+          <button onClick={onExit} className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-colors">
+            Schließen
+          </button>
+        </div>
       </div>
+
+      {errorMsg && (
+        <div className="mb-4 p-4 rounded-xl bg-red-950/40 border border-red-500/50 text-red-300 text-xs font-bold">
+          ⚠️ Supabase Fehler: {errorMsg}
+        </div>
+      )}
       
-      {pendingStrats.length === 0 ? (
-        <p className="text-slate-400 text-center py-8">Keine neuen Strategien zur Prüfung vorhanden. Alles sauber! 🧹</p>
+      {loading ? (
+        <p className="text-slate-400 text-center py-8 animate-pulse font-bold uppercase tracking-widest text-xs">
+          Lade eingereichte Strategien...
+        </p>
+      ) : pendingStrats.length === 0 ? (
+        <p className="text-slate-400 text-center py-8">
+          Keine neuen Strategien zur Prüfung vorhanden. Alles sauber! 🧹
+        </p>
       ) : null}
       
       <div className="flex flex-col gap-4">
         {pendingStrats.map(strat => (
           <div key={strat.id} className="bg-slate-900/80 p-5 rounded-xl border border-slate-700 flex flex-col gap-3">
-            <div>
-              <h3 className="font-bold text-lg text-white">{strat.title}</h3>
-              <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">Eingereicht von: {strat.creator_name}</span>
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-bold text-lg text-white">{strat.title}</h3>
+                <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">
+                  Eingereicht von: {strat.creator_name || "Unbekannt"}
+                </span>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded bg-purple-950/60 border border-purple-500/40 text-purple-300">
+                {strat.theme} • Level {strat.difficulty}
+              </span>
             </div>
-            <p className="text-sm text-slate-400 bg-slate-950/50 p-3 rounded-lg border border-slate-800">{strat.description}</p>
+            <p className="text-sm text-slate-400 bg-slate-950/50 p-3 rounded-lg border border-slate-800">
+              {strat.description}
+            </p>
             <div className="flex gap-2 mt-2">
               <button onClick={() => handleTest(strat)} className="flex-1 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">🎮 Testen</button>
               <button onClick={() => handleApprove(strat.id)} className="flex-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">✅ Freigeben</button>
@@ -90,9 +170,13 @@ interface StrategyBuilderProps {
 export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin = false }: StrategyBuilderProps) {
   const { user } = useAuth();
   
-  // 🔥 HIER DEINE E-MAIL EINTRAGEN:
-  const isAdmin = user?.email === 'caposion@gmail.com';
+  // Case-insensitive Prüfung für deine Admin-E-Mail
+  const isAdmin = user?.email?.toLowerCase().trim() === 'caposion@gmail.com';
   const [showAdmin, setShowAdmin] = useState(startInAdmin);
+
+  useEffect(() => {
+    if (startInAdmin) setShowAdmin(true);
+  }, [startInAdmin]);
   
   // Basic Info State
   const [title, setTitle] = useState("");
@@ -140,7 +224,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   const [posOpp1, setPosOpp1] = useState("B2");
   const [posOpp2, setPosOpp2] = useState("D2");
   
-  // FIX 1: "left" = Unten (Deine Seite), "right" = Oben (Gegner)
+  // "left" = Unten (Deine Seite), "right" = Oben (Gegner)
   const [ballSide, setBallSide] = useState<"left" | "right">("left"); 
   const [ballZone, setBallZone] = useState("B2");
   const [ballType, setBallType] = useState("VORBEREITUNG");
@@ -158,13 +242,13 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
 
-  // FIX 2: Wenn DU dran bist -> "left" (Unten), wenn GEGNER dran ist -> "right" (Oben)
+  // Wenn DU dran bist -> "left" (Unten), wenn GEGNER dran ist -> "right" (Oben)
   const handleTurnChange = (turn: "you" | "ai") => {
     setPlayerTurn(turn);
     setBallSide(turn === "you" ? "left" : "right");
   };
 
-  // FIX 3: Beim Anlegen eines neuen Zugs ebenfalls auf "left" (Unten) setzen
+  // Beim Anlegen eines neuen Zugs ebenfalls auf "left" (Unten) setzen
   const openNewStep = () => {
     setEditingIndex(null);
     setPlayerTurn("you"); 
@@ -259,6 +343,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     setIsSubmitting(false);
     if (error) {
       setSubmitStatus("error");
+      alert("Fehler beim Einreichen: " + error.message);
       console.error(error);
     } else {
       setSubmitStatus("success");
@@ -431,7 +516,6 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
 
               <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">Wo liegt der Ball (vor dem Schlag)?</h4>
               <div className="grid grid-cols-3 gap-2">
-                {/* FIX 4: Dropdown Optionen passend zu "left" (Unten) und "right" (Oben) */}
                 <select value={ballSide} onChange={e => setBallSide(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none text-orange-300">
                   <option value="left">Unten (Bei dir)</option>
                   <option value="right">Oben (Gegner)</option>
@@ -455,7 +539,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
                     <select value={laufZone} onChange={e => setLaufZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Richtigschlag</label>
+                    <label className="text-[10px] text-slate-400">Richtiger Schlag</label>
                     <select value={validShots[0]} onChange={e => setValidShots([e.target.value])} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                 </div>
