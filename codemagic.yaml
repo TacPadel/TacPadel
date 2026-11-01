@@ -6,6 +6,9 @@ workflows:
     integrations:
       app_store_connect: codemagic
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.TacPadel.app
       vars:
         XCODE_PROJECT: "artifacts/padel-trainer/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
@@ -13,24 +16,20 @@ workflows:
     scripts:
       - name: Install pnpm and Build Web App
         script: |
-          # Störende Yarn-Vorgabe auf dem Cloud-Mac löschen und pnpm erzwingen
           rm -f /Users/builder/package.json
           export COREPACK_ENABLE_STRICT=0
           npm install -g pnpm --force
-          
-          # Im Hauptverzeichnis alle Workspace-Pakete inkl. optionaler Mac-Abhängigkeiten installieren
           pnpm install --force
-          
-          # Fehlende native macOS-M2-Module für Rollup, LightningCSS und Tailwind Oxide nachladen
           pnpm add -D -w @rollup/rollup-darwin-arm64@4.62.0 lightningcss-darwin-arm64@1.32.0 @tailwindcss/oxide-darwin-arm64@4.3.1
-          
-          # Web-App bauen
           cd artifacts/padel-trainer
           pnpm run build
       - name: Sync Capacitor for iOS
         script: |
           cd artifacts/padel-trainer
           pnpm exec cap sync ios
+      - name: Set up Apple code signing
+        script: |
+          xcode-project use-profiles --project "$XCODE_PROJECT"
       - name: Increment build number
         script: |
           cd artifacts/padel-trainer/ios/App
@@ -39,8 +38,7 @@ workflows:
         script: |
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME" \
-            --archive-flags="-allowProvisioningUpdates"
+            --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
