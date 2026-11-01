@@ -1137,6 +1137,7 @@ export default function App(): React.JSX.Element {
                 <HomeView 
                   setActiveTab={setActiveTab} 
                   currentScore={user ? totalPoints : 0}
+                  onDailyReward={(pts) => { if (user) { addPoints(pts); updateSupabaseScore(totalPoints + pts); } }}
                   currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0} 
                   userName={finalUserName}
                   userEmail={user?.email || ""}

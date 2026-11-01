@@ -1,7 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import { SCENARIOS } from "./Scenarios";
+import DailyChallengeModal, { getTodayDateString } from "./DailyChallengeModal";
+import { useAuth } from "../lib/AuthContext";
+import { supabase } from "../lib/supabase";
 
 const TACTIC_TIPS = [
   {
@@ -44,6 +47,7 @@ interface HomeViewProps {
   dbLeaderboard?: DBPlayer[];
   dbSeasonLeaderboard?: DBPlayer[]; 
   onPlayerClick?: (id: string, listType?: "alltime" | "season") => void;
+  onDailyReward?: (points: number) => void;
 }
 
 export default function HomeView({ 
@@ -56,18 +60,66 @@ export default function HomeView({
   userAvatar = "",
   dbLeaderboard = [],
   dbSeasonLeaderboard = [],
-  onPlayerClick
+  onPlayerClick,
+  onDailyReward
 }: HomeViewProps) {
+  const { user } = useAuth();
   
   const [randomScenarioIndex] = useState(() => Math.floor(Math.random() * SCENARIOS.length));
   const previewScenario = SCENARIOS[randomScenarioIndex];
   
-  const displayScore = Math.floor(currentScore);
+  // Lokaler Bonus-Puffer, damit die +150 Punkte nach der Daily Challenge sofort sichtbar sind
+  const [dailyBonusAdded, setDailyBonusAdded] = useState(0);
+
+  const displayScore = Math.floor(currentScore + dailyBonusAdded);
   const displayTacPoints = Math.floor(currentTacPoints);
   const isNewbie = displayScore === 0 && displayTacPoints === 0;
   
   const [dailyTip] = useState(() => TACTIC_TIPS[Math.floor(Math.random() * TACTIC_TIPS.length)]);
   
+  // --- DAILY CHALLENGE STATES ---
+  const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
+  const [dailyStatus, setDailyStatus] = useState<"open" | "won" | "lost">("open");
+  const [dailyStreak, setDailyStreak] = useState<number>(0);
+
+  const refreshDailyState = () => {
+    const todayStr = getTodayDateString();
+    const prefix = user?.id ? `_${user.id}` : "_guest";
+    const savedDate = localStorage.getItem(`tacpadel_daily_date${prefix}`) || user?.user_metadata?.daily_date;
+    const savedRes = localStorage.getItem(`tacpadel_daily_result${prefix}`) || user?.user_metadata?.daily_result;
+    const savedStreak = parseInt(
+      localStorage.getItem(`tacpadel_daily_streak${prefix}`) || user?.user_metadata?.daily_streak || "0",
+      10
+    );
+
+    setDailyStreak(savedStreak);
+    if (savedDate === todayStr) {
+      setDailyStatus(savedRes === "won" ? "won" : "lost");
+    } else {
+      setDailyStatus("open");
+    }
+  };
+
+  useEffect(() => {
+    refreshDailyState();
+  }, [user, isDailyModalOpen]);
+
+  const handleRewardEarned = async (pts: number) => {
+    setDailyBonusAdded((prev) => prev + pts);
+
+    if (onDailyReward) {
+      onDailyReward(pts);
+    } else if (user) {
+      // Fallback: Direkt in Supabase gutschreiben, falls onDailyReward nicht aus App.tsx übergeben wurde
+      const newTotal = Math.floor(currentScore + dailyBonusAdded + pts);
+      localStorage.setItem("tacpadel_score", newTotal.toString());
+      await supabase
+        .from("user_stats")
+        .upsert({ id: user.id, email: user.email, points: newTotal });
+    }
+    refreshDailyState();
+  };
+
   // Tab-Steuerung für das Leaderboard (All-Time vs Season)
   const [lbTab, setLbTab] = useState<"alltime" | "season">("alltime");
 
@@ -162,9 +214,16 @@ export default function HomeView({
       exit={{ opacity: 0, y: -10 }}
       className="w-full flex flex-col gap-6 text-slate-200 font-sans pb-24"
     >
+      {/* SEPARATES OVERLAY FÜR DIE TÄGLICHE CHALLENGE */}
+      <DailyChallengeModal
+        isOpen={isDailyModalOpen}
+        onClose={() => setIsDailyModalOpen(false)}
+        user={user}
+        onRewardEarned={handleRewardEarned}
+      />
       
       {/* ======================================================== */}
-      {/* 1. HERO SECTION (NEUES 2-SPALTEN DESIGN FÜR RANGLISTEN)  */}
+      {/* 1. HERO SECTION (2-SPALTEN DESIGN FÜR RANGLISTEN)        */}
       {/* ======================================================== */}
       <div className="w-full bg-[#040914]/90 border border-cyan-900/50 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-600 via-cyan-400 to-transparent" />
@@ -215,20 +274,80 @@ export default function HomeView({
       </div>
 
       {/* ======================================================== */}
-      {/* 2. TAKTIK-TIPP DES TAGES                                 */}
+      {/* 2. TAKTIK-TIPP DES TAGES & TÄGLICHE CHALLENGE            */}
       {/* ======================================================== */}
-      <div className="w-full bg-[#050b18]/80 border border-emerald-900/30 p-5 rounded-xl shadow-lg relative overflow-hidden">
-        <div className="absolute left-0 top-0 w-1 h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-        <div className="flex items-start gap-4">
-          <div>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">
-              Taktik Tipp des Tages
-            </h3>
-            <p className="text-sm text-slate-300 leading-relaxed font-medium">
-              <strong className="text-emerald-300 font-bold">{dailyTip.highlight}</strong> {dailyTip.text}
-            </p>
+      <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        {/* LINKS: Taktik-Tipp des Tages */}
+        <div className="lg:col-span-7 bg-[#050b18]/80 border border-emerald-900/30 p-5 rounded-xl shadow-lg relative overflow-hidden flex items-center">
+          <div className="absolute left-0 top-0 w-1 h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+          <div className="flex items-start gap-4">
+            <div>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">
+                Taktik Tipp des Tages
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed font-medium">
+                <strong className="text-emerald-300 font-bold">{dailyTip.highlight}</strong> {dailyTip.text}
+              </p>
+            </div>
           </div>
         </div>
+
+        {/* RECHTS: Tägliche Challenge (Öffnet eigenes Overlay) */}
+        <motion.div
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setIsDailyModalOpen(true)}
+          className={`lg:col-span-5 p-5 rounded-xl border shadow-lg relative overflow-hidden cursor-pointer flex items-center justify-between gap-4 transition-all ${
+            dailyStatus === "open"
+              ? "bg-gradient-to-br from-[#050b18] via-[#0a1020] to-amber-950/30 border-amber-500/50 hover:border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.12)]"
+              : dailyStatus === "won"
+                ? "bg-[#050b18]/90 border-emerald-500/40"
+                : "bg-[#050b18]/90 border-slate-800"
+          }`}
+        >
+          <div className={`absolute left-0 top-0 w-1 h-full ${
+            dailyStatus === "open" ? "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.8)]" : dailyStatus === "won" ? "bg-emerald-500" : "bg-slate-600"
+          }`} />
+
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                🔥 Challenge des Tages
+              </span>
+              {dailyStreak > 0 && (
+                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {dailyStreak} {dailyStreak === 1 ? "Tag" : "Tage"} Serie
+                </span>
+              )}
+            </div>
+
+            <h4 className="text-base font-black text-white uppercase tracking-wider">
+              {dailyStatus === "open"
+                ? "1 Versuch • +150 Punkte"
+                : dailyStatus === "won"
+                  ? "Heute gemeistert! ✓"
+                  : "Heute bereits gespielt"}
+            </h4>
+
+            <p className="text-xs text-slate-400 leading-snug">
+              {dailyStatus === "open"
+                ? "Löse das heutige Profi-Szenario ohne Hilfestellung."
+                : "Tippe hier, um dir die heutige Auflösung nochmal anzusehen."}
+            </p>
+          </div>
+
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 font-black text-lg transition-all ${
+            dailyStatus === "open"
+              ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)] animate-pulse"
+              : dailyStatus === "won"
+                ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
+                : "bg-slate-800 border border-slate-700 text-slate-400"
+          }`}>
+            {dailyStatus === "open" ? "➔" : dailyStatus === "won" ? "✓" : "👁️"}
+          </div>
+        </motion.div>
+
       </div>
         
       <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-5 mt-2">
