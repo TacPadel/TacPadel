@@ -496,7 +496,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 disabled
                 className="w-full py-4 bg-gradient-to-r from-amber-600/10 to-yellow-600/10 border border-amber-500/30 text-amber-500/50 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
               >
-                <span>Pro Supporter Pass (Demnächst)</span>
+                <span>Pro User Pass (Demnächst)</span>
               </button>
             </div>
           </motion.div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import { Haptics, NotificationType } from "@capacitor/haptics";
+import { Haptics } from "@capacitor/haptics";
 import { supabase } from '../lib/supabase';
 
 import { 
@@ -18,14 +18,17 @@ import GameTutorial from "./GameTutorial";
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
 import { TOURNAMENTS } from "../engine/Tournaments";
 
-// --- HAPTICS: Nur für Punktgewinne ---
-const triggerPointWinHaptic = async () => {
+// --- HAPTICS: Kräftiger, synchroner Impuls bei Punktgewinn ---
+const triggerPointWinHaptic = () => {
   if (localStorage.getItem("tacpadel_haptics") === "false") return;
   try {
+    // 1. Im Browser / WebView sofort synchron über navigator.vibrate auslösen (behält das User-Gesture-Token!)
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([120, 40, 180]);
+    }
+    // 2. Zusätzlich nativen Capacitor-Motor ansprechen (falls als native App installiert)
     if (Capacitor.isNativePlatform()) {
-      await Haptics.notification({ type: NotificationType.Success });
-    } else if (typeof navigator !== "undefined" && navigator.vibrate) {
-      navigator.vibrate([40, 50, 70]);
+      Haptics.vibrate({ duration: 180 }).catch(() => {});
     }
   } catch (e) {
     // Ignorieren, falls das Gerät keine Vibration unterstützt
@@ -797,6 +800,31 @@ export default function GameScreen() {
           }
         }
 
+        // 🔊 GEGNER-SOUNDS (KI-Schlag & Auswirkung)
+        const aiShotUpper = (brain.shot || "").toUpperCase();
+        if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(aiShotUpper) || finalAiResult === "perfect") {
+          playSfx("hit_smash");
+        } else if (["LOB", "BLOCK", "CHIQUITA"].includes(aiShotUpper)) {
+          playSfx("hit_soft");
+        } else {
+          playSfx("hit_hard");
+        }
+
+        setTimeout(() => {
+          if (finalAiResult === "perfect") {
+            playSfx("hit_smash");
+            playSfx("crowd_gasp");
+          } else if (finalAiResult === "error_net") {
+            playSfx("error_net");
+            playSfx("crowd_cheer");
+          } else if (finalAiResult === "error_wall_direct" || finalAiResult === "error_out") {
+            playSfx("bounce_glass");
+            playSfx("crowd_cheer");
+          } else if (brain.isWallHit) {
+            playSfx("bounce_glass");
+          }
+        }, 450);
+
         setMatchStats(prev => {
           const newAiStats = { ...prev.ai };
           newAiStats.totalShots += 1;
@@ -1003,6 +1031,9 @@ export default function GameScreen() {
               ball: { side: "left", zone: catcherZone, type: prev.ball.type } 
             }));
 
+            // Kurzer Schlag-Kontakt-Sound beim erfolgreichen Erreichen des Balls
+            playSfx("hit_soft");
+
             setCommands(prev => ({ you: { ...prev.you, run: null }, partner: { ...prev.partner, run: null } }));
             setPhase("player_planning"); 
             
@@ -1134,11 +1165,15 @@ export default function GameScreen() {
       else if (["LOB", "BLOCK", "CHIQUITA"].includes(shotType)) playSfx("hit_soft");
       else playSfx("hit_hard");
 
+      // 📱 Synchron direkt beim Button-Klick vibrieren, wenn es ein direkter Winner / Ass ist!
+      if (result === "perfect") {
+        triggerPointWinHaptic();
+      }
+
       setTimeout(() => {
           if (result === "perfect") { 
             playSfx("hit_smash"); 
             playSfx("crowd_cheer"); 
-            triggerPointWinHaptic(); // 📱 Haptisches Feedback beim direkten Punktgewinn (Winner / Ass)!
           } 
           else if (result === "error_net") { playSfx("error_net"); playSfx("crowd_gasp"); } 
           else if (result === "error_wall_direct") { playSfx("bounce_glass"); playSfx("crowd_gasp"); }
@@ -1344,7 +1379,7 @@ export default function GameScreen() {
       return;
     }
 
-    // 📱 Haptisches Feedback, sobald dein Team den Punkt gewinnt (inkl. KI-Fehler & Winner)!
+    // 📱 Synchron beim Klick auf "Punkt gewonnen! ➔" / "Nächster Punkt ➔" vibrieren, wenn dein Punktzähler steigt!
     if (newPlayerScore > playerScore) {
       triggerPointWinHaptic();
     }

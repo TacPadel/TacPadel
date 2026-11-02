@@ -997,9 +997,19 @@ export default function App(): React.JSX.Element {
     window.location.reload(); 
   };
 
+  const isIOS = Capacitor.getPlatform() === "ios";
+
   return (
   <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
     
+    {/* OPTISCHE STATUSLEISTEN-TRENNUNG NUR FÜR iOS (wie beim Pixel 10) */}
+    {isIOS && (
+      <div 
+        className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-50"
+        style={{ height: "max(env(safe-area-inset-top, 0px), 50px)" }}
+      />
+    )}
+
     <header className="w-full max-w-4xl flex justify-between items-center px-4 py-3 z-20 bg-background/50 backdrop-blur-md border-b border-border/40">
       <span className="font-black text-lg tracking-wider text-primary">TacPadel</span>
       <div>
@@ -1318,7 +1328,7 @@ export default function App(): React.JSX.Element {
                           onClick={() => setActiveTab("strategy")}
                           className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
                         >
-                          <span>Strategien</span>
+                          <span>Strategien - Pro User</span>
                         </button>
                       </div>
                     </div>
