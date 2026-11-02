@@ -314,11 +314,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- NEU: Umschalter für den gemeinsamen 3D-Canvas (Verhindert doppelte WebGL-Kontexte) ---
+  // --- Umschalter für den gemeinsamen 3D-Canvas (Verhindert doppelte WebGL-Kontexte) ---
   const [active3DView, setActive3DView] = useState<'locker' | 'trophies'>('locker');
   const controlsRef = useRef<any>(null);
 
-  // --- NEU: Performance-Modus (Auf neuen Handys sofort false = Beste Qualität) ---
+  // --- Performance-Modus ---
   const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
   const [dpr, setDpr] = useState<number>(() => (detectLowEndDevice() ? 0.8 : 1.25));
 
@@ -360,6 +360,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("tacpadel_sound") !== "false");
   const [musicEnabled, setMusicEnabled] = useState(() => localStorage.getItem("tacpadel_music") !== "false");
+  const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem("tacpadel_haptics") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
   useEffect(() => {
@@ -622,6 +623,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const newState = !musicEnabled;
     setMusicEnabled(newState);
     localStorage.setItem("tacpadel_music", String(newState));
+  };
+  const toggleHaptics = () => {
+    const newState = !hapticsEnabled;
+    setHapticsEnabled(newState);
+    localStorage.setItem("tacpadel_haptics", String(newState));
   };
   const toggleStamina = () => {
     const newState = !staminaEnabled;
@@ -1097,12 +1103,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 6. AUDIO & UI SETTINGS                    */}
+      {/* 6. AUDIO, HAPTIK & UI SETTINGS            */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
-          <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio & UI</h3>
-          <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX und Texte/Namen steuern</span>
+          <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio, Haptik & UI</h3>
+          <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX, Vibration und Texte/Namen steuern</span>
         </div>
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
           <div className="flex items-center gap-3">
@@ -1115,6 +1121,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
             <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Vibration</span>
+            <button onClick={toggleHaptics} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${hapticsEnabled ? 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]' : 'bg-slate-700'}`}>
+              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: hapticsEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
           <div className="flex items-center gap-3">

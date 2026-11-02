@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { Haptics, NotificationType } from "@capacitor/haptics";
 import { supabase } from '../lib/supabase';
 
 import { 
@@ -15,6 +17,20 @@ import GameTutorial from "./GameTutorial";
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
 import { TOURNAMENTS } from "../engine/Tournaments";
+
+// --- HAPTICS: Nur für Punktgewinne ---
+const triggerPointWinHaptic = async () => {
+  if (localStorage.getItem("tacpadel_haptics") === "false") return;
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Haptics.notification({ type: NotificationType.Success });
+    } else if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([40, 50, 70]);
+    }
+  } catch (e) {
+    // Ignorieren, falls das Gerät keine Vibration unterstützt
+  }
+};
 
 type Stats = { 
   winners: number; 
@@ -145,7 +161,7 @@ export default function GameScreen() {
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
-  // --- NEU: Dynamisches Punktelimit & Titel für Einzelmatch (7) vs. Turnier (6 / 8 / 10) ---
+  // --- Dynamisches Punktelimit & Titel für Einzelmatch (7) vs. Turnier (6 / 8 / 10) ---
   const currentTargetScore = activeTournamentId
     ? (activeTournamentRound === 1 ? 6 : activeTournamentRound === 2 ? 8 : 10)
     : 7;
@@ -1119,7 +1135,11 @@ export default function GameScreen() {
       else playSfx("hit_hard");
 
       setTimeout(() => {
-          if (result === "perfect") { playSfx("hit_smash"); playSfx("crowd_cheer"); } 
+          if (result === "perfect") { 
+            playSfx("hit_smash"); 
+            playSfx("crowd_cheer"); 
+            triggerPointWinHaptic(); // 📱 Haptisches Feedback beim direkten Punktgewinn (Winner / Ass)!
+          } 
           else if (result === "error_net") { playSfx("error_net"); playSfx("crowd_gasp"); } 
           else if (result === "error_wall_direct") { playSfx("bounce_glass"); playSfx("crowd_gasp"); }
       }, 350); 
@@ -1322,6 +1342,11 @@ export default function GameScreen() {
       resetSelections(hitterId, false);
       setPhase("ai_prepare"); 
       return;
+    }
+
+    // 📱 Haptisches Feedback, sobald dein Team den Punkt gewinnt (inkl. KI-Fehler & Winner)!
+    if (newPlayerScore > playerScore) {
+      triggerPointWinHaptic();
     }
 
     setPlayerScore(newPlayerScore);
