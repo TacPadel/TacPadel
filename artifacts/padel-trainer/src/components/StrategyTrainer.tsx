@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { STRATEGIES, StrategySequence, StrategyStep } from "../lib/strategies";
 import StrategyBuilder from "./StrategyBuilder";
-import { supabase } from "../lib/supabase"; // <-- Pfad anpassen, falls supabase.ts woanders liegt
+import { supabase } from "../lib/supabase";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 
@@ -17,10 +17,14 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   const [currentView, setCurrentView] = useState<"list" | "builder">("list");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
-  // NEU: States für den Testmodus (Admin & Entwurf)
+  // States für den Testmodus (Admin & Entwurf)
   const [isTestMode, setIsTestMode] = useState(false);
   const [testModeType, setTestModeType] = useState<"admin" | "draft" | null>(null);
   const [builderStartInAdmin, setBuilderStartInAdmin] = useState(false);
+
+  // Pro-User Status & Paywall-Modal
+  const [isProUser, setIsProUser] = useState<boolean>(() => localStorage.getItem("tacpadel_is_pro") === "true");
+  const [showProModal, setShowProModal] = useState<boolean>(false);
 
   // State für ALLE Strategien (Lokal + Community)
   const [allStrategies, setAllStrategies] = useState<StrategySequence[]>(STRATEGIES);
@@ -34,10 +38,33 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   const [stepResult, setStepResult] = useState<"correct" | "wrong" | null>(null);
   const [strategyFinished, setStrategyFinished] = useState(false);
 
-  // Lade Community-Strategien beim Start
+  // Lade Pro-Status & Community-Strategien beim Start
   useEffect(() => {
-    async function fetchCommunityStrategies() {
-      const { data, error } = await supabase
+    async function initData() {
+      // 1. Prüfe Pro-User / Admin Status
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
+        const metaPro = Boolean(session.user.user_metadata?.is_pro);
+
+        if (isAdmin || metaPro) {
+          setIsProUser(true);
+        } else {
+          const { data: statsData } = await supabase
+            .from("user_stats")
+            .select("*")
+            .eq("id", session.user.id)
+            .maybeSingle();
+
+          if (statsData?.is_pro) {
+            setIsProUser(true);
+            localStorage.setItem("tacpadel_is_pro", "true");
+          }
+        }
+      }
+
+      // 2. Lade freigegebene Community-Strategien
+      const { data } = await supabase
         .from('community_strategies')
         .select('*')
         .eq('status', 'approved');
@@ -49,14 +76,14 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           theme: dbRow.theme as any,
           difficulty: dbRow.difficulty as any,
           description: dbRow.description,
-          steps: dbRow.steps
+          steps: typeof dbRow.steps === "string" ? JSON.parse(dbRow.steps) : dbRow.steps
         }));
         
         setAllStrategies([...STRATEGIES, ...communityStrats]);
       }
     }
     
-    fetchCommunityStrategies();
+    initData();
   }, []);
 
   const activeStep: StrategyStep | null = activeStrategy ? activeStrategy.steps[currentStepIndex] : null;
@@ -110,7 +137,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         resetInputs();
       } else {
         setStrategyFinished(true);
-        // FIX: Punkte gibt es nur, wenn kein Testmodus aktiv ist!
         if (!isTestMode) {
           onStrategyComplete(50);
         }
@@ -132,7 +158,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     setStrategyFinished(false);
     resetInputs();
 
-    // FIX: Automatischer Rücksprung nach dem Testen
     if (isTestMode) {
       setCurrentView("builder");
       setBuilderStartInAdmin(testModeType === "admin");
@@ -176,54 +201,147 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
 
   if (!activeStrategy) {
     return (
-      <div className="w-full flex flex-col gap-6 p-4">
+      <div className="w-full flex flex-col gap-6 p-4 relative">
+        
+        {/* PRO USER UPGRADE MODAL */}
+        <AnimatePresence>
+          {showProModal && (
+            <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 15 }}
+                className="bg-[#050b18] border border-pink-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(236,72,153,0.2)] max-w-md w-full flex flex-col items-center text-center gap-4 relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500" />
+                <div className="w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-3xl shadow-inner">
+                  👑
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-400">
+                    TacPadel Pro Feature
+                  </span>
+                  <h3 className="text-2xl font-black text-white uppercase tracking-wider mt-1">
+                    Strategien & Builder
+                  </h3>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  Die erste Strategie ist zum Ausprobieren für alle frei! Schalte mit dem <b className="text-pink-400">Pro User Pass</b> alle fortgeschrittenen Taktik-Pfade, Community-Strategien, den eigenen Strategie-Builder sowie exklusive Pro-Turniere frei.
+                </p>
+
+                <div className="w-full bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 text-left flex flex-col gap-2 text-xs text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-black">✓</span>
+                    <span>Alle Offensiv-, Defensiv- & Umschalt-Strategien</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-black">✓</span>
+                    <span>Eigene Spielzüge im 3D-Builder bauen & teilen</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-black">✓</span>
+                    <span>Zugang zu allen Pro-User-Turnieren & Master-Events</span>
+                  </div>
+                </div>
+
+                <button
+                  disabled
+                  className="w-full py-4 mt-1 bg-gradient-to-r from-pink-600/30 to-purple-600/30 border border-pink-500/40 text-pink-300 font-black text-xs uppercase tracking-[0.15em] rounded-xl cursor-not-allowed"
+                >
+                  👑 Pro Pass (Startet zum Release)
+                </button>
+                <button
+                  onClick={() => setShowProModal(false)}
+                  className="text-xs font-bold text-slate-400 hover:text-white uppercase tracking-widest mt-1"
+                >
+                  Schließen
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
               ← Zurück
             </button>
-            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 uppercase tracking-widest">
+            <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 uppercase tracking-widest">
               Strategie-Pfade
             </h2>
           </div>
           <button 
-            onClick={() => setCurrentView("builder")} 
-            className="text-xs bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 px-4 py-2 rounded-lg font-bold hover:bg-cyan-600/40 transition-colors"
+            onClick={() => {
+              if (isProUser) {
+                setCurrentView("builder");
+              } else {
+                setShowProModal(true);
+              }
+            }} 
+            className={`text-xs px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              isProUser
+                ? "bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-600/40"
+                : "bg-pink-950/40 text-pink-300 border border-pink-500/40 hover:bg-pink-900/50"
+            }`}
           >
-            + Erstellen
+            <span>{isProUser ? "+ Erstellen" : "🔒 + Erstellen (Pro)"}</span>
           </button>
         </div>
         
         <p className="text-slate-400 text-sm">
-          Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik aufzubauen.
+          Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik aufzubauen. <span className="text-emerald-400 font-bold">Strategie #1 ist kostenlos spielbar!</span>
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          {allStrategies.map((strat) => (
-            <div 
-              key={strat.id}
-              onClick={() => {
-                setActiveStrategy(strat);
-                setCurrentStepIndex(0);
-                resetInputs();
-              }}
-              className="bg-[#050b18]/80 border border-slate-800 hover:border-cyan-500/50 p-5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] shadow-lg group relative overflow-hidden flex flex-col"
-            >
-              <div className="flex justify-between items-start mb-3 relative z-10">
-                <div className="flex gap-2 items-center">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${getThemeStyles(strat.theme)}`}>
-                    {strat.theme}
-                  </span>
-                  <span className="text-[10px] tracking-widest drop-shadow-md">
-                    {"⭐".repeat(strat.difficulty)}
-                  </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          {allStrategies.map((strat, index) => {
+            const isFreeStrategy = index === 0;
+            const isLocked = !isFreeStrategy && !isProUser;
+
+            return (
+              <div 
+                key={strat.id}
+                onClick={() => {
+                  if (isLocked) {
+                    setShowProModal(true);
+                    return;
+                  }
+                  setActiveStrategy(strat);
+                  setCurrentStepIndex(0);
+                  resetInputs();
+                }}
+                className={`bg-[#050b18]/80 border p-5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] shadow-lg group relative overflow-hidden flex flex-col ${
+                  isLocked
+                    ? "border-slate-800/80 hover:border-pink-500/50 opacity-85"
+                    : "border-slate-800 hover:border-cyan-500/50"
+                }`}
+              >
+                <div className="flex justify-between items-start mb-3 relative z-10 gap-2">
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${getThemeStyles(strat.theme)}`}>
+                      {strat.theme}
+                    </span>
+                    <span className="text-[10px] tracking-widest drop-shadow-md">
+                      {"⭐".repeat(strat.difficulty)}
+                    </span>
+                    {isFreeStrategy ? (
+                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        Gratis Testen
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-pink-950/60 text-pink-300 border border-pink-500/40">
+                        {isLocked ? "🔒 Pro User" : "👑 Pro"}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-bold text-slate-500 shrink-0">{strat.steps.length} Züge</span>
                 </div>
-                <span className="text-xs font-bold text-slate-500">{strat.steps.length} Züge</span>
+                <h3 className="text-lg font-bold text-white mb-2 relative z-10 flex items-center gap-2">
+                  <span>{strat.title}</span>
+                </h3>
+                <p className="text-xs text-slate-400 line-clamp-2 relative z-10">{strat.description}</p>
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 relative z-10">{strat.title}</h3>
-              <p className="text-xs text-slate-400 line-clamp-2 relative z-10">{strat.description}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
