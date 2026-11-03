@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/AuthContext";
 import ScenarioCourt25 from "./ScenarioCourt25";
@@ -7,30 +7,54 @@ import { StrategyStep, StrategySequence } from "../lib/strategies";
 const ZONES = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3", "B4", "B5", "C1", "C2", "C3", "C4", "C5", "D1", "D2", "D3", "D4", "D5", "E1", "E2", "E3", "E4", "E5"];
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE", "VORBEREITUNG"];
 
+interface AdminUserRow {
+  id: string;
+  email?: string;
+  display_name?: string;
+  points?: number;
+  tac_points?: number;
+  is_pro?: boolean;
+  avatar_url?: string;
+}
+
 // ==========================================
-// ADMIN DASHBOARD
+// ADMIN DASHBOARD (Strategien + Pro-User Verwaltung)
 // ==========================================
-function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTestStrategy: (strat: StrategySequence, type: "admin" | "draft") => void }) {
+function AdminDashboard({
+  onExit,
+  onTestStrategy,
+}: {
+  onExit: () => void;
+  onTestStrategy: (strat: StrategySequence, type: "admin" | "draft") => void;
+}) {
+  const [adminTab, setAdminTab] = useState<"strategies" | "users">("strategies");
+
+  // --- TAB 1: STRATEGIEN STATES ---
   const [pendingStrats, setPendingStrats] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingStrats, setLoadingStrats] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // --- TAB 2: SPIELER / PRO-USER STATES ---
+  const [usersList, setUsersList] = useState<AdminUserRow[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [userSearch, setUserSearch] = useState<string>("");
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+
   const fetchPending = async () => {
-    setLoading(true);
+    setLoadingStrats(true);
     setErrorMsg(null);
 
     const { data, error } = await supabase
-      .from('community_strategies')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
+      .from("community_strategies")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
 
     if (error) {
-      // Falls die Tabelle keine created_at Spalte hat, Fallback ohne Sortierung
       const fallback = await supabase
-        .from('community_strategies')
-        .select('*')
-        .eq('status', 'pending');
+        .from("community_strategies")
+        .select("*")
+        .eq("status", "pending");
 
       if (fallback.error) {
         setErrorMsg(fallback.error.message);
@@ -41,18 +65,83 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
       setPendingStrats(data);
     }
 
-    setLoading(false);
+    setLoadingStrats(false);
+  };
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    setErrorMsg(null);
+
+    const { data, error } = await supabase
+      .from("user_stats")
+      .select("id, email, display_name, points, tac_points, is_pro, avatar_url")
+      .order("points", { ascending: false });
+
+    if (error) {
+      setErrorMsg(
+        `Fehler beim Laden der Spieler (${error.message}). Hast du die Spalte 'is_pro' in Supabase angelegt?`
+      );
+    } else if (data) {
+      setUsersList(data as AdminUserRow[]);
+    }
+
+    setLoadingUsers(false);
   };
 
   useEffect(() => {
     fetchPending();
+    fetchUsers();
   }, []);
+
+  const handleToggleUserPro = async (targetUser: AdminUserRow) => {
+    setTogglingUserId(targetUser.id);
+    const nextProStatus = !Boolean(targetUser.is_pro);
+
+    const { data, error } = await supabase
+      .from("user_stats")
+      .update({ is_pro: nextProStatus })
+      .eq("id", targetUser.id)
+      .select();
+
+    setTogglingUserId(null);
+
+    if (error) {
+      alert("Fehler beim Ändern des Pro-Status: " + error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      alert(
+        "Update wurde von Supabase blockiert! Bitte führe die Admin-UPDATE-Policy für 'user_stats' im Supabase SQL-Editor aus."
+      );
+      return;
+    }
+
+    setUsersList((prev) =>
+      prev.map((u) => (u.id === targetUser.id ? { ...u, is_pro: nextProStatus } : u))
+    );
+  };
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return usersList;
+    return usersList.filter(
+      (u) =>
+        (u.display_name && u.display_name.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q))
+    );
+  }, [usersList, userSearch]);
+
+  const proUsersCount = useMemo(
+    () => usersList.filter((u) => Boolean(u.is_pro)).length,
+    [usersList]
+  );
 
   const handleApprove = async (id: string) => {
     const { data, error } = await supabase
-      .from('community_strategies')
-      .update({ status: 'approved' })
-      .eq('id', id)
+      .from("community_strategies")
+      .update({ status: "approved" })
+      .eq("id", id)
       .select();
 
     if (error) {
@@ -60,17 +149,17 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
       return;
     }
     if (!data || data.length === 0) {
-      alert("Keine Berechtigung zum Ändern! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
+      alert("Keine Berechtigung! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
       return;
     }
-    setPendingStrats(prev => prev.filter(s => s.id !== id));
+    setPendingStrats((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleReject = async (id: string) => {
     const { data, error } = await supabase
-      .from('community_strategies')
-      .update({ status: 'rejected' })
-      .eq('id', id)
+      .from("community_strategies")
+      .update({ status: "rejected" })
+      .eq("id", id)
       .select();
 
     if (error) {
@@ -78,10 +167,10 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
       return;
     }
     if (!data || data.length === 0) {
-      alert("Keine Berechtigung zum Ändern! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
+      alert("Keine Berechtigung! Bitte prüfe die Supabase UPDATE-Policy (RLS) für community_strategies.");
       return;
     }
-    setPendingStrats(prev => prev.filter(s => s.id !== id));
+    setPendingStrats((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleTest = (dbRow: any) => {
@@ -92,68 +181,240 @@ function AdminDashboard({ onExit, onTestStrategy }: { onExit: () => void, onTest
       theme: dbRow.theme as any,
       difficulty: dbRow.difficulty as any,
       description: dbRow.description,
-      steps: parsedSteps || []
+      steps: parsedSteps || [],
     };
     onTestStrategy(stratToTest, "admin");
   };
 
   return (
-    <div className="w-full bg-[#050b18] p-6 rounded-xl border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.1)]">
-      <div className="flex justify-between items-center mb-6 border-b border-purple-900/50 pb-4">
-        <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest">
-          Admin: Prüf-Zentrale
-        </h2>
-        <div className="flex gap-2">
-          <button onClick={fetchPending} className="text-xs bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/40 text-purple-300 px-3 py-2 rounded-lg font-bold transition-colors">
+    <div className="w-full bg-[#050b18] p-5 sm:p-6 rounded-xl border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.1)]">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5 border-b border-purple-900/50 pb-4">
+        <div>
+          <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest">
+            Admin-Zentrale
+          </h2>
+          <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+            Community-Strategien prüfen & Tester für Pro-Features freischalten
+          </p>
+        </div>
+
+        <div className="flex gap-2 w-full sm:w-auto justify-end">
+          <button
+            onClick={() => (adminTab === "strategies" ? fetchPending() : fetchUsers())}
+            className="text-xs bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/40 text-purple-300 px-3 py-2 rounded-lg font-bold transition-colors"
+          >
             ↻ Neu laden
           </button>
-          <button onClick={onExit} className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-colors">
+          <button
+            onClick={onExit}
+            className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+          >
             Schließen
           </button>
         </div>
       </div>
 
+      {/* TAB-UMSCHALTER */}
+      <div className="grid grid-cols-2 gap-2 bg-[#03060e] p-1.5 rounded-xl border border-slate-800 mb-6">
+        <button
+          onClick={() => setAdminTab("strategies")}
+          className={`py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+            adminTab === "strategies"
+              ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)]"
+              : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <span>📋 Strategien prüfen</span>
+          <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-black/40 text-purple-200">
+            {pendingStrats.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setAdminTab("users")}
+          className={`py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+            adminTab === "users"
+              ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]"
+              : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <span>👑 Pro-User & Tester</span>
+          <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-black/40 text-pink-200">
+            {proUsersCount} Pro
+          </span>
+        </button>
+      </div>
+
       {errorMsg && (
         <div className="mb-4 p-4 rounded-xl bg-red-950/40 border border-red-500/50 text-red-300 text-xs font-bold">
-          ⚠️ Supabase Fehler: {errorMsg}
+          ⚠️ {errorMsg}
         </div>
       )}
-      
-      {loading ? (
-        <p className="text-slate-400 text-center py-8 animate-pulse font-bold uppercase tracking-widest text-xs">
-          Lade eingereichte Strategien...
-        </p>
-      ) : pendingStrats.length === 0 ? (
-        <p className="text-slate-400 text-center py-8">
-          Keine neuen Strategien zur Prüfung vorhanden. Alles sauber! 🧹
-        </p>
-      ) : null}
-      
-      <div className="flex flex-col gap-4">
-        {pendingStrats.map(strat => (
-          <div key={strat.id} className="bg-slate-900/80 p-5 rounded-xl border border-slate-700 flex flex-col gap-3">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-bold text-lg text-white">{strat.title}</h3>
-                <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">
-                  Eingereicht von: {strat.creator_name || "Unbekannt"}
-                </span>
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded bg-purple-950/60 border border-purple-500/40 text-purple-300">
-                {strat.theme} • Level {strat.difficulty}
-              </span>
-            </div>
-            <p className="text-sm text-slate-400 bg-slate-950/50 p-3 rounded-lg border border-slate-800">
-              {strat.description}
+
+      {/* ========================================================= */}
+      {/* TAB 1: EINGEREICHTE STRATEGIEN PRÜFEN                     */}
+      {/* ========================================================= */}
+      {adminTab === "strategies" && (
+        <>
+          {loadingStrats ? (
+            <p className="text-slate-400 text-center py-8 animate-pulse font-bold uppercase tracking-widest text-xs">
+              Lade eingereichte Strategien...
             </p>
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => handleTest(strat)} className="flex-1 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">🎮 Testen</button>
-              <button onClick={() => handleApprove(strat.id)} className="flex-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">✅ Freigeben</button>
-              <button onClick={() => handleReject(strat.id)} className="flex-1 bg-red-600/20 text-red-400 border border-red-500/50 hover:bg-red-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">❌ Ablehnen</button>
+          ) : pendingStrats.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">
+              Keine neuen Strategien zur Prüfung vorhanden. Alles sauber! 🧹
+            </p>
+          ) : null}
+
+          <div className="flex flex-col gap-4">
+            {pendingStrats.map((strat) => (
+              <div
+                key={strat.id}
+                className="bg-slate-900/80 p-5 rounded-xl border border-slate-700 flex flex-col gap-3"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-bold text-lg text-white">{strat.title}</h3>
+                    <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">
+                      Eingereicht von: {strat.creator_name || "Unbekannt"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded bg-purple-950/60 border border-purple-500/40 text-purple-300">
+                    {strat.theme} • Level {strat.difficulty}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-400 bg-slate-950/50 p-3 rounded-lg border border-slate-800">
+                  {strat.description}
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleTest(strat)}
+                    className="flex-1 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    🎮 Testen
+                  </button>
+                  <button
+                    onClick={() => handleApprove(strat.id)}
+                    className="flex-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    ✅ Freigeben
+                  </button>
+                  <button
+                    onClick={() => handleReject(strat.id)}
+                    className="flex-1 bg-red-600/20 text-red-400 border border-red-500/50 hover:bg-red-600 hover:text-white px-3 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    ❌ Ablehnen
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 2: SPIELER-LISTE & PRO-RECHTE VERGEBEN                */}
+      {/* ========================================================= */}
+      {adminTab === "users" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="🔍 Spielername oder E-Mail suchen..."
+              className="flex-1 bg-slate-900 border border-slate-700 focus:border-pink-500 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none"
+            />
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-900/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
+              Gesamt: <span className="text-white">{usersList.length}</span> • Pro:{" "}
+              <span className="text-pink-400">{proUsersCount}</span>
             </div>
           </div>
-        ))}
-      </div>
+
+          {loadingUsers ? (
+            <p className="text-slate-400 text-center py-8 animate-pulse font-bold uppercase tracking-widest text-xs">
+              Lade Spieler-Liste...
+            </p>
+          ) : filteredUsers.length === 0 ? (
+            <p className="text-slate-400 text-center py-8 text-xs font-bold uppercase tracking-widest">
+              Keine passenden Spieler gefunden.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5 max-h-[55vh] overflow-y-auto custom-scrollbar pr-1">
+              {filteredUsers.map((u) => {
+                const isPro = Boolean(u.is_pro);
+                const fallbackName = u.email ? u.email.split("@")[0] : "Spieler";
+                const displayName =
+                  u.display_name && u.display_name.trim() !== "" ? u.display_name : fallbackName;
+                const isBusy = togglingUserId === u.id;
+
+                return (
+                  <div
+                    key={u.id}
+                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
+                      isPro
+                        ? "bg-pink-950/20 border-pink-500/40 shadow-[inset_0_0_15px_rgba(236,72,153,0.08)]"
+                        : "bg-slate-900/70 border-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {u.avatar_url ? (
+                        <img
+                          src={u.avatar_url}
+                          alt={displayName}
+                          className="w-10 h-10 rounded-full object-cover border border-slate-700 shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-xs text-slate-400 shrink-0">
+                          {displayName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-sm text-white truncate">
+                            {displayName}
+                          </span>
+                          {isPro && (
+                            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/40">
+                              👑 PRO USER
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {u.email || `ID: ${u.id.slice(0, 8)}...`}
+                        </div>
+                        <div className="flex gap-3 mt-1 text-[10px] font-bold uppercase tracking-wider">
+                          <span className="text-cyan-400">{u.points || 0} TS</span>
+                          <span className="text-amber-400">{u.tac_points || 0} TP</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleToggleUserPro(u)}
+                      disabled={isBusy}
+                      className={`w-full sm:w-auto px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
+                        isPro
+                          ? "bg-pink-600 hover:bg-red-600 text-white shadow-[0_0_12px_rgba(236,72,153,0.4)]"
+                          : "bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700"
+                      }`}
+                    >
+                      {isBusy
+                        ? "Speichert..."
+                        : isPro
+                          ? "👑 Pro aktiv (Entziehen)"
+                          : "🔓 Auf Pro setzen"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

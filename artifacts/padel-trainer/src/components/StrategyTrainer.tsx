@@ -4,6 +4,10 @@ import ScenarioCourt25 from "./ScenarioCourt25";
 import { STRATEGIES, StrategySequence, StrategyStep } from "../lib/strategies";
 import StrategyBuilder from "./StrategyBuilder";
 import { supabase } from "../lib/supabase";
+import { useProStatus } from "../lib/useProStatus";
+
+// Innerhalb deiner Komponente (z. B. TacticsBoard, StrategyTrainer oder TourScreen):
+const { isProUser } = useProStatus();
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 

@@ -4,6 +4,10 @@ import { supabase } from '../lib/supabase';
 
 // --- AKTUELL: Beta-Turniere (Später für Season 1 einfach auf '../engine/TournamentsSeason1' ändern!) ---
 import { Tournament, TourType, TOURNAMENTS } from '../engine/Tournaments';
+import { useProStatus } from "../lib/useProStatus";
+
+// Innerhalb deiner Komponente (z. B. TacticsBoard, StrategyTrainer oder TourScreen):
+const { isProUser } = useProStatus();
 
 // Erweitertes Interface, damit TypeScript schon jetzt die Season-1-Felder kennt,
 // ohne dass du deine aktuelle Tournaments.ts anfassen musst:
