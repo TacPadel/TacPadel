@@ -1,6 +1,6 @@
-import React, { useRef, useState, useCallback, useMemo } from "react";
-// DEIN NEUER COURT IMPORT
+import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import ScenarioCourt4D from "./ScenarioCourt4D";
+import { supabase } from "../lib/supabase";
 
 interface DraggableItem {
   id: string;
@@ -20,13 +20,24 @@ interface TacticalFilters {
   showAttackArc: boolean;
 }
 
+// Typen für das Tactical Studio (Zeichnungen & Rekorder)
+type StudioTool = "move" | "arrow_run" | "arrow_ball" | "zone_circle";
+
+interface StudioDrawing {
+  id: string;
+  type: "arrow_run" | "arrow_ball" | "zone_circle";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 // Virtuelle Konstanten für stabiles Scaling (Logik bleibt 16:9, Ansicht wird 9:16 gedreht!)
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse (JETZT AUF 160px ANGEPASST)
+// Globale Taktik-Schwellenwerte für Analyse (AUF 160px ANGEPASST)
 const GAP_THRESHOLD = 160;
-// WIDE_GAP_THRESHOLD auf 180px erhöht, damit sich die diagonale Linie auf dem Bogen dehnen darf, ohne rot zu werden!
 const WIDE_GAP_THRESHOLD = 180;
 const DEEP_DEF_THRESHOLD = 80;
 const SHORT_DEF_THRESHOLD = 70;
@@ -50,7 +61,7 @@ const getControlPointX = (isTeamA: boolean) => {
   return 2 * apexX - edgeX;
 };
 
-// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS) - Y-Werte an 160px Abstand angepasst
+// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS)
 const SCENARIOS: Record<string, {
   name: string;
   items: DraggableItem[];
@@ -128,7 +139,7 @@ const SCENARIOS: Record<string, {
   }
 };
 
-// HILFSFUNKTION: Kapselt die Ziel-Berechnung für beide Systeme (Visuell beim Draggen & Analyse)
+// HILFSFUNKTION: Kapselt die Ziel-Berechnung für beide Systeme
 const getTacticalTargetAndRec = (
   ball: { x: number; y: number },
   teamA: DraggableItem[],
@@ -203,7 +214,6 @@ const getTacticalAnalysis = (
 
   const netX = V_WIDTH / 2;
   const teamA_X = (teamA[0].x + teamA[1].x) / 2;
-  const teamB_X = (teamB[0].x + teamB[1].x) / 2;
   const isBallOnSideA = ball.x <= netX;
 
   const closestA = teamA.reduce((prev, curr) => Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev);
@@ -214,7 +224,6 @@ const getTacticalAnalysis = (
   const movements: Record<string, { tx: number; ty: number }> = {};
   let title = ""; let bodyText = ""; let color = ""; let activePlayerId = "";
 
-  // Die neue Verschiebung für das Team OHNE Ball richtet sich nach dem Ziel (TargetY)
   const targetYPercent = Math.max(0, Math.min(1, targetY / V_HEIGHT));
   const targetLateralShift = (targetYPercent - 0.5) * 160;
 
@@ -222,7 +231,6 @@ const getTacticalAnalysis = (
     const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD + 2;
     const isAInTransition = teamA_X > V_WIDTH * 0.25 && teamA_X < netX - 80;
 
-    // TEAM A (MIT BALL) -> Reagiert auf den BALL
     const hitterAngle = Math.atan2(ball.y - closestA.y, ball.x - closestA.x);
     const hitterDist = Math.hypot(ball.x - closestA.x, ball.y - closestA.y);
     const hitterStep = Math.max(0, hitterDist - 28);
@@ -241,7 +249,6 @@ const getTacticalAnalysis = (
       }
     });
 
-    // TEAM B (OHNE BALL, am Netz) -> Reagiert auf das ZIEL (gelbe Spitze)
     const defBaseX = (teamB[0].x + teamB[1].x) / 2;
     teamB.forEach(p => {
       if (filters.showAttackArc) {
@@ -259,7 +266,6 @@ const getTacticalAnalysis = (
     color = isAInTransition ? "bg-red-700" : (isBMiddleOpen && filters.showWeaknessZones) ? "bg-emerald-600" : "bg-indigo-700";
     activePlayerId = closestA.id;
   } else {
-    // TEAM B (MIT BALL) -> Reagiert auf den BALL
     const hitterAngle = Math.atan2(ball.y - closestB.y, ball.x - closestB.x);
     const hitterDist = Math.hypot(ball.x - closestB.x, ball.y - closestB.y);
     const hitterStep = Math.max(0, hitterDist - 28);
@@ -278,7 +284,6 @@ const getTacticalAnalysis = (
       }
     });
 
-    // TEAM A (OHNE BALL, am Netz) -> Reagiert auf das ZIEL (gelbe Spitze)
     const defBaseX = (teamA[0].x + teamA[1].x) / 2;
     teamA.forEach(p => {
       if (filters.showAttackArc) {
@@ -301,7 +306,7 @@ const getTacticalAnalysis = (
 };
 
 // ==========================================
-// 3D ANSICHT MIT TAKTIK-RADAR HUD (MOBILE OPTIMIERT)
+// 3D ANSICHT MIT TAKTIK-RADAR HUD
 // ==========================================
 function TrajectoryView3D() {
   const [shotType, setShotType] = useState("BAJADA");
@@ -315,28 +320,6 @@ function TrajectoryView3D() {
   const sniperSvgRef = useRef<SVGSVGElement>(null);
   const NET_X = V_WIDTH / 2;
 
-  // 1. Die klassische Zonen-Rechnung (Das "Alibi" für TacticalData.tsx)
-  const getZoneFromXY = (x: number, y: number, isTeamA: boolean) => {
-    const clampedY = Math.max(0, Math.min(V_HEIGHT - 0.1, y));
-    const colIndex = Math.floor((clampedY / V_HEIGHT) * 5); 
-    const cols = ["A", "B", "C", "D", "E"];
-    const col = cols[colIndex];
-
-    let row = "3";
-    if (isTeamA) {
-      const clampedX = Math.max(0, Math.min(NET_X - 0.1, x));
-      const rowIndex = Math.floor((clampedX / NET_X) * 5); 
-      row = (rowIndex + 1).toString(); 
-    } else {
-      const clampedX = Math.max(NET_X, Math.min(V_WIDTH - 0.1, x));
-      const relativeX = clampedX - NET_X; 
-      const rowIndex = Math.floor((relativeX / NET_X) * 5); 
-      row = (5 - rowIndex).toString();
-    }
-    return `${col}${row}`;
-  };
-
-  // 2. Die neue millimetergenaue Umrechnung (Die "Wahrheit" für den Ballflug)
   const getMetersFromXY = (svgX: number, svgY: number) => {
     const z = 10 - ((svgX / V_WIDTH) * 20); 
     const x = ((svgY / V_HEIGHT) * 10) - 5; 
@@ -346,13 +329,9 @@ function TrajectoryView3D() {
     };
   };
 
-  const playerZone = getZoneFromXY(playerPos.x, playerPos.y, true);
-  const targetZone = getZoneFromXY(targetPos.x, targetPos.y, false);
-  
   const playerCoords = getMetersFromXY(playerPos.x, playerPos.y);
   const targetCoords = getMetersFromXY(targetPos.x, targetPos.y);
 
-  // === VISUELLE UMRECHNUNG FÜR VERTIKAL-TOUCH ===
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const svg = sniperSvgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -361,16 +340,14 @@ function TrajectoryView3D() {
     let clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     let clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-    const SVG_VIEW_X = -40; // Weniger Rand
-    const SVG_VIEW_Y = -40; // Weniger Rand
-    const SVG_VIEW_W = 460; // Geringere Breite -> Feld wirkt größer
-    const SVG_VIEW_H = 840; // Geringere Höhe -> Feld wirkt größer
+    const SVG_VIEW_X = -40;
+    const SVG_VIEW_Y = -40;
+    const SVG_VIEW_W = 460;
+    const SVG_VIEW_H = 840;
 
-    // Visuelle Klick-Koordinaten
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Rück-Umrechnung auf das logische horizontale 760x380 Grid
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -393,7 +370,7 @@ function TrajectoryView3D() {
     } else if (activeDrag === "target") {
       setTargetPos({ x: Math.max(NET_X + 16, Math.min(V_WIDTH - 16, pt.x)), y: Math.max(16, Math.min(V_HEIGHT - 16, pt.y)) });
     }
-  }, [activeDrag, getPoint]);
+  }, [activeDrag, getPoint, NET_X]);
 
   const onPointerUp = useCallback(() => setActiveDrag(null), []);
 
@@ -414,7 +391,6 @@ function TrajectoryView3D() {
           <ScenarioCourt4D
             level="Schlagrichtung"
             isPreparingShot={isSimulating && !hasSubmitted} 
-            
             positions={{
               you: `EXACT_${playerCoords.x}_${playerCoords.z}`,
               partner: "EXACT_1000_1000",
@@ -422,7 +398,6 @@ function TrajectoryView3D() {
               opp2: "EXACT_1000_1000",
               ball: { side: "left", zone: `EXACT_${playerCoords.x}_${playerCoords.z}`, type: shotType },
             }}
-            
             selectedZone={`EXACT_${targetCoords.x}_${targetCoords.z}`}
             exactCoords={{ you: playerCoords, target: targetCoords }}
             hidePlayerLabels={true}
@@ -447,10 +422,8 @@ function TrajectoryView3D() {
             
             <div className="w-full bg-[#050505] rounded-xl border border-white/10 shadow-inner overflow-hidden flex justify-center py-2">
               <svg ref={sniperSvgRef} viewBox="-40 -40 460 840" className="w-auto h-[180px] sm:h-[220px] touch-none select-none block cursor-crosshair" onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp} onTouchMove={onPointerMove} onTouchEnd={onPointerUp} onTouchCancel={onPointerUp}>
-                
                 <g transform="matrix(0 -1 1 0 0 760)">
                   <rect x={10} y={10} width={V_WIDTH - 20} height={V_HEIGHT - 20} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={3} />
-                  
                   <line x1={NET_X} y1={10} x2={NET_X} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.5)" strokeWidth={3} strokeDasharray="6 4" />
                   <line x1={NET_X - (6.95 * 38)} y1={10} x2={NET_X - (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
                   <line x1={NET_X + (6.95 * 38)} y1={10} x2={NET_X + (6.95 * 38)} y2={V_HEIGHT - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -502,7 +475,7 @@ function TrajectoryView3D() {
 }
 
 // ==========================================
-// HAUPT-KOMPONENTE
+// HAUPT-KOMPONENTE (INKL. TACTICAL STUDIO PRO)
 // ==========================================
 export default function TacticsBoard() {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -517,8 +490,68 @@ export default function TacticsBoard() {
   const [customTarget, setCustomTarget] = useState<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<number>(0);
 
-  // Toggle für die Modi
-  const [activeMode, setActiveMode] = useState<"tactics" | "3d">("tactics");
+  // --- 3-WEGE SCHALTER: 2D | STUDIO (PRO) | 3D ---
+  const [activeMode, setActiveMode] = useState<"tactics" | "studio" | "3d">("tactics");
+
+  // --- PRO-USER STATUS & PAYWALL ---
+  const [isProUser, setIsProUser] = useState<boolean>(() => localStorage.getItem("tacpadel_is_pro") === "true");
+  const [showProModal, setShowProModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    async function checkProStatus() {
+      const localOverride = localStorage.getItem("tacpadel_is_pro");
+      if (localOverride === "false") {
+        setIsProUser(false);
+        return;
+      }
+      if (localOverride === "true") {
+        setIsProUser(true);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
+        const metaPro = Boolean(session.user.user_metadata?.is_pro);
+        if (isAdmin || metaPro) {
+          setIsProUser(true);
+        } else {
+          const { data: statsData } = await supabase
+            .from("user_stats")
+            .select("*")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          if (statsData?.is_pro) {
+            setIsProUser(true);
+            localStorage.setItem("tacpadel_is_pro", "true");
+          }
+        }
+      }
+    }
+    checkProStatus();
+  }, []);
+
+  // --- TACTICAL STUDIO STATES (Zeichnen, Aufnehmen, Teilen) ---
+  const [studioTool, setStudioTool] = useState<StudioTool>("move");
+  const [studioTitle, setStudioTitle] = useState<string>("Meine Padel-Taktik");
+  const [drawings, setDrawings] = useState<StudioDrawing[]>([]);
+  const [currentDraft, setCurrentDraft] = useState<StudioDrawing | null>(null);
+
+  // Rekorder & Export States
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recSeconds, setRecSeconds] = useState<number>(0);
+  const [exportMedia, setExportMedia] = useState<{
+    url: string;
+    file: File;
+    type: "image" | "video";
+  } | null>(null);
+
+  const recCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recFrameLoopRef = useRef<number | null>(null);
+  const isRenderingFrameRef = useRef<boolean>(false);
 
   const [filters, setFilters] = useState<TacticalFilters>({
     showBallVector: true,
@@ -573,7 +606,6 @@ export default function TacticsBoard() {
     const vX = ((clientX - rect.left) / rect.width) * SVG_VIEW_W + SVG_VIEW_X;
     const vY = ((clientY - rect.top) / rect.height) * SVG_VIEW_H + SVG_VIEW_Y;
 
-    // Wir konvertieren den visuellen Vertikal-Klick wieder auf unser logisches 760x380 Feld!
     return {
       x: V_WIDTH - vY,
       y: vX,
@@ -581,23 +613,48 @@ export default function TacticsBoard() {
   }, []);
 
   const handleSvgDoubleClick = (e: React.MouseEvent) => {
+    if (activeMode === "studio" && studioTool !== "move") return;
     const pt = getPoint(e);
     setCustomTarget({ x: pt.x, y: pt.y });
     setSelectedScenarioKey("custom");
   };
 
-  const handleSvgTouchStart = (e: React.TouchEvent) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+  const handleSvgPointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+    // Im Studio-Zeichenmodus: Neuen Pfeil oder Kreis starten
+    if (activeMode === "studio" && studioTool !== "move") {
+      if (e.cancelable) e.preventDefault();
       const pt = getPoint(e);
-      setCustomTarget({ x: pt.x, y: pt.y });
-      setSelectedScenarioKey("custom");
+      setCurrentDraft({
+        id: `draw-${Date.now()}`,
+        type: studioTool,
+        x1: pt.x,
+        y1: pt.y,
+        x2: pt.x,
+        y2: pt.y,
+      });
+      return;
     }
-    lastTapRef.current = now;
+
+    // Doppeltipp für Zielpunkt im Bewegungsmodus
+    if ("touches" in e) {
+      const now = Date.now();
+      const DOUBLE_TAP_DELAY = 300;
+      if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+        const pt = getPoint(e);
+        setCustomTarget({ x: pt.x, y: pt.y });
+        setSelectedScenarioKey("custom");
+      }
+      lastTapRef.current = now;
+    }
   };
 
   const onPointerDown = useCallback((id: string, e: React.MouseEvent | React.TouchEvent) => {
+    // Wenn im Studio ein Zeichen-Werkzeug aktiv ist, soll man auch direkt von einer Spielerfigur aus zeichnen können
+    if (activeMode === "studio" && studioTool !== "move") {
+      handleSvgPointerDown(e);
+      return;
+    }
+
     e.stopPropagation();
     if (e.cancelable) e.preventDefault();
     const pt = getPoint(e);
@@ -611,9 +668,18 @@ export default function TacticsBoard() {
     dragRef.current = { id, ox: pt.x - item.x, oy: pt.y - item.y, gapY, partnerId };
     setActiveId(id);
     setSelectedScenarioKey("custom");
-  }, [items, getPoint]);
+  }, [items, getPoint, activeMode, studioTool]);
 
   const onPointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // 1. Falls gerade im Studio gezeichnet wird -> Entwurf aktualisieren
+    if (currentDraft) {
+      if (e.cancelable) e.preventDefault();
+      const pt = getPoint(e);
+      setCurrentDraft((prev) => (prev ? { ...prev, x2: pt.x, y2: pt.y } : null));
+      return;
+    }
+
+    // 2. Normales Bewegen der Spieler / des Balls
     if (!dragRef.current) return;
     if (e.cancelable) e.preventDefault();
     const pt = getPoint(e);
@@ -627,7 +693,6 @@ export default function TacticsBoard() {
       let maxX = V_WIDTH - 16;
       const netX = V_WIDTH / 2;
 
-      // === NEU: Beim Draggen des Balls orientieren sich Verteidiger am ZIEL ===
       if (id === "ball" && filters.showAttackArc) {
         const newX = Math.max(16, Math.min(V_WIDTH - 16, pt.x - ox));
         const newY = Math.max(16, Math.min(V_HEIGHT - 16, pt.y - oy));
@@ -635,7 +700,6 @@ export default function TacticsBoard() {
         
         const isTeamAAttacking = newX > netX;
 
-        // Wir berechnen temporär, wo das logische ZIEL (die gelbe Spitze) für diese neue Ballposition liegt
         const pTeamA = prev.filter(i => i.id.startsWith("a"));
         const pTeamB = prev.filter(i => i.id.startsWith("b"));
         const simBall = { x: newX, y: newY };
@@ -646,15 +710,12 @@ export default function TacticsBoard() {
           if (item.id === "ball") return { ...item, x: newX, y: newY };
           
           if (item.isPlayer) {
-            // isAttacker in dieser Logik meint das Team am Netz, auf das der Ball zufliegt (ohne Ball)
             const isAttacker = isTeamAAttacking ? item.id.startsWith("a") : item.id.startsWith("b");
             
             if (isAttacker) {
-              // Netz-Team (ohne Ball) reagiert auf das ZIEL (TargetRatio)
               const targetYPos = (item.id === "a1" || item.id === "b1") ? 110 + (targetRatio - 0.5) * 160 : 270 + (targetRatio - 0.5) * 160;
               return { ...item, x: getArcX(targetYPos, item.id.startsWith("a")), y: targetYPos };
             } else {
-              // Baseline-Team (mit Ball) reagiert auf den BALL (BallRatio)
               const targetX = isTeamAAttacking ? V_WIDTH - 80 : 80;
               const isPlayer1 = item.id === "a1" || item.id === "b1";
               const targetYPos = isPlayer1 ? 110 + (ballRatio - 0.5) * 160 : 270 + (ballRatio - 0.5) * 160;
@@ -665,7 +726,6 @@ export default function TacticsBoard() {
         });
       }
 
-      // Beim Ziehen von Spielern am Bogen bleibt die Mechanik erhalten
       if (id.startsWith("a")) {
         maxX = netX - 15;
       } else if (id.startsWith("b") && id !== "ball") {
@@ -707,12 +767,24 @@ export default function TacticsBoard() {
         return item;
       });
     });
-  }, [getPoint, filters, selectedScenarioKey, customTarget]);
+  }, [getPoint, filters, selectedScenarioKey, customTarget, currentDraft]);
 
   const onPointerUp = useCallback(() => {
+    if (currentDraft) {
+      const dist = Math.hypot(currentDraft.x2 - currentDraft.x1, currentDraft.y2 - currentDraft.y1);
+      // Nur speichern, wenn eine Mindestlänge gezogen wurde (oder bei Zonenkreis auch kleiner Tipp)
+      if (dist > 12 || currentDraft.type === "zone_circle") {
+        const finalDraft =
+          currentDraft.type === "zone_circle" && dist < 20
+            ? { ...currentDraft, x2: currentDraft.x1 + 32, y2: currentDraft.y1 }
+            : currentDraft;
+        setDrawings((prev) => [...prev, finalDraft]);
+      }
+      setCurrentDraft(null);
+    }
     dragRef.current = null;
     setActiveId(null);
-  }, []);
+  }, [currentDraft]);
 
   const reset = () => {
     setSelectedScenarioKey("initial");
@@ -720,36 +792,368 @@ export default function TacticsBoard() {
     setItems(SCENARIOS.initial.items);
   };
 
+  // =========================================================================
+  // TACTICAL STUDIO: SVG -> CANVAS RENDERER (FÜR FOTO & VIDEO-REKORDER)
+  // =========================================================================
+  const renderSvgToCanvas = useCallback((): Promise<HTMLCanvasElement | null> => {
+    return new Promise((resolve) => {
+      const svgEl = svgRef.current;
+      if (!svgEl) return resolve(null);
+
+      let canvas = recCanvasRef.current;
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 1056;
+        recCanvasRef.current = canvas;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(null);
+
+      const serializer = new XMLSerializer();
+      let svgString = serializer.serializeToString(svgEl);
+      if (!svgString.includes("xmlns=")) {
+        svgString = svgString.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+
+      img.onload = () => {
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(0, 0, canvas!.width, canvas!.height);
+        ctx.drawImage(img, 0, 0, canvas!.width, canvas!.height);
+
+        // Gebrandetes TacPadel Studio Wasserzeichen unten einzeichnen
+        ctx.fillStyle = "rgba(4, 9, 20, 0.92)";
+        ctx.fillRect(0, canvas!.height - 54, canvas!.width, 54);
+        ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas!.height - 54);
+        ctx.lineTo(canvas!.width, canvas!.height - 54);
+        ctx.stroke();
+
+        ctx.fillStyle = "#22d3ee";
+        ctx.font = "900 16px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("TACPADEL • TACTICAL STUDIO", 20, canvas!.height - 22);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 14px sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText((studioTitle || "Taktik-Analyse").toUpperCase(), canvas!.width - 20, canvas!.height - 22);
+
+        URL.revokeObjectURL(url);
+        resolve(canvas);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+
+      img.src = url;
+    });
+  }, [studioTitle]);
+
+  // 📸 1. FOTO SNAPSHOT ERSTELLEN
+  const handleTakeSnapshot = async () => {
+    const canvas = await renderSvgToCanvas();
+    if (!canvas) return;
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `tacpadel-taktik-${Date.now()}.png`, { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      setExportMedia({ url, file, type: "image" });
+    }, "image/png");
+  };
+
+  // 🔴 2. VIDEO-AUFNAHME (SHORTCLIP) STARTEN / STOPPEN
+  const startVideoRecording = async () => {
+    const canvas = await renderSvgToCanvas();
+    if (!canvas || typeof MediaRecorder === "undefined") {
+      alert("Dein Browser unterstützt leider keine direkte Video-Aufnahme. Nutze bitte die Foto-Funktion!");
+      return;
+    }
+
+    const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
+    if (!stream) {
+      alert("Video-Stream wird auf diesem Gerät nicht unterstützt. Nutze bitte die Foto-Funktion!");
+      return;
+    }
+
+    const mimeTypes = ["video/mp4", "video/webm;codecs=vp9", "video/webm"];
+    const supportedMime = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+
+    recChunksRef.current = [];
+    const recorder = supportedMime
+      ? new MediaRecorder(stream, { mimeType: supportedMime })
+      : new MediaRecorder(stream);
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        recChunksRef.current.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const finalMime = recorder.mimeType || "video/webm";
+      const ext = finalMime.includes("mp4") ? "mp4" : "webm";
+      const blob = new Blob(recChunksRef.current, { type: finalMime });
+      const file = new File([blob], `tacpadel-clip-${Date.now()}.${ext}`, { type: finalMime });
+      const url = URL.createObjectURL(blob);
+      setExportMedia({ url, file, type: "video" });
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start(200);
+    setIsRecording(true);
+    setRecSeconds(0);
+
+    // Timer hochzählen
+    recTimerRef.current = setInterval(() => {
+      setRecSeconds((s) => s + 1);
+    }, 1000);
+
+    // Kontinuierliche Frame-Schleife während der Aufnahme
+    const updateLoop = async () => {
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return;
+      if (!isRenderingFrameRef.current) {
+        isRenderingFrameRef.current = true;
+        await renderSvgToCanvas();
+        isRenderingFrameRef.current = false;
+      }
+      recFrameLoopRef.current = window.setTimeout(updateLoop, 70);
+    };
+    updateLoop();
+  };
+
+  const stopVideoRecording = () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    if (recFrameLoopRef.current) clearTimeout(recFrameLoopRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
+      if (recFrameLoopRef.current) clearTimeout(recFrameLoopRef.current);
+    };
+  }, []);
+
+  // 📲 3. TEILEN (NATIVES WHATSAPP / SOCIAL SHARE MENU ODER DOWNLOAD)
+  const handleNativeShare = async () => {
+    if (!exportMedia) return;
+    const shareText = `🎾 Schau dir diesen Padel-Spielzug an: "${studioTitle}" – erstellt im TacPadel Tactical Studio! 🔥`;
+
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [exportMedia.file] })) {
+        await navigator.share({
+          title: studioTitle || "TacPadel Taktik",
+          text: shareText,
+          files: [exportMedia.file],
+        });
+        return;
+      }
+    } catch (err) {
+      // Falls Nutzer das Teilen-Menü abbricht
+      return;
+    }
+
+    // Fallback (z. B. am PC): Datei herunterladen & WhatsApp öffnen
+    handleDownloadMedia();
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
+  const handleDownloadMedia = () => {
+    if (!exportMedia) return;
+    const a = document.createElement("a");
+    a.href = exportMedia.url;
+    a.download = exportMedia.file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const netX = V_WIDTH / 2;
   const offsetX = 10 + (V_WIDTH - 20) * 0.15;
 
   const analysis = useMemo(() => getTacticalAnalysis(items, filters, selectedScenarioKey, customTarget), [items, filters, selectedScenarioKey, customTarget]);
 
+  const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
+
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
       
-      {/* --- DER TOGGLE-SCHALTER --- */}
-      <div className="w-full max-w-5xl flex flex-col items-center mb-2 px-3">
-        <div className="bg-white p-1.5 rounded-full shadow-sm border border-gray-200 inline-flex relative w-full max-w-md">
-          <div
-            className={`absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-indigo-600 rounded-full transition-transform duration-300 ease-in-out shadow-md`}
-            style={{ transform: activeMode === "tactics" ? "translateX(0)" : "translateX(100%)" }}
-          />
+      {/* ================================================================= */}
+      {/* PRO USER UPGRADE MODAL (Wenn Free-User auf Studio Pro klicken)    */}
+      {/* ================================================================= */}
+      {showProModal && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#050b18] border border-pink-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(236,72,153,0.25)] max-w-md w-full flex flex-col items-center text-center gap-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500" />
+            <div className="w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-3xl shadow-inner">
+              🎬
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-400">
+                TacPadel Pro Feature
+              </span>
+              <h3 className="text-2xl font-black text-white uppercase tracking-wider mt-1">
+                Tactical Studio
+              </h3>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Zeichne Lauf- und Ballwege direkt auf das Taktik-Board, nimm deine Spielzüge als <b className="text-pink-400">Video-Shortclip</b> oder <b className="text-cyan-400">HD-Foto</b> auf und teile sie direkt mit deinem Partner in eurer WhatsApp-Gruppe!
+            </p>
+
+            <div className="w-full bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 text-left flex flex-col gap-2 text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span>
+                <span>Freihand-Pfeile für Laufwege, Schläge & Zielzonen</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span>
+                <span>Live-Video-Rekorder für animierte Spielzüge</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span>
+                <span>Direkter Export für WhatsApp, Instagram & Community</span>
+              </div>
+            </div>
+
+            <button
+              disabled
+              className="w-full py-4 mt-1 bg-gradient-to-r from-pink-600/30 to-purple-600/30 border border-pink-500/40 text-pink-300 font-black text-xs uppercase tracking-[0.15em] rounded-xl cursor-not-allowed"
+            >
+              👑 Pro Pass (Startet zum Release)
+            </button>
+            <button
+              onClick={() => setShowProModal(false)}
+              className="text-xs font-bold text-slate-400 hover:text-white uppercase tracking-widest mt-1"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* EXPORT & SHARE VORSCHAU-MODAL (Für aufgenommene Fotos & Videos)   */}
+      {/* ================================================================= */}
+      {exportMedia && (
+        <div className="fixed inset-0 z-[270] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-[#050b18] border border-cyan-500/50 p-5 sm:p-6 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.25)] max-w-md w-full flex flex-col items-center gap-4 relative overflow-hidden">
+            <div className="flex justify-between items-center w-full border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400 block">
+                  Tactical Studio Export
+                </span>
+                <h3 className="text-base font-black text-white uppercase tracking-wider">
+                  {exportMedia.type === "video" ? "🎬 Dein Taktik-Shortclip" : "📸 Dein Taktik-Snapshot"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setExportMedia(null)}
+                className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="w-full max-h-[52vh] bg-black rounded-xl border border-slate-800 overflow-hidden flex items-center justify-center">
+              {exportMedia.type === "video" ? (
+                <video
+                  src={exportMedia.url}
+                  controls
+                  autoPlay
+                  loop
+                  playsInline
+                  className="max-h-[50vh] w-auto object-contain"
+                />
+              ) : (
+                <img
+                  src={exportMedia.url}
+                  alt="Taktik Snapshot"
+                  className="max-h-[50vh] w-auto object-contain"
+                />
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full">
+              <button
+                onClick={handleNativeShare}
+                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
+              >
+                <span>📲 WhatsApp / Teilen</span>
+              </button>
+              <button
+                onClick={handleDownloadMedia}
+                className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-xs uppercase tracking-widest rounded-xl border border-slate-700 transition-all"
+              >
+                💾 Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* DER 3-WEGE TOGGLE-SCHALTER (2D | STUDIO PRO | 3D)                 */}
+      {/* ================================================================= */}
+      <div className="w-full max-w-5xl flex flex-col items-center mb-1 px-3">
+        <div className="bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid grid-cols-3 relative w-full max-w-lg">
           <button
-            onClick={() => setActiveMode("tactics")}
-            className={`relative flex-1 py-2 text-xs sm:text-sm font-bold rounded-full transition-colors z-10 ${
-              activeMode === "tactics" ? "text-white" : "text-gray-500 hover:text-gray-800"
+            onClick={() => {
+              if (isRecording) stopVideoRecording();
+              setActiveMode("tactics");
+            }}
+            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
+              activeMode === "tactics"
+                ? "bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.5)]"
+                : "text-slate-400 hover:text-white"
             }`}
           >
-            2D Taktik & Positionen
+            2D Taktik
           </button>
+
+          {/* NEUER MITTEL-BUTTON: TACTICAL STUDIO (PRO) */}
           <button
-            onClick={() => setActiveMode("3d")}
-            className={`relative flex-1 py-2 text-xs sm:text-sm font-bold rounded-full transition-colors z-10 ${
-              activeMode === "3d" ? "text-white" : "text-gray-500 hover:text-gray-800"
+            onClick={() => {
+              if (!isProUser) {
+                setShowProModal(true);
+                return;
+              }
+              setActiveMode("studio");
+            }}
+            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
+              activeMode === "studio"
+                ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]"
+                : "text-pink-400 hover:text-pink-300"
             }`}
           >
-            3D Flugkurven & Glas
+            <span>{isProUser ? "🎬 Studio Pro" : "🔒 Studio Pro"}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (isRecording) stopVideoRecording();
+              setActiveMode("3d");
+            }}
+            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
+              activeMode === "3d"
+                ? "bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.5)]"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            3D Flugkurven
           </button>
         </div>
       </div>
@@ -759,6 +1163,116 @@ export default function TacticsBoard() {
         <TrajectoryView3D />
       ) : (
         <>
+          {/* ============================================================= */}
+          {/* TACTICAL STUDIO (PRO) WERKZEUGLEISTE                          */}
+          {/* ============================================================= */}
+          {activeMode === "studio" && (
+            <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
+              <div className="bg-[#050b18] border border-pink-500/40 rounded-2xl p-3 sm:p-4 shadow-[0_0_25px_rgba(236,72,153,0.12)] flex flex-col gap-3">
+                
+                {/* Zeile 1: Taktik-Titel & Aufnahme-Buttons */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-pink-500/20 text-pink-300 border border-pink-500/40 shrink-0">
+                      🎬 STUDIO
+                    </span>
+                    <input
+                      type="text"
+                      value={studioTitle}
+                      onChange={(e) => setStudioTitle(e.target.value)}
+                      placeholder="Titel deiner Taktik..."
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={handleTakeSnapshot}
+                      className="flex-1 sm:flex-initial px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                      📸 Foto
+                    </button>
+
+                    {!isRecording ? (
+                      <button
+                        onClick={startVideoRecording}
+                        className="flex-1 sm:flex-initial px-3 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                        <span>Video REC</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopVideoRecording}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 bg-red-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)] flex items-center justify-center gap-1.5"
+                      >
+                        <span>⏹️ Stopp ({recSeconds}s)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Zeile 2: Zeichen-Werkzeuge */}
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-2 border-t border-slate-800/80">
+                  <button
+                    onClick={() => setStudioTool("move")}
+                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "move"
+                        ? "bg-white text-black border-white shadow-md"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                    }`}
+                  >
+                    ✋ Bewegen
+                  </button>
+                  <button
+                    onClick={() => setStudioTool("arrow_run")}
+                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "arrow_run"
+                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-cyan-300"
+                    }`}
+                  >
+                    🏃 Laufweg
+                  </button>
+                  <button
+                    onClick={() => setStudioTool("arrow_ball")}
+                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "arrow_ball"
+                        ? "bg-amber-500/20 text-amber-300 border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.3)]"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-amber-300"
+                    }`}
+                  >
+                    🎾 Ballweg
+                  </button>
+                  <button
+                    onClick={() => setStudioTool("zone_circle")}
+                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "zone_circle"
+                        ? "bg-pink-500/20 text-pink-300 border-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.3)]"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-pink-300"
+                    }`}
+                  >
+                    ⭕ Zone
+                  </button>
+                  <button
+                    onClick={() => setDrawings((prev) => prev.slice(0, -1))}
+                    disabled={drawings.length === 0}
+                    className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    ↩️ Zurück
+                  </button>
+                  <button
+                    onClick={() => setDrawings([])}
+                    disabled={drawings.length === 0}
+                    className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-red-950/30 text-red-400 border border-red-900/40 hover:bg-red-900/40 disabled:opacity-40"
+                  >
+                    🗑️ Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* --- FILTER PANEL --- */}
           {showTactics && (
             <div className="w-full max-w-5xl px-3 flex flex-col gap-3">
@@ -836,16 +1350,28 @@ export default function TacticsBoard() {
             <svg
               ref={svgRef}
               viewBox="-60 -60 500 880"
-              className="rounded-xl shadow-2xl border-4 border-[#111] w-full h-auto max-h-[75vh] touch-none select-none overflow-hidden"
-              style={{ background: "#050505", display: "block", touchAction: "none" }}
+              className={`rounded-xl shadow-2xl border-4 w-full h-auto max-h-[75vh] touch-none select-none overflow-hidden ${
+                isRecording
+                  ? "border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]"
+                  : activeMode === "studio"
+                    ? "border-pink-500/60"
+                    : "border-[#111]"
+              }`}
+              style={{
+                background: "#050505",
+                display: "block",
+                touchAction: "none",
+                cursor: activeMode === "studio" && studioTool !== "move" ? "crosshair" : "default",
+              }}
+              onMouseDown={handleSvgPointerDown}
               onMouseMove={onPointerMove}
               onMouseUp={onPointerUp}
               onMouseLeave={onPointerUp}
+              onTouchStart={handleSvgPointerDown}
               onTouchMove={onPointerMove}
               onTouchEnd={onPointerUp}
               onTouchCancel={onPointerUp}
               onDoubleClick={handleSvgDoubleClick}
-              onTouchStart={handleSvgTouchStart}  
             >
               <defs>
                 <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto">
@@ -853,6 +1379,13 @@ export default function TacticsBoard() {
                 </marker>
                 <marker id="moveArrowhead" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
                   <polygon points="0 0, 8 3, 0 6" fill="#5cd6ff" />
+                </marker>
+                {/* Studio Pfeilspitzen */}
+                <marker id="studioRunArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="#00f0ff" />
+                </marker>
+                <marker id="studioBallArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="#fbbf24" />
                 </marker>
                 <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
                   <feDropShadow dx="-2" dy="0" stdDeviation="2" floodColor="rgba(0,0,0,0.5)" />
@@ -930,7 +1463,6 @@ export default function TacticsBoard() {
                   <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
                 </g>
 
-                {/* Texte werden lokal am exakten Punkt zurück-gedreht, damit sie aufrecht lesbar bleiben */}
                 <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
                 <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
                 <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
@@ -955,7 +1487,6 @@ export default function TacticsBoard() {
                         const gap = Math.abs(b1.y - b2.y); const avgX = (b1.x + b2.x) / 2; const avgY = (b1.y + b2.y) / 2;
                         return (
                           <>
-                            {/* Puffer-Check eingebaut (+2) */}
                             {gap > GAP_THRESHOLD + 2 && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX < netX + DEEP_DEF_THRESHOLD && <rect x={netX + 10} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
@@ -965,7 +1496,6 @@ export default function TacticsBoard() {
                         const gap = Math.abs(a1.y - a2.y); const avgX = (a1.x + a2.x) / 2; const avgY = (a1.y + a2.y) / 2;
                         return (
                           <>
-                            {/* Puffer-Check eingebaut (+2) */}
                             {gap > GAP_THRESHOLD + 2 && <rect x={avgX - 30} y={avgY - 80} width={60} height={160} fill="red" opacity="0.35" rx="8" />}
                             {avgX > netX - DEEP_DEF_THRESHOLD && <rect x={netX - 60} y={12} width={50} height={V_HEIGHT - 24} fill="orange" opacity="0.2" />}
                           </>
@@ -976,7 +1506,6 @@ export default function TacticsBoard() {
                     {filters.showTeamLines && (() => {
                       const teamA = items.filter((i) => i.id.startsWith("a")); if (teamA.length < 2) return null;
                       const distA = Math.hypot(teamA[0].x - teamA[1].x, teamA[0].y - teamA[1].y);
-                      // Diagonale darf sich auf dem Bogen bis zu WIDE_GAP_THRESHOLD (180px) dehnen
                       const isGapTooWide = distA > WIDE_GAP_THRESHOLD;
                       return <line x1={teamA[0].x} y1={teamA[0].y} x2={teamA[1].x} y2={teamA[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
                     })()}
@@ -984,7 +1513,6 @@ export default function TacticsBoard() {
                     {filters.showTeamLines && (() => {
                       const teamB = items.filter((i) => i.id.startsWith("b")); if (teamB.length < 2) return null;
                       const distB = Math.hypot(teamB[0].x - teamB[1].x, teamB[0].y - teamB[1].y);
-                      // Diagonale darf sich auf dem Bogen bis zu WIDE_GAP_THRESHOLD (180px) dehnen
                       const isGapTooWide = distB > WIDE_GAP_THRESHOLD;
                       return <line x1={teamB[0].x} y1={teamB[0].y} x2={teamB[1].x} y2={teamB[1].y} stroke={isGapTooWide ? "#e74c3c" : "#2ecc71"} strokeWidth={4} />;
                     })()}
@@ -1013,6 +1541,45 @@ export default function TacticsBoard() {
                   </>
                 )}
 
+                {/* ========================================================= */}
+                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN             */}
+                {/* ========================================================= */}
+                {allDrawingsToRender.map((d) => {
+                  if (d.type === "zone_circle") {
+                    const radius = Math.max(18, Math.hypot(d.x2 - d.x1, d.y2 - d.y1));
+                    return (
+                      <g key={d.id} style={{ pointerEvents: "none" }}>
+                        <circle
+                          cx={d.x1}
+                          cy={d.y1}
+                          r={radius}
+                          fill="rgba(236, 72, 153, 0.22)"
+                          stroke="#ec4899"
+                          strokeWidth="3"
+                          strokeDasharray="6 4"
+                        />
+                        <circle cx={d.x1} cy={d.y1} r="4" fill="#ec4899" />
+                      </g>
+                    );
+                  }
+
+                  const isRun = d.type === "arrow_run";
+                  return (
+                    <line
+                      key={d.id}
+                      x1={d.x1}
+                      y1={d.y1}
+                      x2={d.x2}
+                      y2={d.y2}
+                      stroke={isRun ? "#00f0ff" : "#fbbf24"}
+                      strokeWidth="4"
+                      strokeDasharray={isRun ? "none" : "8 5"}
+                      markerEnd={isRun ? "url(#studioRunArrow)" : "url(#studioBallArrow)"}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  );
+                })}
+
                 {/* Figuren */}
                 {items.map((item) => {
                   const isDragging = activeId === item.id;
@@ -1027,8 +1594,6 @@ export default function TacticsBoard() {
                         <circle cx={item.x} cy={item.y} r={r + 6} fill="none" stroke={item.id.startsWith("a") ? "#ffffff" : "#f1c40f"} strokeWidth="3" className="animate-ping" style={{ transformOrigin: `${item.x}px ${item.y}px`, opacity: 0.6 }} />
                       )}
                       <circle cx={item.x} cy={item.y} r={r} fill={item.color} stroke={isActivePlayer ? "#ffffff" : "white"} strokeWidth={isActivePlayer ? 4 : 2} filter={isDragging ? "url(#activeShadow)" : "url(#shadow)"} />
-                      
-                      {/* Text wird ebenfalls am exakten Spielerpunkt aufrecht gedreht */}
                       <text x={item.x} y={item.y} transform={`rotate(90 ${item.x} ${item.y})`} textAnchor="middle" dominantBaseline="central" fill={item.color === "#f1c40f" ? "black" : "white"} fontSize={item.isPlayer ? 11 : 12} fontWeight="bold" style={{ pointerEvents: "none", userSelect: "none" }}>{item.label}</text>
                     </g>
                   );
