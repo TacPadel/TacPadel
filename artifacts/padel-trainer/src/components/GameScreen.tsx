@@ -22,17 +22,13 @@ import { TOURNAMENTS } from "../engine/Tournaments";
 const triggerPointWinHaptic = () => {
   if (localStorage.getItem("tacpadel_haptics") === "false") return;
   try {
-    // 1. Im Browser / WebView sofort synchron über navigator.vibrate auslösen (behält das User-Gesture-Token!)
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       navigator.vibrate([120, 40, 180]);
     }
-    // 2. Zusätzlich nativen Capacitor-Motor ansprechen (falls als native App installiert)
     if (Capacitor.isNativePlatform()) {
       Haptics.vibrate({ duration: 180 }).catch(() => {});
     }
-  } catch (e) {
-    // Ignorieren, falls das Gerät keine Vibration unterstützt
-  }
+  } catch (e) {}
 };
 
 type Stats = { 
@@ -65,23 +61,19 @@ const getZoneDist = (z1: string, z2: string) => {
   return Math.abs(c1 - c2) + Math.abs(r1 - r2);
 };
 
-// --- FIX 1: Aktualisierte Laufweg-Taktik (inkl. BLOCK & dynamischer BAJADA) ---
 const evalRunTactics = (shot: string, runZone: string, oppsAtNet: boolean = false) => {
   if (!shot || !runZone) return 0;
   const r = parseInt(runZone[1]);
   const s = shot.toUpperCase();
   
-  // 1. Netzschläge & Offensive (inkl. BLOCK) -> Belohnung fürs Vorrücken/Am-Netz-Bleiben
   if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(s)) {
     return r >= 3 ? 3 : 0; 
   }
   
-  // 2. Dynamische Bajada -> Gegner am Netz = hinten bleiben | Gegner hinten = Netz stürmen
   if (s === "BAJADA") {
     return oppsAtNet ? (r <= 2 ? 3 : 0) : (r >= 3 ? 3 : 0);
   }
 
-  // 3. Defensive Grundschläge -> Hinten absichern
   if (["DRIVE"].includes(s)) {
     return r <= 2 ? 3 : 0; 
   }
@@ -125,7 +117,6 @@ export default function GameScreen() {
     tourParams?: { tourId: string; round: number; difficulty: number };
   } | null>(null);
 
-  // --- Tutorial State ---
   const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
@@ -146,7 +137,6 @@ export default function GameScreen() {
   const [partnerName, setPartnerName] = useState<string>("Partner");
   const [playerName, setPlayerName] = useState<string>("Du");
 
-  // --- User-ID Tracking für Gast-Erkennung & Savegame-Schutz ---
   const [userId, setUserId] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
@@ -164,7 +154,6 @@ export default function GameScreen() {
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
-  // --- Dynamisches Punktelimit & Titel für Einzelmatch (7) vs. Turnier (6 / 8 / 10) ---
   const currentTargetScore = activeTournamentId
     ? (activeTournamentRound === 1 ? 6 : activeTournamentRound === 2 ? 8 : 10)
     : 7;
@@ -250,7 +239,6 @@ export default function GameScreen() {
           setUserId(session.user.id);
           userIdRef.current = session.user.id;
 
-          // Prüfen, ob ein altes Gast-Savegame oder ein fremdes Savegame existiert -> sofort löschen!
           const rawSave = localStorage.getItem("tacpadel_savegame");
           if (rawSave) {
             try {
@@ -287,7 +275,6 @@ export default function GameScreen() {
             return; 
           }
         } else {
-          // GAST-MODUS: Keine alten Spielstände übernehmen
           setUserId(null);
           userIdRef.current = null;
           setPlayerName("Gast");
@@ -314,7 +301,6 @@ export default function GameScreen() {
     };
     fetchUserScore();
 
-    // CLEANUP BEIM VERLASSEN DES SCREENS / TAB-WECHSEL FÜR GÄSTE
     const clearGuestData = () => {
       if (!userIdRef.current) {
         localStorage.removeItem("tacpadel_savegame");
@@ -532,7 +518,6 @@ export default function GameScreen() {
     if (savedData) {
       const parsed = JSON.parse(savedData);
       
-      // Sicherheits-Check: Gehört das Savegame wirklich dem eingeloggten Account?
       if (parsed.userId !== userIdRef.current) {
         localStorage.removeItem("tacpadel_savegame");
         return false;
@@ -599,7 +584,6 @@ export default function GameScreen() {
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
 
-    // Beim direkten Re-Match bleibt das KI-Team identisch, sonst wird neu gemischt
     const selectedProfile = isRematch 
       ? activeAiProfile 
       : AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
@@ -614,7 +598,6 @@ export default function GameScreen() {
     setAiShotHistory([]);
     setEarnedTP(0);
 
-    // --- Synchronisation Revanche-Status mit DB ---
     if (isRematch) {
       setRetryUsed(true);
     } else {
@@ -800,7 +783,6 @@ export default function GameScreen() {
           }
         }
 
-        // 🔊 GEGNER-SOUNDS (KI-Schlag & Auswirkung)
         const aiShotUpper = (brain.shot || "").toUpperCase();
         if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(aiShotUpper) || finalAiResult === "perfect") {
           playSfx("hit_smash");
@@ -881,7 +863,6 @@ export default function GameScreen() {
           };
           
           if (isAiServing) {
-            // Australische Aufstellung – KI-Aufschläger läuft nach dem Aufschlag direkt ans Netz (opp1 -> B4, opp2 -> D4)
             nextState[currentAiHitter] = currentAiHitter === "opp1" ? "B4" : "D4";
           } else {
             nextState[currentAiHitter] = ballLandedAt;
@@ -1031,7 +1012,6 @@ export default function GameScreen() {
               ball: { side: "left", zone: catcherZone, type: prev.ball.type } 
             }));
 
-            // Kurzer Schlag-Kontakt-Sound beim erfolgreichen Erreichen des Balls
             playSfx("hit_soft");
 
             setCommands(prev => ({ you: { ...prev.you, run: null }, partner: { ...prev.partner, run: null } }));
@@ -1103,9 +1083,6 @@ export default function GameScreen() {
     }));
   };
 
-  // ==========================================
-  // --- KAUFFUNKTION ZWEITE CHANCE ---
-  // ==========================================
   const handleBuySecondChance = async () => {
     if (!activeTournamentId || isProcessingRetry) return;
     
@@ -1123,7 +1100,6 @@ export default function GameScreen() {
 
       const newTacPoints = currentTacPoints - fee;
 
-      // 1. TacPoints abziehen
       const { error: pointsError } = await supabase
         .from('user_stats')
         .update({ tac_points: newTacPoints })
@@ -1131,7 +1107,6 @@ export default function GameScreen() {
 
       if (pointsError) throw pointsError;
 
-      // 2. Retry in tour_progress markieren & Status auf 'active' halten (für TourScreen-Anzeige)
       const { error: progressError } = await supabase
         .from('tour_progress')
         .update({ retry_used: true, status: 'active', current_round: activeTournamentRound })
@@ -1140,12 +1115,10 @@ export default function GameScreen() {
 
       if (progressError) throw progressError;
 
-      // 3. Match neu starten (Gleiche Runde, gleiches Turnier, gleicher Gegner = true)
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
       setRetryUsed(true);
       setIsProcessingRetry(false);
       
-      // Match Reset als echtes Re-Match auslösen
       handleStartTournamentMatch(activeTournamentId, activeTournamentRound, activeTournamentDifficulty, true);
 
     } catch (error) {
@@ -1165,7 +1138,6 @@ export default function GameScreen() {
       else if (["LOB", "BLOCK", "CHIQUITA"].includes(shotType)) playSfx("hit_soft");
       else playSfx("hit_hard");
 
-      // 📱 Synchron direkt beim Button-Klick vibrieren, wenn es ein direkter Winner / Ass ist!
       if (result === "perfect") {
         triggerPointWinHaptic();
       }
@@ -1186,9 +1158,8 @@ export default function GameScreen() {
     const recoveryYouRun = commands.you.run || courtState.you;
     const recoveryPartnerRun = commands.partner.run || courtState.partner;
     
-    // --- FIX 2: AUSDAUER-BERECHNUNG BEIM SCHLAG (inkl. oppsAtNet für Bajada) ---
     if (staminaModeEnabled) {
-      const STAMINA_COST_PER_SHOT = 2; // Pauschaler Abzug für den aktiven Schläger (Phase 1)
+      const STAMINA_COST_PER_SHOT = 2;
       const o1Row = parseInt(courtState.opp1[1]);
       const o2Row = parseInt(courtState.opp2[1]);
       const oppsAtNet = o1Row >= 3 || o2Row >= 3;
@@ -1215,7 +1186,6 @@ export default function GameScreen() {
     const isPlayerServingTurn = courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
     const isPlayerReturningTurn = courtState.ball.type === "AUFSCHLAG" && (serverId === "opp1" || serverId === "opp2");
     
-    // --- FIX 3: Korrekte Notschlag-Prüfung (greift niemals beim Return und nur bei echten Wandbällen auf Reihe 1) ---
     const isDugOut = Boolean(
       !isPlayerReturningTurn &&
       aiTrajectoryRef.current.isWallHit && 
@@ -1379,7 +1349,6 @@ export default function GameScreen() {
       return;
     }
 
-    // 📱 Synchron beim Klick auf "Punkt gewonnen! ➔" / "Nächster Punkt ➔" vibrieren, wenn dein Punktzähler steigt!
     if (newPlayerScore > playerScore) {
       triggerPointWinHaptic();
     }
@@ -1388,7 +1357,6 @@ export default function GameScreen() {
     setAiScore(newAiScore);
     setMatchStats(newStats); 
 
-    // Einzelmatch geht bis 7 Punkte, Turniere bleiben bei 6 (VF), 8 (HF) und 10 (Finale)
     const targetScore = currentTargetScore;
 
     if ((newPlayerScore >= targetScore && newPlayerScore - newAiScore >= 2) || (newAiScore >= targetScore && newAiScore - newPlayerScore >= 2)) {
@@ -1459,7 +1427,6 @@ export default function GameScreen() {
                   }
                   await supabase.from("tour_progress").update({ status: "won" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
                 } else {
-                  // --- Runde +1 und Status explizit auf "active" setzen (für TourScreen-Badge) ---
                   await supabase
                     .from("tour_progress")
                     .update({ current_round: activeTournamentRound + 1, status: "active" })
@@ -1467,7 +1434,6 @@ export default function GameScreen() {
                     .eq("tournament_id", activeTournamentId);
                 }
               } else {
-                // Stamina bei Niederlage nur sofort löschen, wenn kein Re-Match mehr möglich ist!
                 if (activeTournamentRound === 3 || retryUsed) {
                   const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
                   if (savedTourStamina[activeTournamentId]) {
@@ -1616,7 +1582,6 @@ export default function GameScreen() {
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (!isNewMatch) {
-         // --- FIX 4: Korrekter Rundenskalierungs-Faktor (* 100 statt * 500) ---
          const aiTargetScore = activeTournamentId 
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
              : tacScore;
@@ -1630,10 +1595,9 @@ export default function GameScreen() {
       }
     }
 
-    // --- NUR SPEICHERN, WENN DER SPIELER EINGELOGGT IST! ---
     if (userIdRef.current) {
       const gameStateToSave = {
-        userId: userIdRef.current, // Account-Bindung
+        userId: userIdRef.current,
         playerScore: pScore,
         aiScore: aScore,
         courtState: nextCourt,
@@ -1685,11 +1649,9 @@ export default function GameScreen() {
     );
   };
 
-  // --- Arena anhand des Turniers bestimmen ---
   const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
 
-  // --- Spielstand-Info für den Fortsetzen-Button auslesen (nur für eingeloggte User mit eigenem Savegame) ---
   let savedMatchSubtext = "";
   let hasValidSave = false;
   const savedGameStr = userId ? localStorage.getItem("tacpadel_savegame") : null;
@@ -1714,9 +1676,6 @@ export default function GameScreen() {
     }
   }
 
-  // ===============================================
-  // HIER IST DIE WEICHE FÜR DAS NEUE TUTORIAL
-  // ===============================================
   if (showTutorial) {
     return (
       <GameTutorial onComplete={handleTutorialComplete} />
@@ -1726,7 +1685,7 @@ export default function GameScreen() {
   return (
     <div 
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
-      style={{ height: "calc(100dvh - 150px)", minHeight: "600px" }}
+      style={{ height: "calc(100dvh - 120px)", minHeight: "650px" }}
     >
 
       {/* --- ABANDON WARNING MODAL --- */}
@@ -1772,7 +1731,6 @@ export default function GameScreen() {
         {isMenuOpen && !isTourOpen && (
           <div className="absolute inset-0 z-[200] bg-[#050b18] rounded-2xl overflow-hidden pointer-events-auto">
             
-            {/* --- TUTORIAL BUTTON IN DER ECKE --- */}
             <button
               onClick={() => setShowTutorial(true)}
               title="Tutorial wiederholen"
@@ -1788,7 +1746,6 @@ export default function GameScreen() {
             <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-4 w-full">
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
 
-              {/* --- GAST-MODUS HINWEIS & LOGIN-ANREIZ --- */}
               {!userId && (
                 <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-center backdrop-blur-md shadow-lg">
                   <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">
@@ -1831,7 +1788,6 @@ export default function GameScreen() {
                 </button>
               )}
               
-              {/* TP Tour Events Button */}
               <button 
                 onClick={() => setIsTourOpen(true)}
                 className="w-full max-w-sm py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-105 transition-all"
@@ -1843,9 +1799,6 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
-      {/* =================================================== */}
-      {/* TP TOUR SCREEN OVERLAY                              */}
-      {/* =================================================== */}
       <AnimatePresence>
         {isTourOpen && (
           <motion.div
@@ -1919,7 +1872,7 @@ export default function GameScreen() {
 
           return (
             <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="fixed top-24 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
-              <div className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`} style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px)" }}>
+              <div className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`} style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
                 <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
                   <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
                   <div className="relative flex items-center justify-center shrink-0">
@@ -1963,7 +1916,6 @@ export default function GameScreen() {
                   </h2>
                   <p className="text-slate-300 text-lg font-bold">Endstand im Tiebreak: {playerScore} : {aiScore}</p>
                   
-                  {/* ANZEIGE IM GAME OVER SCREEN */}
                   <div className="mt-4 flex justify-center">
                     <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
                       <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Spieldauer</span>
@@ -1973,7 +1925,6 @@ export default function GameScreen() {
                     </div>
                   </div>
 
-                  {/* ZWEITE CHANCE LOGIK (Nur bei Niederlage im Turnier) */}
                   {activeTournamentId && playerScore < aiScore && getContinueFee(activeTournamentId, activeTournamentRound) !== null && !retryUsed && (
                     <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
                       <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
@@ -2006,9 +1957,7 @@ export default function GameScreen() {
                 
                 <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full mt-6">
                   
-                  {/* LINKE SPALTE: TACSCORE & TACPOINTS */}
                   <div className="flex-1 flex flex-col gap-4 w-full">
-                    {/* TACSCORE (Skill) */}
                     <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-slate-700/50 p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] w-full">
                       <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">Dein TacScore</span>
                       <div className="flex flex-col items-center gap-3">
@@ -2019,7 +1968,6 @@ export default function GameScreen() {
                       </div>
                     </div>
 
-                    {/* TACPOINTS (Preisgeld - Nur bei Turnieren!) */}
                     {activeTournamentId && (
                       <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-amber-900/50 p-4 rounded-2xl shadow-[inset_0_0_20px_rgba(245,158,11,0.1)] w-full">
                         <span className="text-amber-500/70 text-[10px] font-black uppercase tracking-widest mb-2">Preisgeld (Runde {activeTournamentRound})</span>
@@ -2031,7 +1979,6 @@ export default function GameScreen() {
                     )}
                   </div>
 
-                  {/* RECHTE SPALTE: MATCH STATS */}
                   <div className="flex-[1.5] w-full bg-[#050b14] border border-slate-700/50 rounded-2xl overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col">
                     <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Match Ausgang</span></div>
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
@@ -2122,7 +2069,8 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
-      <div className="relative w-full flex-1 overflow-hidden pointer-events-auto">
+      {/* --- GEÄNDERT: flex-1 statt fester Höhe, damit sich der Court perfekt anpasst --- */}
+      <div className="relative w-full flex-1 min-h-[400px] sm:min-h-[500px] overflow-hidden pointer-events-auto">
         
         {/* --- AUSDAUER HUD OVERLAY --- */}
         <AnimatePresence>
@@ -2133,7 +2081,6 @@ export default function GameScreen() {
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-30 pointer-events-none"
             >
-              {/* KI 1 */}
               <div className="absolute top-4 left-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80">
                  <div className="flex justify-between items-end">
                    <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
@@ -2149,7 +2096,6 @@ export default function GameScreen() {
                  </div>
               </div>
 
-              {/* KI 2 */}
               <div className="absolute top-4 right-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80 items-end">
                  <div className="flex justify-between items-end w-full flex-row-reverse">
                    <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
@@ -2165,7 +2111,6 @@ export default function GameScreen() {
                  </div>
               </div>
 
-              {/* DU */}
               <div className="absolute bottom-4 left-4 flex flex-col gap-1 w-28 sm:w-36">
                  <div className="flex justify-between items-end">
                    <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] truncate max-w-[80px]">{playerName}</span>
@@ -2179,7 +2124,6 @@ export default function GameScreen() {
                  </div>
               </div>
 
-              {/* PARTNER */}
               <div className="absolute bottom-4 right-4 flex flex-col gap-1 w-28 sm:w-36 items-end">
                  <div className="flex justify-between items-end w-full flex-row-reverse">
                    <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{partnerName}</span>
@@ -2196,8 +2140,7 @@ export default function GameScreen() {
           )}
         </AnimatePresence>
 
-        <div className="absolute inset-0 z-10">
-          {/* HIER WERDEN ARENA, TARGETSCORE UND MATCHTITLE ÜBERGEBEN */}
+        <div className="absolute inset-0 z-10 w-full h-full">
           <ScenarioCourt3D 
             key={`court-${introTrigger}`}
             arenaModel={currentArenaModel} 
