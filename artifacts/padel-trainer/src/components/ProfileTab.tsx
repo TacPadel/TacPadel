@@ -363,11 +363,36 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem("tacpadel_haptics") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
+  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
+  const isAdmin = user?.email?.toLowerCase().trim() === "caposion@gmail.com";
+  const [isProUser, setIsProUser] = useState<boolean>(() => {
+    const saved = localStorage.getItem("tacpadel_is_pro");
+    if (saved === "true") return true;
+    if (saved === "false") return false;
+    return Boolean(user?.user_metadata?.is_pro);
+  });
+
+  const toggleProUserStatus = async () => {
+    const newState = !isProUser;
+    setIsProUser(newState);
+    localStorage.setItem("tacpadel_is_pro", String(newState));
+
+    // Optional auch in User-Metadata und user_stats aktualisieren (wird ignoriert, falls Spalte is_pro noch fehlt)
+    await supabase.auth.updateUser({ data: { is_pro: newState } }).catch(() => {});
+    await supabase.from('user_stats').update({ is_pro: newState }).eq('id', user.id).then(() => {});
+
+    setMessage({
+      type: 'success',
+      text: newState ? "👑 Pro-User-Ansicht aktiviert!" : "🔒 Free-User-Ansicht aktiviert (Paywall aktiv)!"
+    });
+    setTimeout(() => setMessage(null), 2500);
+  };
+
   useEffect(() => {
     const loadUserData = async () => {
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id') 
+        .select('*') 
         .eq('id', user.id)
         .maybeSingle();
 
@@ -389,6 +414,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         if (profileData.partner_id) {
           setPartnerId(profileData.partner_id);
           localStorage.setItem("tacpadel_partner_id", profileData.partner_id);
+        }
+
+        // Pro-Status nur übernehmen, wenn kein lokaler Test-Override gesetzt wurde
+        const localOverride = localStorage.getItem("tacpadel_is_pro");
+        if (localOverride === null && typeof profileData.is_pro === "boolean") {
+          setIsProUser(profileData.is_pro);
+          localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
         }
         
         if (profileData.preferred_position) {
@@ -671,7 +703,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
         <div className="flex flex-col gap-3 w-full">
           <div className="flex justify-between items-center w-full">
-            <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+              {isProUser && (
+                <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-pink-950/60 border border-pink-500/50 text-pink-300 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
+                  👑 PRO USER
+                </span>
+              )}
+            </div>
             
             {message && (
               <motion.div 
@@ -1167,6 +1206,41 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </div>
         </div>
       </div>
+
+      {/* ========================================================= */}
+      {/* 7.5 ADMIN DEVELOPER TOOLS (Nur für caposion@gmail.com)    */}
+      {/* ========================================================= */}
+      {isAdmin && (
+        <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col text-center sm:text-left">
+            <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
+              🛡️ Admin Test-Steuerung (Paywall Vorschau)
+            </h3>
+            <span className="text-[9px] text-slate-400 font-bold mt-1">
+              Schalte deinen eigenen Account live zwischen Free-User und Pro-User um
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isProUser ? 'text-pink-400' : 'text-slate-500'}`}>
+              {isProUser ? "👑 Pro Pass Aktiv" : "🔒 Free User"}
+            </span>
+            <button
+              onClick={toggleProUserStatus}
+              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
+                isProUser ? 'bg-gradient-to-r from-pink-500 to-purple-500 shadow-[0_0_12px_rgba(236,72,153,0.6)]' : 'bg-slate-700'
+              }`}
+            >
+              <motion.div
+                layout
+                className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md"
+                animate={{ x: isProUser ? 24 : 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ========================================= */}
       {/* 8. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
