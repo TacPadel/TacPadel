@@ -3,12 +3,13 @@
 class SoundManager {
   private ctx: AudioContext | null = null;
 
-  // Initialisiert den AudioContext bei der ersten Nutzer-Interaktion (wichtig für iOS & Android)
   private getContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
 
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
@@ -21,16 +22,18 @@ class SoundManager {
     return this.ctx;
   }
 
-  // Hilfsfunktion: Erzeugt kurzes Rauschen (für Schläger-Aufprall, Netz & Atmosphäre)
+  // Erzeugt kurzes Rauschen (für Schläger-Aufprall, Netz & Hall-Fahne)
   private playNoise(
     duration: number,
     filterFreq: number,
     filterType: BiquadFilterType = "bandpass",
-    volume: number = 0.2
+    volume: number = 0.2,
+    delayOffset: number = 0
   ) {
     const ctx = this.getContext();
     if (!ctx) return;
 
+    const startTime = ctx.currentTime + delayOffset;
     const bufferSize = Math.floor(ctx.sampleRate * duration);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -44,22 +47,56 @@ class SoundManager {
 
     const filter = ctx.createBiquadFilter();
     filter.type = filterType;
-    filter.frequency.setValueAtTime(filterFreq, ctx.currentTime);
+    filter.frequency.setValueAtTime(filterFreq, startTime);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    gain.gain.setValueAtTime(volume, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(ctx.destination);
 
-    noise.start();
-    noise.stop(ctx.currentTime + duration);
+    noise.start(startTime);
+    noise.stop(startTime + duration);
+  }
+
+  // Einzelner Schlag-Impuls (wird für normale Schläge und für die Echo-Kaskade genutzt)
+  private triggerImpact(
+    startFreq: number,
+    endFreq: number,
+    duration: number,
+    volume: number,
+    noiseFreq: number,
+    noiseVol: number,
+    delayOffset: number = 0
+  ) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const startTime = ctx.currentTime + delayOffset;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(startFreq, startTime);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, startTime + duration);
+
+    gain.gain.setValueAtTime(volume, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+
+    if (noiseVol > 0) {
+      this.playNoise(duration * 0.6, noiseFreq, "bandpass", noiseVol, delayOffset);
+    }
   }
 
   public play(soundId: string) {
-    // Respektiert deine bestehende Sound-Einstellung aus dem LocalStorage
     if (typeof window !== "undefined" && localStorage.getItem("tacpadel_sound") === "false") {
       return;
     }
@@ -70,164 +107,70 @@ class SoundManager {
     const now = ctx.currentTime;
 
     switch (soundId) {
-      // 💥 1. SMASH / VIBORA / VOLLEY (Satter Bass-Punch + scharfer Schläger-Impuls)
+      // 💥 1. SMASH / VIBORA / VOLLEY (Kräftiger, trockener Schläger-Punch)
       case "hit_smash": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(220, now);
-        osc.frequency.exponentialRampToValueAtTime(42, now + 0.16);
-
-        gain.gain.setValueAtTime(0.45, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.18);
-
-        // Knackiger Treffer-Impuls
-        this.playNoise(0.09, 1400, "bandpass", 0.35);
+        this.triggerImpact(230, 40, 0.18, 0.55, 1400, 0.4, 0);
         break;
       }
 
-      // 🎾 2. DRIVE / AUFSCHLAG (Solider, druckvoller Padel-Schlag)
+      // 🎾 2. DRIVE / AUFSCHLAG (Solider Grundschlag)
       case "hit_hard": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(160, now);
-        osc.frequency.exponentialRampToValueAtTime(55, now + 0.12);
-
-        gain.gain.setValueAtTime(0.35, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.13);
-
-        this.playNoise(0.06, 1000, "bandpass", 0.2);
+        this.triggerImpact(165, 52, 0.13, 0.38, 1000, 0.22, 0);
         break;
       }
 
-      // 🪶 3. LOB / CHIQUITA / BLOCK (Weicher, kontrollierter Touch)
+      // 🪶 3. LOB / CHIQUITA / BLOCK (Weicher Touch)
       case "hit_soft": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(125, now);
-        osc.frequency.exponentialRampToValueAtTime(65, now + 0.1);
-
-        gain.gain.setValueAtTime(0.22, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.11);
-
-        this.playNoise(0.04, 600, "lowpass", 0.12);
+        this.triggerImpact(125, 65, 0.1, 0.22, 600, 0.1, 0);
         break;
       }
 
-      // 🪟 4. GLASWAND-TREFFER (Heller, gläserner Resonanz-Ping)
+      // 🪟 4. GLASWAND-TREFFER (Dumpf-gläserner Rückprall)
       case "bounce_glass": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(520, now);
-        osc.frequency.exponentialRampToValueAtTime(180, now + 0.14);
-
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.15);
-
-        this.playNoise(0.05, 2400, "bandpass", 0.18);
+        this.triggerImpact(380, 110, 0.14, 0.32, 2200, 0.18, 0);
         break;
       }
 
       // 🕸️ 5. NETZFEHLER (Dumpfes Abstoppen im Netzband)
       case "error_net": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(95, now);
-        osc.frequency.exponentialRampToValueAtTime(32, now + 0.22);
-
-        gain.gain.setValueAtTime(0.25, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.24);
-
-        // kurzes Netz-Rascheln
-        this.playNoise(0.18, 450, "lowpass", 0.22);
+        this.triggerImpact(95, 28, 0.22, 0.3, 400, 0.25, 0);
         break;
       }
 
-      // 🏆 6. PUNKTGEWINN / JUBEL (Aufsteigender Tron-Synth-Akkord + leichter Jubel-Swell)
+      // 🏆 6. PUNKTGEWINN-ECHO (Wuchtiger Bass-Boom + 3-faches Arena-Echo statt Münz-Sound!)
       case "crowd_cheer": {
-        const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 - E5 - G5 - C6
-        notes.forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          const startTime = now + idx * 0.065;
+        // Tiefer Sub-Bass-Wumms beim Aufprall des Winners
+        const subOsc = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        subOsc.type = "sine";
+        subOsc.frequency.setValueAtTime(110, now);
+        subOsc.frequency.exponentialRampToValueAtTime(26, now + 0.45);
 
-          osc.type = "triangle";
-          osc.frequency.setValueAtTime(freq, startTime);
+        subGain.gain.setValueAtTime(0.65, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
 
-          gain.gain.setValueAtTime(0.001, startTime);
-          gain.gain.linearRampToValueAtTime(0.18, startTime + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.45);
+        subOsc.connect(subGain);
+        subGain.connect(ctx.destination);
+        subOsc.start(now);
+        subOsc.stop(now + 0.48);
 
-          osc.connect(gain);
-          gain.connect(ctx.destination);
+        // Stadion-Echo-Kaskade (Hall des Schlags in der Arena)
+        const echoes = [
+          { delay: 0.0, vol: 0.45, noise: 0.35, freq: 1300 },
+          { delay: 0.11, vol: 0.26, noise: 0.2, freq: 1000 },
+          { delay: 0.23, vol: 0.14, noise: 0.1, freq: 750 },
+          { delay: 0.36, vol: 0.07, noise: 0.05, freq: 550 },
+        ];
 
-          osc.start(startTime);
-          osc.stop(startTime + 0.46);
+        echoes.forEach((e) => {
+          this.triggerImpact(200, 38, 0.16, e.vol, e.freq, e.noise, e.delay);
         });
         break;
       }
 
-      // ❌ 7. FEHLER / ENTTÄUSCHTES RAUNEN (Abfallender Synth-Ton)
+      // ❌ 7. FEHLER-AUSKLANG (Kein Synth-Ton mehr, nur kurzes, tiefes Ausrollen)
       case "crowd_gasp": {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(240, now);
-        osc.frequency.exponentialRampToValueAtTime(110, now + 0.35);
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.setValueAtTime(600, now);
-
-        gain.gain.setValueAtTime(0.16, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-
-        osc.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.38);
+        this.triggerImpact(80, 30, 0.2, 0.18, 350, 0.08, 0.08);
         break;
       }
 
