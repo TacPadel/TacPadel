@@ -1,7 +1,6 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import ScenarioCourt4D from "./ScenarioCourt4D";
 import { supabase } from "../lib/supabase";
-import { useProStatus } from "../lib/useProStatus";
 
 interface DraggableItem {
   id: string;
@@ -32,7 +31,7 @@ interface StudioDrawing {
   x2: number;
   y2: number;
 }
-const { isProUser } = useProStatus();
+
 // Virtuelle Konstanten für stabiles Scaling (Logik bleibt 16:9, Ansicht wird 9:16 gedreht!)
 const V_WIDTH = 760;
 const V_HEIGHT = 380;

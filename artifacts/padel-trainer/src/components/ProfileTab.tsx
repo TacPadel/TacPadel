@@ -366,13 +366,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
   const isAdmin = user?.email?.toLowerCase().trim() === "caposion@gmail.com";
   const [isProUser, setIsProUser] = useState<boolean>(() => {
-    if (isAdmin) {
-      const saved = localStorage.getItem("tacpadel_is_pro");
-      if (saved === "true") return true;
-      if (saved === "false") return false;
-      return true;
-    }
-    return false;
+    const saved = localStorage.getItem("tacpadel_is_pro");
+    if (saved === "true") return true;
+    if (saved === "false") return false;
+    return Boolean(user?.user_metadata?.is_pro);
   });
 
   const toggleProUserStatus = async () => {
@@ -380,6 +377,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setIsProUser(newState);
     localStorage.setItem("tacpadel_is_pro", String(newState));
 
+    // Optional auch in User-Metadata und user_stats aktualisieren (wird ignoriert, falls Spalte is_pro noch fehlt)
     await supabase.auth.updateUser({ data: { is_pro: newState } }).catch(() => {});
     await supabase.from('user_stats').update({ is_pro: newState }).eq('id', user.id).then(() => {});
 
@@ -394,7 +392,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const loadUserData = async () => {
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('display_name, avatar_url, points, preferred_position, team_name, partner_id, is_pro') 
+        .select('*') 
         .eq('id', user.id)
         .maybeSingle();
 
@@ -418,18 +416,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           localStorage.setItem("tacpadel_partner_id", profileData.partner_id);
         }
 
-        // Für alle Nicht-Admins gilt immer der echte Datenbank-Wert aus Supabase:
-        if (!isAdmin) {
-          const dbPro = Boolean(profileData.is_pro);
-          setIsProUser(dbPro);
-          localStorage.setItem("tacpadel_is_pro", String(dbPro));
-        } else {
-          // Für Admin: Lokaler Test-Override hat Vorrang, falls noch keiner gesetzt ist -> DB-Wert
-          const localOverride = localStorage.getItem("tacpadel_is_pro");
-          if (localOverride === null && typeof profileData.is_pro === "boolean") {
-            setIsProUser(profileData.is_pro);
-            localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
-          }
+        // Pro-Status nur übernehmen, wenn kein lokaler Test-Override gesetzt wurde
+        const localOverride = localStorage.getItem("tacpadel_is_pro");
+        if (localOverride === null && typeof profileData.is_pro === "boolean") {
+          setIsProUser(profileData.is_pro);
+          localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
         }
         
         if (profileData.preferred_position) {
@@ -476,7 +467,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     };
     
     loadUserData();
-  }, [user.id, isAdmin]);
+  }, [user.id]);
 
   useEffect(() => {
     if (allHistory.length === 0) {
