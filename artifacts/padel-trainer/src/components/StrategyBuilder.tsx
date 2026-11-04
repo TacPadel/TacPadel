@@ -228,7 +228,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Zurück</button>
           <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 uppercase tracking-widest">
-            Community Builder Betaphase
+            Community Strategy-Builder
           </h2>
         </div>
         {isAdmin && (

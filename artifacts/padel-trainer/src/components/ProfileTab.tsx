@@ -304,7 +304,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
   const [partnerId, setPartnerId] = useState("pro_1-1"); 
-  const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
+  const [racketId, setRacketId] = useState("racket_starter"); 
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -1001,6 +1001,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   <option value="vibora">Víbora Slice</option>
                 </select>
               </div>
+            </div>
 
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
