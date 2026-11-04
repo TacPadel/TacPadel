@@ -22,8 +22,8 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   const [testModeType, setTestModeType] = useState<"admin" | "draft" | null>(null);
   const [builderStartInAdmin, setBuilderStartInAdmin] = useState(false);
 
-  // Pro-User Status & Paywall-Modal
-  const [isProUser, setIsProUser] = useState<boolean>(() => localStorage.getItem("tacpadel_is_pro") === "true");
+  // Pro-User Status & Paywall-Modal (Sicher innerhalb der Komponente)
+  const [isProUser, setIsProUser] = useState<boolean>(false);
   const [showProModal, setShowProModal] = useState<boolean>(false);
 
   // State für ALLE Strategien (Lokal + Community)
@@ -43,23 +43,26 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     async function initData() {
       // 1. Prüfe Pro-User / Admin Status
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
+      if (!session?.user) {
+        setIsProUser(false);
+      } else {
         const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
-        const metaPro = Boolean(session.user.user_metadata?.is_pro);
 
-        if (isAdmin || metaPro) {
-          setIsProUser(true);
+        if (isAdmin) {
+          // Für dich als Admin gilt dein Test-Umschalter aus dem ProfilTab (Standard: true)
+          const localOverride = localStorage.getItem("tacpadel_is_pro");
+          setIsProUser(localOverride === null ? true : localOverride === "true");
         } else {
+          // Für alle normalen Spieler & Tester: Immer live den echten DB-Wert aus 'user_stats' nehmen
           const { data: statsData } = await supabase
             .from("user_stats")
-            .select("*")
+            .select("is_pro")
             .eq("id", session.user.id)
             .maybeSingle();
 
-          if (statsData?.is_pro) {
-            setIsProUser(true);
-            localStorage.setItem("tacpadel_is_pro", "true");
-          }
+          const dbPro = Boolean(statsData?.is_pro);
+          setIsProUser(dbPro);
+          localStorage.setItem("tacpadel_is_pro", String(dbPro));
         }
       }
 
@@ -70,14 +73,24 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         .eq('status', 'approved');
         
       if (data && data.length > 0) {
-        const communityStrats: StrategySequence[] = data.map(dbRow => ({
-          id: dbRow.id,
-          title: `${dbRow.title} (von ${dbRow.creator_name})`, 
-          theme: dbRow.theme as any,
-          difficulty: dbRow.difficulty as any,
-          description: dbRow.description,
-          steps: typeof dbRow.steps === "string" ? JSON.parse(dbRow.steps) : dbRow.steps
-        }));
+        const communityStrats: StrategySequence[] = data.map(dbRow => {
+          let parsedSteps = dbRow.steps;
+          if (typeof dbRow.steps === "string") {
+            try {
+              parsedSteps = JSON.parse(dbRow.steps);
+            } catch {
+              parsedSteps = [];
+            }
+          }
+          return {
+            id: dbRow.id,
+            title: `${dbRow.title} (von ${dbRow.creator_name})`, 
+            theme: dbRow.theme as any,
+            difficulty: dbRow.difficulty as any,
+            description: dbRow.description,
+            steps: parsedSteps || []
+          };
+        });
         
         setAllStrategies([...STRATEGIES, ...communityStrats]);
       }
