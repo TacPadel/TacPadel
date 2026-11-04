@@ -304,7 +304,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
   const [partnerId, setPartnerId] = useState("pro_1-1"); 
-  const [racketId, setRacketId] = useState("racket_starter"); 
+  const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -973,39 +973,34 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </select>
               </div>
 
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
                 <select 
                   value={racketId} 
-                  onChange={(e) => setRacketId(e.target.value)} 
-                  disabled
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-white text-xs font-bold outline-none appearance-none opacity-40 cursor-not-allowed"
+                  onChange={(e) => {
+                    setRacketId(e.target.value);
+                    localStorage.setItem("tacpadel_racket_id", e.target.value);
+                  }} 
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
                   {RACKETS.map(r => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
-                <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
-                  <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
-                    🔒 Coming soon
-                  </span>
-                </div>
               </div>
 
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)] relative overflow-hidden">
-                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Powerschlag</label>
-                <select disabled className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 rounded-lg text-white text-xs font-bold outline-none appearance-none opacity-40 cursor-not-allowed">
-                  <option>Topspin Smash (Klassik)</option>
-                  <option>Bandeja Viper</option>
-                  <option>Vibora Strike</option>
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Spezial-Fokus</label>
+                <select 
+                  defaultValue={localStorage.getItem("tacpadel_power_shot") || "smash"}
+                  onChange={(e) => localStorage.setItem("tacpadel_power_shot", e.target.value)}
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="smash">Topspin Smash (Klassik)</option>
+                  <option value="bandeja">Bandeja Control</option>
+                  <option value="vibora">Víbora Slice</option>
                 </select>
-                <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center z-10">
-                  <span className="text-[10px] font-black tracking-widest text-orange-400 uppercase drop-shadow-[0_0_5px_rgba(234,88,12,0.8)] border border-orange-500/30 bg-orange-950/50 px-2 py-0.5 rounded">
-                    🔒 Coming soon
-                  </span>
-                </div>
               </div>
-            </div>
 
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
