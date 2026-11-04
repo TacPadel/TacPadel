@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import ScenarioCourt4D from "./ScenarioCourt4D";
 import { supabase } from "../lib/supabase";
+import { useProStatus } from "../lib/useProStatus";
 
 interface DraggableItem {
   id: string;
@@ -31,16 +32,15 @@ interface StudioDrawing {
   x2: number;
   y2: number;
 }
-
+const { isProUser } = useProStatus();
 // Virtuelle Konstanten für stabiles Scaling (Logik bleibt 16:9, Ansicht wird 9:16 gedreht!)
 const V_WIDTH = 760;
 const V_HEIGHT = 380;
 
-// Globale Taktik-Schwellenwerte für Analyse (AUF 160px ANGEPASST)
+// Globale Taktik-Schwellenwerte für Analyse
 const GAP_THRESHOLD = 160;
 const WIDE_GAP_THRESHOLD = 180;
 const DEEP_DEF_THRESHOLD = 80;
-const SHORT_DEF_THRESHOLD = 70;
 
 // Hilfsfunktion zur Berechnung der magnetischen Bogen-Kurve (Parabel)
 const getArcX = (y: number, isTeamA: boolean) => {
@@ -540,6 +540,7 @@ export default function TacticsBoard() {
   // Rekorder & Export States
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recSeconds, setRecSeconds] = useState<number>(0);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
   const [exportMedia, setExportMedia] = useState<{
     url: string;
     file: File;
@@ -550,8 +551,7 @@ export default function TacticsBoard() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const recFrameLoopRef = useRef<number | null>(null);
-  const isRenderingFrameRef = useRef<boolean>(false);
+  const recFrameIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [filters, setFilters] = useState<TacticalFilters>({
     showBallVector: true,
@@ -561,6 +561,37 @@ export default function TacticsBoard() {
     showPulse: true,
     showAttackArc: false,
   });
+
+  const netX = V_WIDTH / 2;
+  const offsetX = 10 + (V_WIDTH - 20) * 0.15;
+
+  const analysis = useMemo(
+    () => getTacticalAnalysis(items, filters, selectedScenarioKey, customTarget),
+    [items, filters, selectedScenarioKey, customTarget]
+  );
+
+  const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
+
+  // Live-Ref auf den aktuellen Board-Zustand für die synchrone 30-FPS-Videoaufnahme
+  const liveStateRef = useRef({
+    items,
+    drawings: allDrawingsToRender,
+    showTactics,
+    filters,
+    analysis,
+    studioTitle,
+  });
+
+  useEffect(() => {
+    liveStateRef.current = {
+      items,
+      drawings: allDrawingsToRender,
+      showTactics,
+      filters,
+      analysis,
+      studioTitle,
+    };
+  }, [items, allDrawingsToRender, showTactics, filters, analysis, studioTitle]);
 
   const toggleFilter = (key: keyof TacticalFilters) => {
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -620,7 +651,6 @@ export default function TacticsBoard() {
   };
 
   const handleSvgPointerDown = (e: React.MouseEvent | React.TouchEvent) => {
-    // Im Studio-Zeichenmodus: Neuen Pfeil oder Kreis starten
     if (activeMode === "studio" && studioTool !== "move") {
       if (e.cancelable) e.preventDefault();
       const pt = getPoint(e);
@@ -635,7 +665,6 @@ export default function TacticsBoard() {
       return;
     }
 
-    // Doppeltipp für Zielpunkt im Bewegungsmodus
     if ("touches" in e) {
       const now = Date.now();
       const DOUBLE_TAP_DELAY = 300;
@@ -649,7 +678,6 @@ export default function TacticsBoard() {
   };
 
   const onPointerDown = useCallback((id: string, e: React.MouseEvent | React.TouchEvent) => {
-    // Wenn im Studio ein Zeichen-Werkzeug aktiv ist, soll man auch direkt von einer Spielerfigur aus zeichnen können
     if (activeMode === "studio" && studioTool !== "move") {
       handleSvgPointerDown(e);
       return;
@@ -671,7 +699,6 @@ export default function TacticsBoard() {
   }, [items, getPoint, activeMode, studioTool]);
 
   const onPointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // 1. Falls gerade im Studio gezeichnet wird -> Entwurf aktualisieren
     if (currentDraft) {
       if (e.cancelable) e.preventDefault();
       const pt = getPoint(e);
@@ -679,7 +706,6 @@ export default function TacticsBoard() {
       return;
     }
 
-    // 2. Normales Bewegen der Spieler / des Balls
     if (!dragRef.current) return;
     if (e.cancelable) e.preventDefault();
     const pt = getPoint(e);
@@ -691,7 +717,6 @@ export default function TacticsBoard() {
 
       let minX = 16;
       let maxX = V_WIDTH - 16;
-      const netX = V_WIDTH / 2;
 
       if (id === "ball" && filters.showAttackArc) {
         const newX = Math.max(16, Math.min(V_WIDTH - 16, pt.x - ox));
@@ -767,12 +792,11 @@ export default function TacticsBoard() {
         return item;
       });
     });
-  }, [getPoint, filters, selectedScenarioKey, customTarget, currentDraft]);
+  }, [getPoint, filters, selectedScenarioKey, customTarget, currentDraft, netX]);
 
   const onPointerUp = useCallback(() => {
     if (currentDraft) {
       const dist = Math.hypot(currentDraft.x2 - currentDraft.x1, currentDraft.y2 - currentDraft.y1);
-      // Nur speichern, wenn eine Mindestlänge gezogen wurde (oder bei Zonenkreis auch kleiner Tipp)
       if (dist > 12 || currentDraft.type === "zone_circle") {
         const finalDraft =
           currentDraft.type === "zone_circle" && dist < 20
@@ -793,90 +817,255 @@ export default function TacticsBoard() {
   };
 
   // =========================================================================
-  // TACTICAL STUDIO: SVG -> CANVAS RENDERER (FÜR FOTO & VIDEO-REKORDER)
+  // SYNCHRONER 30-FPS CANVAS-RENDERER (Kein 8s-vs-25s Zeitfehler mehr!)
   // =========================================================================
-  const renderSvgToCanvas = useCallback((): Promise<HTMLCanvasElement | null> => {
-    return new Promise((resolve) => {
-      const svgEl = svgRef.current;
-      if (!svgEl) return resolve(null);
+  const drawBoardFrameSynchronously = useCallback((): HTMLCanvasElement | null => {
+    let canvas = recCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.width = 500;
+      canvas.height = 880;
+      recCanvasRef.current = canvas;
+    }
 
-      let canvas = recCanvasRef.current;
-      if (!canvas) {
-        canvas = document.createElement("canvas");
-        canvas.width = 600;
-        canvas.height = 1056;
-        recCanvasRef.current = canvas;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const state = liveStateRef.current;
+
+    // 1. Hintergrund leeren
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Exakt dieselbe Matrix-Transformation wie das SVG anwenden
+    ctx.save();
+    ctx.translate(60, 60);
+    ctx.transform(0, -1, 1, 0, 0, 760);
+
+    // 3. Padel-Court zeichnen
+    ctx.fillStyle = "#1034A6";
+    ctx.fillRect(10, 10, V_WIDTH - 20, V_HEIGHT - 20);
+
+    // Glaswände-Rahmen außen
+    ctx.strokeStyle = "#555555";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-30, -30, 820, 440);
+
+    // Spielfeld-Linien
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, V_WIDTH - 20, V_HEIGHT - 20);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(offsetX, 10);
+    ctx.lineTo(offsetX, V_HEIGHT - 10);
+    ctx.moveTo(V_WIDTH - offsetX, 10);
+    ctx.lineTo(V_WIDTH - offsetX, V_HEIGHT - 10);
+    ctx.moveTo(offsetX, V_HEIGHT / 2);
+    ctx.lineTo(V_WIDTH - offsetX, V_HEIGHT / 2);
+    ctx.stroke();
+
+    // Netz
+    ctx.fillStyle = "#111111";
+    ctx.fillRect(netX - 2, 10, 4, V_HEIGHT - 20);
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(netX, 10);
+    ctx.lineTo(netX, V_HEIGHT - 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Hilfsfunktion für Pfeilspitzen im Canvas
+    const drawArrowhead = (x1: number, y1: number, x2: number, y2: number, color: string, size: number = 12) => {
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    // 4. Taktik-Analyse-Overlays (falls aktiviert)
+    if (state.showTactics) {
+      if (state.filters.showWeaknessZones) {
+        const ball = state.items.find((i) => i.id === "ball");
+        if (ball) {
+          const pair = ball.x <= netX
+            ? [state.items.find((i) => i.id === "b1"), state.items.find((i) => i.id === "b2")]
+            : [state.items.find((i) => i.id === "a1"), state.items.find((i) => i.id === "a2")];
+          if (pair[0] && pair[1]) {
+            const gap = Math.abs(pair[0].y - pair[1].y);
+            const avgX = (pair[0].x + pair[1].x) / 2;
+            const avgY = (pair[0].y + pair[1].y) / 2;
+            if (gap > GAP_THRESHOLD + 2) {
+              ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
+              ctx.fillRect(avgX - 30, avgY - 80, 60, 160);
+            }
+          }
+        }
       }
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(null);
-
-      const serializer = new XMLSerializer();
-      let svgString = serializer.serializeToString(svgEl);
-      if (!svgString.includes("xmlns=")) {
-        svgString = svgString.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+      if (state.filters.showTeamLines) {
+        const teamA = state.items.filter((i) => i.id.startsWith("a"));
+        if (teamA.length >= 2) {
+          const distA = Math.hypot(teamA[0].x - teamA[1].x, teamA[0].y - teamA[1].y);
+          ctx.strokeStyle = distA > WIDE_GAP_THRESHOLD ? "#e74c3c" : "#2ecc71";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(teamA[0].x, teamA[0].y);
+          ctx.lineTo(teamA[1].x, teamA[1].y);
+          ctx.stroke();
+        }
+        const teamB = state.items.filter((i) => i.id.startsWith("b"));
+        if (teamB.length >= 2) {
+          const distB = Math.hypot(teamB[0].x - teamB[1].x, teamB[0].y - teamB[1].y);
+          ctx.strokeStyle = distB > WIDE_GAP_THRESHOLD ? "#e74c3c" : "#2ecc71";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(teamB[0].x, teamB[0].y);
+          ctx.lineTo(teamB[1].x, teamB[1].y);
+          ctx.stroke();
+        }
       }
 
-      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(svgBlob);
-      const img = new Image();
+      if (state.analysis && state.filters.showBallVector) {
+        const ball = state.items.find((i) => i.id === "ball");
+        if (ball) {
+          ctx.strokeStyle = "#facc15";
+          ctx.lineWidth = 4;
+          ctx.setLineDash([6, 2]);
+          ctx.beginPath();
+          ctx.moveTo(ball.x, ball.y);
+          ctx.lineTo(state.analysis.targetX, state.analysis.targetY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          drawArrowhead(ball.x, ball.y, state.analysis.targetX, state.analysis.targetY, "#facc15", 13);
+        }
+      }
 
-      img.onload = () => {
-        ctx.fillStyle = "#050505";
-        ctx.fillRect(0, 0, canvas!.width, canvas!.height);
-        ctx.drawImage(img, 0, 0, canvas!.width, canvas!.height);
+      if (state.analysis && state.filters.showMovements) {
+        state.items.filter((item) => item.isPlayer).forEach((player) => {
+          const move = state.analysis?.movements?.[player.id];
+          if (!move || Math.hypot(move.tx - player.x, move.ty - player.y) < 12) return;
+          const angle = Math.atan2(move.ty - player.y, move.tx - player.x);
+          const startX = player.x + Math.cos(angle) * 17;
+          const startY = player.y + Math.sin(angle) * 17;
+          ctx.strokeStyle = "#5cd6ff";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(move.tx, move.ty);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          drawArrowhead(startX, startY, move.tx, move.ty, "#5cd6ff", 11);
+        });
+      }
+    }
 
-        // Gebrandetes TacPadel Studio Wasserzeichen unten einzeichnen
-        ctx.fillStyle = "rgba(4, 9, 20, 0.92)";
-        ctx.fillRect(0, canvas!.height - 54, canvas!.width, 54);
-        ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
-        ctx.lineWidth = 2;
+    // 5. Eingezeichnete Studio-Pfeile & Zonen zeichnen
+    state.drawings.forEach((d) => {
+      if (d.type === "zone_circle") {
+        const radius = Math.max(18, Math.hypot(d.x2 - d.x1, d.y2 - d.y1));
+        ctx.fillStyle = "rgba(236, 72, 153, 0.22)";
+        ctx.strokeStyle = "#ec4899";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
         ctx.beginPath();
-        ctx.moveTo(0, canvas!.height - 54);
-        ctx.lineTo(canvas!.width, canvas!.height - 54);
+        ctx.arc(d.x1, d.y1, radius, 0, Math.PI * 2);
+        ctx.fill();
         ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
 
-        ctx.fillStyle = "#22d3ee";
-        ctx.font = "900 16px sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText("TACPADEL • TACTICAL STUDIO", 20, canvas!.height - 22);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 14px sans-serif";
-        ctx.textAlign = "right";
-        ctx.fillText((studioTitle || "Taktik-Analyse").toUpperCase(), canvas!.width - 20, canvas!.height - 22);
-
-        URL.revokeObjectURL(url);
-        resolve(canvas);
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve(null);
-      };
-
-      img.src = url;
+      const isRun = d.type === "arrow_run";
+      const color = isRun ? "#00f0ff" : "#fbbf24";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.setLineDash(isRun ? [] : [8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(d.x1, d.y1);
+      ctx.lineTo(d.x2, d.y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawArrowhead(d.x1, d.y1, d.x2, d.y2, color, 14);
     });
-  }, [studioTitle]);
+
+    // 6. Spieler & Ball zeichnen
+    state.items.forEach((item) => {
+      const r = item.isPlayer ? 16 : 10;
+      ctx.fillStyle = item.color;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Label aufrecht gedreht einzeichnen
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = item.color === "#f1c40f" ? "#000000" : "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.label, 0, 0);
+      ctx.restore();
+    });
+
+    ctx.restore();
+
+    // 7. Gebrandetes TacPadel Studio Wasserzeichen unten einzeichnen
+    ctx.fillStyle = "rgba(4, 9, 20, 0.94)";
+    ctx.fillRect(0, canvas.height - 48, canvas.width, 48);
+    ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height - 48);
+    ctx.lineTo(canvas.width, canvas.height - 48);
+    ctx.stroke();
+
+    ctx.fillStyle = "#22d3ee";
+    ctx.font = "900 13px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("TACPADEL • TACTICAL STUDIO", 16, canvas.height - 19);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText((state.studioTitle || "Taktik-Analyse").toUpperCase(), canvas.width - 16, canvas.height - 19);
+
+    return canvas;
+  }, [netX, offsetX]);
 
   // 📸 1. FOTO SNAPSHOT ERSTELLEN
-  const handleTakeSnapshot = async () => {
-    const canvas = await renderSvgToCanvas();
+  const handleTakeSnapshot = () => {
+    const canvas = drawBoardFrameSynchronously();
     if (!canvas) return;
 
     canvas.toBlob((blob) => {
       if (!blob) return;
-      const file = new File([blob], `tacpadel-taktik-${Date.now()}.png`, { type: "image/png" });
+      const file = new File([blob], `tacpadel-taktik-${Date.now()}.png`, {
+        type: "image/png",
+        lastModified: Date.now(),
+      });
       const url = URL.createObjectURL(blob);
       setExportMedia({ url, file, type: "image" });
     }, "image/png");
   };
 
-  // 🔴 2. VIDEO-AUFNAHME (SHORTCLIP) STARTEN / STOPPEN
-  const startVideoRecording = async () => {
-    const canvas = await renderSvgToCanvas();
+  // 🔴 2. VIDEO-AUFNAHME (SHORTCLIP) MIT ECHTEN 30 FPS STARTEN / STOPPEN
+  const startVideoRecording = () => {
+    const canvas = drawBoardFrameSynchronously();
     if (!canvas || typeof MediaRecorder === "undefined") {
-      alert("Dein Browser unterstützt leider keine direkte Video-Aufnahme. Nutze bitte die Foto-Funktion!");
+      alert("Dein Gerät unterstützt leider keine direkte Video-Aufnahme. Nutze bitte die Foto-Funktion!");
       return;
     }
 
@@ -886,13 +1075,23 @@ export default function TacticsBoard() {
       return;
     }
 
-    const mimeTypes = ["video/mp4", "video/webm;codecs=vp9", "video/webm"];
-    const supportedMime = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+    // Bevorzuge MP4 für WhatsApp-Kompatibilität, sonst WebM
+    const mimeCandidates = [
+      "video/mp4;codecs=avc1",
+      "video/mp4",
+      "video/webm;codecs=vp8",
+      "video/webm;codecs=vp9",
+      "video/webm",
+    ];
+    const supportedMime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
 
     recChunksRef.current = [];
-    const recorder = supportedMime
-      ? new MediaRecorder(stream, { mimeType: supportedMime })
-      : new MediaRecorder(stream);
+    const options: MediaRecorderOptions = {
+      videoBitsPerSecond: 1500000, // ~1.5 Mbit/s hält 25s Videos kompakt (~4 MB) für WhatsApp
+    };
+    if (supportedMime) options.mimeType = supportedMime;
+
+    const recorder = new MediaRecorder(stream, options);
 
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
@@ -901,40 +1100,39 @@ export default function TacticsBoard() {
     };
 
     recorder.onstop = () => {
-      const finalMime = recorder.mimeType || "video/webm";
-      const ext = finalMime.includes("mp4") ? "mp4" : "webm";
-      const blob = new Blob(recChunksRef.current, { type: finalMime });
-      const file = new File([blob], `tacpadel-clip-${Date.now()}.${ext}`, { type: finalMime });
+      const rawMime = recorder.mimeType || supportedMime || "video/webm";
+      const isMp4 = rawMime.toLowerCase().includes("mp4");
+      // WICHTIG FÜR WHATSAPP & ANDROID SHARE: Reiner MIME-Type ohne ";codecs=..."!
+      const cleanMime = isMp4 ? "video/mp4" : "video/webm";
+      const ext = isMp4 ? "mp4" : "webm";
+
+      const blob = new Blob(recChunksRef.current, { type: cleanMime });
+      const file = new File([blob], `tacpadel-clip-${Date.now()}.${ext}`, {
+        type: cleanMime,
+        lastModified: Date.now(),
+      });
       const url = URL.createObjectURL(blob);
       setExportMedia({ url, file, type: "video" });
     };
 
     mediaRecorderRef.current = recorder;
-    recorder.start(200);
+    recorder.start(250);
     setIsRecording(true);
     setRecSeconds(0);
 
-    // Timer hochzählen
+    // Synchroner 30-FPS-Zeichentakt (33 ms), damit 25s Aufnahme = exakt 25s Videolänge sind!
+    recFrameIntervalRef.current = setInterval(() => {
+      drawBoardFrameSynchronously();
+    }, 33);
+
     recTimerRef.current = setInterval(() => {
       setRecSeconds((s) => s + 1);
     }, 1000);
-
-    // Kontinuierliche Frame-Schleife während der Aufnahme
-    const updateLoop = async () => {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return;
-      if (!isRenderingFrameRef.current) {
-        isRenderingFrameRef.current = true;
-        await renderSvgToCanvas();
-        isRenderingFrameRef.current = false;
-      }
-      recFrameLoopRef.current = window.setTimeout(updateLoop, 70);
-    };
-    updateLoop();
   };
 
   const stopVideoRecording = () => {
     if (recTimerRef.current) clearInterval(recTimerRef.current);
-    if (recFrameLoopRef.current) clearTimeout(recFrameLoopRef.current);
+    if (recFrameIntervalRef.current) clearInterval(recFrameIntervalRef.current);
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -944,32 +1142,70 @@ export default function TacticsBoard() {
   useEffect(() => {
     return () => {
       if (recTimerRef.current) clearInterval(recTimerRef.current);
-      if (recFrameLoopRef.current) clearTimeout(recFrameLoopRef.current);
+      if (recFrameIntervalRef.current) clearInterval(recFrameIntervalRef.current);
     };
   }, []);
 
-  // 📲 3. TEILEN (NATIVES WHATSAPP / SOCIAL SHARE MENU ODER DOWNLOAD)
+  // 📲 3. ROBUSTES TEILEN FÜR FOTOS & VIDEOS (MIT 2-STUFEN-FALLBACK FÜR ANDROID/WHATSAPP)
   const handleNativeShare = async () => {
-    if (!exportMedia) return;
+    if (!exportMedia || isSharing) return;
+    setIsSharing(true);
+
     const shareText = `🎾 Schau dir diesen Padel-Spielzug an: "${studioTitle}" – erstellt im TacPadel Tactical Studio! 🔥`;
 
     try {
-      if (navigator.canShare && navigator.canShare({ files: [exportMedia.file] })) {
-        await navigator.share({
-          title: studioTitle || "TacPadel Taktik",
-          text: shareText,
-          files: [exportMedia.file],
-        });
+      if (typeof navigator !== "undefined" && navigator.share) {
+        // Stufe 1: Prüfen, ob Datei + Text geteilt werden können
+        const canShareFile = !navigator.canShare || navigator.canShare({ files: [exportMedia.file] });
+
+        if (canShareFile) {
+          try {
+            // Für Videos akzeptieren manche Android-Versionen im Share-Sheet nur das files-Array ohne Zusatztext
+            if (exportMedia.type === "video") {
+              await navigator.share({
+                files: [exportMedia.file],
+                title: studioTitle || "TacPadel Taktik",
+              });
+            } else {
+              await navigator.share({
+                files: [exportMedia.file],
+                title: studioTitle || "TacPadel Taktik",
+                text: shareText,
+              });
+            }
+            setIsSharing(false);
+            return;
+          } catch (innerErr: any) {
+            // Falls Nutzer das Teilen-Fenster selbst geschlossen hat -> nichts weiter tun
+            if (innerErr?.name === "AbortError") {
+              setIsSharing(false);
+              return;
+            }
+            // Stufe 2: Reiner Datei-Share ohne Text/Titel (höchste Kompatibilität für Videos auf Android)
+            try {
+              await navigator.share({ files: [exportMedia.file] });
+              setIsSharing(false);
+              return;
+            } catch (retryErr: any) {
+              if (retryErr?.name === "AbortError") {
+                setIsSharing(false);
+                return;
+              }
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        setIsSharing(false);
         return;
       }
-    } catch (err) {
-      // Falls Nutzer das Teilen-Menü abbricht
-      return;
     }
 
-    // Fallback (z. B. am PC): Datei herunterladen & WhatsApp öffnen
+    // Stufe 3 (Fallback, falls das Gerät Web-Video-Share blockiert): Video speichern & WhatsApp öffnen
     handleDownloadMedia();
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
+    setIsSharing(false);
+    alert("Das Video wurde auf deinem Gerät gespeichert – du kannst es jetzt direkt in WhatsApp aus deiner Galerie anhängen!");
   };
 
   const handleDownloadMedia = () => {
@@ -981,13 +1217,6 @@ export default function TacticsBoard() {
     a.click();
     document.body.removeChild(a);
   };
-
-  const netX = V_WIDTH / 2;
-  const offsetX = 10 + (V_WIDTH - 20) * 0.15;
-
-  const analysis = useMemo(() => getTacticalAnalysis(items, filters, selectedScenarioKey, customTarget), [items, filters, selectedScenarioKey, customTarget]);
-
-  const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
 
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
@@ -1090,9 +1319,10 @@ export default function TacticsBoard() {
             <div className="flex flex-col sm:flex-row gap-2.5 w-full">
               <button
                 onClick={handleNativeShare}
-                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
+                disabled={isSharing}
+                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
               >
-                <span>📲 WhatsApp / Teilen</span>
+                <span>{isSharing ? "Öffne Teilen-Menü..." : "📲 WhatsApp / Teilen"}</span>
               </button>
               <button
                 onClick={handleDownloadMedia}
@@ -1124,7 +1354,7 @@ export default function TacticsBoard() {
             2D Taktik
           </button>
 
-          {/* NEUER MITTEL-BUTTON: TACTICAL STUDIO (PRO) */}
+          {/* MITTEL-BUTTON: TACTICAL STUDIO (PRO) */}
           <button
             onClick={() => {
               if (!isProUser) {
@@ -1380,7 +1610,6 @@ export default function TacticsBoard() {
                 <marker id="moveArrowhead" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
                   <polygon points="0 0, 8 3, 0 6" fill="#5cd6ff" />
                 </marker>
-                {/* Studio Pfeilspitzen */}
                 <marker id="studioRunArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
                   <polygon points="0 0, 8 3, 0 6" fill="#00f0ff" />
                 </marker>
