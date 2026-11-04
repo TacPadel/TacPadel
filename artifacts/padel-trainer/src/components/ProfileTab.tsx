@@ -9,6 +9,8 @@ import { AI_PROFILES } from '../engine/AiProfiles';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
+import AdminDashboard from "./AdminDashboard";
+
 
 // =========================================================
 // HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
@@ -371,7 +373,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     if (saved === "false") return false;
     return Boolean(user?.user_metadata?.is_pro);
   });
-
+  const [showAdminModal, setShowAdminModal] = useState(false);
   const toggleProUserStatus = async () => {
     const newState = !isProUser;
     setIsProUser(newState);
@@ -1207,40 +1209,58 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
       </div>
 
-      {/* ========================================================= */}
+            {/* ========================================================= */}
       {/* 7.5 ADMIN DEVELOPER TOOLS (Nur für caposion@gmail.com)    */}
       {/* ========================================================= */}
       {isAdmin && (
-        <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex flex-col text-center sm:text-left">
-            <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
-              🛡️ Admin Test-Steuerung (Paywall Vorschau)
-            </h3>
-            <span className="text-[9px] text-slate-400 font-bold mt-1">
-              Schalte deinen eigenen Account live zwischen Free-User und Pro-User um
-            </span>
+        <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex flex-col text-center sm:text-left">
+              <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
+                🛡️ Admin Test-Steuerung & Zentrale
+              </h3>
+              <span className="text-[9px] text-slate-400 font-bold mt-1">
+                Eigenen Pro-Status testen, Tester freischalten & Strategien prüfen
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <div className="flex items-center gap-2.5 bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
+                <span className={`text-[10px] font-black uppercase tracking-widest ${isProUser ? 'text-pink-400' : 'text-slate-500'}`}>
+                  {isProUser ? "👑 Pro Aktiv" : "🔒 Free"}
+                </span>
+                <button
+                  onClick={toggleProUserStatus}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
+                    isProUser ? 'bg-gradient-to-r from-pink-500 to-purple-500 shadow-[0_0_12px_rgba(236,72,153,0.6)]' : 'bg-slate-700'
+                  }`}
+                >
+                  <motion.div
+                    layout
+                    className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md"
+                    animate={{ x: isProUser ? 24 : 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowAdminModal(!showAdminModal)}
+                className="px-4 py-2.5 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+              >
+                {showAdminModal ? "✕ Zentrale schließen" : "🛠️ Admin-Zentrale öffnen"}
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isProUser ? 'text-pink-400' : 'text-slate-500'}`}>
-              {isProUser ? "👑 Pro Pass Aktiv" : "🔒 Free User"}
-            </span>
-            <button
-              onClick={toggleProUserStatus}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
-                isProUser ? 'bg-gradient-to-r from-pink-500 to-purple-500 shadow-[0_0_12px_rgba(236,72,153,0.6)]' : 'bg-slate-700'
-              }`}
-            >
-              <motion.div
-                layout
-                className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md"
-                animate={{ x: isProUser ? 24 : 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              />
-            </button>
-          </div>
+          {showAdminModal && (
+            <div className="pt-2 border-t border-slate-800/80">
+              <AdminDashboard onExit={() => setShowAdminModal(false)} initialTab="users" />
+            </div>
+          )}
         </div>
       )}
+
 
       {/* ========================================= */}
       {/* 8. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
