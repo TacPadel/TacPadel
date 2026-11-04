@@ -494,7 +494,7 @@ export default function TacticsBoard() {
   const [activeMode, setActiveMode] = useState<"tactics" | "studio" | "3d">("tactics");
 
   // --- PRO-USER STATUS & PAYWALL ---
-  const [isProUser, setIsProUser] = useState<boolean>(() => localStorage.getItem("tacpadel_is_pro") === "true");
+
   const [showProModal, setShowProModal] = useState<boolean>(false);
 
   useEffect(() => {
