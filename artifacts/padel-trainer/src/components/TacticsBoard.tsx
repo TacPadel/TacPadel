@@ -1324,11 +1324,15 @@ export default function TacticsBoard() {
         </div>
       )}
 
-      {/* ================================================================= */}
-      {/* DER 3-WEGE TOGGLE-SCHALTER (2D | STUDIO PRO | 3D)                 */}
+            {/* ================================================================= */}
+      {/* DYNAMISCHER TOGGLE-SCHALTER (2D | [STUDIO PRO] | 3D)              */}
       {/* ================================================================= */}
       <div className="w-full max-w-5xl flex flex-col items-center mb-1 px-3">
-        <div className="bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid grid-cols-3 relative w-full max-w-lg">
+        <div
+          className={`bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid ${
+            isProUser ? "grid-cols-3 max-w-lg" : "grid-cols-2 max-w-md"
+          } relative w-full`}
+        >
           <button
             onClick={() => {
               if (isRecording) stopVideoRecording();
@@ -1343,23 +1347,19 @@ export default function TacticsBoard() {
             2D Taktik
           </button>
 
-          {/* MITTEL-BUTTON: TACTICAL STUDIO (PRO) */}
-          <button
-            onClick={() => {
-              if (!isProUser) {
-                setShowProModal(true);
-                return;
-              }
-              setActiveMode("studio");
-            }}
-            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
-              activeMode === "studio"
-                ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]"
-                : "text-pink-400 hover:text-pink-300"
-            }`}
-          >
-            <span>{isProUser ? "🎬 Studio Pro" : "🔒 Studio Pro"}</span>
-          </button>
+          {/* NUR SICHTBAR FÜR PRO-USER & FREIGESCHALTETE TESTER */}
+          {isProUser && (
+            <button
+              onClick={() => setActiveMode("studio")}
+              className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
+                activeMode === "studio"
+                  ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]"
+                  : "text-pink-400 hover:text-pink-300"
+              }`}
+            >
+              <span>🎬 Studio Pro</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -1377,11 +1377,6 @@ export default function TacticsBoard() {
         </div>
       </div>
 
-      {/* --- RENDERN BASIEREND AUF DEM SCHALTER --- */}
-      {activeMode === "3d" ? (
-        <TrajectoryView3D />
-      ) : (
-        <>
           {/* ============================================================= */}
           {/* TACTICAL STUDIO (PRO) WERKZEUGLEISTE                          */}
           {/* ============================================================= */}
