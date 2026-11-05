@@ -4,14 +4,8 @@ import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three'; 
 
-// --- Imports für Loadout-Shop, Admin & 3D ---
-import {
-  SHOP_PARTNERS,
-  SHOP_RACKETS,
-  SHOP_SHOTS,
-  ShopItem,
-  calculateLoadoutStats,
-} from '../lib/loadout';
+// --- Imports für KI-Profile & 3D ---
+import { AI_PROFILES } from '../engine/AiProfiles'; 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
@@ -31,6 +25,47 @@ const detectLowEndDevice = (): boolean => {
     if (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4) return true;
   } catch (e) {}
   return false;
+};
+
+// ==========================================
+// --- SHOP & LOCKER DATENBANK (TacPoints) ---
+// ==========================================
+interface ShopItem {
+  id: string;
+  name: string;
+  price: number;
+  badge: string;
+  modifiers: { smash: number; control: number; defense: number; agility: number };
+}
+
+const RACKETS: ShopItem[] = [
+  { id: 'racket_starter', name: 'Rookie Frame Basic', price: 0, badge: 'Standard', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
+  { id: 'racket_aero', name: 'Aero Swift Pro X', price: 400, badge: '+Agility', modifiers: { smash: 3, control: 2, defense: 0, agility: 5 } },
+  { id: 'racket_titan', name: 'Titan Matrix CTRL', price: 650, badge: '+Control', modifiers: { smash: -2, control: 7, defense: 3, agility: 0 } },
+  { id: 'racket_eclipse', name: 'Eclipse Carbon Strike', price: 950, badge: '+Power', modifiers: { smash: 4, control: 3, defense: -2, agility: 1 } },
+  { id: 'racket_apex_pro', name: 'Apex Signature 18K', price: 2200, badge: 'Tour Elite', modifiers: { smash: 6, control: 5, defense: 2, agility: 4 } },
+];
+
+const POWER_SHOTS: ShopItem[] = [
+  { id: 'smash', name: 'Topspin Smash (Klassik)', price: 0, badge: 'Standard', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
+  { id: 'bandeja', name: 'Bandeja Control', price: 350, badge: '+Taktik', modifiers: { smash: 1, control: 4, defense: 3, agility: 0 } },
+  { id: 'vibora', name: 'Víbora Slice', price: 600, badge: '+Slice', modifiers: { smash: 4, control: 2, defense: 0, agility: 2 } },
+  { id: 'kick_x3', name: 'Kick-Smash X3', price: 1500, badge: 'Finisher', modifiers: { smash: 7, control: 1, defense: -1, agility: 2 } },
+];
+
+const getPartnerModifiers = (partnerId: string) => {
+  const p = AI_PROFILES.flatMap(prof => [
+    { id: `${prof.id}-1`, style: prof.style },
+    { id: `${prof.id}-2`, style: prof.style }
+  ]).find(x => x.id === partnerId);
+  
+  const style = p?.style?.toLowerCase() || '';
+  
+  if (style.includes('aggressiv') || style.includes('finisher')) return { smash: 6, control: -2, defense: -3, agility: 2 };
+  if (style.includes('taktik') || style.includes('control')) return { smash: -2, control: 6, defense: 3, agility: -1 };
+  if (style.includes('defensiv') || style.includes('mauer')) return { smash: -3, control: 2, defense: 6, agility: 1 };
+  
+  return { smash: 2, control: 2, defense: 2, agility: 2 };
 };
 
 // ==========================================
@@ -183,7 +218,7 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
   );
 }
 
-// --- VITRINENSCHRANK ---
+// --- NEUER VITRINENSCHRANK ---
 function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string[], onTrophyClick: (id: string) => void, lowQuality?: boolean }) {
   const cols = 3; 
   const minShelves = 4; 
@@ -251,12 +286,6 @@ function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string
 }
 // ==========================================
 
-const normalizePartnerId = (rawId?: string | null): string => {
-  if (!rawId) return "partner_rookie";
-  if (SHOP_PARTNERS.some((p) => p.id === rawId)) return rawId;
-  return "partner_rookie";
-};
-
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
@@ -265,12 +294,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [savedUsername, setSavedUsername] = useState(fallbackName);
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
-  // --- AKTUELL AUSGEWÄHLTE VORSCHAU-IDS IM DROPDOWN ---
-  const [partnerId, setPartnerId] = useState(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id"))); 
+  const [partnerId, setPartnerId] = useState(() => localStorage.getItem("tacpadel_partner_id") || "pro_1-1"); 
   const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
   const [shotId, setShotId] = useState(() => localStorage.getItem("tacpadel_power_shot") || "smash");
 
-  // --- FEST AUSGERÜSTETE IDS & FREIGESCHALTETE SHOP-ITEMS ---
+  // --- TACPOINTS SHOP STATES ---
   const [tacPoints, setTacPoints] = useState<number>(() => {
     const saved = localStorage.getItem("tacpadel_tac_points");
     return saved ? parseInt(saved, 10) : 0;
@@ -278,12 +306,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
-      return saved ? JSON.parse(saved) : ["partner_rookie", "racket_starter", "smash"];
+      return saved ? JSON.parse(saved) : ["racket_starter", "smash"];
     } catch {
-      return ["partner_rookie", "racket_starter", "smash"];
+      return ["racket_starter", "smash"];
     }
   });
-  const [equippedPartner, setEquippedPartner] = useState<string>(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id")));
   const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
   const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
   const [isBuying, setIsBuying] = useState<boolean>(false);
@@ -359,7 +386,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem("tacpadel_haptics") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
-  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
+  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS (Unterstützt beide Admin-E-Mails) ---
   const userEmailLower = user?.email?.toLowerCase().trim() || "";
   const isAdmin = userEmailLower === "admin@tacpadel.com" || userEmailLower === "caposion@gmail.com";
   const [isProUser, setIsProUser] = useState<boolean>(() => {
@@ -412,16 +439,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
 
         if (Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0) {
-          const merged = Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...profileData.unlocked_items]));
+          const merged = Array.from(new Set(["racket_starter", "smash", ...profileData.unlocked_items]));
           setUnlockedItems(merged);
           localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(merged));
-        }
-
-        if (profileData.partner_id) {
-          const validPartner = normalizePartnerId(profileData.partner_id);
-          setEquippedPartner(validPartner);
-          setPartnerId(validPartner);
-          localStorage.setItem("tacpadel_partner_id", validPartner);
         }
 
         if (profileData.equipped_racket) {
@@ -440,7 +460,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           setTeamName(profileData.team_name);
           setSavedTeamName(profileData.team_name);
         }
+        
+        if (profileData.partner_id) {
+          setPartnerId(profileData.partner_id);
+          localStorage.setItem("tacpadel_partner_id", profileData.partner_id);
+        }
 
+        // Für alle Nicht-Admins gilt immer der echte Datenbank-Wert aus Supabase:
         if (!isAdmin) {
           const dbPro = Boolean(profileData.is_pro);
           setIsProUser(dbPro);
@@ -490,13 +516,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       localStorage.setItem("tacpadel_score", trueScore.toString());
       
       if (!profileData) {
-        await supabase.from('user_stats').upsert({
-          id: user.id,
-          points: trueScore,
-          preferred_position: preferredPosition,
-          team_name: teamName,
-          partner_id: partnerId
-        });
+        await supabase.from('user_stats').upsert({ id: user.id, points: trueScore, preferred_position: preferredPosition, team_name: teamName, partner_id: partnerId });
       } else if (profileData.points !== trueScore) {
         await supabase.from('user_stats').update({ points: trueScore }).eq('id', user.id);
       }
@@ -558,11 +578,29 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
-  // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE AUS src/lib/loadout.ts ---
-  const loadoutStats = useMemo(
-    () => calculateLoadoutStats(partnerId, racketId, shotId),
-    [partnerId, racketId, shotId]
-  );
+  // --- LIVE-BERECHNUNG DER SPIELER-ATTRIBUTE (Partner + Schläger + Spezial-Fokus) ---
+  const loadoutStats = useMemo(() => {
+    const baseStats = { smash: 50, control: 50, defense: 50, agility: 50 };
+    const calculated = { ...baseStats };
+    
+    const pMods = getPartnerModifiers(partnerId);
+    const rMods = RACKETS.find(r => r.id === racketId)?.modifiers || { smash: 0, control: 0, defense: 0, agility: 0 };
+    const sMods = POWER_SHOTS.find(s => s.id === shotId)?.modifiers || { smash: 0, control: 0, defense: 0, agility: 0 };
+
+    const diffs = {
+      smash: pMods.smash + rMods.smash + sMods.smash,
+      control: pMods.control + rMods.control + sMods.control,
+      defense: pMods.defense + rMods.defense + sMods.defense,
+      agility: pMods.agility + rMods.agility + sMods.agility,
+    };
+
+    calculated.smash += diffs.smash;
+    calculated.control += diffs.control;
+    calculated.defense += diffs.defense;
+    calculated.agility += diffs.agility;
+
+    return { stats: calculated, diffs };
+  }, [partnerId, racketId, shotId]);
 
   const renderStatDiff = (diff: number) => {
     if (diff === 0) return <span className="text-[10px] font-black text-slate-600 bg-slate-800/50 px-1 rounded">-</span>;
@@ -573,17 +611,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     );
   };
 
-  // --- KAUF- & AUSRÜSTUNGS-LOGIK FÜR PARTNER, SCHLÄGER & SPEZIAL-FOKUS ---
-  const handleSelectOrBuyItem = async (item: ShopItem, category: 'partner' | 'racket' | 'shot') => {
+  // --- KAUF- & AUSRÜSTUNGS-LOGIK FÜR SCHLÄGER & SPEZIAL-FOKUS ---
+  const handleSelectOrBuyItem = async (item: ShopItem, category: 'racket' | 'shot') => {
     const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
 
     if (isUnlocked) {
-      if (category === 'partner') {
-        setEquippedPartner(item.id);
-        setPartnerId(item.id);
-        localStorage.setItem("tacpadel_partner_id", item.id);
-        await supabase.from('user_stats').update({ partner_id: item.id }).eq('id', user.id);
-      } else if (category === 'racket') {
+      if (category === 'racket') {
         setEquippedRacket(item.id);
         setRacketId(item.id);
         localStorage.setItem("tacpadel_racket_id", item.id);
@@ -612,11 +645,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const updatePayload: any = {
       tac_points: nextTacPoints,
       unlocked_items: nextUnlocked,
-      ...(category === 'partner'
-        ? { partner_id: item.id }
-        : category === 'racket'
-          ? { equipped_racket: item.id }
-          : { equipped_shot: item.id }),
+      ...(category === 'racket' ? { equipped_racket: item.id } : { equipped_shot: item.id })
     };
 
     const { error } = await supabase
@@ -635,11 +664,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_tac_points", String(nextTacPoints));
     localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(nextUnlocked));
 
-    if (category === 'partner') {
-      setEquippedPartner(item.id);
-      setPartnerId(item.id);
-      localStorage.setItem("tacpadel_partner_id", item.id);
-    } else if (category === 'racket') {
+    if (category === 'racket') {
       setEquippedRacket(item.id);
       setRacketId(item.id);
       localStorage.setItem("tacpadel_racket_id", item.id);
@@ -651,6 +676,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
     setMessage({ type: 'success', text: `🎉 ${item.name} freigeschaltet & ausgerüstet!` });
     setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handlePartnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPartner = e.target.value;
+    setPartnerId(newPartner);
+    localStorage.setItem("tacpadel_partner_id", newPartner);
+    
+    const { error } = await supabase.from('user_stats').update({ partner_id: newPartner }).eq('id', user.id);
+    if (!error) {
+      setMessage({ type: 'success', text: `Partner erfolgreich gewählt!` });
+      setTimeout(() => setMessage(null), 2500);
+    }
   };
 
   const handleAutoSave = async () => {
@@ -707,6 +744,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
+  // --- Funktion zum vollständigen Löschen des Kontos ---
   const handleDeleteAccount = async () => {
     try {
       setIsDeleting(true);
@@ -759,11 +797,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   const formatTourName = (id: string) => id.replace(/-/g, ' ').toUpperCase();
 
-  const selectedPartnerObj = SHOP_PARTNERS.find(p => p.id === partnerId) || SHOP_PARTNERS[0];
-  const selectedRacketObj = SHOP_RACKETS.find(r => r.id === racketId) || SHOP_RACKETS[0];
-  const selectedShotObj = SHOP_SHOTS.find(s => s.id === shotId) || SHOP_SHOTS[0];
-
-  const isPartnerUnlocked = unlockedItems.includes(selectedPartnerObj.id) || selectedPartnerObj.price === 0;
+  const selectedRacketObj = RACKETS.find(r => r.id === racketId) || RACKETS[0];
+  const selectedShotObj = POWER_SHOTS.find(s => s.id === shotId) || POWER_SHOTS[0];
   const isRacketUnlocked = unlockedItems.includes(selectedRacketObj.id) || selectedRacketObj.price === 0;
   const isShotUnlocked = unlockedItems.includes(selectedShotObj.id) || selectedShotObj.price === 0;
 
@@ -1043,10 +1078,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3">
             <div>
               <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase">
-                Spielstil &amp; Ausrüstung (Locker Shop)
+                Spielstil & Ausrüstung (Locker Shop)
               </h3>
               <span className="text-[9px] text-slate-500 font-bold">
-                Schalte KI-Partner, Schläger &amp; Spezialschläge mit TacPoints frei
+                Rüste deinen Spieler aus oder schalte neue Ausrüstung mit TacPoints frei
               </span>
             </div>
             <div className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 px-3 py-1.5 rounded-xl shrink-0">
@@ -1058,62 +1093,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="flex flex-col gap-3">
-              {/* 1. KI-TEAMPARTNER (INKL. TACPOINTS-KAUF & FÄHIGKEIT) */}
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-                <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
-                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">
-                    {equippedPartner === partnerId && isPartnerUnlocked ? "✓ Im Team" : selectedPartnerObj.badge}
-                  </span>
-                </div>
+              {/* KI-TEAMPARTNER */}
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
                 <select 
                   value={partnerId} 
-                  onChange={(e) => {
-                    const nextPartner = e.target.value;
-                    setPartnerId(nextPartner);
-                    if (unlockedItems.includes(nextPartner) || nextPartner === 'partner_rookie') {
-                      setEquippedPartner(nextPartner);
-                      localStorage.setItem("tacpadel_partner_id", nextPartner);
-                      supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
-                    }
-                  }} 
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-emerald-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                  onChange={handlePartnerChange} 
+                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_PARTNERS.map(p => {
-                    const owned = unlockedItems.includes(p.id) || p.price === 0;
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {owned ? `✓ ${p.name}` : `🔒 ${p.name} (${p.price} TP)`}
-                      </option>
-                    );
-                  })}
+                  {AI_PROFILES.flatMap(p => [
+                    <option key={`${p.id}-1`} value={`${p.id}-1`}>{p.p1} ({p.style})</option>,
+                    <option key={`${p.id}-2`} value={`${p.id}-2`}>{p.p2} ({p.style})</option>
+                  ])}
                 </select>
-                {selectedPartnerObj.perk && (
-                  <span className="text-[10px] text-slate-400 italic">
-                    ⚡ {selectedPartnerObj.perk}
-                  </span>
-                )}
-
-                {(!isPartnerUnlocked || equippedPartner !== partnerId) && (
-                  <button
-                    disabled={isBuying}
-                    onClick={() => handleSelectOrBuyItem(selectedPartnerObj, 'partner')}
-                    className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      isPartnerUnlocked
-                        ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-                        : tacPoints >= selectedPartnerObj.price
-                          ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.4)]"
-                          : "bg-slate-800 text-slate-400 border border-slate-700"
-                    }`}
-                  >
-                    {isPartnerUnlocked
-                      ? "Als Partner wählen"
-                      : `Partner verpflichten (${selectedPartnerObj.price} TP)`}
-                  </button>
-                )}
               </div>
 
-              {/* 2. SCHLÄGER (INKL. TACPOINTS-KAUF) */}
+              {/* SCHLÄGER (INKL. TACPOINTS-KAUF) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
@@ -1134,7 +1129,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_RACKETS.map(r => {
+                  {RACKETS.map(r => {
                     const owned = unlockedItems.includes(r.id) || r.price === 0;
                     return (
                       <option key={r.id} value={r.id}>
@@ -1163,7 +1158,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 )}
               </div>
 
-              {/* 3. SPEZIAL-FOKUS (INKL. TACPOINTS-KAUF) */}
+              {/* SPEZIAL-FOKUS (INKL. TACPOINTS-KAUF) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Spezial-Fokus</label>
@@ -1184,7 +1179,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   }}
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_SHOTS.map(s => {
+                  {POWER_SHOTS.map(s => {
                     const owned = unlockedItems.includes(s.id) || s.price === 0;
                     return (
                       <option key={s.id} value={s.id}>
@@ -1214,71 +1209,52 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               </div>
             </div>
 
-            {/* SPIELER ATTRIBUTE & AKTIVER MATCH-EFFEKT */}
-            <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-between relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+            <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
               
-              <div>
-                <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                  <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">Player Attributes (Match-Wirkung)</h4>
-                  {(partnerId !== equippedPartner || racketId !== equippedRacket || shotId !== equippedShot) && (
-                    <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
-                      Vorschau
-                    </span>
-                  )}
+              <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">Player Attributes</h4>
+                {(racketId !== equippedRacket || shotId !== equippedShot) && (
+                  <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
+                    Vorschau
+                  </span>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-y-6 gap-x-4 relative z-10">
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Smash Power</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.smash}</span>
+                    {renderStatDiff(loadoutStats.diffs.smash)}
+                  </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-y-6 gap-x-4 relative z-10">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Smash Power</span>
-                    <div className="flex items-end gap-2 mt-1">
-                      <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.smash}</span>
-                      {renderStatDiff(loadoutStats.diffs.smash)}
-                    </div>
-                    <span className="text-[8px] text-slate-500 mt-1">
-                      Winner-Chance: {loadoutStats.matchModifiers.winnerChanceBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.winnerChanceBonus * 100)}%
-                    </span>
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Control</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.control}</span>
+                    {renderStatDiff(loadoutStats.diffs.control)}
                   </div>
-                  
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Control</span>
-                    <div className="flex items-end gap-2 mt-1">
-                      <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.control}</span>
-                      {renderStatDiff(loadoutStats.diffs.control)}
-                    </div>
-                    <span className="text-[8px] text-slate-500 mt-1">
-                      Eigenfehler: {Math.round((loadoutStats.matchModifiers.errorReductionFactor - 1) * 100)}%
-                    </span>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Defense</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.defense}</span>
+                    {renderStatDiff(loadoutStats.diffs.defense)}
                   </div>
-                  
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Defense</span>
-                    <div className="flex items-end gap-2 mt-1">
-                      <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.defense}</span>
-                      {renderStatDiff(loadoutStats.diffs.defense)}
-                    </div>
-                    <span className="text-[8px] text-slate-500 mt-1">
-                      Block/Rettung: {loadoutStats.matchModifiers.defenseSaveBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.defenseSaveBonus * 100)}%
-                    </span>
-                  </div>
-                  
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold">Agility</span>
-                    <div className="flex items-end gap-2 mt-1">
-                      <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.agility}</span>
-                      {renderStatDiff(loadoutStats.diffs.agility)}
-                    </div>
-                    <span className="text-[8px] text-slate-500 mt-1">
-                      Ausdauer-Verbrauch: {Math.round((loadoutStats.matchModifiers.staminaDrainMultiplier - 1) * 100)}%
-                    </span>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold">Agility</span>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-xl font-black text-white leading-none">{loadoutStats.stats.agility}</span>
+                    {renderStatDiff(loadoutStats.diffs.agility)}
                   </div>
                 </div>
               </div>
-
-              <div className="mt-5 pt-3 border-t border-slate-800/80 text-[9px] text-slate-400 flex items-center justify-between">
-                <span>Aktives Team-Setup wirkt in Einzelmatches &amp; TP Tour</span>
-                <span className="text-emerald-400 font-black uppercase">Aktiv ✓</span>
-              </div>
+              
             </div>
 
           </div>
@@ -1299,7 +1275,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-row justify-between items-center">
         <div className="flex flex-col">
           <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
-          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Siegquote &amp; Historie</span>
+          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Siegquote & Historie</span>
         </div>
         <div className="flex items-center gap-5 sm:gap-8">
           <div className="flex gap-3 sm:gap-4 text-[10px] font-black tracking-widest uppercase items-center">
