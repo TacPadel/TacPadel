@@ -366,7 +366,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
   // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
-  const isAdmin = user?.email?.toLowerCase().trim() === "caposion@gmail.com";
+  const isAdmin = user?.email?.toLowerCase().trim() === "admin@tacpadel.com";
   const [isProUser, setIsProUser] = useState<boolean>(() => {
     const saved = localStorage.getItem("tacpadel_is_pro");
     if (saved === "true") return true;
