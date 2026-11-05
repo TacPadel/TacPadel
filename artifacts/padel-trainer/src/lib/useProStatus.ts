@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 
-const ADMIN_EMAIL = "caposion@gmail.com";
+const ADMIN_EMAIL = "admin@gtacpadel.com";
 
 export function useProStatus() {
   const [isProUser, setIsProUser] = useState<boolean>(false);
