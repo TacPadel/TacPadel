@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
+	<string>de</string>
 	<key>CFBundleDisplayName</key>
-        <string>TacPadel</string>
+	<string>TacPadel</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -32,33 +32,37 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>com.TacPadel.app</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>tacpadel</string>
-            </array>
-        </dict>
-    </array>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.TacPadel.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tacpadel</string>
+			</array>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
-    <false/>
+	<false/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TacPadel benötigt Zugriff auf deine Fotos, damit du ein eigenes Profilbild für deine Spieler-Akte auswählen und Taktik-Grafiken speichern kannst.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>TacPadel speichert deine erstellten Taktik-Grafiken und Analyse-Videos auf Wunsch in deiner Fotomediathek.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TacPadel benötigt Zugriff auf die Kamera, falls du direkt ein neues Foto für dein Spieler-Profil aufnehmen möchtest.</string>
 </dict>
 </plist>
