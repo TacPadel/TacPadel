@@ -489,12 +489,11 @@ export default function TacticsBoard() {
   const [customTarget, setCustomTarget] = useState<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<number>(0);
 
-  // --- 3-WEGE SCHALTER: 2D | STUDIO (PRO) | 3D ---
+  // --- DYNAMISCHER SCHALTER: 2D | [STUDIO PRO] | 3D ---
   const [activeMode, setActiveMode] = useState<"tactics" | "studio" | "3d">("tactics");
 
-  // --- PRO-USER STATUS & PAYWALL (Sicher innerhalb der Komponente!) ---
+  // --- PRO-USER STATUS (Steuert die Sichtbarkeit von Studio Pro) ---
   const [isProUser, setIsProUser] = useState<boolean>(false);
-  const [showProModal, setShowProModal] = useState<boolean>(false);
 
   useEffect(() => {
     async function checkProStatus() {
@@ -811,7 +810,7 @@ export default function TacticsBoard() {
   };
 
   // =========================================================================
-  // SYNCHRONER 30-FPS CANVAS-RENDERER (Kein 8s-vs-25s Zeitfehler mehr!)
+  // SYNCHRONER 30-FPS CANVAS-RENDERER
   // =========================================================================
   const drawBoardFrameSynchronously = useCallback((): HTMLCanvasElement | null => {
     let canvas = recCanvasRef.current;
@@ -1096,7 +1095,6 @@ export default function TacticsBoard() {
     recorder.onstop = () => {
       const rawMime = recorder.mimeType || supportedMime || "video/webm";
       const isMp4 = rawMime.toLowerCase().includes("mp4");
-      // WICHTIG FÜR WHATSAPP & ANDROID SHARE: Reiner MIME-Type ohne ";codecs=..."!
       const cleanMime = isMp4 ? "video/mp4" : "video/webm";
       const ext = isMp4 ? "mp4" : "webm";
 
@@ -1114,7 +1112,6 @@ export default function TacticsBoard() {
     setIsRecording(true);
     setRecSeconds(0);
 
-    // Synchroner 30-FPS-Zeichentakt (33 ms), damit 25s Aufnahme = exakt 25s Videolänge sind!
     recFrameIntervalRef.current = setInterval(() => {
       drawBoardFrameSynchronously();
     }, 33);
@@ -1140,7 +1137,7 @@ export default function TacticsBoard() {
     };
   }, []);
 
-  // 📲 3. ROBUSTES TEILEN FÜR FOTOS & VIDEOS (MIT 2-STUFEN-FALLBACK FÜR ANDROID/WHATSAPP)
+  // 📲 3. ROBUSTES TEILEN FÜR FOTOS & VIDEOS
   const handleNativeShare = async () => {
     if (!exportMedia || isSharing) return;
     setIsSharing(true);
@@ -1211,59 +1208,6 @@ export default function TacticsBoard() {
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
       
       {/* ================================================================= */}
-      {/* PRO USER UPGRADE MODAL (Wenn Free-User auf Studio Pro klicken)    */}
-      {/* ================================================================= */}
-      {showProModal && (
-        <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-[#050b18] border border-pink-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(236,72,153,0.25)] max-w-md w-full flex flex-col items-center text-center gap-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500" />
-            <div className="w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-3xl shadow-inner">
-              🎬
-            </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-400">
-                TacPadel Pro Feature
-              </span>
-              <h3 className="text-2xl font-black text-white uppercase tracking-wider mt-1">
-                Tactical Studio
-              </h3>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Zeichne Lauf- und Ballwege direkt auf das Taktik-Board, nimm deine Spielzüge als <b className="text-pink-400">Video-Shortclip</b> oder <b className="text-cyan-400">HD-Foto</b> auf und teile sie direkt mit deinem Partner in eurer WhatsApp-Gruppe!
-            </p>
-
-            <div className="w-full bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 text-left flex flex-col gap-2 text-xs text-slate-300">
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span>
-                <span>Freihand-Pfeile für Laufwege, Schläge & Zielzonen</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span>
-                <span>Live-Video-Rekorder für animierte Spielzüge</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span>
-                <span>Direkter Export für WhatsApp, Instagram & Community</span>
-              </div>
-            </div>
-
-            <button
-              disabled
-              className="w-full py-4 mt-1 bg-gradient-to-r from-pink-600/30 to-purple-600/30 border border-pink-500/40 text-pink-300 font-black text-xs uppercase tracking-[0.15em] rounded-xl cursor-not-allowed"
-            >
-              👑 Pro Pass (Startet zum Release)
-            </button>
-            <button
-              onClick={() => setShowProModal(false)}
-              className="text-xs font-bold text-slate-400 hover:text-white uppercase tracking-widest mt-1"
-            >
-              Schließen
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================= */}
       {/* EXPORT & SHARE VORSCHAU-MODAL (Für aufgenommene Fotos & Videos)   */}
       {/* ================================================================= */}
       {exportMedia && (
@@ -1324,7 +1268,7 @@ export default function TacticsBoard() {
         </div>
       )}
 
-            {/* ================================================================= */}
+      {/* ================================================================= */}
       {/* DYNAMISCHER TOGGLE-SCHALTER (2D | [STUDIO PRO] | 3D)              */}
       {/* ================================================================= */}
       <div className="w-full max-w-5xl flex flex-col items-center mb-1 px-3">
@@ -1377,10 +1321,15 @@ export default function TacticsBoard() {
         </div>
       </div>
 
+      {/* --- RENDERN BASIEREND AUF DEM SCHALTER --- */}
+      {activeMode === "3d" ? (
+        <TrajectoryView3D />
+      ) : (
+        <>
           {/* ============================================================= */}
           {/* TACTICAL STUDIO (PRO) WERKZEUGLEISTE                          */}
           {/* ============================================================= */}
-          {activeMode === "studio" && (
+          {activeMode === "studio" && isProUser && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
               <div className="bg-[#050b18] border border-pink-500/40 rounded-2xl p-3 sm:p-4 shadow-[0_0_25px_rgba(236,72,153,0.12)] flex flex-col gap-3">
                 
