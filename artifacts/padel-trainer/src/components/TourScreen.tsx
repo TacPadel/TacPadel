@@ -5,8 +5,6 @@ import { supabase } from '../lib/supabase';
 // --- AKTUELL: SAISON-Turniere (Später für Season 1 einfach auf '../engine/TournamentsSeason1' ändern!) ---
 import { Tournament, TourType, TOURNAMENTS } from '../engine/Tournaments';
 
-// Erweitertes Interface, damit TypeScript schon jetzt die Season-1-Felder kennt,
-// ohne dass du deine aktuelle Tournaments.ts anfassen musst:
 type ExtendedTournament = Tournament & {
   week?: 1 | 2 | 3 | 4;
   scheduleSlot?: "weekday_free" | "weekday_pro" | "weekend_free" | "weekend_pro" | "month_end_master";
@@ -37,8 +35,8 @@ interface PlayerStats {
   active_runs: number;
 }
 
-// 30-Tage SAISON Enddatum
-const SAISON_END_DATE = new Date("2026-11-11T23:59:59").getTime();
+// Saison-Enddatum (mit Puffer für den App-Store-Review)
+const SAISON_END_DATE = new Date("2026-12-15T23:59:59").getTime();
 
 // --- Freischalt-Bedingung für die Tour ---
 const TOUR_UNLOCK_SCORE = 2000;
@@ -52,8 +50,8 @@ interface TourScreenProps {
 // ZENTRALE RE-BUY LOGIK (Überall einheitlich abrufbar)
 // -----------------------------------------------------------
 const getRetryFee = (tour: Tournament) => {
-  if (tour.entryFee === 0) return 50; // Kostenlose Turniere kosten als Strafe 50 TP
-  return Math.max(50, tour.entryFee * 2); // Mindestens 50 TP Strafe oder der doppelte Entry
+  if (tour.entryFee === 0) return 50;
+  return Math.max(50, tour.entryFee * 2);
 };
 
 export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
@@ -63,18 +61,20 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
   const [tacPoints, setTacPoints] = useState<number>(0); 
   const [tacScore, setTacScore] = useState<number>(0); 
-  const [isProUser, setIsProUser] = useState<boolean>(() => localStorage.getItem("tacpadel_is_pro") === "true");
+  const [isProUser, setIsProUser] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
-  // -- WOCHEN-FILTER FÜR SEASON 1 (In der SAISON automatisch ausgeblendet) --
+  // -- WOCHEN-FILTER & PRO-FILTER --
   const allTours = TOURNAMENTS as ExtendedTournament[];
   const hasWeeks = useMemo(() => allTours.some(t => typeof t.week === "number"), [allTours]);
   const [activeWeek, setActiveWeek] = useState<number>(1);
 
   const visibleTournaments = useMemo(() => {
-    if (!hasWeeks) return allTours; // SAISON-Modus: Zeige alle Turniere wie bisher
-    return allTours.filter(t => (t.week || 1) === activeWeek);
-  }, [allTours, hasWeeks, activeWeek]);
+    // Pro-Turniere sind nur für Pro-User & freigeschaltete Tester sichtbar
+    const allowedTours = allTours.filter(t => !t.isProUserOnly || isProUser);
+    if (!hasWeeks) return allowedTours;
+    return allowedTours.filter(t => (t.week || 1) === activeWeek);
+  }, [allTours, hasWeeks, activeWeek, isProUser]);
 
   // -- TIMER STATE --
   const [timeLeft, setTimeLeft] = useState<string>("Berechne...");
@@ -122,16 +122,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           const savedScore = localStorage.getItem("tacpadel_score");
           if (savedScore) setTacScore(parseInt(savedScore, 10));
           
+          setIsProUser(false);
           setLoading(false);
           return;
         }
 
-        // Admin oder Pro-Flag in User-Metadata prüfen
         const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
-        const metaPro = Boolean(session.user.user_metadata?.is_pro);
-        if (isAdmin || metaPro) {
-          setIsProUser(true);
-        }
 
         // 1. Turnier Progress
         const { data: tourData, error: tourError } = await supabase
@@ -147,23 +143,36 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setProgress(progressMap);
         }
 
-        // 2. Stats
+        // 2. Stats & Pro-Status
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
           .select("*")
           .eq("id", session.user.id)
-          .single();
+          .maybeSingle();
 
         if (statsData && !statsError) {
           setTacPoints(statsData.tac_points || 0);
           setTacScore(statsData.points || 0);
-          if (statsData.is_pro) {
-            setIsProUser(true);
-            localStorage.setItem("tacpadel_is_pro", "true");
+
+          if (isAdmin) {
+            const localOverride = localStorage.getItem("tacpadel_is_pro");
+            setIsProUser(localOverride === null ? true : localOverride === "true");
+          } else {
+            const dbPro = Boolean(statsData.is_pro);
+            setIsProUser(dbPro);
+            localStorage.setItem("tacpadel_is_pro", String(dbPro));
           }
+
           localStorage.setItem("tacpadel_tac_points", (statsData.tac_points || 0).toString());
           localStorage.setItem("tacpadel_score", (statsData.points || 0).toString());
         } else {
+          if (isAdmin) {
+            const localOverride = localStorage.getItem("tacpadel_is_pro");
+            setIsProUser(localOverride === null ? true : localOverride === "true");
+          } else {
+            setIsProUser(false);
+          }
+
           const savedTacPoints = localStorage.getItem("tacpadel_tac_points");
           if (savedTacPoints) setTacPoints(parseInt(savedTacPoints, 10));
           
@@ -276,10 +285,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   // Re-Buy / Straf-Logik (Verwendet getRetryFee)
   // -----------------------------------------------------------
   const handleRetryTournament = async (tour: ExtendedTournament) => {
-    if (tour.isProUserOnly && !isProUser) {
-      alert("Dieses Turnier ist exklusiv für Pro User.");
-      return;
-    }
+    if (tour.isProUserOnly && !isProUser) return;
 
     const retryFee = getRetryFee(tour);
 
@@ -291,12 +297,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // 1. TacPoints (Geld) abziehen
       const newTacPoints = tacPoints - retryFee;
       setTacPoints(newTacPoints);
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
 
-      // Gespeicherte Ausdauer für diesen Turnier-Run zurücksetzen (frischer Start in Runde 1)
       const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
       if (savedTourStamina[tour.id]) {
         delete savedTourStamina[tour.id];
@@ -304,24 +308,20 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       }
       
       if (session?.user) {
-        // Punkte in user_stats updaten
         await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
         
-        // 2. Status in DB wieder auf "active", Runde auf 1 UND retry_used auf false setzen
         await supabase.from("tour_progress").update({ 
           status: "active", 
           current_round: 1,
-          retry_used: false // Joker für den neuen Run wieder freigeben
+          retry_used: false
         }).eq("user_id", session.user.id).eq("tournament_id", tour.id);
       }
 
-      // 3. Lokalen State aktualisieren
       setProgress(prev => ({
         ...prev,
         [tour.id]: { tournament_id: tour.id, status: "active", current_round: 1 }
       }));
 
-      // 4. Match sofort wieder in Runde 1 starten
       if (onStartMatch) {
         onStartMatch(tour.id, 1, tour.baseDifficulty, tour.tacPointsReward);
       }
@@ -333,10 +333,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   };
 
   const handleStartTournament = async (tour: ExtendedTournament) => {
-    if (tour.isProUserOnly && !isProUser) {
-      alert("Dieses Turnier ist exklusiv für Pro User.");
-      return;
-    }
+    if (tour.isProUserOnly && !isProUser) return;
 
     const currentStatus = progress[tour.id];
 
@@ -525,18 +522,15 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               <span>Aktuell: {tacScore}</span>
               <span className="text-emerald-500">Ziel: {TOUR_UNLOCK_SCORE}</span>
             </div>
-
-            
           </motion.div>
 
         ) : (
 
           /* ========================================================= */
-          /* TURNIER LISTE (inkl. automatischer Wochen-Tabs für S1)    */
+          /* TURNIER LISTE                                             */
           /* ========================================================= */
           <div className="flex flex-col gap-4">
             
-            {/* WOCHEN-AUSWAHL (Wird nur angezeigt, wenn TournamentsSeason1.ts aktiv ist) */}
             {hasWeeks && (
               <div className="grid grid-cols-4 gap-2 bg-[#050b14] p-1.5 rounded-xl border border-slate-800 shrink-0">
                 {[1, 2, 3, 4].map((w) => (
@@ -562,7 +556,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               
               const isLockedByScore = tacScore < tour.reqScore;
               const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; 
-              const isLockedByPro = Boolean(tour.isProUserOnly && !isProUser);
               
               const retryFee = getRetryFee(tour);
 
@@ -583,8 +576,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             {tour.type === "master" ? "Premier Master" : tour.type === "pro" ? "Pro" : "Open"}
                           </span>
 
-                          {/* PRO PASS BADGE (Nur sichtbar bei Pro-User-Turnieren in Season 1) */}
-                          {tour.isProUserOnly && (
+                          {tour.isProUserOnly && isProUser && (
                             <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full border border-pink-500/60 text-pink-300 bg-pink-950/60 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
                               👑 PRO USER
                             </span>
@@ -609,11 +601,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           AUSGESCHIEDEN 💀
                         </span>
                       )}
-                      {!dbProg && isLockedByPro && (
-                        <span className="text-[10px] font-black text-pink-400 bg-pink-950/40 border border-pink-500/40 px-2 py-1 rounded">
-                          🔒 PRO PASS
-                        </span>
-                      )}
                     </div>
 
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -633,12 +620,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                       <div className="w-[1px] h-6 bg-slate-700"></div>
                       
                       <div className="flex flex-col">
-                        {/* DYNAMISCHES TEXT LABEL FÜR STRAFE ODER ENTRY */}
                         <span className={`text-[8px] font-bold uppercase tracking-widest ${isEliminated ? 'text-red-400/80' : 'text-slate-500'}`}>
                           {isEliminated ? 'Re-Buy Strafe' : 'Startgeld'}
                         </span>
                         
-                        {/* DYNAMISCHER PREIS (Strafe vs Entry) */}
                         <span className={`text-sm font-black flex items-center gap-1 ${
                           isEliminated
                             ? (tacPoints >= retryFee ? 'text-red-400' : 'text-red-600 line-through')
@@ -678,18 +663,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           
           const isLockedByScore = tacScore < selectedTour.reqScore;
           const isLockedByFunds = tacPoints < selectedTour.entryFee && !dbProg;
-          const isLockedByPro = Boolean(selectedTour.isProUserOnly && !isProUser);
-          
-          const isLocked = isLockedByScore || isLockedByFunds || isLockedByPro;
+          const isLocked = isLockedByScore || isLockedByFunds;
 
-          // Retry Logik mit ZENTRALER FUNKTION
           const retryFee = getRetryFee(selectedTour);
-          const canAffordRetry = tacPoints >= retryFee && !isLockedByPro;
+          const canAffordRetry = tacPoints >= retryFee;
 
-          // Text für normalen Start/Continue Button
           let btnText = hasWeeks ? "Turnier Starten" : "Turnier-Run Starten";
           if (dbProg?.status === 'won') btnText = 'Turnier Beendet (Sieger)';
-          else if (isLockedByPro) btnText = '🔒 Nur für Pro User verfügbar';
           else if (isLockedByScore) btnText = `Gesperrt: ${selectedTour.reqScore} TacScore nötig`;
           else if (isLockedByFunds) btnText = `Gesperrt: Zu wenig TacPoints (${selectedTour.entryFee} nötig)`;
           else if (!dbProg && selectedTour.entryFee > 0) btnText = `Buy-In zahlen (${selectedTour.entryFee} TP) & Starten`;
@@ -715,7 +695,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     <span className={`text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border ${getTypeColor(selectedTour.type)}`}>
                       {selectedTour.type.toUpperCase()}
                     </span>
-                    {selectedTour.isProUserOnly && (
+                    {selectedTour.isProUserOnly && isProUser && (
                       <span className="text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border border-pink-500 text-pink-300 bg-pink-950/60">
                         👑 PRO USER
                       </span>
@@ -728,7 +708,6 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     <span>KI-Level: <span className="font-bold text-white">{selectedTour.baseDifficulty}</span></span>
                     <span className="w-1 h-1 rounded-full bg-slate-600"></span>
                     
-                    {/* DYNAMISCHES HEADER LABEL IM POPUP */}
                     {isEliminated ? (
                       <span className="text-red-400 font-black drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]">
                         Re-Buy Strafe: {retryFee} TP
@@ -798,11 +777,9 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                       }`}
                     >
-                      {isLockedByPro
-                        ? "🔒 Nur für Pro User verfügbar"
-                        : !canAffordRetry 
-                          ? `Zweite Chance: Zu wenig TP (${retryFee} nötig)` 
-                          : `🔄 Zweite Chance (${retryFee} TP)`}
+                      {!canAffordRetry 
+                        ? `Zweite Chance: Zu wenig TP (${retryFee} nötig)` 
+                        : `🔄 Zweite Chance (${retryFee} TP)`}
                     </button>
                   </div>
                 ) : (
