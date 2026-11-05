@@ -11,7 +11,6 @@ import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-thr
 import PlayerShow from "./PlayerShow"; 
 import AdminDashboard from "./AdminDashboard";
 
-
 // =========================================================
 // HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
 // =========================================================
@@ -29,13 +28,29 @@ const detectLowEndDevice = (): boolean => {
 };
 
 // ==========================================
-// --- RPG MOCK DATENBANK (Reines UI-Mockup) ---
+// --- SHOP & LOCKER DATENBANK (TacPoints) ---
 // ==========================================
-const RACKETS = [
-  { id: 'racket_starter', name: 'Rookie Frame Basic', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
-  { id: 'racket_aero', name: 'Aero Swift Pro X', modifiers: { smash: 3, control: 2, defense: 0, agility: 5 } },
-  { id: 'racket_titan', name: 'Titan Matrix CTRL', modifiers: { smash: -2, control: 7, defense: 3, agility: 0 } },
-  { id: 'racket_eclipse', name: 'Eclipse Carbon Strike', modifiers: { smash: 4, control: 3, defense: -2, agility: 1 } },
+interface ShopItem {
+  id: string;
+  name: string;
+  price: number;
+  badge: string;
+  modifiers: { smash: number; control: number; defense: number; agility: number };
+}
+
+const RACKETS: ShopItem[] = [
+  { id: 'racket_starter', name: 'Rookie Frame Basic', price: 0, badge: 'Standard', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
+  { id: 'racket_aero', name: 'Aero Swift Pro X', price: 400, badge: '+Agility', modifiers: { smash: 3, control: 2, defense: 0, agility: 5 } },
+  { id: 'racket_titan', name: 'Titan Matrix CTRL', price: 650, badge: '+Control', modifiers: { smash: -2, control: 7, defense: 3, agility: 0 } },
+  { id: 'racket_eclipse', name: 'Eclipse Carbon Strike', price: 950, badge: '+Power', modifiers: { smash: 4, control: 3, defense: -2, agility: 1 } },
+  { id: 'racket_apex_pro', name: 'Apex Signature 18K', price: 2200, badge: 'Tour Elite', modifiers: { smash: 6, control: 5, defense: 2, agility: 4 } },
+];
+
+const POWER_SHOTS: ShopItem[] = [
+  { id: 'smash', name: 'Topspin Smash (Klassik)', price: 0, badge: 'Standard', modifiers: { smash: 0, control: 0, defense: 0, agility: 0 } },
+  { id: 'bandeja', name: 'Bandeja Control', price: 350, badge: '+Taktik', modifiers: { smash: 1, control: 4, defense: 3, agility: 0 } },
+  { id: 'vibora', name: 'Víbora Slice', price: 600, badge: '+Slice', modifiers: { smash: 4, control: 2, defense: 0, agility: 2 } },
+  { id: 'kick_x3', name: 'Kick-Smash X3', price: 1500, badge: 'Finisher', modifiers: { smash: 7, control: 1, defense: -1, agility: 2 } },
 ];
 
 const getPartnerModifiers = (partnerId: string) => {
@@ -84,7 +99,6 @@ function CameraSwitcher({ mode, controlsRef }: { mode: 'locker' | 'trophies', co
 function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [number, number, number], tourId: string, onClick: (id: string) => void, lowQuality?: boolean }) {
   const ref = useRef<any>(null);
   
-  // Sanfte Rotation der gesamten Trophäe
   useFrame((_, delta) => {
     if (ref.current) ref.current.rotation.y += Math.min(delta, 0.1) * 0.4;
   });
@@ -97,24 +111,19 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
   const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
   const tubeSteps = lowQuality ? 32 : 64;
 
-  // --- ENERGIE-STRUDEL (VON UNTEN NACH OBEN BREITER) ---
   const { curve1, curve2 } = useMemo(() => {
     const spiralSegments = 60;
     const pts1 = [];
     const pts2 = [];
     
     for (let i = 0; i <= spiralSegments; i++) {
-      const t = i / spiralSegments; // 0.0 bis 1.0
-      
-      // Startet unten eng (0.15) am Griff und öffnet sich auf 0.55 um den Schläger
+      const t = i / spiralSegments;
       const radius = 0.15 + (t * 0.4); 
-      const y = 0.3 + (t * 1.0); // Zieht sich 1.0 Einheiten nach oben
+      const y = 0.3 + (t * 1.0);
       
-      // Erste Linie
       const angle1 = t * Math.PI * 4; 
       pts1.push(new THREE.Vector3(Math.cos(angle1) * radius, y, Math.sin(angle1) * radius));
       
-      // Zweite Linie (um 180 Grad bzw. Math.PI versetzt)
       const angle2 = t * Math.PI * 4 + Math.PI; 
       pts2.push(new THREE.Vector3(Math.cos(angle2) * radius, y, Math.sin(angle2) * radius));
     }
@@ -127,16 +136,12 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
 
   return (
     <group position={position} scale={0.8} onClick={(e) => { e.stopPropagation(); onClick(tourId); }}>
-      
-      {/* Unsichtbare Hitbox zum Anklicken */}
       <mesh visible={false} position={[0, 1.2, 0]}>
         <cylinderGeometry args={[0.9, 0.9, 2.5, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
       <group ref={ref}>
-        
-        {/* === SOCKEL === */}
         <group position={[0, 0.2, 0]}>
           <mesh>
             <cylinderGeometry args={[0.45, 0.65, 0.4, 6]} />
@@ -152,7 +157,6 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
           </mesh>
         </group>
 
-        {/* === ENERGIE-STRUDEL (Durchgehende Linien) === */}
         <group>
           <mesh>
             <tubeGeometry args={[curve1, tubeSteps, 0.012, 8, false]} />
@@ -164,9 +168,7 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
           </mesh>
         </group>
 
-        {/* === HOLOGRAPHISCHER PADELSCHLÄGER === */}
         <group position={[0, 0.4, 0]} rotation={[0, 0, Math.PI / 8]}>
-          
           <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
             <meshStandardMaterial color="#0f172a" roughness={0.9} />
@@ -201,7 +203,6 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
           </group>
         </group>
 
-        {/* === TENNIS/PADEL BALL === */}
         <group position={[0.45, 1.4, 0.2]}>
           <mesh>
             <sphereGeometry args={[0.18, 16, 16]} />
@@ -212,7 +213,6 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} wireframe />
           </mesh>
         </group>
-
       </group>
     </group>
   );
@@ -231,41 +231,33 @@ function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string
 
   return (
     <group position={[0, -2, 0]}> 
-      
-      {/* Tron Boden-Grid */}
       <gridHelper args={[40, lowQuality ? 20 : 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
       
-      {/* Vitrinen-Bodenplatte (Sockel) */}
       <mesh position={[0, -0.1, 0]}>
         <boxGeometry args={[width + 0.2, 0.2, depth + 0.2]} />
         <meshStandardMaterial color="#020617" emissive="#0ea5e9" emissiveIntensity={0.5} />
       </mesh>
 
-      {/* Vitrinen-Deckel (Dach) */}
       <mesh position={[0, totalHeight, 0]}>
         <boxGeometry args={[width + 0.2, 0.2, depth + 0.2]} />
         <meshStandardMaterial color="#020617" emissive="#0ea5e9" emissiveIntensity={0.5} />
       </mesh>
 
-      {/* Vitrinen-Rückwand (Dunkel) */}
       <mesh position={[0, totalHeight / 2, -depth / 2]}>
         <boxGeometry args={[width, totalHeight, 0.1]} />
         <meshStandardMaterial color="#010308" />
       </mesh>
 
-      {/* Vitrinen-Seitenglas (Links) */}
       <mesh position={[-width / 2, totalHeight / 2, 0]}>
         <boxGeometry args={[0.05, totalHeight, depth]} />
         <meshStandardMaterial color="#0ea5e9" transparent opacity={0.15} />
       </mesh>
 
-      {/* Vitrinen-Seitenglas (Rechts) */}
       <mesh position={[width / 2, totalHeight / 2, 0]}>
         <boxGeometry args={[0.05, totalHeight, depth]} />
         <meshStandardMaterial color="#0ea5e9" transparent opacity={0.15} />
       </mesh>
 
-      {/* Einlegeböden */}
       {Array.from({ length: numShelves }).map((_, rowIndex) => (
         <mesh key={`shelf-${rowIndex}`} position={[0, rowIndex * shelfHeight, 0]}>
           <boxGeometry args={[width, 0.05, depth]} />
@@ -273,18 +265,17 @@ function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string
         </mesh>
       ))}
 
-      {/* Trophäen positionieren */}
       {trophies.map((tourId, idx) => {
         const row = Math.floor(idx / cols);
         const col = idx % cols;
-        const xPos = (col - 1) * 1.6; // Positionen: -1.6, 0, 1.6
+        const xPos = (col - 1) * 1.6;
         const yPos = row * shelfHeight;
         
         return (
           <TronTrophy 
             key={`${tourId}-${idx}`} 
             tourId={tourId} 
-            position={[xPos, yPos + 0.025, 0]} // +0.025 damit sie direkt auf dem Boden stehen
+            position={[xPos, yPos + 0.025, 0]}
             onClick={onTrophyClick}
             lowQuality={lowQuality}
           />
@@ -303,8 +294,38 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [savedUsername, setSavedUsername] = useState(fallbackName);
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
-  const [partnerId, setPartnerId] = useState("pro_1-1"); 
-  const [racketId, setRacketId] = useState("racket_starter"); 
+  const [partnerId, setPartnerId] = useState(() => localStorage.getItem("tacpadel_partner_id") || "pro_1-1"); 
+  const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
+  const [shotId, setShotId] = useState(() => localStorage.getItem("tacpadel_power_shot") || "smash");
+
+  // --- TACPOINTS SHOP STATES ---
+  const [tacPoints, setTacPoints] = useState<number>(() => {
+    const saved = localStorage.getItem("tacpadel_tac_points");
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("tacpadel_unlocked_items");
+      return saved ? JSON.parse(saved) : ["racket_starter", "smash"];
+    } catch {
+      return ["racket_starter", "smash"];
+    }
+  });
+  const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
+  const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
+  const [isBuying, setIsBuying] = useState<boolean>(false);
+
+  // --- SPRACH-AUSWAHL (DE / EN / ES) ---
+  const [appLang, setAppLang] = useState<'de' | 'en' | 'es'>(() => {
+    const saved = localStorage.getItem("tacpadel_lang");
+    if (saved === 'en' || saved === 'es' || saved === 'de') return saved;
+    return 'de';
+  });
+  const handleChangeLanguage = (lang: 'de' | 'en' | 'es') => {
+    setAppLang(lang);
+    localStorage.setItem("tacpadel_lang", lang);
+    window.dispatchEvent(new Event("tacpadel-lang-change"));
+  };
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -316,7 +337,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- Umschalter für den gemeinsamen 3D-Canvas (Verhindert doppelte WebGL-Kontexte) ---
+  // --- Umschalter für den gemeinsamen 3D-Canvas ---
   const [active3DView, setActive3DView] = useState<'locker' | 'trophies'>('locker');
   const controlsRef = useRef<any>(null);
 
@@ -365,27 +386,31 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem("tacpadel_haptics") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
-  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
-  const isAdmin = user?.email?.toLowerCase().trim() === "admin@tacpadel.com";
+  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS (Unterstützt beide Admin-E-Mails) ---
+  const userEmailLower = user?.email?.toLowerCase().trim() || "";
+  const isAdmin = userEmailLower === "admin@tacpadel.com" || userEmailLower === "caposion@gmail.com";
   const [isProUser, setIsProUser] = useState<boolean>(() => {
-    const saved = localStorage.getItem("tacpadel_is_pro");
-    if (saved === "true") return true;
-    if (saved === "false") return false;
-    return Boolean(user?.user_metadata?.is_pro);
+    if (isAdmin) {
+      const saved = localStorage.getItem("tacpadel_is_pro");
+      if (saved === "true") return true;
+      if (saved === "false") return false;
+      return true;
+    }
+    return false;
   });
   const [showAdminModal, setShowAdminModal] = useState(false);
+
   const toggleProUserStatus = async () => {
     const newState = !isProUser;
     setIsProUser(newState);
     localStorage.setItem("tacpadel_is_pro", String(newState));
 
-    // Optional auch in User-Metadata und user_stats aktualisieren (wird ignoriert, falls Spalte is_pro noch fehlt)
     await supabase.auth.updateUser({ data: { is_pro: newState } }).catch(() => {});
     await supabase.from('user_stats').update({ is_pro: newState }).eq('id', user.id).then(() => {});
 
     setMessage({
       type: 'success',
-      text: newState ? "👑 Pro-User-Ansicht aktiviert!" : "🔒 Free-User-Ansicht aktiviert (Paywall aktiv)!"
+      text: newState ? "👑 Pro-User-Ansicht aktiviert!" : "🔒 Free-User-Ansicht aktiviert!"
     });
     setTimeout(() => setMessage(null), 2500);
   };
@@ -407,6 +432,29 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
         if (profileData.avatar_url) setAvatarUrl(profileData.avatar_url);
         if (profileData.points != null) trueScore = profileData.points;
+
+        if (profileData.tac_points != null) {
+          setTacPoints(profileData.tac_points);
+          localStorage.setItem("tacpadel_tac_points", String(profileData.tac_points));
+        }
+
+        if (Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0) {
+          const merged = Array.from(new Set(["racket_starter", "smash", ...profileData.unlocked_items]));
+          setUnlockedItems(merged);
+          localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(merged));
+        }
+
+        if (profileData.equipped_racket) {
+          setEquippedRacket(profileData.equipped_racket);
+          setRacketId(profileData.equipped_racket);
+          localStorage.setItem("tacpadel_racket_id", profileData.equipped_racket);
+        }
+
+        if (profileData.equipped_shot) {
+          setEquippedShot(profileData.equipped_shot);
+          setShotId(profileData.equipped_shot);
+          localStorage.setItem("tacpadel_power_shot", profileData.equipped_shot);
+        }
         
         if (profileData.team_name) {
           setTeamName(profileData.team_name);
@@ -418,11 +466,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           localStorage.setItem("tacpadel_partner_id", profileData.partner_id);
         }
 
-        // Pro-Status nur übernehmen, wenn kein lokaler Test-Override gesetzt wurde
-        const localOverride = localStorage.getItem("tacpadel_is_pro");
-        if (localOverride === null && typeof profileData.is_pro === "boolean") {
-          setIsProUser(profileData.is_pro);
-          localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
+        // Für alle Nicht-Admins gilt immer der echte Datenbank-Wert aus Supabase:
+        if (!isAdmin) {
+          const dbPro = Boolean(profileData.is_pro);
+          setIsProUser(dbPro);
+          localStorage.setItem("tacpadel_is_pro", String(dbPro));
+        } else {
+          const localOverride = localStorage.getItem("tacpadel_is_pro");
+          if (localOverride === null && typeof profileData.is_pro === "boolean") {
+            setIsProUser(profileData.is_pro);
+            localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
+          }
         }
         
         if (profileData.preferred_position) {
@@ -469,7 +523,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     };
     
     loadUserData();
-  }, [user.id]);
+  }, [user.id, isAdmin]);
 
   useEffect(() => {
     if (allHistory.length === 0) {
@@ -524,18 +578,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
+  // --- LIVE-BERECHNUNG DER SPIELER-ATTRIBUTE (Partner + Schläger + Spezial-Fokus) ---
   const loadoutStats = useMemo(() => {
     const baseStats = { smash: 50, control: 50, defense: 50, agility: 50 };
     const calculated = { ...baseStats };
     
     const pMods = getPartnerModifiers(partnerId);
     const rMods = RACKETS.find(r => r.id === racketId)?.modifiers || { smash: 0, control: 0, defense: 0, agility: 0 };
+    const sMods = POWER_SHOTS.find(s => s.id === shotId)?.modifiers || { smash: 0, control: 0, defense: 0, agility: 0 };
 
     const diffs = {
-      smash: pMods.smash + rMods.smash,
-      control: pMods.control + rMods.control,
-      defense: pMods.defense + rMods.defense,
-      agility: pMods.agility + rMods.agility,
+      smash: pMods.smash + rMods.smash + sMods.smash,
+      control: pMods.control + rMods.control + sMods.control,
+      defense: pMods.defense + rMods.defense + sMods.defense,
+      agility: pMods.agility + rMods.agility + sMods.agility,
     };
 
     calculated.smash += diffs.smash;
@@ -544,7 +600,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     calculated.agility += diffs.agility;
 
     return { stats: calculated, diffs };
-  }, [partnerId, racketId]);
+  }, [partnerId, racketId, shotId]);
 
   const renderStatDiff = (diff: number) => {
     if (diff === 0) return <span className="text-[10px] font-black text-slate-600 bg-slate-800/50 px-1 rounded">-</span>;
@@ -553,6 +609,73 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         {diff > 0 ? '+' : ''}{diff}
       </span>
     );
+  };
+
+  // --- KAUF- & AUSRÜSTUNGS-LOGIK FÜR SCHLÄGER & SPEZIAL-FOKUS ---
+  const handleSelectOrBuyItem = async (item: ShopItem, category: 'racket' | 'shot') => {
+    const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
+
+    if (isUnlocked) {
+      if (category === 'racket') {
+        setEquippedRacket(item.id);
+        setRacketId(item.id);
+        localStorage.setItem("tacpadel_racket_id", item.id);
+        await supabase.from('user_stats').update({ equipped_racket: item.id }).eq('id', user.id);
+      } else {
+        setEquippedShot(item.id);
+        setShotId(item.id);
+        localStorage.setItem("tacpadel_power_shot", item.id);
+        await supabase.from('user_stats').update({ equipped_shot: item.id }).eq('id', user.id);
+      }
+      setMessage({ type: 'success', text: `${item.name} ausgerüstet!` });
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
+
+    if (tacPoints < item.price) {
+      setMessage({ type: 'error', text: `Noch ${item.price - tacPoints} TacPoints nötig!` });
+      setTimeout(() => setMessage(null), 2500);
+      return;
+    }
+
+    setIsBuying(true);
+    const nextTacPoints = tacPoints - item.price;
+    const nextUnlocked = Array.from(new Set([...unlockedItems, item.id]));
+
+    const updatePayload: any = {
+      tac_points: nextTacPoints,
+      unlocked_items: nextUnlocked,
+      ...(category === 'racket' ? { equipped_racket: item.id } : { equipped_shot: item.id })
+    };
+
+    const { error } = await supabase
+      .from('user_stats')
+      .update(updatePayload)
+      .eq('id', user.id);
+
+    setIsBuying(false);
+
+    if (error) {
+      await supabase.from('user_stats').update({ tac_points: nextTacPoints }).eq('id', user.id);
+    }
+
+    setTacPoints(nextTacPoints);
+    setUnlockedItems(nextUnlocked);
+    localStorage.setItem("tacpadel_tac_points", String(nextTacPoints));
+    localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(nextUnlocked));
+
+    if (category === 'racket') {
+      setEquippedRacket(item.id);
+      setRacketId(item.id);
+      localStorage.setItem("tacpadel_racket_id", item.id);
+    } else {
+      setEquippedShot(item.id);
+      setShotId(item.id);
+      localStorage.setItem("tacpadel_power_shot", item.id);
+    }
+
+    setMessage({ type: 'success', text: `🎉 ${item.name} freigeschaltet & ausgerüstet!` });
+    setTimeout(() => setMessage(null), 3000);
   };
 
   const handlePartnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -627,18 +750,15 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setIsDeleting(true);
       setMessage(null);
 
-      // 1. Alle verknüpften Spieldaten aus den Tabellen löschen
       await supabase.from('match_history').delete().eq('user_id', user.id);
       await supabase.from('tour_progress').delete().eq('user_id', user.id);
       await supabase.from('user_stats').delete().eq('id', user.id);
 
-      // 2. Auth-Konto über die Datenbank-Funktion (RPC) entfernen
       const { error: rpcError } = await supabase.rpc('delete_user');
       if (rpcError) {
         console.warn("Hinweis bei RPC delete_user:", rpcError.message);
       }
 
-      // 3. Lokale Daten bereinigen & Nutzer abmelden
       localStorage.clear();
       await supabase.auth.signOut();
     } catch (error: any) {
@@ -676,6 +796,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
 
   const formatTourName = (id: string) => id.replace(/-/g, ' ').toUpperCase();
+
+  const selectedRacketObj = RACKETS.find(r => r.id === racketId) || RACKETS[0];
+  const selectedShotObj = POWER_SHOTS.find(s => s.id === shotId) || POWER_SHOTS[0];
+  const isRacketUnlocked = unlockedItems.includes(selectedRacketObj.id) || selectedRacketObj.price === 0;
+  const isShotUnlocked = unlockedItems.includes(selectedShotObj.id) || selectedShotObj.price === 0;
 
   return (
     <motion.div
@@ -765,11 +890,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       {/* ======================================================== */}
       {/* 1.5 KOMBINIERTER 3D SHOWROOM (Spind & Trophäen-Vault)    */}
-      {/* Ein einziger Canvas verhindert VRAM-Crashes!             */}
       {/* ======================================================== */}
       <div className="w-full bg-[#050b14] border border-slate-800 rounded-2xl p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col gap-4">
         
-        {/* Umschalter zwischen Spind und Trophäen */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex bg-[#03060c] p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
             <button
@@ -945,20 +1068,32 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
-      {/* ========================================= */}
-      {/* 2. STATS & AUSRÜSTUNG                     */}
-      {/* ========================================= */}
+      {/* ========================================================= */}
+      {/* 2. STATS, AUSRÜSTUNG & TACPOINTS-SHOP                     */}
+      {/* ========================================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
         {/* LOADOUT/RPG BOX */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase mb-4 flex justify-between">
-            <span>Spielstil & Ausrüstung</span><span className="text-slate-600">Locker</span>
-          </h3>
+          <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3">
+            <div>
+              <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase">
+                Spielstil & Ausrüstung (Locker Shop)
+              </h3>
+              <span className="text-[9px] text-slate-500 font-bold">
+                Rüste deinen Spieler aus oder schalte neue Ausrüstung mit TacPoints frei
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 px-3 py-1.5 rounded-xl shrink-0">
+              <span className="text-xs">🪙</span>
+              <span className="text-xs font-black text-amber-400 tracking-wider">{tacPoints} TP</span>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="flex flex-col gap-3">
+              {/* KI-TEAMPARTNER */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
                 <select 
@@ -973,40 +1108,118 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </select>
               </div>
 
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
+              {/* SCHLÄGER (INKL. TACPOINTS-KAUF) */}
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
+                    {equippedRacket === racketId && isRacketUnlocked ? "✓ Ausgerüstet" : selectedRacketObj.badge}
+                  </span>
+                </div>
                 <select 
                   value={racketId} 
                   onChange={(e) => {
-                    setRacketId(e.target.value);
-                    localStorage.setItem("tacpadel_racket_id", e.target.value);
+                    const nextId = e.target.value;
+                    setRacketId(nextId);
+                    if (unlockedItems.includes(nextId) || nextId === 'racket_starter') {
+                      setEquippedRacket(nextId);
+                      localStorage.setItem("tacpadel_racket_id", nextId);
+                      supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
+                    }
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {RACKETS.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
+                  {RACKETS.map(r => {
+                    const owned = unlockedItems.includes(r.id) || r.price === 0;
+                    return (
+                      <option key={r.id} value={r.id}>
+                        {owned ? `✓ ${r.name}` : `🔒 ${r.name} (${r.price} TP)`}
+                      </option>
+                    );
+                  })}
                 </select>
+
+                {(!isRacketUnlocked || equippedRacket !== racketId) && (
+                  <button
+                    disabled={isBuying}
+                    onClick={() => handleSelectOrBuyItem(selectedRacketObj, 'racket')}
+                    className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      isRacketUnlocked
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                        : tacPoints >= selectedRacketObj.price
+                          ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                          : "bg-slate-800 text-slate-400 border border-slate-700"
+                    }`}
+                  >
+                    {isRacketUnlocked
+                      ? "Jetzt Ausrüsten"
+                      : `Freischalten (${selectedRacketObj.price} TP)`}
+                  </button>
+                )}
               </div>
 
-              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-                <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Spezial-Fokus</label>
+              {/* SPEZIAL-FOKUS (INKL. TACPOINTS-KAUF) */}
+              <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Spezial-Fokus</label>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-orange-400">
+                    {equippedShot === shotId && isShotUnlocked ? "✓ Ausgerüstet" : selectedShotObj.badge}
+                  </span>
+                </div>
                 <select 
-                  defaultValue={localStorage.getItem("tacpadel_power_shot") || "smash"}
-                  onChange={(e) => localStorage.setItem("tacpadel_power_shot", e.target.value)}
+                  value={shotId}
+                  onChange={(e) => {
+                    const nextShot = e.target.value;
+                    setShotId(nextShot);
+                    if (unlockedItems.includes(nextShot) || nextShot === 'smash') {
+                      setEquippedShot(nextShot);
+                      localStorage.setItem("tacpadel_power_shot", nextShot);
+                      supabase.from('user_stats').update({ equipped_shot: nextShot }).eq('id', user.id).then(() => {});
+                    }
+                  }}
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-orange-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  <option value="smash">Topspin Smash (Klassik)</option>
-                  <option value="bandeja">Bandeja Control</option>
-                  <option value="vibora">Víbora Slice</option>
+                  {POWER_SHOTS.map(s => {
+                    const owned = unlockedItems.includes(s.id) || s.price === 0;
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {owned ? `✓ ${s.name}` : `🔒 ${s.name} (${s.price} TP)`}
+                      </option>
+                    );
+                  })}
                 </select>
+
+                {(!isShotUnlocked || equippedShot !== shotId) && (
+                  <button
+                    disabled={isBuying}
+                    onClick={() => handleSelectOrBuyItem(selectedShotObj, 'shot')}
+                    className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      isShotUnlocked
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                        : tacPoints >= selectedShotObj.price
+                          ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                          : "bg-slate-800 text-slate-400 border border-slate-700"
+                    }`}
+                  >
+                    {isShotUnlocked
+                      ? "Jetzt Ausrüsten"
+                      : `Freischalten (${selectedShotObj.price} TP)`}
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-center relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
               
-              <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black mb-4 border-b border-slate-800 pb-2">Player Attributes</h4>
+              <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">Player Attributes</h4>
+                {(racketId !== equippedRacket || shotId !== equippedShot) && (
+                  <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
+                    Vorschau
+                  </span>
+                )}
+              </div>
               
               <div className="grid grid-cols-2 gap-y-6 gap-x-4 relative z-10">
                 <div className="flex flex-col">
@@ -1140,43 +1353,71 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 6. AUDIO, HAPTIK & UI SETTINGS            */}
+      {/* 6. AUDIO, HAPTIK, SPRACHE & UI SETTINGS   */}
       {/* ========================================= */}
-      <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex flex-col text-center sm:text-left">
-          <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio, Haptik & UI</h3>
-          <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX, Vibration und Texte/Namen steuern</span>
+      <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col text-center sm:text-left">
+            <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio, Haptik &amp; UI</h3>
+            <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX, Vibration, Texte und Sprache steuern</span>
+          </div>
+          <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SFX</span>
+              <button onClick={toggleSound} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${soundEnabled ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-700'}`}>
+                <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: soundEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
+              <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
+                <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Vibration</span>
+              <button onClick={toggleHaptics} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${hapticsEnabled ? 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]' : 'bg-slate-700'}`}>
+                <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: hapticsEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Texte</span>
+              <button onClick={toggleExplanations} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}>
+                <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showExplanations ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Namen</span>
+              <button onClick={toggleNameTags} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}>
+                <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showNameTags ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SFX</span>
-            <button onClick={toggleSound} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${soundEnabled ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-700'}`}>
-              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: soundEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
-            <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
-              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Vibration</span>
-            <button onClick={toggleHaptics} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${hapticsEnabled ? 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]' : 'bg-slate-700'}`}>
-              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: hapticsEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Texte</span>
-            <button onClick={toggleExplanations} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}>
-              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showExplanations ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Namen</span>
-            <button onClick={toggleNameTags} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}>
-              <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showNameTags ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-            </button>
+
+        {/* SPRACH-UMSCHALTER (DE / EN / ES) */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-3 border-t border-slate-800/80">
+          <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
+            🌐 App-Sprache / Language / Idioma
+          </span>
+          <div className="flex bg-[#050b18] p-1 rounded-xl border border-slate-800 gap-1">
+            {([
+              { code: 'de', label: '🇩🇪 DE' },
+              { code: 'en', label: '🇬🇧 EN' },
+              { code: 'es', label: '🇪🇸 ES' },
+            ] as const).map((l) => (
+              <button
+                key={l.code}
+                onClick={() => handleChangeLanguage(l.code)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  appLang === l.code
+                    ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -1186,7 +1427,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik & Grafik</h3>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik &amp; Grafik</h3>
           <span className="text-[9px] text-slate-600 font-bold mt-1">Simulations-Limits und Performance-Modus für ältere Geräte</span>
         </div>
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
@@ -1205,18 +1446,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
       </div>
 
-            {/* ========================================================= */}
-      {/* 7.5 ADMIN DEVELOPER TOOLS (Nur für caposion@gmail.com)    */}
+      {/* ========================================================= */}
+      {/* 7.5 ADMIN DEVELOPER TOOLS                                 */}
       {/* ========================================================= */}
       {isAdmin && (
         <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex flex-col text-center sm:text-left">
               <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
-                🛡️ Admin Test-Steuerung & Zentrale
+                🛡️ Admin Test-Steuerung &amp; Zentrale
               </h3>
               <span className="text-[9px] text-slate-400 font-bold mt-1">
-                Eigenen Pro-Status testen, Tester freischalten & Strategien prüfen
+                Eigenen Pro-Status testen, Tester freischalten &amp; Strategien prüfen
               </span>
             </div>
 
@@ -1257,14 +1498,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
       )}
 
-
       {/* ========================================= */}
       {/* 8. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-red-950/50 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex flex-col text-center sm:text-left">
-            <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">Konto & Datenschutz</h3>
+            <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">Konto &amp; Datenschutz</h3>
             <span className="text-[9px] text-slate-600 font-bold mt-1">Datenschutzerklärung einsehen oder Account dauerhaft entfernen</span>
           </div>
 
