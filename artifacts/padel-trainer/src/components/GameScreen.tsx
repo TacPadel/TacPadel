@@ -13,11 +13,13 @@ import { soundManager } from '../lib/SoundManager';
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen"; 
 import GameTutorial from "./GameTutorial";
+import InGameShopModal from "./InGameShopModal";
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
 import { TOURNAMENTS } from "../engine/Tournaments";
 import { calculateLoadoutStats, SHOP_PARTNERS } from "../lib/loadout";
+import { useTranslation, formatShotName } from "../lib/i18n";
 
 // --- HILFSFUNKTION: Partnernamen aus Shop (oder altem KI-Profil) sauber auflösen ---
 const resolvePartnerDisplayName = (rawPartnerId?: string | null): string => {
@@ -117,6 +119,8 @@ const getContinueFee = (tourId: string, currentRound: number) => {
 };
 
 export default function GameScreen() {
+  const { lang, t } = useTranslation();
+
   const [playerScore, setPlayerScore] = useState<number>(0);
   const [aiScore, setAiScore] = useState<number>(0);
   const [gameOver, setGameOver] = useState<boolean>(false);
@@ -124,17 +128,19 @@ export default function GameScreen() {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
   
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
   
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
-  const [tournamentLoading, setTournamentLoading] = useState<boolean>(false);
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
 
   const [retryUsed, setRetryUsed] = useState<boolean>(false);
   const [isProcessingRetry, setIsProcessingRetry] = useState<boolean>(false);
-  const currentTacPoints = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+  const [currentTacPoints, setCurrentTacPoints] = useState<number>(() =>
+    parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10)
+  );
 
   const [abandonWarning, setAbandonWarning] = useState<{
     action: "single" | "tour";
@@ -151,6 +157,7 @@ export default function GameScreen() {
     const freshLoadout = calculateLoadoutStats(customPartnerId || undefined);
     setActiveLoadout(freshLoadout);
     setPartnerName(resolvePartnerDisplayName(customPartnerId));
+    setCurrentTacPoints(parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10));
     return freshLoadout;
   };
 
@@ -170,7 +177,7 @@ export default function GameScreen() {
 
   const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
   const [partnerName, setPartnerName] = useState<string>(() => resolvePartnerDisplayName());
-  const [playerName, setPlayerName] = useState<string>("Du");
+  const [playerName, setPlayerName] = useState<string>(() => t("home_you_tag"));
 
   const [userId, setUserId] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -194,8 +201,8 @@ export default function GameScreen() {
     : 7;
 
   const currentMatchTitle = activeTournamentId
-    ? (activeTournamentRound === 3 ? "Finale" : activeTournamentRound === 2 ? "Halbfinale" : "Viertelfinale")
-    : "Tiebreak";
+    ? (activeTournamentRound === 3 ? t("game_round_f") : activeTournamentRound === 2 ? t("game_round_sf") : t("game_round_qf"))
+    : t("game_tiebreak");
 
   const [matchSeconds, setMatchSeconds] = useState<number>(0);
   const matchSecondsRef = useRef(matchSeconds);
@@ -212,13 +219,13 @@ export default function GameScreen() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (!gameOver && !isMenuOpen && !isTourOpen && isVisible && !showTutorial && !abandonWarning) { 
+    if (!gameOver && !isMenuOpen && !isTourOpen && !isShopOpen && isVisible && !showTutorial && !abandonWarning) { 
       interval = setInterval(() => {
         setMatchSeconds(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [gameOver, isMenuOpen, isTourOpen, isVisible, showTutorial, abandonWarning]);
+  }, [gameOver, isMenuOpen, isTourOpen, isShopOpen, isVisible, showTutorial, abandonWarning]);
 
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
   const [stamina, setStamina] = useState({ 
@@ -288,15 +295,20 @@ export default function GameScreen() {
 
           const { data, error } = await supabase
             .from("user_stats")
-            .select("points, team_name, partner_id, equipped_racket, equipped_shot, display_name") 
+            .select("points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name") 
             .eq("id", session.user.id)
             .single();
 
-          let defaultName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || "Spieler";
+          let defaultName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || t("player_fallback");
 
           if (data && !error) {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
+
+            if (data.tac_points != null) {
+              setCurrentTacPoints(data.tac_points);
+              localStorage.setItem("tacpadel_tac_points", data.tac_points.toString());
+            }
             
             if (data.display_name) setPlayerName(data.display_name);
             else setPlayerName(defaultName);
@@ -317,8 +329,8 @@ export default function GameScreen() {
         } else {
           setUserId(null);
           userIdRef.current = null;
-          setPlayerName("Gast");
-          setUserTeamName("Team Gast");
+          setPlayerName(t("guest_name"));
+          setUserTeamName(`Team ${t("guest_name")}`);
           refreshLoadoutAndPartner("partner_rookie");
           localStorage.removeItem("tacpadel_savegame");
           localStorage.removeItem("tacpadel_tour_stamina");
@@ -699,19 +711,19 @@ export default function GameScreen() {
     setPlayIntro(true);
     setIsIntroPlaying(true); 
 
-    let roundName = "Viertelfinale";
-    if (round === 2) roundName = "Halbfinale";
-    if (round === 3) roundName = "Finale";
+    let roundName = t("game_round_qf");
+    if (round === 2) roundName = t("game_round_sf");
+    if (round === 3) roundName = t("game_round_f");
     
     if (round > 1 && staminaModeEnabled) {
-        showFlash(`🏆 ${roundName} gestartet! (Stamina teilweise regeneriert)`, "text-amber-400", 3500);
+        showFlash(`🏆 ${roundName} ${t("game_round_started")} ${t("game_stamina_regen_info")}`, "text-amber-400", 3500);
     } else {
-        showFlash(`🏆 ${roundName} gestartet!`, "text-orange-400", 3500);
+        showFlash(`🏆 ${roundName} ${t("game_round_started")}`, "text-orange-400", 3500);
     }
 
     setTimeout(() => {
-        const styleText = selectedProfile.style === "aggressive" ? "Aggressiv" : selectedProfile.style === "defensive" ? "Defensiv" : "Ausgeglichen";
-        showFlash(`Gegner: ${selectedProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
+        const styleText = selectedProfile.style === "aggressive" ? t("game_style_aggressive") : selectedProfile.style === "defensive" ? t("game_style_defensive") : t("game_style_balanced");
+        showFlash(`${t("game_opponent")}: ${selectedProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
     }, 3600);
   };
 
@@ -750,19 +762,19 @@ export default function GameScreen() {
     setIsIntroPlaying(true); 
 
     setTimeout(() => {
-        const styleText = randomProfile.style === "aggressive" ? "Aggressiv" : randomProfile.style === "defensive" ? "Defensiv" : "Ausgeglichen";
-        showFlash(`Gegner: ${randomProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
+        const styleText = randomProfile.style === "aggressive" ? t("game_style_aggressive") : randomProfile.style === "defensive" ? t("game_style_defensive") : t("game_style_balanced");
+        showFlash(`${t("game_opponent")}: ${randomProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
     }, 3500);
   };
 
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout>;
+    let tTimer: ReturnType<typeof setTimeout>;
     
     if (phase === "ai_prepare" && !isIntroPlaying) {
       const isAiServing = courtState.ball.type === "PREPARE_SERVE";
       const delay = isAiServing ? 2800 : 1500;
       
-      t = setTimeout(() => {
+      tTimer = setTimeout(() => {
         const currentLoadout = calculateLoadoutStats();
         setActiveLoadout(currentLoadout);
 
@@ -831,9 +843,9 @@ export default function GameScreen() {
         const defSaveChance = Math.max(0, currentLoadout.matchModifiers.defenseSaveBonus);
         if (finalAiResult === "perfect" && defSaveChance > 0 && Math.random() < defSaveChance) {
           finalAiResult = "success";
-          finalAiTitle = `🛡️ REFLEX-ABWEHR (${partnerName.toUpperCase()})!`;
-          finalAiMessage = `Starke Defensive (${currentLoadout.stats.defense} DEF): Euer Team entschärft den gegnerischen Winner im letzten Moment!`;
-          setActiveGearBoostMsg(`🛡️ DEFENSIVE-SAVE (${currentLoadout.stats.defense} DEF): Gegnerischer Winner entschärft!`);
+          finalAiTitle = `🛡️ REFLEX-SAVE (${partnerName.toUpperCase()})!`;
+          finalAiMessage = `Strong Defense (${currentLoadout.stats.defense} DEF): ${partnerName} saves the opponent's winner at the last second!`;
+          setActiveGearBoostMsg(`🛡️ DEFENSE SAVE (${currentLoadout.stats.defense} DEF)`);
         }
 
         const aiShotUpper = (brain.shot || "").toUpperCase();
@@ -912,7 +924,7 @@ export default function GameScreen() {
         if (finalAiResult?.startsWith("error")) fColor = "text-emerald-400";
         else if (finalAiResult === "recovery") fColor = "text-amber-400";
         else if (finalAiResult === "perfect") fColor = "text-red-600";
-        else if (finalAiTitle.includes("REFLEX-ABWEHR")) fColor = "text-cyan-400";
+        else if (finalAiTitle.includes("REFLEX-SAVE")) fColor = "text-cyan-400";
         
         showFlash(finalAiTitle, fColor, calcDuration + 800);
 
@@ -975,7 +987,7 @@ export default function GameScreen() {
         setPhase("timer_running");
       }, delay); 
     }
-    return () => clearTimeout(t);
+    return () => clearTimeout(tTimer);
   }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty, activeAiProfile, partnerName]);
 
   useEffect(() => {
@@ -1137,14 +1149,6 @@ export default function GameScreen() {
     setCommands(prev => ({ ...prev, [char]: { ...prev[char], ...updates } }));
   };
 
-  const setAsHitter = (char: "you" | "partner") => {
-    setHitterId(char);
-    setCommands(prev => ({
-      you: { ...prev.you, shot: char === "you" ? prev.you.shot : null, target: char === "you" ? prev.you.target : null },
-      partner: { ...prev.partner, shot: char === "partner" ? prev.partner.shot : null, target: char === "partner" ? prev.partner.target : null }
-    }));
-  };
-
   const handleBuySecondChance = async () => {
     if (!activeTournamentId || isProcessingRetry) return;
     
@@ -1178,6 +1182,7 @@ export default function GameScreen() {
       if (progressError) throw progressError;
 
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+      setCurrentTacPoints(newTacPoints);
       setRetryUsed(true);
       setIsProcessingRetry(false);
       
@@ -1185,7 +1190,6 @@ export default function GameScreen() {
 
     } catch (error) {
       console.error("Fehler beim Kauf der zweiten Chance:", error);
-      alert("Fehler beim Kauf. Bitte überprüfe deine Internetverbindung.");
       setIsProcessingRetry(false);
     }
   };
@@ -1337,9 +1341,8 @@ export default function GameScreen() {
           Math.random() < controlBonusChance
         ) {
           currentTurnResult = "recovery";
-          tTitle = `🎯 CONTROL-RETTUNG (${currentLoadout.stats.control} CTRL)!`;
-          message = `Dank deines präzisen Setups (${currentLoadout.racket.name}) kratzt dieser riskante Ball noch haarscharf die Linie!`;
-          setActiveGearBoostMsg(`🎯 CONTROL-SAVE (${currentLoadout.racket.name}): Fehler noch an die Linie gerettet!`);
+          tTitle = `🎯 CONTROL SAVE (${currentLoadout.stats.control} CTRL)!`;
+          setActiveGearBoostMsg(`🎯 CONTROL SAVE (${currentLoadout.racket.name})`);
         }
         // 2. CONTROL-STABILISIERUNG: Wackler (Recovery) wird zu solidem Schlag (Success)
         else if (
@@ -1348,9 +1351,8 @@ export default function GameScreen() {
           Math.random() < controlBonusChance * 1.15
         ) {
           currentTurnResult = "success";
-          tTitle = `🎯 PRÄZISIONS-SCHLAG (${currentLoadout.stats.control} CTRL)!`;
-          message += ` [🎯 Control-Bonus: Dein Setup stabilisiert den Ball perfekt!]`;
-          setActiveGearBoostMsg(`🎯 CONTROL-BOOST (${currentLoadout.stats.control} CTRL): Wackler stabilisiert!`);
+          tTitle = `🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)!`;
+          setActiveGearBoostMsg(`🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)`);
         }
         // 3. SMASH-POWER & SPEZIAL-FOKUS: Solider Offensivschlag wird zum direkten Winner!
         else if (
@@ -1361,13 +1363,12 @@ export default function GameScreen() {
         ) {
           currentTurnResult = "perfect";
           tTitle = isUsingFocusShot
-            ? `⚡ SPEZIAL-WINNER (${currentLoadout.shot.name.toUpperCase()})!`
-            : `💥 POWER-WINNER (${currentLoadout.stats.smash} PWR)!`;
-          message += ` [💥 Power-Boost: Dein Setup verwandelt diesen Angriff in einen unhaltbaren Winner!]`;
+            ? `⚡ FOCUS WINNER (${currentLoadout.shot.name.toUpperCase()})!`
+            : `💥 POWER WINNER (${currentLoadout.stats.smash} PWR)!`;
           setActiveGearBoostMsg(
             isUsingFocusShot
-              ? `⚡ SPEZIAL-FOKUS (${currentLoadout.shot.name}): Unhaltbarer Winner!`
-              : `💥 SMASH-POWER (${currentLoadout.stats.smash} PWR): Direkter Winner-Boost!`
+              ? `⚡ ${currentLoadout.shot.name}`
+              : `💥 SMASH POWER (${currentLoadout.stats.smash} PWR)`
           );
         }
       }
@@ -1377,11 +1378,9 @@ export default function GameScreen() {
         if (currentStamina <= 0) {
           if (currentTurnResult === "success") {
             currentTurnResult = "recovery"; 
-            message += " [Erschöpft: Dem Schlag fehlt völlig die Power!]";
           } else if (currentTurnResult === "recovery") {
             currentTurnResult = "error_net"; 
             tTitle = "❌ KRAFTLOS IM NETZ";
-            message += " [Erschöpft: Die Beine waren zu schwer, du bleibst am Netz hängen!]";
           }
         }
       }
@@ -1532,10 +1531,11 @@ export default function GameScreen() {
             if (session?.user) {
               
               const { data: statsData } = await supabase.from("user_stats").select("tac_points").eq("id", session.user.id).single();
-              let currentTacPoints = statsData?.tac_points || parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+              let updatedTp = statsData?.tac_points || parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
               
-              currentTacPoints += tpReward;
-              localStorage.setItem("tacpadel_tac_points", currentTacPoints.toString());
+              updatedTp += tpReward;
+              localStorage.setItem("tacpadel_tac_points", updatedTp.toString());
+              setCurrentTacPoints(updatedTp);
               
               const matchResult = playerWon ? "win" : "loss";
               
@@ -1574,7 +1574,7 @@ export default function GameScreen() {
                 }
               }
 
-              await supabase.from("user_stats").update({ points: finalScore, tac_points: currentTacPoints }).eq("id", session.user.id);
+              await supabase.from("user_stats").update({ points: finalScore, tac_points: updatedTp }).eq("id", session.user.id);
               
               await supabase.from("match_history").insert({ 
                 user_id: session.user.id, 
@@ -1587,7 +1587,7 @@ export default function GameScreen() {
                 shots_perfect: newStats.player.shotsPerfect,
                 duration_seconds: matchSecondsRef.current,
                 match_type: "tournament",
-                tac_points: currentTacPoints 
+                tac_points: updatedTp 
               });
 
             }
@@ -1672,25 +1672,25 @@ export default function GameScreen() {
       if (isRightCourt) { pYou = "D1"; pPartner = "D4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
       else { pYou = "B1"; pPartner = "D4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
       ballSide = "left"; nextPhase = "player_planning"; receiverId = "you"; 
-      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ 2. AUFSCHLAG!" : `${playerName.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-purple-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? t("game_2nd_serve_flash") : `${playerName.toUpperCase()} ${t("game_serves_flash")}`, isSecondServe ? "text-amber-400" : "text-purple-400", 3000); 
     } 
     else if (serverId === "partner") {
       if (isRightCourt) { pPartner = "D1"; pYou = "B4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
       else { pPartner = "B1"; pYou = "B4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
       ballSide = "left"; nextPhase = "player_planning"; receiverId = "partner"; 
-      if (!suppressFlash) showFlash(isSecondServe ? `⚠️ 2. AUFSCHLAG (${currentPartnerDisplay.toUpperCase()})!` : `${currentPartnerDisplay.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? `${t("game_2nd_serve_flash")} (${currentPartnerDisplay.toUpperCase()})` : `${currentPartnerDisplay.toUpperCase()} ${t("game_serves_flash")}`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
     } 
     else if (serverId === "opp1") {
       if (isRightCourt) { pOpp1 = "B1"; pOpp2 = "D4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
       else { pOpp1 = "D1"; pOpp2 = "D4"; pYou = "B1"; pPartner = "D2"; ballZone = "D1"; receiverId = "you"; }
       ballSide = "right"; nextPhase = "ai_prepare";
-      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ KI: 2. AUFSCHLAG!" : "GEGNER SCHLÄGT AUF!", isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"), isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
     } 
     else if (serverId === "opp2") {
       if (isRightCourt) { pOpp2 = "B1"; pOpp1 = "B4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
       else { pOpp2 = "D1"; pOpp1 = "B4"; pYou = "B1"; pPartner = "D2"; ballZone = "D1"; receiverId = "you"; }
       ballSide = "right"; nextPhase = "ai_prepare";
-      if (!suppressFlash) showFlash(isSecondServe ? "⚠️ KI: 2. AUFSCHLAG!" : "GEGNER SCHLÄGT AUF!", isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"), isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
     }
 
     const initialHitter = (serverId === "you" || serverId === "partner") ? serverId : receiverId;
@@ -1760,11 +1760,11 @@ export default function GameScreen() {
   const isAiActive = phase === "ai_prepare" || phase === "timer_running" || (phase === "player_animating" && courtState.ball.side === "right");
   const isAnimPhase = phase === "player_animating" || phase === "timer_running";
 
-  let submitText = "Zug ausführen";
-  if (!commands[hitterId].run) submitText = `Fehlt: Laufweg`;
-  else if (!commands[hitterId].shot) submitText = `Fehlt: Schlag`;
-  else if (!commands[hitterId].target) submitText = `Fehlt: Schlagziel`;
-  else if (needsSupporterConfirm) submitText = `Mitspieler steht gut?`; 
+  let submitText = t("game_submit_move");
+  if (!commands[hitterId].run) submitText = t("game_missing_run");
+  else if (!commands[hitterId].shot) submitText = t("game_missing_shot");
+  else if (!commands[hitterId].target) submitText = t("game_missing_target");
+  else if (needsSupporterConfirm) submitText = t("game_confirm_partner_pos"); 
 
   const onMainButtonClick = () => {
     if (isTimerPhase) return;
@@ -1795,11 +1795,11 @@ export default function GameScreen() {
       if (parsed.userId === userId) {
         hasValidSave = true;
         if (parsed.tournamentId) {
-          const tour = TOURNAMENTS.find(t => t.id === parsed.tournamentId);
-          const rName = parsed.tournamentRound === 3 ? "Finale" : parsed.tournamentRound === 2 ? "Halbfinale" : "Viertelfinale";
-          savedMatchSubtext = `🏆 ${tour?.name || 'Turnier'} (${rName})`;
+          const tour = TOURNAMENTS.find(tr => tr.id === parsed.tournamentId);
+          const rName = parsed.tournamentRound === 3 ? t("game_round_f") : parsed.tournamentRound === 2 ? t("game_round_sf") : t("game_round_qf");
+          savedMatchSubtext = `🏆 ${tour?.name || t("game_tournament_word")} (${rName})`;
         } else {
-          savedMatchSubtext = `🎾 Einzelmatch vs ${parsed.activeAiProfile?.teamName || 'KI'}`;
+          savedMatchSubtext = `🎾 ${t("game_single_vs")} ${parsed.activeAiProfile?.teamName || 'AI'}`;
         }
         savedMatchSubtext += ` | Score: ${parsed.playerScore}:${parsed.aiScore}`;
       } else {
@@ -1821,6 +1821,13 @@ export default function GameScreen() {
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
       style={{ height: "calc(100dvh - 120px)", minHeight: "650px" }}
     >
+      {/* --- SEPARATES IN-GAME SHOP MODAL --- */}
+      <InGameShopModal
+        isOpen={isShopOpen}
+        onClose={() => setIsShopOpen(false)}
+        userId={userId}
+        onLoadoutChanged={() => refreshLoadoutAndPartner()}
+      />
 
       {/* --- ABANDON WARNING MODAL --- */}
       <AnimatePresence>
@@ -1834,9 +1841,9 @@ export default function GameScreen() {
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-red-600" />
               <span className="text-5xl mb-4 block">⚠️</span>
-              <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">Laufendes Match abbrechen?</h2>
+              <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">{t("game_abandon_title")}</h2>
               <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-                Du hast noch ein nicht beendetes Match! Wenn du ein neues startest, gibst du das alte Match auf. Dies wird als <b className="text-red-400">Niederlage mit Punktabzug</b> gewertet (und eliminiert dich aus einem laufenden Turnier).
+                {t("game_abandon_desc_1")} <b className="text-red-400">{t("game_abandon_desc_bold")}</b> {t("game_abandon_desc_2")}
               </p>
               
               <div className="flex flex-col gap-3">
@@ -1844,13 +1851,13 @@ export default function GameScreen() {
                   onClick={confirmAbandon}
                   className="w-full py-4 bg-red-600/20 border border-red-500 text-red-400 hover:bg-red-600 hover:text-white rounded-xl font-black text-sm tracking-widest uppercase transition-all"
                 >
-                  Ja, aufgeben & Neu starten
+                  {t("game_abandon_confirm")}
                 </button>
                 <button
                   onClick={() => setAbandonWarning(null)}
                   className="w-full py-4 bg-slate-800 text-white rounded-xl font-black text-sm tracking-widest uppercase hover:bg-slate-700 transition-all"
                 >
-                  Abbrechen (Zurück zum Menü)
+                  {t("game_abandon_cancel")}
                 </button>
               </div>
             </motion.div>
@@ -1859,7 +1866,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* HAUPTMENÜ OVERLAY                                   */}
+      {/* HAUPTMENÜ OVERLAY (Schriftzug frei & Shop-Klick)    */}
       {/* =================================================== */}
       <AnimatePresence>
         {isMenuOpen && !isTourOpen && (
@@ -1867,40 +1874,54 @@ export default function GameScreen() {
             
             <button
               onClick={() => setShowTutorial(true)}
-              title="Tutorial wiederholen"
+              title={t("game_tutorial_tooltip")}
               className="absolute top-4 right-4 z-50 w-10 h-10 bg-slate-800/80 hover:bg-cyan-600 border border-slate-700 hover:border-cyan-400 text-slate-400 hover:text-white rounded-full font-black text-xl flex items-center justify-center transition-all shadow-lg hover:scale-110 active:scale-95"
             >
               ?
             </button>
 
+            {/* Hintergrundbild leicht nach oben versetzt, damit der TacPadel-Schriftzug frei über der Loadout-Box steht */}
             <div className="absolute inset-0 pointer-events-none">
-              <img src="/logo.png" alt="TacPadel Background" className="w-full h-full object-cover opacity-100" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/40 to-transparent"></div>
+              <img
+                src="/logo.png"
+                alt="TacPadel Background"
+                className="w-full h-full object-cover object-top -translate-y-6 sm:-translate-y-4 opacity-100"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/35 to-transparent"></div>
             </div>
-            <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-3.5 w-full">
-              <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
 
-              {/* AKTIVES TEAM-LOADOUT VORSCHAU IM MATCH-MENÜ */}
-              <div className="w-full max-w-sm bg-[#030611]/90 border border-cyan-500/30 rounded-xl p-3 backdrop-blur-md shadow-lg flex flex-col gap-1.5">
-                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-cyan-400">
-                  <span>🤝 Partner: {partnerName}</span>
-                  <span>🎾 {activeLoadout.racket.name}</span>
+            <div className="relative z-10 h-full flex flex-col items-center justify-end pb-3 sm:pb-5 px-4 gap-2 sm:gap-2.5 w-full">
+              
+              {/* KLICKBARE LOADOUT-BOX -> ÖFFNET DIREKT DEN IN-GAME SHOP */}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setIsShopOpen(true)}
+                className="w-full max-w-sm bg-[#030611]/90 hover:bg-[#060d20]/95 border border-cyan-500/40 hover:border-cyan-400 rounded-xl px-3 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer transition-all flex flex-col gap-1.5 group"
+              >
+                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider">
+                  <span className="text-cyan-400 truncate max-w-[48%]">
+                    🤝 {t("game_loadout_partner")} {partnerName}
+                  </span>
+                  <span className="text-amber-400 group-hover:text-amber-300 flex items-center gap-1 shrink-0">
+                    {t("game_loadout_shop_hint")}
+                  </span>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-800 text-center text-[9px] font-black">
-                  <div className="bg-slate-900/80 rounded py-1 text-orange-400">PWR {activeLoadout.stats.smash}</div>
-                  <div className="bg-slate-900/80 rounded py-1 text-cyan-400">CTRL {activeLoadout.stats.control}</div>
-                  <div className="bg-slate-900/80 rounded py-1 text-emerald-400">DEF {activeLoadout.stats.defense}</div>
-                  <div className="bg-slate-900/80 rounded py-1 text-purple-400">AGI {activeLoadout.stats.agility}</div>
+                <div className="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-800/90 text-center text-[9px] font-black">
+                  <div className="bg-slate-900/90 rounded py-0.5 text-orange-400">PWR {activeLoadout.stats.smash}</div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-cyan-400">CTRL {activeLoadout.stats.control}</div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-emerald-400">DEF {activeLoadout.stats.defense}</div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-purple-400">AGI {activeLoadout.stats.agility}</div>
                 </div>
-              </div>
+              </motion.div>
 
               {!userId && (
-                <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-center backdrop-blur-md shadow-lg">
-                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">
-                    ⚠️ Gast-Modus aktiv
+                <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl px-3 py-2 text-center backdrop-blur-md shadow-lg">
+                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-0.5">
+                    {t("game_guest_title")}
                   </p>
-                  <p className="text-[10px] text-slate-300 leading-snug">
-                    Dein Fortschritt und laufende Matches werden beim Verlassen gelöscht. Logge dich ein, um Punkte, Ränge und Turniere dauerhaft zu sichern!
+                  <p className="text-[9px] text-slate-300 leading-snug">
+                    {t("game_guest_desc")}
                   </p>
                 </div>
               )}
@@ -1908,29 +1929,29 @@ export default function GameScreen() {
               {tacScore < 1500 ? (
                 <button 
                   disabled
-                  className="w-full max-w-sm py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                  className="w-full max-w-sm py-2.5 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-0.5"
                 >
-                  <span className="text-sm">🔒 Einzelmatch (Ab 1500)</span>
-                  <span className="text-[10px] text-slate-500 normal-case tracking-normal">
-                    Sammle erst Erfahrung im Taktik-Trainer
+                  <span className="text-xs sm:text-sm">{t("game_single_locked")}</span>
+                  <span className="text-[9px] text-slate-500 normal-case tracking-normal">
+                    {t("game_single_locked_sub")}
                   </span>
                 </button>
               ) : (
                 <button 
                   onClick={attemptStartNewGame}
-                  className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 transition-all"
+                  className="w-full max-w-sm py-3 sm:py-3.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_25px_rgba(255,119,0,0.4)] hover:scale-[1.02] active:scale-95 transition-all"
                 >
-                  Neues Einzelmatch
+                  {t("game_new_single")}
                 </button>
               )}
 
               {hasValidSave && (
                 <button 
-                  onClick={() => { if (loadGame()) setIsMenuOpen(false); else alert("Kein gültiger Speicherstand gefunden."); }}
-                  className="w-full max-w-sm py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:scale-105 transition-all flex flex-col items-center justify-center gap-1.5"
+                  onClick={() => { if (loadGame()) setIsMenuOpen(false); }}
+                  className="w-full max-w-sm py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
                 >
-                  <span className="font-black tracking-widest uppercase text-base">Match Fortsetzen</span>
-                  <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-widest bg-black/20 px-2 py-0.5 rounded border border-emerald-400/30 text-center">
+                  <span className="font-black tracking-widest uppercase text-sm">{t("game_continue_match")}</span>
+                  <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-widest bg-black/25 px-2 py-0.5 rounded border border-emerald-400/30 text-center">
                     {savedMatchSubtext}
                   </span>
                 </button>
@@ -1938,9 +1959,9 @@ export default function GameScreen() {
               
               <button 
                 onClick={() => setIsTourOpen(true)}
-                className="w-full max-w-sm py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-105 transition-all"
+                className="w-full max-w-sm py-3 sm:py-3.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-[1.02] active:scale-95 transition-all"
               >
-                TP Tour Events
+                {t("game_tour_events")}
               </button>
             </div>
           </div>
@@ -1981,8 +2002,8 @@ export default function GameScreen() {
                   <span className="text-xl sm:text-2xl z-10 font-black text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">🔥</span>
                 </div>
                 <div className="flex flex-col justify-center z-10 leading-tight">
-                  <span className="text-lg sm:text-2xl font-black uppercase tracking-widest text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]">Profi-Liga Aktiv</span>
-                  <span className="text-sm sm:text-lg font-black uppercase tracking-widest text-fuchsia-400 drop-shadow-[0_0_8px_rgba(217,70,239,0.5)]">Keine Taktik-Linien</span>
+                  <span className="text-lg sm:text-2xl font-black uppercase tracking-widest text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]">{t("game_pro_league_active")}</span>
+                  <span className="text-sm sm:text-lg font-black uppercase tracking-widest text-fuchsia-400 drop-shadow-[0_0_8px_rgba(217,70,239,0.5)]">{t("game_no_tactic_lines")}</span>
                 </div>
                 <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 opacity-60">
                    <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
@@ -2002,7 +2023,7 @@ export default function GameScreen() {
           
           const firstChar = rawText.charAt(0);
           if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡"].includes(firstChar)) { icon = firstChar; rawText = rawText.slice(1).trim(); } 
-          else if (rawText.includes("KI ") || rawText.includes("Gegner:")) { icon = "🤖"; }
+          else if (rawText.includes("KI ") || rawText.includes("Gegner:") || rawText.includes("Opponent:") || rawText.includes("Rival:")) { icon = "🤖"; }
 
           const words = rawText.split(" ");
           const mid = Math.ceil(words.length / 2);
@@ -2053,20 +2074,20 @@ export default function GameScreen() {
                 {activeTournamentId && (
                    <div className="bg-purple-900/50 border border-purple-500 px-6 py-2 rounded-full mb-[-1rem]">
                      <span className="text-purple-300 font-black uppercase tracking-widest text-xs">
-                       Turnier {activeTournamentRound === 3 ? "Finale" : activeTournamentRound === 2 ? "Halbfinale" : "Viertelfinale"}
+                       {t("game_tournament_word")} {activeTournamentRound === 3 ? t("game_round_f") : activeTournamentRound === 2 ? t("game_round_sf") : t("game_round_qf")}
                      </span>
                    </div>
                 )}
 
                 <div className="text-center">
                   <h2 className="text-4xl sm:text-5xl font-black mb-2 uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
-                    {playerScore > aiScore ? <span className="text-emerald-400">🏆 Ihr Gewinnt!</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} Gewinnt!</span>}
+                    {playerScore > aiScore ? <span className="text-emerald-400">{t("game_you_win")}</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} {t("game_ai_wins")}</span>}
                   </h2>
-                  <p className="text-slate-300 text-lg font-bold">Endstand im Tiebreak: {playerScore} : {aiScore}</p>
+                  <p className="text-slate-300 text-lg font-bold">{t("game_final_score_tb")} {playerScore} : {aiScore}</p>
                   
                   <div className="mt-4 flex justify-center">
                     <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Spieldauer</span>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{t("game_match_duration")}</span>
                       <span className="text-xl text-white font-black tracking-wider">
                         ⏱️ {formatMatchTime(matchSeconds)}
                       </span>
@@ -2077,10 +2098,10 @@ export default function GameScreen() {
                     <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
                       <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
                       <span className="text-amber-400 font-black uppercase tracking-widest text-sm mb-2 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">
-                        Zweite Chance?
+                        {t("game_second_chance_q")}
                       </span>
                       <p className="text-[10px] text-slate-400 text-center mb-4 leading-relaxed">
-                        Du hast im Turnier genau EINE Möglichkeit, ein Match zu wiederholen.
+                        {t("game_second_chance_desc")}
                       </p>
                       
                       <button 
@@ -2093,10 +2114,10 @@ export default function GameScreen() {
                         }`}
                       >
                         {isProcessingRetry 
-                          ? "Wird gekauft..." 
+                          ? t("game_buying") 
                           : currentTacPoints < getContinueFee(activeTournamentId, activeTournamentRound)! 
-                            ? `Zu wenig TP (${getContinueFee(activeTournamentId, activeTournamentRound)} nötig)` 
-                            : `Match wiederholen (${getContinueFee(activeTournamentId, activeTournamentRound)} TP)`
+                            ? `${t("game_not_enough_tp")} (${getContinueFee(activeTournamentId, activeTournamentRound)} ${t("game_needed")})` 
+                            : `${t("game_replay_match")} (${getContinueFee(activeTournamentId, activeTournamentRound)} TP)`
                         }
                       </button>
                     </div>
@@ -2107,18 +2128,18 @@ export default function GameScreen() {
                   
                   <div className="flex-1 flex flex-col gap-4 w-full">
                     <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-slate-700/50 p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] w-full">
-                      <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">Dein TacScore</span>
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">{t("game_your_tacscore")}</span>
                       <div className="flex flex-col items-center gap-3">
                         <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">{tacScore}</span>
                         <div className={`px-5 py-1.5 rounded-full border ${lastScoreChange > 0 ? "bg-emerald-900/30 border-emerald-500/50 text-emerald-400" : "bg-red-900/30 border-red-500/50 text-red-500"}`}>
-                          <span className="text-lg font-black tracking-widest whitespace-nowrap">{lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange} Punkte</span>
+                          <span className="text-lg font-black tracking-widest whitespace-nowrap">{lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange} {t("game_points_label")}</span>
                         </div>
                       </div>
                     </div>
 
                     {activeTournamentId && (
                       <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-amber-900/50 p-4 rounded-2xl shadow-[inset_0_0_20px_rgba(245,158,11,0.1)] w-full">
-                        <span className="text-amber-500/70 text-[10px] font-black uppercase tracking-widest mb-2">Preisgeld (Runde {activeTournamentRound})</span>
+                        <span className="text-amber-500/70 text-[10px] font-black uppercase tracking-widest mb-2">{t("game_prize_money")} {activeTournamentRound})</span>
                         <div className="flex flex-col items-center gap-1">
                           <span className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(245,158,11,0.4)]">+{earnedTP}</span>
                           <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">TacPoints</span>
@@ -2128,37 +2149,37 @@ export default function GameScreen() {
                   </div>
 
                   <div className="flex-[1.5] w-full bg-[#050b14] border border-slate-700/50 rounded-2xl overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col">
-                    <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Match Ausgang</span></div>
+                    <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">{t("game_match_outcome")}</span></div>
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
                       <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">{userTeamName}</span></div>
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/20"><span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Metrik</span></div>
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/20"><span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{t("game_metric")}</span></div>
                       <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest">{activeAiProfile.teamName}</span></div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.aces}</div>
-                      <div className="py-2.5 text-orange-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">Asse</div>
+                      <div className="py-2.5 text-orange-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_aces")}</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.aces}</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.winners}</div>
-                      <div className="py-2.5 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">Winner</div>
+                      <div className="py-2.5 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_winners")}</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.winners}</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.unforcedErrors}</div>
-                      <div className="py-2.5 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">Fehler</div>
+                      <div className="py-2.5 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_errors")}</div>
                       <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.unforcedErrors}</div>
                     </div>
-                    <div className="bg-slate-800/80 py-2.5 text-center border-y border-slate-700/50 shrink-0 mt-2"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">Alle gespielten Schläge</span></div>
+                    <div className="bg-slate-800/80 py-2.5 text-center border-y border-slate-700/50 shrink-0 mt-2"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">{t("game_all_shots")}</span></div>
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50 mb-2">
                       <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">{matchStats.player.totalShots}</div>
-                      <div className="py-2 text-slate-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center">Gesamt</div>
+                      <div className="py-2 text-slate-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center">{t("game_total")}</div>
                       <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">{matchStats.ai.totalShots}</div>
                       <StatCell val={matchStats.player.shotsPerfect} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-cyan-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>Perfekt</span><span className="text-[7px] opacity-60">⭐</span></div>
+                      <div className="py-2 text-cyan-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_perfect")}</span><span className="text-[7px] opacity-60">⭐</span></div>
                       <StatCell val={matchStats.ai.shotsPerfect} total={matchStats.ai.totalShots} />
                       <StatCell val={matchStats.player.shotsSuccess} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>Solide</span><span className="text-[7px] opacity-60">✓</span></div>
+                      <div className="py-2 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_solid")}</span><span className="text-[7px] opacity-60">✓</span></div>
                       <StatCell val={matchStats.ai.shotsSuccess} total={matchStats.ai.totalShots} />
                       <StatCell val={matchStats.player.shotsRecovery} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-amber-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>Wackler</span><span className="text-[7px] opacity-60">⚠️</span></div>
+                      <div className="py-2 text-amber-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_shaky")}</span><span className="text-[7px] opacity-60">⚠️</span></div>
                       <StatCell val={matchStats.ai.shotsRecovery} total={matchStats.ai.totalShots} />
                       <StatCell val={matchStats.player.shotsError} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>Fehlschlag</span><span className="text-[7px] opacity-60">❌</span></div>
+                      <div className="py-2 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_miss")}</span><span className="text-[7px] opacity-60">❌</span></div>
                       <StatCell val={matchStats.ai.shotsError} total={matchStats.ai.totalShots} />
                     </div>
                   </div>
@@ -2188,25 +2209,25 @@ export default function GameScreen() {
                        });
                      }
                    }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                     {playerScore < aiScore ? "Aufgeben & Zurück zur TP Tour" : "Zurück zur TP Tour"}
+                     {playerScore < aiScore ? t("game_give_up_back_tour") : t("game_back_tour")}
                    </button>
                 ) : (
                    <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
                      {tacScore < 1500 ? (
                        <button disabled className="w-full sm:w-auto px-8 sm:px-10 py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1 shrink-0">
-                         <span className="text-sm">🔒 Match (Ab 1500)</span>
-                         <span className="text-[8px] text-slate-500 normal-case tracking-normal">Sammle Erfahrung im Taktik-Trainer</span>
+                         <span className="text-sm">{t("game_match_locked_1500")}</span>
+                         <span className="text-[8px] text-slate-500 normal-case tracking-normal">{t("game_single_locked_sub")}</span>
                        </button>
                      ) : (
                        <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                         Neues Match
+                         {t("game_new_match")}
                        </button>
                      )}
                      <button 
                        onClick={() => { setShowGameOverUI(false); setIsMenuOpen(true); }} 
                        className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-white font-black tracking-widest uppercase rounded-xl border border-slate-700 shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
                      >
-                       Zum Menü
+                       {t("game_to_menu")}
                      </button>
                    </div>
                 )}
@@ -2290,7 +2311,7 @@ export default function GameScreen() {
 
         <div className="absolute inset-0 z-10 w-full h-full">
           <ScenarioCourt3D 
-            key={`court-${introTrigger}`}
+            key={`court-${introTrigger}-${partnerName}`}
             arenaModel={currentArenaModel} 
             playIntro={playIntro}  
             gameOver={gameOver} 
@@ -2303,11 +2324,11 @@ export default function GameScreen() {
                 
                 const info = getServerInfo(playerScore + aiScore);
                 if (info.serverId === "you") {
-                   showFlash(`${playerName.toUpperCase()} SCHLÄGT AUF!`, "text-purple-400", 3000);
+                   showFlash(`${playerName.toUpperCase()} ${t("game_serves_flash")}`, "text-purple-400", 3000);
                 } else if (info.serverId === "partner") {
-                   showFlash(`${partnerName.toUpperCase()} SCHLÄGT AUF!`, "text-cyan-400", 3000);
+                   showFlash(`${partnerName.toUpperCase()} ${t("game_serves_flash")}`, "text-cyan-400", 3000);
                 } else {
-                   showFlash(`${activeAiProfile.teamName.toUpperCase()} SCHLÄGT AUF!`, "text-red-400", 3000);
+                   showFlash(`${activeAiProfile.teamName.toUpperCase()} ${t("game_serves_flash")}`, "text-red-400", 3000);
                 }
               }
             }} 
@@ -2351,7 +2372,7 @@ export default function GameScreen() {
           <div className="flex items-center justify-center gap-2 py-2">
             <div className="w-4 h-4 rounded-full border-t-2 border-red-500 animate-spin" />
             <h3 className="text-red-400 font-black tracking-widest uppercase text-[10px]">
-              🤖 {activeAiProfile.teamName} {courtState.ball.type === "PREPARE_SERVE" ? "schlägt auf" : "checkt Lücken"}...
+              🤖 {activeAiProfile.teamName} {courtState.ball.type === "PREPARE_SERVE" ? t("game_ai_serving") : t("game_ai_checking_gaps")}...
             </h3>
           </div>
         )}
@@ -2359,7 +2380,7 @@ export default function GameScreen() {
         {phase === "player_animating" && !showResultOverlay && (
           <div className="flex items-center justify-center py-2">
             <h3 className="text-orange-400 font-black tracking-widest uppercase text-[10px] animate-pulse">
-              🎾 Ball im Flug...
+              {t("game_ball_in_flight")}
             </h3>
           </div>
         )}
@@ -2369,11 +2390,11 @@ export default function GameScreen() {
             <div className="flex items-center justify-between px-1 mb-2 mt-1 gap-2">
               <div className="flex items-center gap-2 truncate">
                 <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
-                  {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
+                  {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. ${t("game_serve_num")})` : `(${t("game_hitter_role")})`) : `(${t("game_cover_role")})`}
                 </span>
                 {/* KOMPAKTER LOADOUT-INDIKATOR IM HUD */}
                 <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
-                  🎾 {activeLoadout.racket.name} • ⚡ {focusShotType}
+                  🎾 {activeLoadout.racket.name} • ⚡ {formatShotName(focusShotType, lang)}
                 </span>
               </div>
               <div className="w-2/5 sm:w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800 shrink-0">
@@ -2384,36 +2405,40 @@ export default function GameScreen() {
             {isTimerPhase ? (
               <div className="flex gap-3 w-full mb-2 h-14">
                 <button onClick={() => setActiveChar("you")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "you" ? 'bg-purple-900/40 border-purple-500 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm truncate w-full text-center px-1">{playerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
+                  <span className="text-sm truncate w-full text-center px-1">{playerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
                 </button>
                 <button onClick={() => setActiveChar("partner")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "partner" ? 'bg-cyan-900/40 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm truncate w-full text-center px-1">{partnerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">Laufweg setzen</span>
+                  <span className="text-sm truncate w-full text-center px-1">{partnerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
                 </button>
               </div>
             ) : (
             <div className="grid grid-cols-3 gap-1.5 mb-2">
               <div className={`p-1.5 rounded border text-center ${commands[activeChar].run ? (activeChar === "you" ? 'border-purple-500/50 bg-purple-950/20' : 'border-cyan-500/50 bg-cyan-950/20') : 'border-slate-800 bg-slate-900/40'}`}>
-                <div className={`text-[7px] font-black uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>Laufzone</div>
+                <div className={`text-[7px] font-black uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>{t("game_run_zone")}</div>
                 <div className="text-[9px] font-bold text-white truncate">{commands[activeChar].run || "-"}</div>
               </div>
               {hitterId === activeChar ? (
                 <>
                   <div className={`p-1.5 rounded border text-center ${commands[activeChar].target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-                    <div className="text-[7px] font-black text-emerald-400 uppercase">Schlagziel</div>
+                    <div className="text-[7px] font-black text-emerald-400 uppercase">{t("game_shot_target")}</div>
                     <div className="text-[9px] font-bold text-white truncate">{commands[activeChar].target || "-"}</div>
                   </div>
                   <div onClick={() => !isTimerPhase && setIsShotModalOpen(true)} className={`p-1.5 rounded border text-center cursor-pointer ${commands[activeChar].shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/40 bg-orange-950/30 animate-pulse'}`}>
-                    <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
+                    <div className="text-[7px] font-black text-orange-400 uppercase">{t("game_shot_label")}</div>
                     <div className="text-[9px] font-bold text-white truncate">
-                      {commands[activeChar].shot ? (commands[activeChar].shot === focusShotType ? `⚡ ${commands[activeChar].shot}` : commands[activeChar].shot) : "WÄHLEN"}
+                      {commands[activeChar].shot
+                        ? commands[activeChar].shot === focusShotType
+                          ? `⚡ ${formatShotName(commands[activeChar].shot!, lang)}`
+                          : formatShotName(commands[activeChar].shot!, lang)
+                        : t("game_choose_caps")}
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="col-span-2 flex flex-col items-center justify-center border border-dashed border-slate-700/50 bg-slate-800/20 rounded p-1.5 pointer-events-none opacity-60">
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">🛡️ Raumabdeckung</span>
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{t("game_court_coverage")}</span>
                   <span className="text-[7px] font-bold text-slate-600">
-                    {hitterId === "you" ? `${playerName} hat` : `${partnerName} hat`} den Ball
+                    {hitterId === "you" ? playerName : partnerName} {t("game_has_ball")}
                   </span>
                 </div>
               )}
@@ -2429,7 +2454,7 @@ export default function GameScreen() {
                         : "bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed"
                 }`}
               >
-                {isTimerPhase ? "Zeit läuft..." : submitText}
+                {isTimerPhase ? t("game_time_running") : submitText}
               </button>
           </>
         )}
@@ -2442,9 +2467,9 @@ export default function GameScreen() {
             <motion.div drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.2} onDragEnd={(_, info) => { if (info.offset.y > 100) setIsShotModalOpen(false); }} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none pointer-events-auto">
               <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">Welchen Schlag wählst du?</h3>
+                <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">{t("game_which_shot_modal")}</h3>
                 <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  ⚡ Fokus: {activeLoadout.shot.name}
+                  ⚡ {t("game_focus_label")} {activeLoadout.shot.name}
                 </span>
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-10">
@@ -2463,9 +2488,9 @@ export default function GameScreen() {
                       onClick={() => { updateCommand(activeChar, { shot }); setIsShotModalOpen(false); }}
                       className={`w-full flex flex-col items-center justify-center py-3 px-1 rounded-lg border text-[9px] font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
                     >
-                      <span>{shot}</span>
+                      <span>{formatShotName(shot, lang)}</span>
                       {isFocusShot && (
-                        <span className="text-[7px] text-amber-400 font-black mt-0.5">⚡ FOKUS-BOOST</span>
+                        <span className="text-[7px] text-amber-400 font-black mt-0.5">{t("game_focus_boost")}</span>
                       )}
                     </button>
                   );
@@ -2495,7 +2520,7 @@ export default function GameScreen() {
               )}
 
               <button onClick={handleNextTurn} className={`w-full ${showExplanations ? 'md:w-auto' : 'max-w-md'} px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}>
-                {turnResult && turnResult.startsWith("error") ? "Nächster Punkt ➔" : (turnResult === "perfect" ? "Punkt gewonnen! ➔" : "Nächste Aktion (KI) ➔")}
+                {turnResult && turnResult.startsWith("error") ? t("game_next_point_btn") : (turnResult === "perfect" ? t("game_point_won_btn") : t("game_next_action_ai_btn"))}
               </button>
             </div>
             
