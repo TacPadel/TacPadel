@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { SCENARIOS } from "./Scenarios";
 import { supabase } from "../lib/supabase";
+import { useTranslation, formatShotName } from "../lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 
@@ -36,9 +37,22 @@ export default function DailyChallengeModal({
   user,
   onRewardEarned,
 }: DailyChallengeModalProps) {
+  const { lang, t } = useTranslation();
+
   const scenario = useMemo(() => getDailyScenario(), []);
   const todayStr = getTodayDateString();
   const storagePrefix = user?.id ? `_${user.id}` : "_guest";
+
+  // Mehrsprachige Szenario-Texte (mit automatischem Fallback auf Deutsch)
+  const scenarioDescription =
+    (lang === "en" && (scenario as any)?.description_en) ||
+    (lang === "es" && (scenario as any)?.description_es) ||
+    scenario.description;
+
+  const scenarioExplanation =
+    (lang === "en" && (scenario as any)?.explanation_en) ||
+    (lang === "es" && (scenario as any)?.explanation_es) ||
+    scenario.explanation;
 
   // Eigener, komplett isolierter State (berührt NICHT den Taktik-Trainer!)
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
@@ -151,10 +165,10 @@ export default function DailyChallengeModal({
               </div>
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
                 <h2 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest truncate">
-                  Tägliche Challenge
+                  {t("daily_title")}
                 </h2>
                 <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  1 Versuch • +150 Pkt
+                  {t("daily_badge_info")}
                 </span>
                 <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
                   #{scenario.id}
@@ -176,11 +190,11 @@ export default function DailyChallengeModal({
           </div>
 
           <p className="text-[11px] sm:text-xs font-semibold text-slate-200 leading-snug border-t border-slate-800/80 pt-1.5">
-            {scenario.description}
+            {scenarioDescription}
           </p>
         </div>
 
-        {/* 3D COURT (Nimmt flexibel den restlichen Platz ein, ohne abgeschnitten zu werden) */}
+        {/* 3D COURT */}
         <div className="flex-1 w-full min-h-0 bg-[#030611] rounded-2xl border border-slate-800 shadow-[0_0_30px_rgba(0,0,0,0.8)] relative overflow-hidden">
           <ScenarioCourt25
             level="Spielzug"
@@ -214,17 +228,17 @@ export default function DailyChallengeModal({
           />
         </div>
 
-        {/* STEUERUNG ODER ERGEBNIS (Fest am unteren Rand) */}
+        {/* STEUERUNG ODER ERGEBNIS */}
         {!hasSubmitted ? (
           <div className="shrink-0 bg-[#050b18] border border-slate-700 p-2.5 sm:p-3.5 rounded-xl flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-center">
             <div className="grid grid-cols-3 gap-2 flex-1 w-full">
               <div className={`flex flex-col gap-0.5 p-2 rounded-lg border ${selectedLaufZone ? "border-purple-500/50 bg-purple-950/20" : "border-purple-500/30 bg-purple-950/10"}`}>
-                <span className="text-[8px] font-black tracking-widest text-purple-400 uppercase">1. Laufzone</span>
+                <span className="text-[8px] font-black tracking-widest text-purple-400 uppercase">{t("trainer_step1_run")}</span>
                 <span className="text-xs font-bold text-white truncate">{selectedLaufZone || "-"}</span>
               </div>
 
               <div className={`flex flex-col gap-0.5 p-2 rounded-lg border ${selectedZone ? "border-emerald-500/50 bg-emerald-950/20" : "border-emerald-500/30 bg-emerald-950/10"}`}>
-                <span className="text-[8px] font-black tracking-widest text-emerald-400 uppercase">2. Schlagziel</span>
+                <span className="text-[8px] font-black tracking-widest text-emerald-400 uppercase">{t("trainer_step2_target")}</span>
                 <span className="text-xs font-bold text-white truncate">{selectedZone || "-"}</span>
               </div>
 
@@ -232,8 +246,10 @@ export default function DailyChallengeModal({
                 onClick={() => setIsShotModalOpen(true)}
                 className={`flex flex-col gap-0.5 p-2 rounded-lg border cursor-pointer transition-all ${selectedShot ? "border-orange-500/50 bg-orange-950/20" : "border-orange-500/50 bg-orange-950/30 animate-pulse"}`}
               >
-                <span className="text-[8px] font-black tracking-widest text-orange-400 uppercase">3. Schlag</span>
-                <span className="text-xs font-bold text-white truncate">{selectedShot || "Wählen..."}</span>
+                <span className="text-[8px] font-black tracking-widest text-orange-400 uppercase">{t("daily_step3_shot")}</span>
+                <span className="text-xs font-bold text-white truncate">
+                  {selectedShot ? formatShotName(selectedShot, lang) : t("trainer_choose")}
+                </span>
               </div>
             </div>
 
@@ -242,7 +258,7 @@ export default function DailyChallengeModal({
               disabled={!canSubmit}
               className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:shadow-none transition-all"
             >
-              Zug Ausführen
+              {t("trainer_submit")}
             </button>
           </div>
         ) : (
@@ -257,20 +273,20 @@ export default function DailyChallengeModal({
           >
             <div className="flex-1 text-center sm:text-left">
               <h3 className={`text-sm sm:text-base font-black uppercase tracking-widest mb-1 ${isFullyCorrect ? "text-emerald-400" : "text-red-400"}`}>
-                {isFullyCorrect ? "🎉 Tages-Challenge Gemeistert! (+150 Pkt)" : "❌ Leider knapp daneben!"}
+                {isFullyCorrect ? t("daily_res_won") : t("daily_res_lost")}
               </h3>
               <p className="text-[11px] sm:text-xs text-slate-300 leading-snug mb-2 line-clamp-2 sm:line-clamp-none">
-                {scenario.explanation}
+                {scenarioExplanation}
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
                 <span className="bg-black/40 border border-slate-800 px-2 py-0.5 rounded text-[9px] font-bold text-slate-400 uppercase">
-                  Schlag: <b className="text-white">{scenario.validShots.join(" / ")}</b>
+                  {t("trainer_badge_shot")} <b className="text-white">{scenario.validShots.map((s) => formatShotName(s, lang)).join(" / ")}</b>
                 </span>
                 <span className="bg-black/40 border border-slate-800 px-2 py-0.5 rounded text-[9px] font-bold text-slate-400 uppercase">
-                  Ziel: <b className="text-white">{(scenario.bestZones || []).join(", ")}</b>
+                  {t("trainer_badge_target")} <b className="text-white">{(scenario.bestZones || []).join(", ")}</b>
                 </span>
                 <span className="bg-black/40 border border-slate-800 px-2 py-0.5 rounded text-[9px] font-bold text-slate-400 uppercase">
-                  Laufweg: <b className="text-white">{scenario.laufZone}</b>
+                  {t("trainer_badge_run")} <b className="text-white">{scenario.laufZone}</b>
                 </span>
               </div>
             </div>
@@ -279,7 +295,7 @@ export default function DailyChallengeModal({
               onClick={onClose}
               className="w-full sm:w-auto px-6 py-3 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 shrink-0"
             >
-              Schließen ➔
+              {t("daily_close_arrow")}
             </button>
           </motion.div>
         )}
@@ -296,10 +312,10 @@ export default function DailyChallengeModal({
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-black tracking-widest text-amber-400 uppercase">
-                Welchen Schlag wählst du?
+                {t("trainer_shot_modal_q2")}
               </h3>
               <button onClick={() => setIsShotModalOpen(false)} className="text-xs text-slate-400 hover:text-white">
-                Schließen
+                {t("daily_close")}
               </button>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pb-4">
@@ -316,7 +332,7 @@ export default function DailyChallengeModal({
                       : "bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-800"
                   }`}
                 >
-                  {shot}
+                  {formatShotName(shot, lang)}
                 </button>
               ))}
             </div>
