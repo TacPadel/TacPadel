@@ -4,7 +4,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three'; 
 
-// --- Imports für Loadout-Shop, Admin & 3D ---
+// --- Imports für Loadout-Shop, Admin, 3D & i18n ---
 import {
   SHOP_PARTNERS,
   SHOP_RACKETS,
@@ -12,6 +12,7 @@ import {
   ShopItem,
   calculateLoadoutStats,
 } from '../lib/loadout';
+import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
@@ -258,6 +259,8 @@ const normalizePartnerId = (rawId?: string | null): string => {
 };
 
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
+  const { lang, setLang, t } = useTranslation();
+
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
   const [teamName, setTeamName] = useState("TacPadel Rookies");
@@ -287,18 +290,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
   const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
   const [isBuying, setIsBuying] = useState<boolean>(false);
-
-  // --- SPRACH-AUSWAHL (DE / EN / ES) ---
-  const [appLang, setAppLang] = useState<'de' | 'en' | 'es'>(() => {
-    const saved = localStorage.getItem("tacpadel_lang");
-    if (saved === 'en' || saved === 'es' || saved === 'de') return saved;
-    return 'de';
-  });
-  const handleChangeLanguage = (lang: 'de' | 'en' | 'es') => {
-    setAppLang(lang);
-    localStorage.setItem("tacpadel_lang", lang);
-    window.dispatchEvent(new Event("tacpadel-lang-change"));
-  };
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -594,13 +585,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         localStorage.setItem("tacpadel_power_shot", item.id);
         await supabase.from('user_stats').update({ equipped_shot: item.id }).eq('id', user.id);
       }
-      setMessage({ type: 'success', text: `${item.name} ausgerüstet!` });
+      setMessage({ type: 'success', text: `${item.name} ${t("prof_msg_equipped")}` });
       setTimeout(() => setMessage(null), 2000);
       return;
     }
 
     if (tacPoints < item.price) {
-      setMessage({ type: 'error', text: `Noch ${item.price - tacPoints} TacPoints nötig!` });
+      setMessage({ type: 'error', text: `${t("prof_msg_need_tp_1")} ${item.price - tacPoints} ${t("prof_msg_need_tp_2")}` });
       setTimeout(() => setMessage(null), 2500);
       return;
     }
@@ -649,7 +640,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       localStorage.setItem("tacpadel_power_shot", item.id);
     }
 
-    setMessage({ type: 'success', text: `🎉 ${item.name} freigeschaltet & ausgerüstet!` });
+    setMessage({ type: 'success', text: `🎉 ${item.name} ${t("prof_msg_unlocked")}` });
     setTimeout(() => setMessage(null), 3000);
   };
 
@@ -672,12 +663,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     
     setIsSaving(false);
     if (authError || dbError) {
-      setMessage({ type: 'error', text: "Fehler beim Speichern!" });
+      setMessage({ type: 'error', text: t("prof_msg_save_err") });
       setTimeout(() => setMessage(null), 3000); 
     } else {
       setSavedUsername(newName);
       setSavedTeamName(newTeam);
-      setMessage({ type: 'success', text: "Automatisch gespeichert!" });
+      setMessage({ type: 'success', text: t("prof_msg_autosaved") });
       setTimeout(() => setMessage(null), 2500); 
     }
   };
@@ -686,7 +677,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     try {
       setIsUploading(true);
       setMessage(null);
-      if (!event.target.files || event.target.files.length === 0) throw new Error('Bitte wähle ein Bild aus.');
+      if (!event.target.files || event.target.files.length === 0) throw new Error(t("prof_msg_select_img"));
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
@@ -697,10 +688,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
       await supabase.from('user_stats').update({ avatar_url: publicUrl }).eq('id', user.id);
       setAvatarUrl(publicUrl);
-      setMessage({ type: 'success', text: "Profilbild erfolgreich aktualisiert!" });
+      setMessage({ type: 'success', text: t("prof_msg_avatar_updated") });
       setTimeout(() => setMessage(null), 3000);
     } catch (error: any) {
-      setMessage({ type: 'error', text: "Fehler beim Hochladen: " + error.message });
+      setMessage({ type: 'error', text: t("prof_msg_upload_err") + error.message });
       setTimeout(() => setMessage(null), 3000);
     } finally {
       setIsUploading(false);
@@ -724,7 +715,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       localStorage.clear();
       await supabase.auth.signOut();
     } catch (error: any) {
-      setMessage({ type: 'error', text: "Fehler beim Löschen: " + error.message });
+      setMessage({ type: 'error', text: t("prof_msg_delete_err") + error.message });
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -783,20 +774,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         <div className="relative flex flex-col items-center shrink-0">
           <label htmlFor="avatar-upload" className={`relative cursor-pointer group ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {avatarUrl ? (
-              <img src={avatarUrl} alt="Profilbild" className="w-28 h-28 rounded-full object-cover border-4 border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:border-cyan-500/50 transition-colors" />
+              <img src={avatarUrl} alt="Avatar" className="w-28 h-28 rounded-full object-cover border-4 border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:border-cyan-500/50 transition-colors" />
             ) : (
               <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">👤</div>
             )}
             <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏</div>
           </label>
           <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
-          {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">Lädt hoch...</span>}
+          {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">{t("prof_uploading")}</span>}
         </div>
 
         <div className="flex flex-col gap-3 w-full">
           <div className="flex justify-between items-center w-full">
             <div className="flex items-center gap-2.5">
-              <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">Spieler-Akte</h2>
+              <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">{t("prof_title")}</h2>
               {isProUser && (
                 <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-pink-950/60 border border-pink-500/50 text-pink-300 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
                   👑 PRO USER
@@ -809,25 +800,25 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
               >
-                {isSaving ? "Speichert..." : message.text}
+                {isSaving ? t("prof_saving") : message.text}
               </motion.div>
             )}
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
             <div className="flex flex-col gap-1.5 text-left">
-              <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">E-Mail</label>
+              <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">{t("prof_email")}</label>
               <div className="px-4 py-3 bg-[#030611] border border-slate-800 rounded-xl text-slate-500 text-xs font-semibold cursor-not-allowed">{user?.email}</div>
             </div>
             <div className="flex flex-col gap-1.5 text-left relative group">
-              <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">Dein Spielername</label>
+              <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">{t("prof_player_name")}</label>
               <input 
                 type="text" 
                 value={username} 
                 onChange={(e) => setUsername(e.target.value)} 
                 onBlur={handleAutoSave} 
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
-                placeholder="Name..." 
+                placeholder={t("prof_name_placeholder")} 
                 className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
               />
             </div>
@@ -835,19 +826,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
           <div className="grid grid-cols-1 w-full mt-1">
             <div className="flex flex-col gap-1.5 text-left relative group">
-              <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">Turnier Team-Name</label>
+              <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">{t("prof_team_name")}</label>
               <input 
                 type="text" 
                 value={teamName} 
                 onChange={(e) => setTeamName(e.target.value)} 
                 onBlur={handleAutoSave} 
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
-                placeholder="z.B. TacPadel Bros" 
+                placeholder={t("prof_team_placeholder")} 
                 className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
               />
             </div>
           </div>
-          <span className="text-[8px] text-slate-500 text-right mt-[-4px] mr-2">Änderungen werden automatisch gespeichert</span>
+          <span className="text-[8px] text-slate-500 text-right mt-[-4px] mr-2">{t("prof_autosave_hint")}</span>
         </div>
       </div>
 
@@ -868,7 +859,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              Dein Spind
+              {t("prof_tab_locker")}
             </button>
             <button
               onClick={() => setActive3DView('trophies')}
@@ -878,15 +869,15 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              <span>Trophäen-Vault</span>
+              <span>{t("prof_tab_trophies")}</span>
               <span className="px-1.5 py-0.5 text-[9px] rounded bg-black/40 text-purple-200">
-                {wonTrophies.length} Titel
+                {wonTrophies.length} {t("prof_titles_count")}
               </span>
             </button>
           </div>
 
           <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">
-            {lowPerfMode ? "3D Eco-Modus" : "3D Ansicht"}
+            {lowPerfMode ? t("prof_3d_eco") : t("prof_3d_view")}
           </span>
         </div>
 
@@ -919,13 +910,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
           {active3DView === 'trophies' && (
             <div className="absolute top-3 left-4 z-10 pointer-events-none">
-              <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">Tron Trophäen-Vault</span>
+              <span className="text-[8px] text-cyan-400 uppercase tracking-widest font-black block drop-shadow-[0_0_5px_rgba(6,182,212,0.8)]">{t("prof_vault_title")}</span>
             </div>
           )}
 
           {active3DView === 'trophies' && wonTrophies.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Vault noch leer</span>
+              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">{t("prof_vault_empty")}</span>
             </div>
           )}
 
@@ -1022,9 +1013,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 onClick={() => setActiveTrophyBanner(null)}
                 className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-slate-900/95 border border-cyan-500/50 rounded-xl p-4 shadow-[0_0_20px_rgba(6,182,212,0.4)] cursor-pointer z-20 flex flex-col items-center text-center"
               >
-                <span className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-1">Sieger</span>
+                <span className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-1">{t("prof_winner")}</span>
                 <h4 className="text-sm font-black text-white uppercase tracking-wider">{formatTourName(activeTrophyBanner)}</h4>
-                <span className="text-[8px] text-slate-400 mt-2">Klicken zum Schließen</span>
+                <span className="text-[8px] text-slate-400 mt-2">{t("prof_click_close")}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1043,10 +1034,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3">
             <div>
               <h3 className="text-[10px] font-black tracking-widest text-orange-400 uppercase">
-                Spielstil &amp; Ausrüstung (Locker Shop)
+                {t("prof_shop_title")}
               </h3>
               <span className="text-[9px] text-slate-500 font-bold">
-                Schalte KI-Partner, Schläger &amp; Spezialschläge mit TacPoints frei
+                {t("prof_shop_sub")}
               </span>
             </div>
             <div className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 px-3 py-1.5 rounded-xl shrink-0">
@@ -1061,9 +1052,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               {/* 1. KI-TEAMPARTNER (INKL. TACPOINTS-KAUF & FÄHIGKEIT) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Teampartner (KI)</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_partner_label")}</label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">
-                    {equippedPartner === partnerId && isPartnerUnlocked ? "✓ Im Team" : selectedPartnerObj.badge}
+                    {equippedPartner === partnerId && isPartnerUnlocked ? t("prof_in_team") : selectedPartnerObj.badge}
                   </span>
                 </div>
                 <select 
@@ -1090,7 +1081,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </select>
                 {selectedPartnerObj.perk && (
                   <span className="text-[10px] text-slate-400 italic">
-                    ⚡ {selectedPartnerObj.perk}
+                    ⚡ {formatPartnerPerk(selectedPartnerObj.id, lang, selectedPartnerObj.perk)}
                   </span>
                 )}
 
@@ -1107,8 +1098,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     }`}
                   >
                     {isPartnerUnlocked
-                      ? "Als Partner wählen"
-                      : `Partner verpflichten (${selectedPartnerObj.price} TP)`}
+                      ? t("prof_select_partner")
+                      : `${t("prof_buy_partner")} (${selectedPartnerObj.price} TP)`}
                   </button>
                 )}
               </div>
@@ -1116,9 +1107,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               {/* 2. SCHLÄGER (INKL. TACPOINTS-KAUF) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Schläger</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_racket_label")}</label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
-                    {equippedRacket === racketId && isRacketUnlocked ? "✓ Ausgerüstet" : selectedRacketObj.badge}
+                    {equippedRacket === racketId && isRacketUnlocked ? t("prof_equipped") : selectedRacketObj.badge}
                   </span>
                 </div>
                 <select 
@@ -1157,8 +1148,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     }`}
                   >
                     {isRacketUnlocked
-                      ? "Jetzt Ausrüsten"
-                      : `Freischalten (${selectedRacketObj.price} TP)`}
+                      ? t("prof_equip_now")
+                      : `${t("prof_unlock_for")} (${selectedRacketObj.price} TP)`}
                   </button>
                 )}
               </div>
@@ -1166,9 +1157,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               {/* 3. SPEZIAL-FOKUS (INKL. TACPOINTS-KAUF) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">Spezial-Fokus</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_focus_label")}</label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-orange-400">
-                    {equippedShot === shotId && isShotUnlocked ? "✓ Ausgerüstet" : selectedShotObj.badge}
+                    {equippedShot === shotId && isShotUnlocked ? t("prof_equipped") : selectedShotObj.badge}
                   </span>
                 </div>
                 <select 
@@ -1207,8 +1198,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     }`}
                   >
                     {isShotUnlocked
-                      ? "Jetzt Ausrüsten"
-                      : `Freischalten (${selectedShotObj.price} TP)`}
+                      ? t("prof_equip_now")
+                      : `${t("prof_unlock_for")} (${selectedShotObj.price} TP)`}
                   </button>
                 )}
               </div>
@@ -1220,10 +1211,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               
               <div>
                 <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                  <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">Player Attributes (Match-Wirkung)</h4>
+                  <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">{t("prof_attr_title")}</h4>
                   {(partnerId !== equippedPartner || racketId !== equippedRacket || shotId !== equippedShot) && (
                     <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
-                      Vorschau
+                      {t("prof_preview")}
                     </span>
                   )}
                 </div>
@@ -1236,7 +1227,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {renderStatDiff(loadoutStats.diffs.smash)}
                     </div>
                     <span className="text-[8px] text-slate-500 mt-1">
-                      Winner-Chance: {loadoutStats.matchModifiers.winnerChanceBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.winnerChanceBonus * 100)}%
+                      {t("prof_stat_winner_chance")} {loadoutStats.matchModifiers.winnerChanceBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.winnerChanceBonus * 100)}%
                     </span>
                   </div>
                   
@@ -1247,7 +1238,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {renderStatDiff(loadoutStats.diffs.control)}
                     </div>
                     <span className="text-[8px] text-slate-500 mt-1">
-                      Eigenfehler: {Math.round((loadoutStats.matchModifiers.errorReductionFactor - 1) * 100)}%
+                      {t("prof_stat_unforced_errors")} {Math.round((loadoutStats.matchModifiers.errorReductionFactor - 1) * 100)}%
                     </span>
                   </div>
                   
@@ -1258,7 +1249,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {renderStatDiff(loadoutStats.diffs.defense)}
                     </div>
                     <span className="text-[8px] text-slate-500 mt-1">
-                      Block/Rettung: {loadoutStats.matchModifiers.defenseSaveBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.defenseSaveBonus * 100)}%
+                      {t("prof_stat_block_save")} {loadoutStats.matchModifiers.defenseSaveBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.defenseSaveBonus * 100)}%
                     </span>
                   </div>
                   
@@ -1269,15 +1260,15 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {renderStatDiff(loadoutStats.diffs.agility)}
                     </div>
                     <span className="text-[8px] text-slate-500 mt-1">
-                      Ausdauer-Verbrauch: {Math.round((loadoutStats.matchModifiers.staminaDrainMultiplier - 1) * 100)}%
+                      {t("prof_stat_stamina_drain")} {Math.round((loadoutStats.matchModifiers.staminaDrainMultiplier - 1) * 100)}%
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-5 pt-3 border-t border-slate-800/80 text-[9px] text-slate-400 flex items-center justify-between">
-                <span>Aktives Team-Setup wirkt in Einzelmatches &amp; TP Tour</span>
-                <span className="text-emerald-400 font-black uppercase">Aktiv ✓</span>
+                <span>{t("prof_setup_active_hint")}</span>
+                <span className="text-emerald-400 font-black uppercase">{t("prof_active_badge")}</span>
               </div>
             </div>
 
@@ -1289,8 +1280,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* 2.5 STATISTIK-FILTER (EINZEL / TURNIER)   */}
       {/* ========================================= */}
       <div className="flex bg-[#030611]/80 border border-slate-800/80 rounded-xl p-1.5 w-full mt-4 shadow-lg">
-        <button onClick={() => setStatsMode('single')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>Einzel-Matches</button>
-        <button onClick={() => setStatsMode('tournament')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>Turniere</button>
+        <button onClick={() => setStatsMode('single')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>{t("prof_filter_single")}</button>
+        <button onClick={() => setStatsMode('tournament')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>{t("prof_filter_tour")}</button>
       </div>
 
       {/* ========================================= */}
@@ -1298,8 +1289,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-row justify-between items-center">
         <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Match Bilanz ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
-          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Siegquote &amp; Historie</span>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">{t("prof_balance_title")} ({statsMode === 'single' ? t("prof_mode_single") : t("prof_mode_tour")})</h3>
+          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">{t("prof_balance_sub")}</span>
         </div>
         <div className="flex items-center gap-5 sm:gap-8">
           <div className="flex gap-3 sm:gap-4 text-[10px] font-black tracking-widest uppercase items-center">
@@ -1318,26 +1309,26 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Schlag-Analyse ({statsMode === 'single' ? 'Einzel' : 'Turnier'})</h3>
-          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">Letzte {matchesWithStats} Matches</span>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">{t("prof_shot_analysis")} ({statsMode === 'single' ? t("prof_mode_single") : t("prof_mode_tour")})</h3>
+          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">{t("prof_last_matches_1")} {matchesWithStats} {t("prof_last_matches_2")}</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
             <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgWinners}</span>
-            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">Winner</span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("prof_stat_winners")}</span>
           </div>
           <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
             <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgAces}</span>
-            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">Asse</span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("prof_stat_aces")}</span>
           </div>
           <div className="bg-[#050b18] py-4 rounded-lg border border-red-900/20 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
             <span className="text-2xl font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">{aggStats.avgErrors}</span>
-            <span className="text-[9px] text-red-900/80 uppercase tracking-widest font-bold mt-1">Fehler (UFE)</span>
+            <span className="text-[9px] text-red-900/80 uppercase tracking-widest font-bold mt-1">{t("prof_stat_errors")}</span>
           </div>
           <div className="bg-[#050b18] py-4 rounded-lg border border-emerald-500/30 flex flex-col items-center justify-center text-center shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
             <span className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">{aggStats.perfectRatio}%</span>
-            <span className="text-[9px] text-emerald-700/80 uppercase tracking-widest font-bold mt-1">Perfekte Schläge</span>
+            <span className="text-[9px] text-emerald-700/80 uppercase tracking-widest font-bold mt-1">{t("prof_stat_perfect")}</span>
           </div>
         </div>
       </div>
@@ -1348,7 +1339,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 h-[280px] flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
-            Performance Historie ({statsMode === 'single' ? 'TacScore' : 'TacPoints'})
+            {t("prof_chart_title")} ({statsMode === 'single' ? 'TacScore' : 'TacPoints'})
           </h3>
           <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">Max 20</span>
         </div>
@@ -1382,36 +1373,36 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex flex-col text-center sm:text-left">
-            <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Audio, Haptik &amp; UI</h3>
-            <span className="text-[9px] text-slate-600 font-bold mt-1">Musik, SFX, Vibration, Texte und Sprache steuern</span>
+            <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase">{t("prof_audio_title")}</h3>
+            <span className="text-[9px] text-slate-600 font-bold mt-1">{t("prof_audio_sub")}</span>
           </div>
           <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
             <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SFX</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_sfx")}</span>
               <button onClick={toggleSound} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${soundEnabled ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-700'}`}>
                 <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: soundEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
               </button>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Musik</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_music")}</span>
               <button onClick={toggleMusic} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${musicEnabled ? 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-slate-700'}`}>
                 <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: musicEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
               </button>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Vibration</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_vibration")}</span>
               <button onClick={toggleHaptics} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${hapticsEnabled ? 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]' : 'bg-slate-700'}`}>
                 <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: hapticsEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
               </button>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Texte</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_texts")}</span>
               <button onClick={toggleExplanations} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showExplanations ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-700'}`}>
                 <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showExplanations ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
               </button>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Namen</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_names")}</span>
               <button onClick={toggleNameTags} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showNameTags ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-slate-700'}`}>
                 <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: showNameTags ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
               </button>
@@ -1422,7 +1413,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         {/* SPRACH-UMSCHALTER (DE / EN / ES) */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-3 border-t border-slate-800/80">
           <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
-            🌐 App-Sprache / Language / Idioma
+            {t("prof_lang_label")}
           </span>
           <div className="flex bg-[#050b18] p-1 rounded-xl border border-slate-800 gap-1">
             {([
@@ -1432,9 +1423,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             ] as const).map((l) => (
               <button
                 key={l.code}
-                onClick={() => handleChangeLanguage(l.code)}
+                onClick={() => setLang(l.code)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  appLang === l.code
+                  lang === l.code
                     ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                     : 'text-slate-400 hover:text-white'
                 }`}
@@ -1451,18 +1442,18 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Spielmechanik &amp; Grafik</h3>
-          <span className="text-[9px] text-slate-600 font-bold mt-1">Simulations-Limits und Performance-Modus für ältere Geräte</span>
+          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">{t("prof_mech_title")}</h3>
+          <span className="text-[9px] text-slate-600 font-bold mt-1">{t("prof_mech_sub")}</span>
         </div>
         <div className="flex flex-wrap justify-center sm:justify-start items-center gap-5 sm:gap-6">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ausdauer</span>
+            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t("prof_stamina")}</span>
             <button onClick={toggleStamina} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${staminaEnabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: staminaEnabled ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Perf.-Modus</span>
+            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest">{t("prof_perf_mode")}</span>
             <button onClick={toggleLowPerf} className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${lowPerfMode ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'bg-slate-700'}`}>
               <motion.div layout className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-md" animate={{ x: lowPerfMode ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} />
             </button>
@@ -1528,8 +1519,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full bg-[#030611]/80 border border-red-950/50 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex flex-col text-center sm:text-left">
-            <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">Konto &amp; Datenschutz</h3>
-            <span className="text-[9px] text-slate-600 font-bold mt-1">Datenschutzerklärung einsehen oder Account dauerhaft entfernen</span>
+            <h3 className="text-[10px] font-black tracking-widest text-red-400 uppercase">{t("prof_account_title")}</h3>
+            <span className="text-[9px] text-slate-600 font-bold mt-1">{t("prof_account_sub")}</span>
           </div>
 
           <div className="flex flex-wrap justify-center items-center gap-2.5 shrink-0">
@@ -1539,7 +1530,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               rel="noopener noreferrer"
               className="px-4 py-2.5 bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 rounded-lg text-[10px] font-black text-slate-300 hover:text-cyan-400 uppercase tracking-widest transition-all"
             >
-              Datenschutz ↗
+              {t("prof_privacy_link")}
             </a>
 
             {!showDeleteConfirm && (
@@ -1547,7 +1538,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 onClick={() => setShowDeleteConfirm(true)}
                 className="px-4 py-2.5 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 rounded-lg text-[10px] font-black text-red-400 uppercase tracking-widest transition-all"
               >
-                Konto löschen
+                {t("prof_delete_btn")}
               </button>
             )}
           </div>
@@ -1562,7 +1553,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               className="bg-red-950/20 border border-red-500/40 rounded-lg p-4 flex flex-col gap-3 overflow-hidden"
             >
               <p className="text-xs font-bold text-red-300 text-center sm:text-left leading-relaxed">
-                Bist du sicher? Dein gesamter Fortschritt (TacScore, Trophäen, Match-Historie und Account) wird <span className="underline font-black text-white">sofort und unwiderruflich</span> gelöscht.
+                {t("prof_delete_warn_1")} <span className="underline font-black text-white">{t("prof_delete_warn_bold")}</span> {t("prof_delete_warn_2")}
               </p>
               <div className="flex flex-col sm:flex-row justify-end gap-2.5 mt-1">
                 <button
@@ -1570,14 +1561,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   disabled={isDeleting}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-black text-slate-300 uppercase tracking-widest transition-colors"
                 >
-                  Abbrechen
+                  {t("prof_cancel")}
                 </button>
                 <button
                   onClick={handleDeleteAccount}
                   disabled={isDeleting}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-[10px] font-black text-white uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all disabled:opacity-50"
                 >
-                  {isDeleting ? "Löscht..." : "Ja, endgültig löschen"}
+                  {isDeleting ? t("prof_deleting") : t("prof_confirm_delete")}
                 </button>
               </div>
             </motion.div>
@@ -1586,7 +1577,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       <button onClick={() => setActiveTab("home")} className="text-[10px] text-slate-500 hover:text-slate-300 font-bold uppercase tracking-widest transition-colors mt-2">
-        ← Zurück zum Menü
+        {t("prof_back_menu")}
       </button>
 
     </motion.div>
