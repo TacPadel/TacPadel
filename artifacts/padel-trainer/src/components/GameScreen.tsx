@@ -17,6 +17,30 @@ import GameTutorial from "./GameTutorial";
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
 import { TOURNAMENTS } from "../engine/Tournaments";
+import { calculateLoadoutStats, SHOP_PARTNERS } from "../lib/loadout";
+
+// --- HILFSFUNKTION: Partnernamen aus Shop (oder altem KI-Profil) sauber auflösen ---
+const resolvePartnerDisplayName = (rawPartnerId?: string | null): string => {
+  const id = rawPartnerId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+  const shopPartner = SHOP_PARTNERS.find((p) => p.id === id);
+  if (shopPartner) {
+    return shopPartner.name.split(" (")[0];
+  }
+  if (id.includes("-")) {
+    const [pId, pNum] = id.split("-");
+    const prof = AI_PROFILES.find((p) => p.id === pId);
+    if (prof) return pNum === "1" ? prof.p1 : prof.p2;
+  }
+  return SHOP_PARTNERS[0].name.split(" (")[0];
+};
+
+// Ordnet die Shop-ID des Spezial-Fokus dem echten Schlag-Typ im Spiel zu
+const getFocusShotType = (shotId?: string | null): string => {
+  const s = (shotId || localStorage.getItem("tacpadel_power_shot") || "smash").toLowerCase();
+  if (s.includes("bandeja")) return "BANDEJA";
+  if (s.includes("vibora")) return "VIBORA";
+  return "SMASH";
+};
 
 // --- HAPTICS: Kräftiger, synchroner Impuls bei Punktgewinn ---
 const triggerPointWinHaptic = () => {
@@ -119,6 +143,17 @@ export default function GameScreen() {
 
   const [showTutorial, setShowTutorial] = useState(false);
 
+  // --- AKTIVES LOADOUT & VISUELLES FEEDBACK FÜR AUSRÜSTUNGS-EFFEKT ---
+  const [activeLoadout, setActiveLoadout] = useState(() => calculateLoadoutStats());
+  const [activeGearBoostMsg, setActiveGearBoostMsg] = useState<string | null>(null);
+
+  const refreshLoadoutAndPartner = (customPartnerId?: string | null) => {
+    const freshLoadout = calculateLoadoutStats(customPartnerId || undefined);
+    setActiveLoadout(freshLoadout);
+    setPartnerName(resolvePartnerDisplayName(customPartnerId));
+    return freshLoadout;
+  };
+
   useEffect(() => {
     const hasSeen = localStorage.getItem("tacpadel_hasSeenGameTutorial");
     if (!hasSeen) {
@@ -134,7 +169,7 @@ export default function GameScreen() {
   const [activeAiProfile, setActiveAiProfile] = useState<AiProfile>(AI_PROFILES[0]);
 
   const [userTeamName, setUserTeamName] = useState<string>("Dein Team");
-  const [partnerName, setPartnerName] = useState<string>("Partner");
+  const [partnerName, setPartnerName] = useState<string>(() => resolvePartnerDisplayName());
   const [playerName, setPlayerName] = useState<string>("Du");
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -253,7 +288,7 @@ export default function GameScreen() {
 
           const { data, error } = await supabase
             .from("user_stats")
-            .select("points, team_name, partner_id, display_name") 
+            .select("points, team_name, partner_id, equipped_racket, equipped_shot, display_name") 
             .eq("id", session.user.id)
             .single();
 
@@ -268,10 +303,15 @@ export default function GameScreen() {
 
             if (data.team_name) setUserTeamName(data.team_name);
             if (data.partner_id) {
-              const [pId, pNum] = data.partner_id.split('-');
-              const prof = AI_PROFILES.find(p => p.id === pId);
-              if (prof) setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
+              localStorage.setItem("tacpadel_partner_id", data.partner_id);
             }
+            if (data.equipped_racket) {
+              localStorage.setItem("tacpadel_racket_id", data.equipped_racket);
+            }
+            if (data.equipped_shot) {
+              localStorage.setItem("tacpadel_power_shot", data.equipped_shot);
+            }
+            refreshLoadoutAndPartner(data.partner_id);
             return; 
           }
         } else {
@@ -279,6 +319,7 @@ export default function GameScreen() {
           userIdRef.current = null;
           setPlayerName("Gast");
           setUserTeamName("Team Gast");
+          refreshLoadoutAndPartner("partner_rookie");
           localStorage.removeItem("tacpadel_savegame");
           localStorage.removeItem("tacpadel_tour_stamina");
           localStorage.removeItem("tacpadel_score");
@@ -291,13 +332,7 @@ export default function GameScreen() {
       
       const saved = localStorage.getItem("tacpadel_score");
       if (saved) setTacScore(parseInt(saved, 10));
-      
-      const localPartner = localStorage.getItem("tacpadel_partner_id");
-      if (localPartner) {
-        const [pId, pNum] = localPartner.split('-');
-        const prof = AI_PROFILES.find(p => p.id === pId);
-        if (prof) setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
-      }
+      refreshLoadoutAndPartner();
     };
     fetchUserScore();
 
@@ -523,6 +558,8 @@ export default function GameScreen() {
         return false;
       }
 
+      refreshLoadoutAndPartner();
+
       setActiveTournamentId(parsed.tournamentId || null);
       setActiveTournamentRound(parsed.tournamentRound || 1);
       setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
@@ -577,6 +614,7 @@ export default function GameScreen() {
   };
 
   const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0, isRematch: boolean = false) => {
+    refreshLoadoutAndPartner();
     setIsTourOpen(false);
     setIsMenuOpen(false);
     
@@ -678,6 +716,7 @@ export default function GameScreen() {
   };
 
   const startNewGame = () => {
+    refreshLoadoutAndPartner();
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
@@ -724,6 +763,9 @@ export default function GameScreen() {
       const delay = isAiServing ? 2800 : 1500;
       
       t = setTimeout(() => {
+        const currentLoadout = calculateLoadoutStats();
+        setActiveLoadout(currentLoadout);
+
         let currentAiHitter: "opp1" | "opp2" = "opp1";
         const { isRightCourt } = getServerInfo(totalPoints); 
         const ballLandedAt = courtState.ball.zone;
@@ -783,6 +825,17 @@ export default function GameScreen() {
           }
         }
 
+        // =========================================================================
+        // 🛡️ DEFENSE-MODIFIKATOR: Chance, einen KI-Winner per Reflex-Block zu entschärfen
+        // =========================================================================
+        const defSaveChance = Math.max(0, currentLoadout.matchModifiers.defenseSaveBonus);
+        if (finalAiResult === "perfect" && defSaveChance > 0 && Math.random() < defSaveChance) {
+          finalAiResult = "success";
+          finalAiTitle = `🛡️ REFLEX-ABWEHR (${partnerName.toUpperCase()})!`;
+          finalAiMessage = `Starke Defensive (${currentLoadout.stats.defense} DEF): Euer Team entschärft den gegnerischen Winner im letzten Moment!`;
+          setActiveGearBoostMsg(`🛡️ DEFENSIVE-SAVE (${currentLoadout.stats.defense} DEF): Gegnerischer Winner entschärft!`);
+        }
+
         const aiShotUpper = (brain.shot || "").toUpperCase();
         if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(aiShotUpper) || finalAiResult === "perfect") {
           playSfx("hit_smash");
@@ -839,6 +892,12 @@ export default function GameScreen() {
           calcDuration = Math.max(calcDuration, 3600);
         }
 
+        // ⚡ AGILITY-MODIFIKATOR: Gibt dir bis zu +12% mehr Reaktionszeit beim Timer
+        const agilityTimeBonus = 1 + Math.max(-0.04, Math.min(0.12, (currentLoadout.stats.agility - 50) * 0.008));
+        if (finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
+          calcDuration = Math.round(calcDuration * agilityTimeBonus);
+        }
+
         if (staminaModeEnabled && (staminaRef.current.you <= 0 || staminaRef.current.partner <= 0)) {
             if (finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
                 calcDuration *= 0.65;
@@ -853,6 +912,7 @@ export default function GameScreen() {
         if (finalAiResult?.startsWith("error")) fColor = "text-emerald-400";
         else if (finalAiResult === "recovery") fColor = "text-amber-400";
         else if (finalAiResult === "perfect") fColor = "text-red-600";
+        else if (finalAiTitle.includes("REFLEX-ABWEHR")) fColor = "text-cyan-400";
         
         showFlash(finalAiTitle, fColor, calcDuration + 800);
 
@@ -916,7 +976,7 @@ export default function GameScreen() {
       }, delay); 
     }
     return () => clearTimeout(t);
-  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty, activeAiProfile]);
+  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty, activeAiProfile, partnerName]);
 
   useEffect(() => {
     if (phase !== "timer_running") return;
@@ -991,13 +1051,15 @@ export default function GameScreen() {
                 }
             }
             
+            // ⚡ AGILITY-MODIFIKATOR BEIM ANLAUFEN DES BALLS
             if (staminaModeEnabled) {
-              const youDist = getZoneDist(currentYouPos, interceptYouRun);
-              const partnerDist = getZoneDist(currentPartnerPos, interceptPartnerRun);
+              const drainMult = calculateLoadoutStats().matchModifiers.staminaDrainMultiplier;
+              const youDist = Number((getZoneDist(currentYouPos, interceptYouRun) * drainMult).toFixed(1));
+              const partnerDist = Number((getZoneDist(currentPartnerPos, interceptPartnerRun) * drainMult).toFixed(1));
               setStamina(s => ({
                 ...s,
-                you: Math.max(0, s.you - youDist),
-                partner: Math.max(0, s.partner - partnerDist)
+                you: Math.max(0, Number((s.you - youDist).toFixed(1))),
+                partner: Math.max(0, Number((s.partner - partnerDist).toFixed(1)))
               }));
             }
 
@@ -1131,7 +1193,14 @@ export default function GameScreen() {
 
   const handleSubmit = () => {
     setPhase("player_animating"); 
+    setActiveGearBoostMsg(null);
+
+    const currentLoadout = calculateLoadoutStats();
+    setActiveLoadout(currentLoadout);
+
     const chosenShot = commands[hitterId].shot!;
+    const focusShotType = getFocusShotType(currentLoadout.shot.id);
+    const isUsingFocusShot = chosenShot.toUpperCase() === focusShotType;
 
     const handleTurnResult = (result: TurnResult, shotType: string) => {
       if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(shotType) || result === "perfect") playSfx("hit_smash"); 
@@ -1158,21 +1227,23 @@ export default function GameScreen() {
     const recoveryYouRun = commands.you.run || courtState.you;
     const recoveryPartnerRun = commands.partner.run || courtState.partner;
     
+    // ⚡ AGILITY-MODIFIKATOR BEIM SCHLAGEN & VERSCHIEBEN
     if (staminaModeEnabled) {
-      const STAMINA_COST_PER_SHOT = 2;
+      const drainMult = currentLoadout.matchModifiers.staminaDrainMultiplier;
+      const staminaCostPerShot = Number((2 * drainMult).toFixed(1));
       const o1Row = parseInt(courtState.opp1[1]);
       const o2Row = parseInt(courtState.opp2[1]);
       const oppsAtNet = o1Row >= 3 || o2Row >= 3;
 
-      const youDist = getZoneDist(courtState.you, recoveryYouRun);
-      const partnerDist = getZoneDist(courtState.partner, recoveryPartnerRun);
+      const youDist = Number((getZoneDist(courtState.you, recoveryYouRun) * drainMult).toFixed(1));
+      const partnerDist = Number((getZoneDist(courtState.partner, recoveryPartnerRun) * drainMult).toFixed(1));
       const youRegen = evalRunTactics(chosenShot, recoveryYouRun, oppsAtNet);
       const partnerRegen = evalRunTactics(chosenShot, recoveryPartnerRun, oppsAtNet);
 
       setStamina(s => ({
         ...s,
-        you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.you - youDist + youRegen - (hitterId === "you" ? STAMINA_COST_PER_SHOT : 0))),
-        partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, s.partner - partnerDist + partnerRegen - (hitterId === "partner" ? STAMINA_COST_PER_SHOT : 0)))
+        you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.you - youDist + youRegen - (hitterId === "you" ? staminaCostPerShot : 0)).toFixed(1)))),
+        partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.partner - partnerDist + partnerRegen - (hitterId === "partner" ? staminaCostPerShot : 0)).toFixed(1))))
       }));
     }
 
@@ -1199,11 +1270,13 @@ export default function GameScreen() {
     let currentTurnResult: TurnResult = "success";
     let message = "";
     let tTitle = ""; 
+    let isRuleError = false;
 
     if (isPlayerServingTurn && hitterId !== serverId) {
       currentTurnResult = "error_wrong_zone";
       tTitle = "❌ FALSCHER AUFSCHLÄGER!";
       message = `Regelfehler! Falscher Aufschlag. Laut Rotation ${serverId === "you" ? "bist DU" : `ist ${partnerName}`} an der Reihe!`;
+      isRuleError = true;
     } 
     else if (isPlayerServingTurn) {
       const hCol = hitFromPos.charAt(0).toUpperCase();
@@ -1218,6 +1291,7 @@ export default function GameScreen() {
          currentTurnResult = "error_out"; 
          tTitle = "❌ FEHLAUFSCHLAG!";
          message = "Regelfehler! Der Aufschlag muss diagonal ins gegenüberliegende Feld (oder auf die T-Linie) gespielt werden. Geradeaus ist ein Fehler!";
+         isRuleError = true;
       }
     }
     else if (isPlayerReturningTurn) {
@@ -1228,10 +1302,11 @@ export default function GameScreen() {
          currentTurnResult = "error_wrong_zone";
          tTitle = "❌ FALSCHER RETURNER!";
          message = `Regelfehler! Der Aufschlag kam diagonal auf ${expectedReturner === "you" ? "dich" : partnerName}. Abfangen ist beim Return verboten!`;
+         isRuleError = true;
       }
     }
 
-    if (currentTurnResult === "success") {
+    if (!isRuleError) {
       const evalResult = evaluatePlayerShot(
         chosenShot, hitFromPos, targetPos, 
         courtState.opp1, courtState.opp2, isPlayerServingTurn, isPlayerReturningTurn, isDugOut, 
@@ -1241,6 +1316,61 @@ export default function GameScreen() {
       currentTurnResult = evalResult.result;
       tTitle = evalResult.title; 
       message = evalResult.message;
+
+      // =======================================================================
+      // 🎾 MICRO-BALANCING: CONTROL & SMASH POWER + SPEZIAL-FOKUS SYNERGIE
+      // =======================================================================
+      const hitterStamina = staminaRef.current[hitterId];
+      const isExhausted = staminaModeEnabled && hitterStamina <= 0;
+
+      if (!isExhausted) {
+        const controlBonusChance = Math.max(0, 1 - currentLoadout.matchModifiers.errorReductionFactor);
+        const smashBonusChance = Math.max(
+          0,
+          currentLoadout.matchModifiers.winnerChanceBonus + (isUsingFocusShot ? 0.04 : 0)
+        );
+
+        // 1. CONTROL-RETTUNG: Knapper Aus-/Netz-Fehler kratzt noch die Linie -> Recovery
+        if (
+          (currentTurnResult === "error_out" || currentTurnResult === "error_net") &&
+          controlBonusChance > 0 &&
+          Math.random() < controlBonusChance
+        ) {
+          currentTurnResult = "recovery";
+          tTitle = `🎯 CONTROL-RETTUNG (${currentLoadout.stats.control} CTRL)!`;
+          message = `Dank deines präzisen Setups (${currentLoadout.racket.name}) kratzt dieser riskante Ball noch haarscharf die Linie!`;
+          setActiveGearBoostMsg(`🎯 CONTROL-SAVE (${currentLoadout.racket.name}): Fehler noch an die Linie gerettet!`);
+        }
+        // 2. CONTROL-STABILISIERUNG: Wackler (Recovery) wird zu solidem Schlag (Success)
+        else if (
+          currentTurnResult === "recovery" &&
+          controlBonusChance > 0 &&
+          Math.random() < controlBonusChance * 1.15
+        ) {
+          currentTurnResult = "success";
+          tTitle = `🎯 PRÄZISIONS-SCHLAG (${currentLoadout.stats.control} CTRL)!`;
+          message += ` [🎯 Control-Bonus: Dein Setup stabilisiert den Ball perfekt!]`;
+          setActiveGearBoostMsg(`🎯 CONTROL-BOOST (${currentLoadout.stats.control} CTRL): Wackler stabilisiert!`);
+        }
+        // 3. SMASH-POWER & SPEZIAL-FOKUS: Solider Offensivschlag wird zum direkten Winner!
+        else if (
+          currentTurnResult === "success" &&
+          ["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(chosenShot) &&
+          smashBonusChance > 0 &&
+          Math.random() < smashBonusChance
+        ) {
+          currentTurnResult = "perfect";
+          tTitle = isUsingFocusShot
+            ? `⚡ SPEZIAL-WINNER (${currentLoadout.shot.name.toUpperCase()})!`
+            : `💥 POWER-WINNER (${currentLoadout.stats.smash} PWR)!`;
+          message += ` [💥 Power-Boost: Dein Setup verwandelt diesen Angriff in einen unhaltbaren Winner!]`;
+          setActiveGearBoostMsg(
+            isUsingFocusShot
+              ? `⚡ SPEZIAL-FOKUS (${currentLoadout.shot.name}): Unhaltbarer Winner!`
+              : `💥 SMASH-POWER (${currentLoadout.stats.smash} PWR): Direkter Winner-Boost!`
+          );
+        }
+      }
 
       if (staminaModeEnabled) {
         const currentStamina = staminaRef.current[hitterId];
@@ -1300,6 +1430,7 @@ export default function GameScreen() {
     if (!showResultOverlay) return; 
     
     setShowResultOverlay(false);
+    setActiveGearBoostMsg(null);
     
     let newPlayerScore = playerScore;
     let newAiScore = aiScore;
@@ -1529,6 +1660,8 @@ export default function GameScreen() {
     const totalPointsForServe = pScore + aScore;
 
     const { serverId, isRightCourt } = getServerInfo(totalPointsForServe);
+    const currentPartnerDisplay = resolvePartnerDisplayName();
+    setPartnerName(currentPartnerDisplay);
     
     let pYou = "B1", pPartner = "D4", pOpp1 = "B1", pOpp2 = "D1";
     let ballZone = "B1", ballSide: "left" | "right" = "left";
@@ -1545,7 +1678,7 @@ export default function GameScreen() {
       if (isRightCourt) { pPartner = "D1"; pYou = "B4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
       else { pPartner = "B1"; pYou = "B4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
       ballSide = "left"; nextPhase = "player_planning"; receiverId = "partner"; 
-      if (!suppressFlash) showFlash(isSecondServe ? `⚠️ 2. AUFSCHLAG (${partnerName.toUpperCase()})!` : `${partnerName.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
+      if (!suppressFlash) showFlash(isSecondServe ? `⚠️ 2. AUFSCHLAG (${currentPartnerDisplay.toUpperCase()})!` : `${currentPartnerDisplay.toUpperCase()} SCHLÄGT AUF!`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
     } 
     else if (serverId === "opp1") {
       if (isRightCourt) { pOpp1 = "B1"; pOpp2 = "D4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
@@ -1586,8 +1719,8 @@ export default function GameScreen() {
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
              : tacScore;
          newStamina = {
-           you: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.you + 1),
-           partner: Math.min(MAX_PLAYER_STAMINA, staminaRef.current.partner + 1),
+           you: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.you + 1).toFixed(1))),
+           partner: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.partner + 1).toFixed(1))),
            opp1: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp1 + 1),
            opp2: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp2 + 1)
          };
@@ -1651,6 +1784,7 @@ export default function GameScreen() {
 
   const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
+  const focusShotType = getFocusShotType(activeLoadout.shot.id);
 
   let savedMatchSubtext = "";
   let hasValidSave = false;
@@ -1743,8 +1877,22 @@ export default function GameScreen() {
               <img src="/logo.png" alt="TacPadel Background" className="w-full h-full object-cover opacity-100" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/40 to-transparent"></div>
             </div>
-            <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-4 w-full">
+            <div className="relative z-10 h-full flex flex-col items-center justify-end pb-10 sm:pb-12 px-4 gap-3.5 w-full">
               <h1 className="text-4xl sm:text-5xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,119,0,0.8)] mb-auto mt-10"></h1>
+
+              {/* AKTIVES TEAM-LOADOUT VORSCHAU IM MATCH-MENÜ */}
+              <div className="w-full max-w-sm bg-[#030611]/90 border border-cyan-500/30 rounded-xl p-3 backdrop-blur-md shadow-lg flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-cyan-400">
+                  <span>🤝 Partner: {partnerName}</span>
+                  <span>🎾 {activeLoadout.racket.name}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-800 text-center text-[9px] font-black">
+                  <div className="bg-slate-900/80 rounded py-1 text-orange-400">PWR {activeLoadout.stats.smash}</div>
+                  <div className="bg-slate-900/80 rounded py-1 text-cyan-400">CTRL {activeLoadout.stats.control}</div>
+                  <div className="bg-slate-900/80 rounded py-1 text-emerald-400">DEF {activeLoadout.stats.defense}</div>
+                  <div className="bg-slate-900/80 rounded py-1 text-purple-400">AGI {activeLoadout.stats.agility}</div>
+                </div>
+              </div>
 
               {!userId && (
                 <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-center backdrop-blur-md shadow-lg">
@@ -1853,7 +2001,7 @@ export default function GameScreen() {
           let icon = "✓"; 
           
           const firstChar = rawText.charAt(0);
-          if (["⭐", "❌", "⚠️", "✓", "🏆"].includes(firstChar)) { icon = firstChar; rawText = rawText.slice(1).trim(); } 
+          if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡"].includes(firstChar)) { icon = firstChar; rawText = rawText.slice(1).trim(); } 
           else if (rawText.includes("KI ") || rawText.includes("Gegner:")) { icon = "🤖"; }
 
           const words = rawText.split(" ");
@@ -2069,7 +2217,7 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
-      {/* --- GEÄNDERT: flex-1 statt fester Höhe, damit sich der Court perfekt anpasst --- */}
+      {/* --- COURT BEREICH --- */}
       <div className="relative w-full flex-1 min-h-[400px] sm:min-h-[500px] overflow-hidden pointer-events-auto">
         
         {/* --- AUSDAUER HUD OVERLAY --- */}
@@ -2126,7 +2274,7 @@ export default function GameScreen() {
 
               <div className="absolute bottom-4 right-4 flex flex-col gap-1 w-28 sm:w-36 items-end">
                  <div className="flex justify-between items-end w-full flex-row-reverse">
-                   <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{partnerName}</span>
+                   <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)] truncate max-w-[110px]">{partnerName}</span>
                    {stamina.partner <= MAX_PLAYER_STAMINA * 0.3 && <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
                  </div>
                  <div className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${stamina.partner <= MAX_PLAYER_STAMINA * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
@@ -2218,11 +2366,17 @@ export default function GameScreen() {
 
         {(phase === "player_planning" || phase === "timer_running") && !gameOver && (
           <>
-            <div className="flex items-center justify-between px-1 mb-2 mt-1">
-              <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
-                {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
-              </span>
-              <div className="w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+            <div className="flex items-center justify-between px-1 mb-2 mt-1 gap-2">
+              <div className="flex items-center gap-2 truncate">
+                <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
+                  {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. Aufschlag)` : "(Schläger)") : "(Absicherung)"}
+                </span>
+                {/* KOMPAKTER LOADOUT-INDIKATOR IM HUD */}
+                <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
+                  🎾 {activeLoadout.racket.name} • ⚡ {focusShotType}
+                </span>
+              </div>
+              <div className="w-2/5 sm:w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800 shrink-0">
                 <div ref={progressBarRef} className={`h-full ${isTimerPhase ? 'bg-emerald-500 w-full' : 'w-0 opacity-0'}`} />
               </div>
             </div>
@@ -2250,7 +2404,9 @@ export default function GameScreen() {
                   </div>
                   <div onClick={() => !isTimerPhase && setIsShotModalOpen(true)} className={`p-1.5 rounded border text-center cursor-pointer ${commands[activeChar].shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/40 bg-orange-950/30 animate-pulse'}`}>
                     <div className="text-[7px] font-black text-orange-400 uppercase">Schlag</div>
-                    <div className="text-[9px] font-bold text-white truncate">{commands[activeChar].shot || "WÄHLEN"}</div>
+                    <div className="text-[9px] font-bold text-white truncate">
+                      {commands[activeChar].shot ? (commands[activeChar].shot === focusShotType ? `⚡ ${commands[activeChar].shot}` : commands[activeChar].shot) : "WÄHLEN"}
+                    </div>
                   </div>
                 </>
               ) : (
@@ -2285,12 +2441,34 @@ export default function GameScreen() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsShotModalOpen(false)} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm pointer-events-auto" />
             <motion.div drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.2} onDragEnd={(_, info) => { if (info.offset.y > 100) setIsShotModalOpen(false); }} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none pointer-events-auto">
               <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
-              <div className="flex justify-between items-center mb-2"><h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">Welchen Schlag wählst du?</h3></div>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">Welchen Schlag wählst du?</h3>
+                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  ⚡ Fokus: {activeLoadout.shot.name}
+                </span>
+              </div>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-10">
                 {SHOT_TYPES.map((shot) => {
                   const isSelected = commands[activeChar].shot === shot;
-                  let btnStyle = isSelected ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]" : "bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/60";
-                  return <button key={shot} disabled={isAnimPhase} onClick={() => { updateCommand(activeChar, { shot }); setIsShotModalOpen(false); }} className={`w-full flex items-center justify-center py-3 px-1 rounded-lg border text-[9px] font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}>{shot}</button>;
+                  const isFocusShot = shot === focusShotType;
+                  let btnStyle = isSelected
+                    ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]"
+                    : isFocusShot
+                      ? "bg-amber-950/30 border-amber-500/50 text-amber-300 hover:bg-amber-900/40"
+                      : "bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/60";
+                  return (
+                    <button
+                      key={shot}
+                      disabled={isAnimPhase}
+                      onClick={() => { updateCommand(activeChar, { shot }); setIsShotModalOpen(false); }}
+                      className={`w-full flex flex-col items-center justify-center py-3 px-1 rounded-lg border text-[9px] font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
+                    >
+                      <span>{shot}</span>
+                      {isFocusShot && (
+                        <span className="text-[7px] text-amber-400 font-black mt-0.5">⚡ FOKUS-BOOST</span>
+                      )}
+                    </button>
+                  );
                 })}
               </div>
             </motion.div>
@@ -2305,7 +2483,13 @@ export default function GameScreen() {
             <div className={`flex flex-col md:flex-row gap-6 items-center ${showExplanations ? 'justify-between' : 'justify-center'}`}>
               
               {showExplanations && (
-                <div className="flex-1 text-center md:text-left flex flex-col justify-center">
+                <div className="flex-1 text-center md:text-left flex flex-col justify-center gap-2">
+                  {/* VISUELLES LOADOUT-FEEDBACK WENN EIN ATTRIBUT GEGRIFFEN HAT */}
+                  {activeGearBoostMsg && (
+                    <div className="inline-flex items-center self-center md:self-start gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-cyan-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+                      <span>{activeGearBoostMsg}</span>
+                    </div>
+                  )}
                   <p className="text-slate-200 text-sm sm:text-base leading-relaxed max-w-3xl font-medium">{turnMessage}</p>
                 </div>
               )}
