@@ -20,7 +20,7 @@ export const getAppLanguage = (): AppLanguage => {
       if (code.startsWith("de")) return "de";
     }
   } catch {}
-  return "en"; // Internationaler Fallback für alle anderen Länder
+  return "en";
 };
 
 export const setAppLanguage = (lang: AppLanguage) => {
@@ -67,6 +67,76 @@ export const formatLevelName = (lvl: string, lang: AppLanguage = getAppLanguage(
   return lvl;
 };
 
+// Taktik-Tipps des Tages für HomeView.tsx
+export const TACTIC_TIPS_I18N: Record<AppLanguage, { highlight: string; text: string }[]> = {
+  de: [
+    {
+      highlight: "Der Lob",
+      text: "ist im Padel kein reiner Verteidigungsschlag, sondern dein wichtigster Angriffsschlag. Spiele ihn hoch und tief in die Ecken, um die Netzposition zu erobern!"
+    },
+    {
+      highlight: "Die Bandeja",
+      text: "ist kein harter Gewinnschlag! Nutze sie primär, um deine Netzposition zu verteidigen. Tiefe und Platzierung gehen hier immer vor Härte."
+    },
+    {
+      highlight: "Das Gummiband-Prinzip:",
+      text: "Bewege dich immer parallel zu deinem Partner. Rückt er ans Netz vor, gehst du mit. Bleibt einer hinten, entsteht eine tödliche Lücke in der Mitte."
+    },
+    {
+      highlight: "Die Chiquita",
+      text: "eignet sich perfekt, wenn die Gegner aufrücken. Spiele den Ball sanft auf ihre Füße, um sie zu einem schweren, tiefen Volley zu zwingen."
+    },
+    {
+      highlight: "Durch die Mitte:",
+      text: "Das ist oft der sicherste Weg. Tiefe Bälle durch die Mitte stiften Verwirrung (Wer nimmt den Ball?) und minimieren die Winkel für den gegnerischen Konter."
+    }
+  ],
+  en: [
+    {
+      highlight: "The Lob",
+      text: "is not just a defensive shot in Padel, but your most important offensive weapon. Play it high and deep into the corners to take over the net!"
+    },
+    {
+      highlight: "The Bandeja",
+      text: "is not a power winner! Use it primarily to defend your net position. Depth and placement always come before power."
+    },
+    {
+      highlight: "The Rubber Band Principle:",
+      text: "Always move in sync with your partner. If they move up to the net, go with them. If one stays back, a deadly gap opens in the middle."
+    },
+    {
+      highlight: "The Chiquita",
+      text: "is perfect when opponents rush the net. Play the ball softly at their feet to force a difficult, low volley upwards."
+    },
+    {
+      highlight: "Down the Middle:",
+      text: "Often the smartest play. Deep balls through the center cause confusion (who takes it?) and cut off angles for the opponent's counter-attack."
+    }
+  ],
+  es: [
+    {
+      highlight: "El Globo",
+      text: "no es solo un golpe defensivo en el pádel, sino tu arma ofensiva más importante. ¡Juégalo alto y profundo hacia las esquinas para ganar la red!"
+    },
+    {
+      highlight: "La Bandeja",
+      text: "¡no es un remate de potencia! Úsala principalmente para conservar la red. La profundidad y la colocación siempre importan más que la fuerza."
+    },
+    {
+      highlight: "El Principio del Elástico:",
+      text: "Muévete siempre en bloque con tu compañero. Si sube a la red, acompáñalo. Si uno se queda atrás, se abre un hueco letal en el medio."
+    },
+    {
+      highlight: "La Chiquita",
+      text: "es perfecta cuando los rivales están pegados a la red. Juega suave a sus pies para obligarles a levantar una volea baja y difícil."
+    },
+    {
+      highlight: "Por el Medio:",
+      text: "Suele ser la opción más segura. Las bolas profundas al centro generan dudas en la pareja rival y reducen los ángulos de contraataque."
+    }
+  ]
+};
+
 export const TRANSLATIONS = {
   de: {
     // Navigation & Header
@@ -80,6 +150,36 @@ export const TRANSLATIONS = {
     guest_name: "Gast",
     player_fallback: "Spieler",
     btn_back: "← Zurück",
+
+    // HomeView
+    home_welcome: "Willkommen,",
+    home_hero_sub: "Analysiere Spielsituationen und meistere das TacPadel Game.",
+    home_rank: "Rang:",
+    home_tip_title: "Taktik Tipp des Tages",
+    home_daily_badge: "🔥 Challenge des Tages",
+    home_day: "Tag",
+    home_days: "Tage",
+    home_streak: "Serie",
+    home_daily_open_title: "1 Versuch • +150 Punkte",
+    home_daily_won_title: "Heute gemeistert! ✓",
+    home_daily_lost_title: "Heute bereits gespielt",
+    home_daily_open_desc: "Löse das heutige Profi-Szenario ohne Hilfestellung.",
+    home_daily_closed_desc: "Tippe hier, um dir die heutige Auflösung nochmal anzusehen.",
+    home_training_header: "Training",
+    home_newbie_badge: "Dein Weg zum Profi",
+    home_continue_badge: "Letzter Stand",
+    home_newbie_title: "Blitzstart",
+    home_continue_title: "Fortsetzen",
+    home_newbie_desc: "Starte hier dein erstes Training, um ein echter TacPadeler zu werden.",
+    home_continue_desc: "Mach genau da weiter, wo du beim letzten Mal aufgehört hast.",
+    home_you_tag: "Du",
+    home_waiting_data: "Warte auf Daten...",
+    home_card_match_title: "Match Starten",
+    home_card_match_sub: "Einzelmatch",
+    home_card_lexicon_title: "Padel-Lexikon",
+    home_card_lexicon_sub: "Theorie & Wissen",
+    home_card_board_title: "Taktik-Board",
+    home_card_board_sub: "Taktik Planen",
 
     // Welcome Modal
     welcome_title: "Willkommen!",
@@ -188,6 +288,36 @@ export const TRANSLATIONS = {
     player_fallback: "Player",
     btn_back: "← Back",
 
+    // HomeView
+    home_welcome: "Welcome,",
+    home_hero_sub: "Analyze match situations and master the TacPadel game.",
+    home_rank: "Rank:",
+    home_tip_title: "Tactical Tip of the Day",
+    home_daily_badge: "🔥 Daily Challenge",
+    home_day: "Day",
+    home_days: "Days",
+    home_streak: "Streak",
+    home_daily_open_title: "1 Attempt • +150 Points",
+    home_daily_won_title: "Mastered today! ✓",
+    home_daily_lost_title: "Already played today",
+    home_daily_open_desc: "Solve today's pro scenario without hints.",
+    home_daily_closed_desc: "Tap here to review today's solution.",
+    home_training_header: "Training",
+    home_newbie_badge: "Your Path to Pro",
+    home_continue_badge: "Last Progress",
+    home_newbie_title: "Quick Start",
+    home_continue_title: "Continue",
+    home_newbie_desc: "Start your first training session here to become a true TacPadel pro.",
+    home_continue_desc: "Pick up right where you left off last time.",
+    home_you_tag: "You",
+    home_waiting_data: "Waiting for data...",
+    home_card_match_title: "Start Match",
+    home_card_match_sub: "Single Match",
+    home_card_lexicon_title: "Padel Lexicon",
+    home_card_lexicon_sub: "Theory & Knowledge",
+    home_card_board_title: "Tactics Board",
+    home_card_board_sub: "Plan Tactics",
+
     // Welcome Modal
     welcome_title: "Welcome!",
     welcome_text: "Great to have you here. Before stepping onto the court, what is your player name for the rankings?",
@@ -294,6 +424,36 @@ export const TRANSLATIONS = {
     guest_name: "Invitado",
     player_fallback: "Jugador",
     btn_back: "← Volver",
+
+    // HomeView
+    home_welcome: "Bienvenido,",
+    home_hero_sub: "Analiza situaciones de juego y domina TacPadel.",
+    home_rank: "Rango:",
+    home_tip_title: "Consejo Táctico del Día",
+    home_daily_badge: "🔥 Reto del Día",
+    home_day: "Día",
+    home_days: "Días",
+    home_streak: "Racha",
+    home_daily_open_title: "1 Intento • +150 Puntos",
+    home_daily_won_title: "¡Superado hoy! ✓",
+    home_daily_lost_title: "Ya jugado hoy",
+    home_daily_open_desc: "Resuelve el escenario pro de hoy sin ayuda.",
+    home_daily_closed_desc: "Toca aquí para revisar la solución de hoy.",
+    home_training_header: "Entrenamiento",
+    home_newbie_badge: "Tu Camino a Pro",
+    home_continue_badge: "Último Progreso",
+    home_newbie_title: "Inicio Rápido",
+    home_continue_title: "Continuar",
+    home_newbie_desc: "Empieza aquí tu primer entrenamiento para dominar la pista.",
+    home_continue_desc: "Continúa exactamente donde lo dejaste la última vez.",
+    home_you_tag: "Tú",
+    home_waiting_data: "Esperando datos...",
+    home_card_match_title: "Iniciar Partido",
+    home_card_match_sub: "Partido Individual",
+    home_card_lexicon_title: "Léxico de Pádel",
+    home_card_lexicon_sub: "Teoría y Conocimiento",
+    home_card_board_title: "Pizarra Táctica",
+    home_card_board_sub: "Planificar Táctica",
 
     // Welcome Modal
     welcome_title: "¡Bienvenido!",
