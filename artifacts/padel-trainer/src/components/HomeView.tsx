@@ -5,34 +5,12 @@ import { SCENARIOS } from "./Scenarios";
 import DailyChallengeModal, { getTodayDateString } from "./DailyChallengeModal";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
-
-const TACTIC_TIPS = [
-  {
-    highlight: "Der Lob",
-    text: "ist im Padel kein reiner Verteidigungsschlag, sondern dein wichtigster Angriffsschlag. Spiele ihn hoch und tief in die Ecken, um die Netzposition zu erobern!"
-  },
-  {
-    highlight: "Die Bandeja",
-    text: "ist kein harter Gewinnschlag! Nutze sie primär, um deine Netzposition zu verteidigen. Tiefe und Platzierung gehen hier immer vor Härte."
-  },
-  {
-    highlight: "Das Gummiband-Prinzip:",
-    text: "Bewege dich immer parallel zu deinem Partner. Rückt er ans Netz vor, gehst du mit. Bleibt einer hinten, entsteht eine tödliche Lücke in der Mitte."
-  },
-  {
-    highlight: "Die Chiquita",
-    text: "eignet sich perfekt, wenn die Gegner aufrücken. Spiele den Ball sanft auf ihre Füße, um sie zu einem schweren, tiefen Volley zu zwingen."
-  },
-  {
-    highlight: "Durch die Mitte:",
-    text: "Das ist oft der sicherste Weg. Tiefe Bälle durch die Mitte stiften Verwirrung (Wer nimmt den Ball?) und minimieren die Winkel für den gegnerischen Konter."
-  }
-];
+import { useTranslation, TACTIC_TIPS_I18N } from "../lib/i18n";
 
 export interface DBPlayer {
   id: string;
   name: string;
-  score: number; // Nutze dieses Feld für TacScore (All-Time) oder TacPoints (Season)
+  score: number;
   avatar_url?: string;
 }
 
@@ -64,18 +42,21 @@ export default function HomeView({
   onDailyReward
 }: HomeViewProps) {
   const { user } = useAuth();
+  const { lang, t } = useTranslation();
+
+  const displayUserName = userName === "Gast" ? t("guest_name") : userName;
   
   const [randomScenarioIndex] = useState(() => Math.floor(Math.random() * SCENARIOS.length));
   const previewScenario = SCENARIOS[randomScenarioIndex];
   
-  // Lokaler Bonus-Puffer, damit die +150 Punkte nach der Daily Challenge sofort sichtbar sind
   const [dailyBonusAdded, setDailyBonusAdded] = useState(0);
 
   const displayScore = Math.floor(currentScore + dailyBonusAdded);
   const displayTacPoints = Math.floor(currentTacPoints);
   const isNewbie = displayScore === 0 && displayTacPoints === 0;
   
-  const [dailyTip] = useState(() => TACTIC_TIPS[Math.floor(Math.random() * TACTIC_TIPS.length)]);
+  const [tipIndex] = useState(() => Math.floor(Math.random() * TACTIC_TIPS_I18N.de.length));
+  const dailyTip = TACTIC_TIPS_I18N[lang]?.[tipIndex] || TACTIC_TIPS_I18N.de[0];
   
   // --- DAILY CHALLENGE STATES ---
   const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
@@ -110,7 +91,6 @@ export default function HomeView({
     if (onDailyReward) {
       onDailyReward(pts);
     } else if (user) {
-      // Fallback: Direkt in Supabase gutschreiben, falls onDailyReward nicht aus App.tsx übergeben wurde
       const newTotal = Math.floor(currentScore + dailyBonusAdded + pts);
       localStorage.setItem("tacpadel_score", newTotal.toString());
       await supabase
@@ -120,10 +100,9 @@ export default function HomeView({
     refreshDailyState();
   };
 
-  // Tab-Steuerung für das Leaderboard (All-Time vs Season)
   const [lbTab, setLbTab] = useState<"alltime" | "season">("alltime");
 
-  // --- ALL-TIME LEADERBOARD LOGIK (EINZEL / TAC-SCORE) ---
+  // --- ALL-TIME LEADERBOARD LOGIK ---
   const sortedLeaderboard = useMemo(() => {
     let playersList = (dbLeaderboard && dbLeaderboard.length > 0) ? [...dbLeaderboard] : [];
       
@@ -146,7 +125,7 @@ export default function HomeView({
     return playersList.sort((a, b) => b.score - a.score);
   }, [dbLeaderboard, userName, userEmail, userAvatar, displayScore]);
 
-  // --- SEASON LEADERBOARD LOGIK (TURNIERE / TAC-POINTS) ---
+  // --- SEASON LEADERBOARD LOGIK ---
   const sortedSeasonLeaderboard = useMemo(() => {
     let playersList = (dbSeasonLeaderboard && dbSeasonLeaderboard.length > 0) ? [...dbSeasonLeaderboard] : [];
       
@@ -169,11 +148,9 @@ export default function HomeView({
     return playersList.sort((a, b) => b.score - a.score);
   }, [dbSeasonLeaderboard, userName, userEmail, userAvatar, displayTacPoints]);
 
-  // --- RANGLISTEN POSITIONEN BERECHNEN ---
   const allTimeRank = sortedLeaderboard.findIndex(p => p.name === userName) + 1;
   const seasonRank = sortedSeasonLeaderboard.findIndex(p => p.name === userName) + 1;
 
-  // --- AKTIVES LEADERBOARD FÜR DIE ANZEIGE ---
   const activeLeaderboard = lbTab === "alltime" ? sortedLeaderboard : sortedSeasonLeaderboard;
   const activeRank = lbTab === "alltime" ? allTimeRank : seasonRank;
   
@@ -231,13 +208,13 @@ export default function HomeView({
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
           <div className="flex items-center gap-4">
             {userAvatar && (
-              <img src={userAvatar} alt={userName} className="w-14 h-14 rounded-full border-2 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)] object-cover" referrerPolicy="no-referrer" />
+              <img src={userAvatar} alt={displayUserName} className="w-14 h-14 rounded-full border-2 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)] object-cover" referrerPolicy="no-referrer" />
             )}
             <div className="flex flex-col gap-1">
               <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-widest drop-shadow-md">
-                Willkommen, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">{userName}</span>
+                {t("home_welcome")} <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">{displayUserName}</span>
               </h1>
-              <p className="text-xs text-slate-400 mt-1 font-semibold">Analysiere Spielsituationen und meistere das TacPadel Game.</p>
+              <p className="text-xs text-slate-400 mt-1 font-semibold">{t("home_hero_sub")}</p>
             </div>
           </div>
 
@@ -252,7 +229,7 @@ export default function HomeView({
                 </div>
                 <span className="text-[10px] font-bold text-cyan-600">TS</span>
               </div>
-              <div className="text-[10px] font-bold text-slate-400 mt-1">Rang: <span className="text-white">#{allTimeRank > 0 ? allTimeRank : "-"}</span></div>
+              <div className="text-[10px] font-bold text-slate-400 mt-1">{t("home_rank")} <span className="text-white">#{allTimeRank > 0 ? allTimeRank : "-"}</span></div>
             </div>
             
             <div className="h-10 w-px bg-slate-800 hidden md:block"></div>
@@ -266,7 +243,7 @@ export default function HomeView({
                 </div>
                 <span className="text-[10px] font-bold text-orange-600">TP</span>
               </div>
-              <div className="text-[10px] font-bold text-slate-400 mt-1">Rang: <span className="text-white">#{seasonRank > 0 ? seasonRank : "-"}</span></div>
+              <div className="text-[10px] font-bold text-slate-400 mt-1">{t("home_rank")} <span className="text-white">#{seasonRank > 0 ? seasonRank : "-"}</span></div>
             </div>
 
           </div>
@@ -284,7 +261,7 @@ export default function HomeView({
           <div className="flex items-start gap-4">
             <div>
               <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">
-                Taktik Tipp des Tages
+                {t("home_tip_title")}
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed font-medium">
                 <strong className="text-emerald-300 font-bold">{dailyTip.highlight}</strong> {dailyTip.text}
@@ -293,7 +270,7 @@ export default function HomeView({
           </div>
         </div>
 
-        {/* RECHTS: Tägliche Challenge (Öffnet eigenes Overlay) */}
+        {/* RECHTS: Tägliche Challenge */}
         <motion.div
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
@@ -313,27 +290,27 @@ export default function HomeView({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-                🔥 Challenge des Tages
+                {t("home_daily_badge")}
               </span>
               {dailyStreak > 0 && (
                 <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  {dailyStreak} {dailyStreak === 1 ? "Tag" : "Tage"} Serie
+                  {dailyStreak} {dailyStreak === 1 ? t("home_day") : t("home_days")} {t("home_streak")}
                 </span>
               )}
             </div>
 
             <h4 className="text-base font-black text-white uppercase tracking-wider">
               {dailyStatus === "open"
-                ? "1 Versuch • +150 Punkte"
+                ? t("home_daily_open_title")
                 : dailyStatus === "won"
-                  ? "Heute gemeistert! ✓"
-                  : "Heute bereits gespielt"}
+                  ? t("home_daily_won_title")
+                  : t("home_daily_lost_title")}
             </h4>
 
             <p className="text-xs text-slate-400 leading-snug">
               {dailyStatus === "open"
-                ? "Löse das heutige Profi-Szenario ohne Hilfestellung."
-                : "Tippe hier, um dir die heutige Auflösung nochmal anzusehen."}
+                ? t("home_daily_open_desc")
+                : t("home_daily_closed_desc")}
             </p>
           </div>
 
@@ -356,7 +333,7 @@ export default function HomeView({
         {/* ======================================================== */}
         <div className="lg:col-span-7 flex flex-col gap-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">
-            Training
+            {t("home_training_header")}
           </h3>
           
           <motion.div 
@@ -371,18 +348,16 @@ export default function HomeView({
               
               <div className="flex justify-between items-start w-full relative z-30">
                 <div className="flex flex-col items-start text-left gap-1.5">
-              <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
-                {isNewbie ? "Dein Weg zum Profi" : "Letzter Stand"}
-              </span>
-              <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-wider drop-shadow-md">
-                {isNewbie ? "Blitzstart" : "Fortsetzen"}
-              </h2>
-              <p className="text-xs text-slate-400 max-w-[220px] mt-1">
-                {isNewbie 
-                  ? "Starte hier dein erstes Training, um ein echter TacPadeler zu werden." 
-                  : "Mach genau da weiter, wo du beim letzten Mal aufgehört hast."}
-              </p>
-            </div>
+                  <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
+                    {isNewbie ? t("home_newbie_badge") : t("home_continue_badge")}
+                  </span>
+                  <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-wider drop-shadow-md">
+                    {isNewbie ? t("home_newbie_title") : t("home_continue_title")}
+                  </h2>
+                  <p className="text-xs text-slate-400 max-w-[240px] mt-1">
+                    {isNewbie ? t("home_newbie_desc") : t("home_continue_desc")}
+                  </p>
+                </div>
                 
                 <div className="w-12 h-12 rounded-full bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white group-hover:shadow-[0_0_15px_rgba(6,182,212,0.6)] transition-all">
                   <span className="text-xl font-black">➔</span>
@@ -452,8 +427,8 @@ export default function HomeView({
                     <span className="w-6 text-center text-sm">{getMedal(index)}</span>
                     {renderAvatar(player.avatar_url, player.name)}
                     <span className={`font-bold text-sm ${isUser ? highlightColor : 'text-slate-300'} truncate max-w-[120px] sm:max-w-[150px]`}>
-                      {player.name}
-                      {isUser && <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${tagColor}`}>Du</span>}
+                      {isUser ? displayUserName : player.name}
+                      {isUser && <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${tagColor}`}>{t("home_you_tag")}</span>}
                     </span>
                   </div>
                   <span className={`font-black text-sm tracking-wider ${isUser ? 'text-white' : 'text-slate-400'}`}>
@@ -476,8 +451,8 @@ export default function HomeView({
                     <span className={`font-black text-sm w-6 text-center ${lbTab === 'alltime' ? 'text-cyan-600' : 'text-orange-600'}`}>{activeRank}.</span>
                     {renderAvatar(currentUserData.avatar_url, currentUserData.name)}
                     <span className={`font-bold text-sm truncate max-w-[100px] sm:max-w-[150px] ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400'}`}>
-                      {currentUserData.name}
-                      <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300'}`}>Du</span>
+                      {displayUserName}
+                      <span className={`ml-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300'}`}>{t("home_you_tag")}</span>
                     </span>
                   </div>
                   <span className="font-black text-sm tracking-wider text-white">
@@ -490,7 +465,7 @@ export default function HomeView({
             {top5Players.length === 0 && (
               <div className="py-8 text-center flex flex-col items-center justify-center gap-2">
                 <span className="text-3xl opacity-50">🏆</span>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Warte auf Daten...</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t("home_waiting_data")}</p>
               </div>
             )}
           </div>
@@ -515,8 +490,8 @@ export default function HomeView({
             </svg>
           </div>
           <div className="flex flex-col gap-1 mt-1">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">Match Starten</h3>
-            <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Einzelmatch</span>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_match_title")}</h3>
+            <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">{t("home_card_match_sub")}</span>
           </div>
           <span className="text-orange-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
         </div>
@@ -533,8 +508,8 @@ export default function HomeView({
             </svg>
           </div>
           <div className="flex flex-col gap-1 mt-1">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">Padel-Lexikon</h3>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Theorie & Wissen</span>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_lexicon_title")}</h3>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{t("home_card_lexicon_sub")}</span>
           </div>
           <span className="text-emerald-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
         </div>
@@ -552,8 +527,8 @@ export default function HomeView({
             </svg>
           </div>
           <div className="flex flex-col gap-1 mt-1">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">Taktik-Board</h3>
-            <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Taktik Planen</span>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_board_title")}</h3>
+            <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{t("home_card_board_sub")}</span>
           </div>
           <span className="text-purple-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
         </div>

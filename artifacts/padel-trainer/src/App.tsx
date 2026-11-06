@@ -22,13 +22,13 @@ import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
 import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
+import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 
 type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
 
-// Hilfsfunktion: Wandelt 2D-Zonen-Strings (z. B. "A1") in 3D-Raumkoordinaten um
 const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number = 0): THREE.Vector3 => {
   if (!zoneId || typeof zoneId !== "string" || zoneId.length < 2) {
     return new THREE.Vector3(0, yHeight, 0);
@@ -47,7 +47,6 @@ const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number =
   return new THREE.Vector3(x, yHeight, z);
 };
 
-// Ermittelt anhand der Highscores und Sperren das aktuell zu spielende Level
 const getTargetProgressionLevel = (scores: Record<string, number>, locked: Level[]): Level => {
   if ((scores["Spielzug"] || 0) >= 50) return "Simulation";
 
@@ -68,6 +67,7 @@ const getTargetProgressionLevel = (scores: Record<string, number>, locked: Level
 };
 
 function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void }) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -105,9 +105,9 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary text-4xl shadow-inner"></div>
         
         <div>
-          <h2 className="text-3xl font-black text-primary mb-2">Willkommen!</h2>
+          <h2 className="text-3xl font-black text-primary mb-2">{t("welcome_title")}</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Schön, dass du dabei bist. Bevor du den Court betrittst, wie lautet dein Spielername für die Statistiken?
+            {t("welcome_text")}
           </p>
         </div>
 
@@ -115,7 +115,7 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
           type="text" 
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="Dein Padel-Spitzname..."
+          placeholder={t("welcome_placeholder")}
           className="px-5 py-4 bg-background border-2 border-border focus:border-primary rounded-xl text-foreground text-center font-bold text-lg outline-none transition-all shadow-sm"
           autoFocus
           onKeyDown={(e) => e.key === 'Enter' && handleSave()}
@@ -126,7 +126,7 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
           disabled={isSaving || !username.trim()}
           className="w-full px-6 py-4 bg-primary text-primary-foreground rounded-xl font-black text-lg shadow-lg hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 mt-2"
         >
-          {isSaving ? "Speichert..." : "Auf den Platz gehen ➔"}
+          {isSaving ? t("welcome_saving") : t("welcome_btn")}
         </button>
       </motion.div>
     </div>
@@ -134,6 +134,8 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
 }
 
 function TutorialModal({ onComplete }: { onComplete: () => void }) {
+  const { t } = useTranslation();
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/90 backdrop-blur-md">
       <motion.div
@@ -145,28 +147,28 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
         
         <div className="text-center">
           <span className="text-4xl mb-2 block">🧠</span>
-          <h2 className="text-2xl font-black text-white uppercase tracking-widest">Taktik-Trainer</h2>
-          <p className="text-cyan-400 text-sm font-bold tracking-wider mt-1">So funktioniert's</p>
+          <h2 className="text-2xl font-black text-white uppercase tracking-widest">{t("tut_title")}</h2>
+          <p className="text-cyan-400 text-sm font-bold tracking-wider mt-1">{t("tut_subtitle")}</p>
         </div>
 
         <div className="flex flex-col gap-4 text-sm text-slate-300 mt-2">
           <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
             <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">1</div>
             <div>
-              <p className="font-bold text-white mb-1">Situation analysieren</p>
-              <p className="leading-snug">Lies das Briefing und schau dir die Positionen der Spieler auf dem 3D-Court an. Der leuchtende Ball zeigt, woher der Schlag kommt.</p>
+              <p className="font-bold text-white mb-1">{t("tut_step1_title")}</p>
+              <p className="leading-snug">{t("tut_step1_desc")}</p>
             </div>
           </div>
 
           <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
             <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">2</div>
             <div>
-              <p className="font-bold text-white mb-1">Aktionen wählen</p>
-              <p className="leading-snug mb-2">Je nach Level musst du 1 bis 3 Entscheidungen treffen:</p>
+              <p className="font-bold text-white mb-1">{t("tut_step2_title")}</p>
+              <p className="leading-snug mb-2">{t("tut_step2_desc")}</p>
               <ul className="flex flex-col gap-1 text-[11px] font-bold tracking-wider">
-                <li className="text-orange-400">• SCHLAG: Welchen Schlag spielst du? (Unten tippen)</li>
-                <li className="text-emerald-400">• ZIELZONE: Wohin spielst du? (Auf dem Court tippen)</li>
-                <li className="text-purple-400">• LAUFWEG: Wohin läufst du danach? (Auf dem Court tippen)</li>
+                <li className="text-orange-400">{t("tut_step2_b1")}</li>
+                <li className="text-emerald-400">{t("tut_step2_b2")}</li>
+                <li className="text-purple-400">{t("tut_step2_b3")}</li>
               </ul>
             </div>
           </div>
@@ -174,8 +176,8 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
           <div className="flex gap-4 items-start bg-slate-900/50 p-3 rounded-xl border border-slate-800">
             <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 font-black text-white">3</div>
             <div>
-              <p className="font-bold text-white mb-1">Zug ausführen</p>
-              <p className="leading-snug">Sobald du alles ausgewählt hast, wird der "Zug Ausführen"-Button aktiv. Finde heraus, ob deine Taktik aufgeht!</p>
+              <p className="font-bold text-white mb-1">{t("tut_step3_title")}</p>
+              <p className="leading-snug">{t("tut_step3_desc")}</p>
             </div>
           </div>
         </div>
@@ -184,7 +186,7 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
           onClick={onComplete}
           className="w-full mt-2 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-black text-sm tracking-[0.2em] uppercase shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:scale-[1.02] active:scale-95 transition-all"
         >
-          Alles klar, los geht's!
+          {t("tut_btn_start")}
         </button>
       </motion.div>
     </div>
@@ -238,6 +240,8 @@ const getAdjacentZones = (zoneId: string) => {
 };
 
 export default function App(): React.JSX.Element {
+  const { lang, t } = useTranslation();
+
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const savedTab = localStorage.getItem("tacpadel_activeTab") as Tab;
     return savedTab ? savedTab : "home";
@@ -269,7 +273,7 @@ export default function App(): React.JSX.Element {
 
       if (!errAll && allData) {
         const formattedAll = allData.map((user: any) => {
-          const emailFallback = user.email ? user.email.split('@')[0] : "Spieler";
+          const emailFallback = user.email ? user.email.split('@')[0] : t("player_fallback");
           const finalName = user.display_name && user.display_name.trim() !== "" 
             ? user.display_name 
             : emailFallback;
@@ -293,7 +297,7 @@ export default function App(): React.JSX.Element {
 
       if (!errSeason && seasonData) {
         const formattedSeason = seasonData.map((user: any) => {
-          const emailFallback = user.email ? user.email.split('@')[0] : "Spieler";
+          const emailFallback = user.email ? user.email.split('@')[0] : t("player_fallback");
           const finalName = user.display_name && user.display_name.trim() !== "" 
             ? user.display_name 
             : emailFallback;
@@ -377,7 +381,6 @@ export default function App(): React.JSX.Element {
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
-  // States
   const [easyMode, setEasyMode] = useState(true);
   const [correctionMode, setCorrectionMode] = useState(true);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -386,11 +389,9 @@ export default function App(): React.JSX.Element {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
 
-  // WICHTIG: Easy & Trainer Mode sind für das Level "Schlag" immer inaktiv!
   const activeEasyMode = level === "Schlag" ? false : easyMode;
   const activeCorrectionMode = level === "Schlag" ? false : correctionMode;
 
-  // Fortschritts-Check (Progression Lock)
   const isProgressionUnlocked = (l: string) => {
     if (l === "Schlag") return true;
     if (l === "Schlagrichtung") return (highestScores["Schlag"] || 0) >= 10;
@@ -399,9 +400,6 @@ export default function App(): React.JSX.Element {
     return true; 
   };
 
-  // =========================================================================
-  // --- SAUBERER GAST-UNLOAD (Löscht temporäre Daten NUR bei echten Gästen) ---
-  // =========================================================================
   useEffect(() => {
     const handleGuestUnload = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -416,7 +414,6 @@ export default function App(): React.JSX.Element {
     window.addEventListener("beforeunload", handleGuestUnload);
     return () => window.removeEventListener("beforeunload", handleGuestUnload);
   }, [clearActiveSession]);
-  // =========================================================================
 
   useEffect(() => {
     if (user && !user.user_metadata?.display_name) {
@@ -446,7 +443,6 @@ export default function App(): React.JSX.Element {
     setShowTutorial(false);
   };
 
-  // Hilfsfunktion: Initialisiert den Szenario-Pool für ein bestimmtes Level
   const initPoolForLevel = (targetLevel: Level) => {
     const isNewSim = (targetLevel as string) === "Simulation";
     const filteredPool = SCENARIOS.filter(s => {
@@ -470,12 +466,8 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  // =========================================================================
-  // --- WIEDERHERSTELLUNG & AUTO-SYNCHRONISATION DER GESPERRTEN LEVEL ---
-  // =========================================================================
   useEffect(() => {
     if (isProgressLoaded && !hasRestored) {
-      // 1. Prüfen, welche Vorstufen laut Highscore bereits abgeschlossen sind (>= 10)
       const syncedLocks = new Set<Level>(lockedLevels);
 
       if ((highestScores["Spielzug"] || 0) < 50) {
@@ -484,7 +476,6 @@ export default function App(): React.JSX.Element {
         syncedLocks.delete("Simulation");
       }
 
-      // Falls keine Straf-Freischaltung aktiv ist, alle bereits geschafften Vorstufen schließen
       const isCurrentlyReplayingUnlocked =
         activeSession &&
         activeSession.score > 0 &&
@@ -507,7 +498,6 @@ export default function App(): React.JSX.Element {
         setLockedLevels(finalLocks);
       }
 
-      // 2. Prüfen, ob eine gültige (nicht bereits abgeschlossene) Sitzung vorliegt
       const hasValidActiveSession =
         activeSession &&
         user &&
@@ -532,7 +522,6 @@ export default function App(): React.JSX.Element {
         setAttempts(activeSession.attempts || 0);
         setFeedbackMsg(activeSession.feedbackMsg || null);
       } else {
-        // Automatisch in das aktuell offene Fortschritts-Level führen
         const targetLvl = getTargetProgressionLevel(highestScores, finalLocks);
         setLevel(targetLvl);
         initPoolForLevel(targetLvl);
@@ -680,8 +669,7 @@ export default function App(): React.JSX.Element {
     });
 
     if (error) {
-      console.log("OAuth Fehler: " + error.message);
-      setAuthMsg({ type: 'error', text: "Google-Login fehlgeschlagen: " + error.message });
+      setAuthMsg({ type: 'error', text: t("login_err_google") + error.message });
       return;
     }
 
@@ -693,6 +681,7 @@ export default function App(): React.JSX.Element {
       }
     }
   };
+
   const handleAppleLogin = async () => {
     const isNative = Capacitor.isNativePlatform();
 
@@ -709,8 +698,7 @@ export default function App(): React.JSX.Element {
     });
 
     if (error) {
-      console.log("Apple OAuth Fehler: " + error.message);
-      setAuthMsg({ type: 'error', text: "Apple-Login fehlgeschlagen: " + error.message });
+      setAuthMsg({ type: 'error', text: t("login_err_apple") + error.message });
       return;
     }
 
@@ -722,6 +710,7 @@ export default function App(): React.JSX.Element {
       }
     }
   };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -743,12 +732,12 @@ export default function App(): React.JSX.Element {
       if (error) {
         setAuthMsg({ type: 'error', text: error.message });
       } else {
-        setAuthMsg({ type: 'success', text: 'Registrierung erfolgreich! (Prüfe ggf. deine E-Mails)' });
+        setAuthMsg({ type: 'success', text: t("login_success_signup") });
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        setAuthMsg({ type: 'error', text: 'Falsche E-Mail oder Passwort.' });
+        setAuthMsg({ type: 'error', text: t("login_err_credentials") });
       }
     }
     setAuthLoading(false);
@@ -764,6 +753,17 @@ export default function App(): React.JSX.Element {
   }, [level, isSimulation]);
 
   const scenario = filteredScenarios[currentScenarioIndex] || filteredScenarios[0];
+
+  // Unterstützt mehrsprachige Szenario-Texte (sobald Scenarios.ts übersetzt ist)
+  const scenarioDescription =
+    (lang === "en" && (scenario as any)?.description_en) ||
+    (lang === "es" && (scenario as any)?.description_es) ||
+    scenario.description;
+
+  const scenarioExplanation =
+    (lang === "en" && (scenario as any)?.explanation_en) ||
+    (lang === "es" && (scenario as any)?.explanation_es) ||
+    scenario.explanation;
 
   const visibleShots = useMemo(() => {
     if (level === "Schlag") {
@@ -853,7 +853,6 @@ export default function App(): React.JSX.Element {
       
       const newScore = score + 1;
       setScore(newScore);
-      // Highscore immer im State aktualisieren (useProgress speichert nur für eingeloggte User in Supabase)
       updateHighScore(level, newScore);
 
       setRoundsPlayed((r) => r + 1);
@@ -901,11 +900,11 @@ export default function App(): React.JSX.Element {
         
       if (activeCorrectionMode) {
         let errors = [];
-        if (!isShotCorrect) errors.push("den Schlag");
-        if ((level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && !isZoneCorrect) errors.push("die Zielzone");
-        if ((level === "Laufrichtung" || level === "Spielzug" || isSimulation) && !isLaufZoneCorrect) errors.push("deine Laufrichtung");
+        if (!isShotCorrect) errors.push(t("trainer_err_shot"));
+        if ((level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && !isZoneCorrect) errors.push(t("trainer_err_target"));
+        if ((level === "Laufrichtung" || level === "Spielzug" || isSimulation) && !isLaufZoneCorrect) errors.push(t("trainer_err_run"));
         
-        setFeedbackMsg(`Fast! Überprüfe nochmal ${errors.join(" und ")}.`);
+        setFeedbackMsg(`${t("trainer_feedback_prefix")}${errors.join(t("trainer_err_and"))}.`);
       } else {
         setHasSubmitted(true);
         setWrongPool((prev) => [...prev, currentScenarioIndex]);
@@ -939,13 +938,11 @@ export default function App(): React.JSX.Element {
 
     const targetScore = level === "Spielzug" ? 50 : 10;
 
-    // Solange Ziel-Score noch nicht erreicht ist und noch Fragen im Pool sind -> nächste Frage
     if (score < targetScore && rotationPool.length > 0) {
       setRotation([rotationPool[0], rotationPool.slice(1)]);
       return;
     }
 
-    // Falls Fehler gemacht wurden und Score < targetScore -> Wiederholungsrunde
     if (score < targetScore && wrongPool.length > 0) {
       const retryIndices = shuffleIndices(wrongPool.length).map((i) => wrongPool[i]);
       const [next, ...rest] = retryIndices; 
@@ -957,7 +954,6 @@ export default function App(): React.JSX.Element {
       return;
     }
 
-    // Sicherheits-Fallback: Falls Pool leer, aber targetScore noch nicht voll -> neue Fragen nachladen
     if (score < targetScore) {
       const needed = targetScore - score;
       const freshIndices = shuffleIndices(filteredScenarios.length, currentScenarioIndex).slice(0, needed);
@@ -965,15 +961,12 @@ export default function App(): React.JSX.Element {
       return;
     }
 
-    // LEVEL ERFOLGREICH ABGESCHLOSSEN (targetScore erreicht!)
     updateHighScore(level, targetScore);
     setGameOver(true);
     
     if (level === "Spielzug") {
-      // Simulation freischalten
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
     } else if (level === "Schlag" || level === "Schlagrichtung" || level === "Laufrichtung") {
-      // Abgeschlossenes Level schließen (in lockedLevels eintragen)
       setLockedLevels(prev => prev.includes(level) ? prev : [...prev, level]);
     }
   };
@@ -999,14 +992,9 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLogout = async () => {
-    // 1. Supabase Session beenden
     await signOut(); 
-    
-    // 2. Den kompletten lokalen Cache des Geräts radikal leeren!
     localStorage.clear();
     sessionStorage.clear();
-    
-    // 3. Die aktiven Trainer-States in React zurücksetzen
     clearActiveSession();
     setLevel("Schlag");
     setScore(0);
@@ -1020,21 +1008,24 @@ export default function App(): React.JSX.Element {
     setIsRetryPhase(false);
     setFeedbackMsg(null);
     setWrongPool([]);
-
-    // 4. Harten Reload der App erzwingen
     window.location.reload(); 
   };
 
+  const isNative = Capacitor.isNativePlatform();
   const isIOS = Capacitor.getPlatform() === "ios";
 
   return (
   <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
     
-    {/* OPTISCHE STATUSLEISTEN-TRENNUNG NUR FÜR iOS (wie beim Pixel 10) */}
-    {isIOS && (
+    {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS (iOS & Android Store-Build) */}
+    {isNative && (
       <div 
         className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-50"
-        style={{ height: "max(env(safe-area-inset-top, 0px), 50px)" }}
+        style={{ 
+          height: isIOS 
+            ? "max(env(safe-area-inset-top, 0px), 50px)" 
+            : "max(env(safe-area-inset-top, 0px), 38px)" 
+        }}
       />
     )}
 
@@ -1050,7 +1041,7 @@ export default function App(): React.JSX.Element {
               {finalAvatarUrl ? (
                 <img 
                   src={finalAvatarUrl} 
-                  alt="Profilbild" 
+                  alt="Avatar" 
                   className="w-8 h-8 rounded-full object-cover border border-primary/20 group-hover:border-primary/50 transition-colors shadow-sm"
                 />
               ) : (
@@ -1060,7 +1051,7 @@ export default function App(): React.JSX.Element {
               )}
 
               <span className="truncate max-w-[120px] sm:max-w-[200px]">
-                {finalUserName}
+                {finalUserName === "Gast" ? t("guest_name") : finalUserName}
               </span>
             </button>
 
@@ -1068,7 +1059,7 @@ export default function App(): React.JSX.Element {
               onClick={handleLogout} 
               className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold hover:bg-red-500/20 transition-all ml-2"
             >
-              Abmelden
+              {t("header_logout")}
             </button>
           </div>
         ) : (
@@ -1077,7 +1068,7 @@ export default function App(): React.JSX.Element {
               onClick={() => setActiveTab("login")} 
               className="text-xs bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all shadow-md"
             >
-              Login
+              {t("header_login")}
             </button>
           )
         )}
@@ -1104,6 +1095,7 @@ export default function App(): React.JSX.Element {
           />
         )}
       </AnimatePresence>
+
       {/* --- UNLOCK MODAL --- */}
       <AnimatePresence>
         {showUnlockModal && (
@@ -1117,9 +1109,9 @@ export default function App(): React.JSX.Element {
               <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-2">
                 <span className="text-3xl">📉</span>
               </div>
-              <h2 className="text-2xl font-bold text-destructive">Punkte zu niedrig!</h2>
+              <h2 className="text-2xl font-bold text-destructive">{t("unlock_title")}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Dein Score ist unter 2500 Punkte gefallen. Wähle eine gesperrte Trainingsart, um sie wieder freizuschalten und neue Punkte zu sammeln:
+                {t("unlock_desc")}
               </p>
               <div className="flex flex-col gap-3 mt-4">
                 {lockedLevels.filter(lvl => lvl !== "Simulation").map(lvl => (
@@ -1132,8 +1124,8 @@ export default function App(): React.JSX.Element {
                     }}
                     className="px-4 py-3.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow flex items-center justify-between"
                   >
-                    <span>{lvl}</span>
-                    <span className="text-emerald-400">Freischalten ➔</span>
+                    <span>{formatLevelName(lvl, lang)}</span>
+                    <span className="text-emerald-400">{t("unlock_btn")}</span>
                   </button>
                 ))}
               </div>
@@ -1290,12 +1282,11 @@ export default function App(): React.JSX.Element {
                     <div className="flex items-center justify-between lg:justify-start lg:gap-8 w-full lg:w-auto">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">Taktik-Trainer</span>
-                          {/* BUTTON UM DAS TUTORIAL MANUELL NOCHMAL ANZUSCHAUEN */}
+                          <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">{t("trainer_title")}</span>
                           <button 
                             onClick={() => setShowTutorial(true)}
                             className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] hover:bg-slate-700 hover:text-white transition-colors"
-                            title="Tutorial anzeigen"
+                            title={t("trainer_tutorial_tooltip")}
                           >
                             ❓
                           </button>
@@ -1303,7 +1294,7 @@ export default function App(): React.JSX.Element {
                       </div>
                       
                       <div className="flex flex-col items-end lg:items-start pl-4 lg:pl-6 lg:border-l border-slate-700/50">
-                        <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">Total Score</span>
+                        <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">{t("trainer_total_score")}</span>
                         <div className="text-xl lg:text-2xl leading-none font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.4)]">
                           {user ? totalPoints : 0}
                         </div>
@@ -1314,7 +1305,6 @@ export default function App(): React.JSX.Element {
                       <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto flex-wrap lg:flex-nowrap">
                         
                         {(highestScores["Spielzug"] || 0) < 50 ? (
-                          // NORMALE LEVEL ZEIGEN, WENN SPIELZUG < 50
                           (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
                             const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
                             const isProgLocked = !isProgressionUnlocked(lvl);
@@ -1333,13 +1323,12 @@ export default function App(): React.JSX.Element {
                                       : "bg-slate-900/30 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white"
                                 }`}
                               >
-                                <span>{lvl}</span>
+                                <span>{formatLevelName(lvl, lang)}</span>
                                 {isLocked && <span className="text-slate-600">🔒</span>}
                               </button>
                             );
                           })
                         ) : (
-                          // NUR NOCH PRO RALLYE ZEIGEN, WENN FREIGESCHALTET
                           <button
                             onClick={() => handleLevelChange("Simulation" as Level)}
                             className={`col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
@@ -1348,7 +1337,7 @@ export default function App(): React.JSX.Element {
                                 : "bg-purple-950/40 border border-purple-800 text-purple-300 hover:bg-purple-900/60"
                             }`}
                           >
-                            <span>Pro Rallye</span>
+                            <span>{t("trainer_pro_rallye")}</span>
                           </button>
                         )}
 
@@ -1356,7 +1345,7 @@ export default function App(): React.JSX.Element {
                           onClick={() => setActiveTab("strategy")}
                           className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
                         >
-                          <span>Strategien</span>
+                          <span>{t("trainer_strategies")}</span>
                         </button>
                       </div>
                     </div>
@@ -1386,11 +1375,11 @@ export default function App(): React.JSX.Element {
                   <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-start gap-3">
                     <div className="flex flex-col w-full">
                       <p className="text-xs text-slate-400 leading-relaxed mb-1.5">
-                        {isSimulation ? "PRO RALLYE: Endlose Taktik-Simulation. Finde auf jede Situation die perfekte Antwort!" : 
-                         level === "Spielzug" ? "Achte auf die Gegner-Position. Wähle nach dem Schlag sofort deinen Laufweg zur Absicherung." : 
-                         level === "Laufrichtung" ? "Ein guter Schlag nützt nichts ohne Feldabdeckung. Wähle dein Laufziel." : 
-                         level === "Schlag" ? "Wähle den richtigen Schlag. Nutze das Tutorial um die Schläge kennenzulernen.":
-                         "Analysiere das Szenario und spiele den richtigen Schlag und Trefferzone."}
+                        {isSimulation ? t("trainer_hint_sim") : 
+                         level === "Spielzug" ? t("trainer_hint_spielzug") : 
+                         level === "Laufrichtung" ? t("trainer_hint_lauf") : 
+                         level === "Schlag" ? t("trainer_hint_schlag") :
+                         t("trainer_hint_default")}
                       </p>
 
                       <div className="flex flex-col items-start">
@@ -1400,9 +1389,9 @@ export default function App(): React.JSX.Element {
                           </div>
                         ) : (activeEasyMode || activeCorrectionMode) && level !== "Schlag" ? (
                           <div className="text-[10px] text-cyan-300 font-semibold flex flex-wrap gap-1.5 items-center bg-cyan-950/20 px-2 py-1 rounded border border-cyan-900/30">
-                            {activeEasyMode && <span>Erweiterte Zonen - 50% Punkte</span>}
+                            {activeEasyMode && <span>{t("trainer_easy_info")}</span>}
                             {activeEasyMode && activeCorrectionMode && <span className="text-slate-600 font-normal">|</span>}
-                            {activeCorrectionMode && <span>Korrekturen bei falscher Auswahl - 75% Punkte</span>}
+                            {activeCorrectionMode && <span>{t("trainer_corr_info")}</span>}
                           </div>
                         ) : null}
                       </div>
@@ -1413,15 +1402,15 @@ export default function App(): React.JSX.Element {
                 {/* MOBILE BRIEFING */}
                 <div className="lg:hidden w-full bg-[#050b18]/80 border border-slate-800 rounded-xl p-4 shadow-lg mt-1">
                   <div className="flex justify-between items-center mb-1.5">
-                    <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">Szenario {scenario.id}</h3>
-                    <span className="text-[10px] font-bold text-slate-500">{level}</span>
+                    <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">{t("trainer_scenario_label")} {scenario.id}</h3>
+                    <span className="text-[10px] font-bold text-slate-500">{formatLevelName(level, lang)}</span>
                   </div>
-                  <p className="text-sm font-semibold text-slate-200 leading-snug mb-4">{scenario.description}</p>
+                  <p className="text-sm font-semibold text-slate-200 leading-snug mb-4">{scenarioDescription}</p>
                   
                   <div className="mt-auto pt-3 border-t border-slate-800/50">
                     <div className="flex justify-between items-end mb-2">
                       <span className="text-[10px] font-bold tracking-widest text-orange-400 uppercase">
-                        {isSimulation ? "Rallye Score (Endlos)" : "Level Fortschritt"}
+                        {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                       </span>
                       <span className="text-xs font-black text-white">
                         {isSimulation ? `Score: ${score}` : `${score} / ${maxScore}`}
@@ -1443,17 +1432,17 @@ export default function App(): React.JSX.Element {
                   <div className="hidden lg:flex lg:col-span-3 flex-col gap-4 order-3 lg:order-1 w-full h-full">
                     <div className="flex flex-col bg-[#050b18]/80 border border-slate-800 rounded-xl p-5 shadow-lg relative h-full">
                       <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500 rounded-l-xl shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
-                      <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-1">Briefing</h3>
+                      <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-1">{t("trainer_briefing")}</h3>
                       <div className="flex items-end gap-3 mb-4">
                         <span className="text-5xl font-black text-white leading-none">{scenario.id}</span>
-                        <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider pb-1">{level}</span>
+                        <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider pb-1">{formatLevelName(level, lang)}</span>
                       </div>
-                      <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-8 flex-1">{scenario.description}</p>
+                      <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-8 flex-1">{scenarioDescription}</p>
                       
                       <div className="mt-auto">
                         <div className="flex justify-between items-end mb-2">
                           <span className="text-[10px] font-bold tracking-widest text-cyan-400 uppercase">
-                            {isSimulation ? "Rallye Score (Endlos)" : "Level Fortschritt"}
+                            {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                           </span>
                           <span className="text-xs font-black text-white">
                             {isSimulation ? `Score: ${score}` : `${score} / ${maxScore}`}
@@ -1512,12 +1501,12 @@ export default function App(): React.JSX.Element {
                       <div className="grid grid-cols-3 gap-2 lg:gap-4 flex-1 w-full">
                         
                         <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${level === "Spielzug" || level === "Laufrichtung" || isSimulation ? (selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/30 bg-purple-950/10 shadow-[inset_0_0_15px_rgba(168,85,247,0.1)]') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
-                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-purple-400 uppercase">1. Laufzone</span>
+                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-purple-400 uppercase">{t("trainer_step1_run")}</span>
                           <span className="text-[10px] lg:text-xs font-bold text-white truncate">{level !== "Spielzug" && level !== "Laufrichtung" && !isSimulation ? "-" : selectedLaufZone ? selectedLaufZone : "-"}</span>
                         </div>         
                         
                         <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${level !== "Schlag" && level !== "Laufrichtung" ? (selectedZone ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-emerald-500/30 bg-emerald-950/10 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
-                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-emerald-400 uppercase">2. Schlagziel</span>
+                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-emerald-400 uppercase">{t("trainer_step2_target")}</span>
                           <span className="text-[10px] lg:text-xs font-bold text-white truncate">{level === "Schlag" || level === "Laufrichtung" ? "-" : selectedZone ? selectedZone : "-"}</span>
                         </div>
                         
@@ -1525,8 +1514,8 @@ export default function App(): React.JSX.Element {
                           onClick={() => setIsShotModalOpen(true)}
                           className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-all cursor-pointer hover:scale-[1.02] active:scale-95 ${selectedShot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/50 bg-orange-950/30 shadow-[0_0_15px_rgba(255,119,0,0.2)] animate-pulse'}`}
                         >
-                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-orange-400 uppercase">3. Schlag (Tippen)</span>
-                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{selectedShot ? selectedShot : "Wählen..."}</span>
+                          <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-orange-400 uppercase">{t("trainer_step3_shot")}</span>
+                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{selectedShot ? formatShotName(selectedShot, lang) : t("trainer_choose")}</span>
                         </div>
                       
                       </div>
@@ -1536,13 +1525,13 @@ export default function App(): React.JSX.Element {
                         disabled={!canSubmit}
                         className="w-full lg:w-1/3 py-3 lg:py-5 bg-gradient-to-r from-cyan-600 to-cyan-600 hover:from-cyan-500 hover:to-cyan-500 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 text-white font-black text-xs lg:text-sm tracking-[0.2em] uppercase rounded-lg lg:rounded-xl shadow-[0_0_20px_rgba(255,119,0,0.3)] disabled:shadow-none hover:scale-[1.02] active:scale-95 transition-all duration-200 border border-cyan-400/50 disabled:border-slate-800"
                       >
-                        Zug Ausführen
+                        {t("trainer_submit")}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* SHOT MODAL - MIT PROGRESSIVE DISCLOSURE */}
+                {/* SHOT MODAL */}
                 <AnimatePresence>
                   {isShotModalOpen && (
                     <motion.div
@@ -1564,7 +1553,7 @@ export default function App(): React.JSX.Element {
                       
                       <div className="flex justify-between items-center mb-2">
                         <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">
-                          {level === "Schlag" ? "Welcher Schlag passt hier?" : "Welchen Schlag wählst du?"}
+                          {level === "Schlag" ? t("trainer_shot_modal_q1") : t("trainer_shot_modal_q2")}
                         </h3>
                       </div>
                       
@@ -1585,7 +1574,7 @@ export default function App(): React.JSX.Element {
                               }}
                               className={`w-full flex items-center justify-center py-4 px-1 rounded-lg border text-xs font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
                             >
-                              {shot}
+                              {formatShotName(shot, lang)}
                             </button>
                           );
                         })}
@@ -1610,25 +1599,25 @@ export default function App(): React.JSX.Element {
                             isFullyCorrect ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" : 
                             isPartiallyCorrect ? "text-amber-400" : "text-red-500"
                           }`}>
-                            {isFullyCorrect ? (level === "Spielzug" || isSimulation ? "★★★ Perfekter Spielzug" : "Mission Erfolgreich") : 
-                             isPartiallyCorrect ? "Teilweise Richtig" : "Taktischer Fehler"}
+                            {isFullyCorrect ? (level === "Spielzug" || isSimulation ? t("trainer_res_perfect_play") : t("trainer_res_success")) : 
+                             isPartiallyCorrect ? t("trainer_res_partial") : t("trainer_res_wrong")}
                           </h3>
                           <p className="text-slate-300 text-sm leading-relaxed max-w-3xl">
-                            {scenario.explanation}
+                            {scenarioExplanation}
                           </p>
                           
                           <div className="flex gap-2 flex-wrap justify-center md:justify-start mt-1">
                             <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              Schlag: <span className="text-white">{scenario.validShots.join(" / ")}</span>
+                              {t("trainer_badge_shot")} <span className="text-white">{scenario.validShots.map(s => formatShotName(s, lang)).join(" / ")}</span>
                             </span>
                             {(level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && scenario.bestZones && (
                               <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                Ziel: <span className="text-white">{scenario.bestZones.join(", ")}</span>
+                                {t("trainer_badge_target")} <span className="text-white">{scenario.bestZones.join(", ")}</span>
                               </span>
                             )}
                             {(level === "Laufrichtung" || level === "Spielzug" || isSimulation) && scenario.laufZone && (
                               <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                Lauf: <span className="text-white">{scenario.laufZone}</span>
+                                {t("trainer_badge_run")} <span className="text-white">{scenario.laufZone}</span>
                               </span>
                             )}
                           </div>
@@ -1638,7 +1627,7 @@ export default function App(): React.JSX.Element {
                           onClick={nextRound}
                           className="w-full md:w-auto px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
                         >
-                          Nächste Aufgabe ➔
+                          {t("trainer_next_task")}
                         </button>
                       </div>
                     </motion.div>
@@ -1656,9 +1645,11 @@ export default function App(): React.JSX.Element {
                       <span className="text-6xl drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]">🏆</span>
                       <div className="flex flex-col gap-1">
                         <h2 className="text-2xl lg:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-widest uppercase">
-                          System Mastered
+                          {t("trainer_mastered_title")}
                         </h2>
-                        <p className="text-sm text-slate-400">Du hast das Level <span className="font-bold text-white uppercase">{level}</span> erfolgreich abgeschlossen.</p>
+                        <p className="text-sm text-slate-400">
+                          {t("trainer_mastered_desc_1")} <span className="font-bold text-white uppercase">{formatLevelName(level, lang)}</span> {t("trainer_mastered_desc_2")}
+                        </p>
                       </div>
                       
                       <button 
@@ -1667,11 +1658,9 @@ export default function App(): React.JSX.Element {
                             setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
                             handleLevelChange("Simulation" as Level, true);
                           } else {
-                            // Aktuelles Level sicher schließen
                             const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
                             setLockedLevels(updatedLocks);
 
-                            // Nächstes offenes Level in der Reihenfolge bestimmen
                             const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
                             const currentIndex = TRAINER_SEQUENCE.indexOf(level);
                             let nextLevel: Level = "Spielzug";
@@ -1691,7 +1680,7 @@ export default function App(): React.JSX.Element {
                         }}
                         className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
                       >
-                        {level === "Spielzug" ? "Pro Rallye Starten ➔" : "Nächstes Level Starten ➔"}
+                        {level === "Spielzug" ? t("trainer_start_pro_rallye") : t("trainer_start_next_lvl")}
                       </button>
                     </motion.div>
                   )}
@@ -1716,14 +1705,13 @@ export default function App(): React.JSX.Element {
                 
                 <div className="text-center mb-2">
                   <h2 className="text-2xl font-black text-primary tracking-wide">
-                    {isSignUp ? "Account erstellen" : "Anmelden"}
+                    {isSignUp ? t("login_title_signup") : t("login_title_signin")}
                   </h2>
                   <p className="text-muted-foreground text-xs sm:text-sm leading-relaxed mt-2">
-                    Sichere deinen Trainingsfortschritt in der Cloud.
+                    {t("login_subtitle")}
                   </p>
                 </div>
 
-                {/* Feedback Message */}
                 <AnimatePresence>
                   {authMsg && (
                     <motion.div 
@@ -1735,11 +1723,10 @@ export default function App(): React.JSX.Element {
                   )}
                 </AnimatePresence>
 
-                {/* E-MAIL & PASSWORT FORMULAR */}
                 <form onSubmit={handleEmailAuth} className="w-full flex flex-col gap-3">
                   <input
                     type="email"
-                    placeholder="E-Mail Adresse"
+                    placeholder={t("login_email_placeholder")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -1747,7 +1734,7 @@ export default function App(): React.JSX.Element {
                   />
                   <input
                     type="password"
-                    placeholder="Passwort (min. 6 Zeichen)"
+                    placeholder={t("login_password_placeholder")}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -1760,17 +1747,16 @@ export default function App(): React.JSX.Element {
                     disabled={authLoading}
                     className="w-full px-6 py-3.5 bg-primary text-primary-foreground rounded-xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all mt-2 disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    {authLoading ? "Wird verarbeitet..." : (isSignUp ? "Registrieren" : "Einloggen")}
+                    {authLoading ? t("login_processing") : (isSignUp ? t("login_btn_signup") : t("login_btn_signin"))}
                   </button>
                 </form>
 
                 <div className="flex items-center w-full gap-3 my-2 opacity-50">
                   <div className="flex-1 h-px bg-border"></div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Oder</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t("login_or")}</span>
                   <div className="flex-1 h-px bg-border"></div>
                 </div>
 
-                {/* APPLE & GOOGLE BUTTONS */}
                 <div className="flex flex-col gap-2.5 w-full">
                   <button
                     onClick={handleAppleLogin}
@@ -1780,7 +1766,7 @@ export default function App(): React.JSX.Element {
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
                     </svg>
-                    Mit Apple
+                    {t("login_with_apple")}
                   </button>
 
                   <button
@@ -1794,18 +1780,17 @@ export default function App(): React.JSX.Element {
                       <path fill="#FBBC05" d="M5.35 14.29c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.56H1.31C.47 8.24 0 10.06 0 12s.47 3.76 1.31 5.44l4.04-3.15z"/>
                       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.37 0 3.29 1.64 1.31 4.75l4.04 3.15c.93-2.82 3.56-4.91 6.65-4.91z"/>
                     </svg>
-                    Mit Google
+                    {t("login_with_google")}
                   </button>
                 </div>
 
-                {/* TOGGLE ZWISCHEN LOGIN UND REGISTRIEREN */}
                 <div className="flex flex-col items-center gap-3 mt-4 w-full">
                   <button
                     type="button"
                     onClick={() => { setIsSignUp(!isSignUp); setAuthMsg(null); }}
                     className="text-xs text-muted-foreground hover:text-primary font-bold transition-colors"
                   >
-                    {isSignUp ? "Bereits einen Account? Hier einloggen." : "Neu hier? Account erstellen."}
+                    {isSignUp ? t("login_switch_to_signin") : t("login_switch_to_signup")}
                   </button>
 
                   <button
@@ -1813,7 +1798,7 @@ export default function App(): React.JSX.Element {
                     onClick={() => setActiveTab("home")}
                     className="text-[10px] text-muted-foreground hover:text-foreground font-semibold uppercase tracking-widest transition-colors mt-2"
                   >
-                    ← Zurück zur Startseite
+                    {t("login_back_home")}
                   </button>
                 </div>
               </motion.div>
@@ -1851,10 +1836,10 @@ export default function App(): React.JSX.Element {
                 <div className="bg-card border border-card-border p-4 rounded-xl shadow-lg relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
                   <h2 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-1">
-                    Taktik-Board
+                    {t("board_header_title")}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Bewege Spieler und Ball frei auf dem Spielfeld, um Taktiken zu planen und zu erklären.
+                    {t("board_header_desc")}
                   </p>
                 </div>
                 <TacticsBoard />

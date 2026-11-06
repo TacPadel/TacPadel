@@ -9,6 +9,8 @@ import Effects from "./Effects";
 import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
 import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles";
+import { SHOP_PARTNERS } from "../../lib/loadout";
+
 
 // =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
@@ -314,13 +316,14 @@ export default function ScenarioCourt3D(props: Props) {
     }
   }, [props.playIntro]);
 
-  useEffect(() => {
+    useEffect(() => {
     const fetchUserData = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
+        let resolvedPartnerName = "Partner";
         
         const { data: profileData } = await supabase
           .from('user_stats')
@@ -333,21 +336,34 @@ export default function ScenarioCourt3D(props: Props) {
             name = profileData.display_name;
           }
           if (profileData.partner_id) {
-            const [pId, pNum] = profileData.partner_id.split('-');
-            const prof = AI_PROFILES.find(p => p.id === pId);
-            if (prof) {
-              setPartnerName(pNum === '1' ? prof.p1 : prof.p2);
+            const pId = profileData.partner_id;
+            
+            // 1. Prüfen, ob es ein neuer Shop-Partner ist (z.B. "partner_wall")
+            const shopPartner = SHOP_PARTNERS.find(p => p.id === pId);
+            if (shopPartner) {
+              // Den Namen vor der Klammer extrahieren (z.B. "Mateo 'El Muro' Ruiz")
+              resolvedPartnerName = shopPartner.name.split(" (")[0];
+            } 
+            // 2. Fallback für alte IDs (z.B. "pro_1-1")
+            else if (pId.includes("-")) {
+              const [rawId, pNum] = pId.split("-");
+              const prof = AI_PROFILES.find(p => p.id === rawId);
+              if (prof) {
+                resolvedPartnerName = pNum === '1' ? prof.p1 : prof.p2;
+              }
             }
           }
         }
 
         setPlayerName(name);
+        setPartnerName(resolvedPartnerName);
       } catch (error) {
         console.error("Fehler beim Laden der Profildaten:", error);
       }
     };
     fetchUserData();
   }, []);
+
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
