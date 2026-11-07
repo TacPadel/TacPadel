@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import Effects from "../components/ScenarioCourt3D/Effects";
 import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
+import { useTranslation } from "../lib/i18n";
 
 // =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
@@ -402,7 +403,9 @@ export interface Props {
 // 3. HAUPTKOMPONENTE (ScenarioCourt4D)
 // =========================================================
 export default function ScenarioCourt4D(props: Props) {
-  const [playerName, setPlayerName] = useState("Gast");
+  const { t } = useTranslation();
+
+  const [playerName, setPlayerName] = useState(() => t("guest_name"));
   const controlsRef = useRef<any>(null);
   const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
 
@@ -416,9 +419,12 @@ export default function ScenarioCourt4D(props: Props) {
     const fetchName = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+          setPlayerName(t("guest_name"));
+          return;
+        }
 
-        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
+        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || t("guest_name");
        
         const { data: profileData } = await supabase
           .from('user_stats')
@@ -435,7 +441,7 @@ export default function ScenarioCourt4D(props: Props) {
       }
     };
     fetchName();
-  }, []);
+  }, [t]);
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
@@ -489,7 +495,7 @@ export default function ScenarioCourt4D(props: Props) {
           <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
           <Environment preset="city" environmentIntensity={0.5} />
 
-          <Suspense fallback={<Html center className="text-white font-bold tracking-widest">LADE ARENA...</Html>}>
+          <Suspense fallback={<Html center className="text-white font-bold tracking-widest uppercase">{t("court_loading_arena")}</Html>}>
             <Effects />
             <CourtFloor
               serverId={props.hitterId}

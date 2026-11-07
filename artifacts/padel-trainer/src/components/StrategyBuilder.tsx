@@ -4,6 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { StrategyStep, StrategySequence } from "../lib/strategies";
 import AdminDashboard from "./AdminDashboard";
+import { useTranslation, formatShotName } from "../lib/i18n";
 
 const ZONES = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3", "B4", "B5", "C1", "C2", "C3", "C4", "C5", "D1", "D2", "D3", "D4", "D5", "E1", "E2", "E3", "E4", "E5"];
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE", "VORBEREITUNG"];
@@ -16,8 +17,10 @@ interface StrategyBuilderProps {
 
 export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin = false }: StrategyBuilderProps) {
   const { user } = useAuth();
+  const { lang, t } = useTranslation();
   
-  const isAdmin = user?.email?.toLowerCase().trim() === 'caposion@gmail.com';
+  const emailLower = user?.email?.toLowerCase().trim() || "";
+  const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
   const [showAdmin, setShowAdmin] = useState(startInAdmin);
 
   useEffect(() => {
@@ -87,6 +90,11 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
 
+  const renderShotLabel = (shot: string) => {
+    if (shot === "VORBEREITUNG") return t("sb_shot_prep");
+    return formatShotName(shot, lang);
+  };
+
   const handleTurnChange = (turn: "you" | "ai") => {
     setPlayerTurn(turn);
     setBallSide(turn === "you" ? "left" : "right");
@@ -152,10 +160,10 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   };
 
   const handleTestDraft = () => {
-    if (steps.length === 0) return alert("Füge zuerst Züge hinzu, um sie zu testen!");
+    if (steps.length === 0) return alert(t("sb_alert_add_moves"));
     const stratToTest: StrategySequence = {
       id: "DRAFT", 
-      title: `${title || "Entwurf"} (VORSCHAU)`, 
+      title: `${title || t("sb_draft_fallback")} (${t("sb_preview_tag")})`, 
       theme, 
       difficulty, 
       description, 
@@ -165,10 +173,10 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
   };
 
   const handleSubmitStrategy = async () => {
-    if (!user) return alert("Bitte logge dich ein, um eine Strategie zu erstellen.");
+    if (!user) return alert(t("sb_alert_login_req"));
     setIsSubmitting(true);
 
-    const userName = user.user_metadata?.display_name || user.email?.split('@')[0] || "Community Spieler";
+    const userName = user.user_metadata?.display_name || user.email?.split('@')[0] || t("sb_community_player");
 
     const { error } = await supabase
       .from('community_strategies')
@@ -186,7 +194,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     setIsSubmitting(false);
     if (error) {
       setSubmitStatus("error");
-      alert("Fehler beim Einreichen: " + error.message);
+      alert(t("sb_alert_submit_err") + error.message);
       console.error(error);
     } else {
       setSubmitStatus("success");
@@ -216,8 +224,8 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     return (
       <div className="w-full h-[60vh] flex flex-col items-center justify-center text-center p-8 bg-[#050b18]/90 rounded-2xl border border-emerald-500/50 shadow-[0_0_50px_rgba(16,185,129,0.2)]">
         <span className="text-6xl mb-4">🚀</span>
-        <h2 className="text-2xl font-black text-emerald-400 uppercase tracking-widest mb-2">Erfolgreich Eingereicht!</h2>
-        <p className="text-slate-300">Deine Strategie "{title}" wurde an die Datenbank gesendet. Ein Admin wird sie prüfen und in Kürze für alle freigeben!</p>
+        <h2 className="text-2xl font-black text-emerald-400 uppercase tracking-widest mb-2">{t("sb_success_title")}</h2>
+        <p className="text-slate-300">{t("sb_success_desc_1")} "{title}" {t("sb_success_desc_2")}</p>
       </div>
     );
   }
@@ -226,9 +234,9 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
     <div className="w-full flex flex-col gap-6 text-slate-200">
       <div className="flex items-center justify-between bg-[#040914] p-4 rounded-xl border border-slate-800">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">← Zurück</button>
+          <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">{t("btn_back")}</button>
           <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 uppercase tracking-widest">
-            Community Strategy-Builder
+            {t("sb_header_title")}
           </h2>
         </div>
         {isAdmin && (
@@ -241,34 +249,34 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
       {!isEditingStep ? (
         <div className="flex flex-col gap-6">
           <div className="bg-[#050b18] p-6 rounded-xl border border-slate-800 flex flex-col gap-4">
-            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">Basis Infos</h3>
+            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">{t("sb_basic_info")}</h3>
             
-            <input type="text" placeholder="Titel der Strategie..." value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500" />
+            <input type="text" placeholder={t("sb_title_placeholder")} value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500" />
             
             <div className="flex gap-4">
               <select value={theme} onChange={(e) => setTheme(e.target.value as any)} className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none text-sm">
-                <option value="Offensive">Offensive</option>
-                <option value="Defensive">Defensive</option>
-                <option value="Umschaltspiel">Umschaltspiel</option>
+                <option value="Offensive">{t("strat_theme_off")}</option>
+                <option value="Defensive">{t("strat_theme_def")}</option>
+                <option value="Umschaltspiel">{t("strat_theme_trans")}</option>
               </select>
               <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value) as any)} className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none text-sm">
-                <option value={1}>⭐ Leicht (1)</option>
-                <option value={2}>⭐⭐ Mittel (2)</option>
-                <option value={3}>⭐⭐⭐ Schwer (3)</option>
+                <option value={1}>{t("sb_diff_easy")}</option>
+                <option value={2}>{t("sb_diff_med")}</option>
+                <option value={3}>{t("sb_diff_hard")}</option>
               </select>
             </div>
             
-            <textarea placeholder="Kurze Beschreibung für die Community..." value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500 h-24 resize-none" />
+            <textarea placeholder={t("sb_desc_placeholder")} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg outline-none focus:border-cyan-500 h-24 resize-none" />
           </div>
 
           <div className="bg-[#050b18] p-6 rounded-xl border border-slate-800 flex flex-col gap-4">
-            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">2. Spielzüge ({steps.length})</h3>
+            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">{t("sb_moves_header")} ({steps.length})</h3>
             
             <div className="flex flex-col gap-2">
               {steps.map((s, idx) => (
                 <div key={idx} className="bg-slate-900 p-3 rounded-lg border border-slate-700 flex justify-between items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs font-bold text-slate-300 block">Zug {idx + 1}: {s.playerTurn === "you" ? "Du" : "Gegner"}</span>
+                    <span className="text-xs font-bold text-slate-300 block">{t("sb_move_label")} {idx + 1}: {s.playerTurn === "you" ? t("home_you_tag") : t("game_opponent")}</span>
                     <span className="text-xs text-slate-500 truncate block">{s.description}</span>
                   </div>
                   <div className="flex gap-2">
@@ -280,7 +288,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
             </div>
 
             <button onClick={openNewStep} className="w-full py-3 border border-dashed border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-950/30 transition-colors text-xs font-bold uppercase tracking-widest mt-2">
-              + Neuen Zug hinzufügen
+              {t("sb_add_move_btn")}
             </button>
           </div>
 
@@ -290,14 +298,14 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
               disabled={steps.length === 0} 
               className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
             >
-              Vorschau Testen 🎮
+              {t("sb_test_preview_btn")}
             </button>
             <button 
               onClick={handleSubmitStrategy} 
               disabled={steps.length === 0 || !title || !description || isSubmitting}
               className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:scale-[1.02] active:scale-95 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:hover:scale-100"
             >
-              {isSubmitting ? "Wird gesendet..." : "Einreichen ➔"}
+              {isSubmitting ? t("sb_sending") : t("sb_submit_btn")}
             </button>
           </div>
         </div>
@@ -323,88 +331,88 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
           <div className="bg-[#050b18] p-5 rounded-xl border border-slate-800 flex flex-col gap-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
-              <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest">{editingIndex !== null ? "Zug bearbeiten" : "Zug erstellen"}</h3>
-              <button onClick={() => { setIsEditingStep(false); setEditingIndex(null); }} className="text-slate-500 hover:text-white text-xs">Abbrechen</button>
+              <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest">{editingIndex !== null ? t("sb_edit_move_title") : t("sb_create_move_title")}</h3>
+              <button onClick={() => { setIsEditingStep(false); setEditingIndex(null); }} className="text-slate-500 hover:text-white text-xs">{t("prof_cancel")}</button>
             </div>
 
             <div className="flex gap-2 bg-slate-900 p-1 rounded-lg">
-              <button onClick={() => handleTurnChange("you")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "you" ? 'bg-cyan-600 text-white' : 'text-slate-500'}`}>Du bist dran</button>
-              <button onClick={() => handleTurnChange("ai")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "ai" ? 'bg-red-600 text-white' : 'text-slate-500'}`}>Gegner ist dran</button>
+              <button onClick={() => handleTurnChange("you")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "you" ? 'bg-cyan-600 text-white' : 'text-slate-500'}`}>{t("sb_your_turn_btn")}</button>
+              <button onClick={() => handleTurnChange("ai")} className={`flex-1 py-2 rounded text-xs font-bold uppercase transition-colors ${playerTurn === "ai" ? 'bg-red-600 text-white' : 'text-slate-500'}`}>{t("sb_opp_turn_btn")}</button>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Briefing (Was passiert gerade?)</label>
+              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{t("sb_briefing_label")}</label>
               <textarea value={stepDesc} onChange={e => setStepDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-md outline-none text-xs h-16" />
               
-              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-2">Auflösung (Erklärung nach dem Zug)</label>
+              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-2">{t("sb_resolution_label")}</label>
               <textarea value={stepExpl} onChange={e => setStepExpl(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-md outline-none text-xs h-16" />
             </div>
 
             <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
-              <h4 className="text-[10px] text-cyan-400 font-bold uppercase mb-3">Spieler-Positionen</h4>
+              <h4 className="text-[10px] text-cyan-400 font-bold uppercase mb-3">{t("sb_player_pos_title")}</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-slate-400">Du (Rechts)</label>
+                  <label className="text-[10px] text-slate-400">{t("sb_pos_you_right")}</label>
                   <select value={posYou} onChange={e => setPosYou(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-slate-400">Dein Partner (Links)</label>
+                  <label className="text-[10px] text-slate-400">{t("sb_pos_partner_left")}</label>
                   <select value={posPartner} onChange={e => setPosPartner(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-slate-400">Gegner 1 (Links)</label>
+                  <label className="text-[10px] text-slate-400">{t("sb_pos_opp1_left")}</label>
                   <select value={posOpp1} onChange={e => setPosOpp1(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-slate-400">Gegner 2 (Rechts)</label>
+                  <label className="text-[10px] text-slate-400">{t("sb_pos_opp2_right")}</label>
                   <select value={posOpp2} onChange={e => setPosOpp2(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                 </div>
               </div>
 
-              <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">Wo liegt der Ball (vor dem Schlag)?</h4>
+              <h4 className="text-[10px] text-cyan-400 font-bold uppercase mt-4 mb-2">{t("sb_ball_pos_title")}</h4>
               <div className="grid grid-cols-3 gap-2">
                 <select value={ballSide} onChange={e => setBallSide(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none text-orange-300">
-                  <option value="left">Unten (Bei dir)</option>
-                  <option value="right">Oben (Gegner)</option>
+                  <option value="left">{t("sb_ball_side_left")}</option>
+                  <option value="right">{t("sb_ball_side_right")}</option>
                 </select>
                 <select value={ballZone} onChange={e => setBallZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
-                <select value={ballType} onChange={e => setBallType(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>
+                <select value={ballType} onChange={e => setBallType(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{renderShotLabel(z)}</option>)}</select>
               </div>
             </div>
 
             <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
-              <h4 className="text-[10px] text-emerald-400 font-bold uppercase mb-3">Lösung (Was soll gespielt werden?)</h4>
+              <h4 className="text-[10px] text-emerald-400 font-bold uppercase mb-3">{t("sb_solution_title")}</h4>
               
               {playerTurn === "you" ? (
                 <div className="grid grid-cols-1 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Richtiges Schlagziel (Zone)</label>
+                    <label className="text-[10px] text-slate-400">{t("sb_sol_target")}</label>
                     <select value={bestZones[0]} onChange={e => setBestZones([e.target.value])} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Richtiger Laufweg (Zone danach)</label>
+                    <label className="text-[10px] text-slate-400">{t("sb_sol_run")}</label>
                     <select value={laufZone} onChange={e => setLaufZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Richtiger Schlag</label>
-                    <select value={validShots[0]} onChange={e => setValidShots([e.target.value])} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{z}</option>)}</select>
+                    <label className="text-[10px] text-slate-400">{t("sb_sol_shot")}</label>
+                    <select value={validShots[0]} onChange={e => setValidShots([e.target.value])} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{SHOTS.map(z => <option key={z} value={z}>{renderShotLabel(z)}</option>)}</select>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Wer schlägt?</label>
+                    <label className="text-[10px] text-slate-400">{t("sb_who_hits")}</label>
                     <select value={aiHitter} onChange={e => setAiHitter(e.target.value as any)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">
-                      <option value="opp1">Gegner 1 (Links)</option>
-                      <option value="opp2">Gegner 2 (Rechts)</option>
+                      <option value="opp1">{t("sb_pos_opp1_left")}</option>
+                      <option value="opp2">{t("sb_pos_opp2_right")}</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Ziel des Gegners</label>
+                    <label className="text-[10px] text-slate-400">{t("sb_opp_target")}</label>
                     <select value={aiTarget} onChange={e => setAiTarget(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400">Laufweg des Gegners</label>
+                    <label className="text-[10px] text-slate-400">{t("sb_opp_run")}</label>
                     <select value={aiLaufZone} onChange={e => setAiLaufZone(e.target.value)} className="bg-slate-800 text-xs p-1.5 rounded outline-none">{ZONES.map(z => <option key={z} value={z}>{z}</option>)}</select>
                   </div>
                 </div>
@@ -412,7 +420,7 @@ export default function StrategyBuilder({ onBack, onTestStrategy, startInAdmin =
             </div>
 
             <button onClick={handleAddStep} className="w-full py-4 mt-2 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all">
-              Zug speichern
+              {t("sb_save_move_btn")}
             </button>
           </div>
 

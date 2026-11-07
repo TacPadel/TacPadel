@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import Effects from "../components/ScenarioCourt3D/Effects";
 import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
+import { useTranslation, formatLevelName, TranslationKey } from "../lib/i18n";
 
 export interface PlayerPositions {
   you: string;
@@ -61,6 +62,38 @@ export interface Props {
   playIntro?: boolean;
   onIntroFinished?: () => void;
 }
+
+const HIDDEN_PLAYER_LABELS = new Set([
+  "du",
+  "you",
+  "tú",
+  "partner",
+  "compañero",
+  "ki 1",
+  "ki 2",
+  "ai 1",
+  "ai 2",
+  "ia 1",
+  "ia 2",
+  "gegner 1",
+  "gegner 2",
+  "opponent 1",
+  "opponent 2",
+  "rival 1",
+  "rival 2",
+  "opp1",
+  "opp2",
+]);
+
+const MOTIVATION_KEYS: TranslationKey[] = [
+  "sc25_mot_1",
+  "sc25_mot_2",
+  "sc25_mot_3",
+  "sc25_mot_4",
+  "sc25_mot_5",
+  "sc25_mot_6",
+  "sc25_mot_7",
+];
 
 // ==========================================
 // 1. ZONEN-BERECHNUNG & RASTER
@@ -143,12 +176,13 @@ function StaticCourtMarkings({ level, profiMode }: { level: string, profiMode?: 
 // 2. SCHWEBENDE HOLOGRAMM-TEXTE 
 // ==========================================
 function FloatingPrompts({ level, profiMode, selectedZone, selectedLaufZone, hasSubmitted }: Props) {
+  const { t } = useTranslation();
   const zielZoneRef = useRef<any>(null);
   const laufZoneRef = useRef<any>(null);
 
   useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    const pulseOpacity = 0.6 + Math.sin(t * 3) * 0.25; 
+    const elapsed = clock.getElapsedTime();
+    const pulseOpacity = 0.6 + Math.sin(elapsed * 3) * 0.25; 
     
     if (zielZoneRef.current) zielZoneRef.current.fillOpacity = pulseOpacity;
     if (laufZoneRef.current) laufZoneRef.current.fillOpacity = pulseOpacity;
@@ -172,7 +206,7 @@ function FloatingPrompts({ level, profiMode, selectedZone, selectedLaufZone, has
           fontWeight="bold" 
           material-toneMapped={false}
         >
-          ZIELZONE WÄHLEN
+          {t("sc25_select_target_zone")}
         </Text>
       )}
 
@@ -189,7 +223,7 @@ function FloatingPrompts({ level, profiMode, selectedZone, selectedLaufZone, has
           fontWeight="bold" 
           material-toneMapped={false}
         >
-          LAUFZIEL WÄHLEN
+          {t("sc25_select_run_zone")}
         </Text>
       )}
     </group>
@@ -205,8 +239,8 @@ function HidePlayerLabels() {
     const hideInterval = setInterval(() => {
       scene.traverse((obj: any) => {
         if (obj.text && typeof obj.text === 'string') {
-          const t = obj.text.toLowerCase().trim();
-          if (t === "du" || t === "partner" || t === "ki 1" || t === "ki 2" || t === "gegner 1" || t === "gegner 2" || t === "opp1" || t === "opp2") {
+          const txt = obj.text.toLowerCase().trim();
+          if (HIDDEN_PLAYER_LABELS.has(txt)) {
             obj.visible = false;
           }
         }
@@ -218,18 +252,31 @@ function HidePlayerLabels() {
 }
 
 function StadiumLEDScreen(props: Props) {
-  const [motivationText, setMotivationText] = useState("SUPER!");
+  const { lang, t } = useTranslation();
+  const [motivationKey, setMotivationKey] = useState<TranslationKey>("sc25_mot_1");
   const [domSuccess, setDomSuccess] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (props.hasSubmitted) {
-      const words = ["SUPER!", "KLASSE!", "STARK!", "PERFEKT!", "BOMBE!", "GENIAL!", "SAUBER!"];
-      setMotivationText(words[Math.floor(Math.random() * words.length)]);
+      setMotivationKey(MOTIVATION_KEYS[Math.floor(Math.random() * MOTIVATION_KEYS.length)]);
 
-      // 100% SICHERES FALLBACK: Lese den Erfolg direkt aus der externen UI (Mission Erfolgreich)
+      // Prüft auf die Erfolgs-Texte in DE, EN und ES
       const checkDOM = () => {
         const text = document.body.textContent?.toUpperCase() || "";
-        if (text.includes("MISSION ERFOLGREICH")) {
+        if (
+          text.includes("MISSION ERFOLGREICH") ||
+          text.includes("MISSION ACCOMPLISHED") ||
+          text.includes("MISIÓN CUMPLIDA") ||
+          text.includes("PERFEKTER SPIELZUG") ||
+          text.includes("PERFECT PLAY") ||
+          text.includes("JUGADA PERFECTA") ||
+          text.includes("TAGES-CHALLENGE GEMEISTERT") ||
+          text.includes("DAILY CHALLENGE MASTERED") ||
+          text.includes("RETO DIARIO SUPERADO") ||
+          text.includes("NÄCHSTER SCHRITT") ||
+          text.includes("NEXT STEP") ||
+          text.includes("SIGUIENTE PASO")
+        ) {
           setDomSuccess(true);
         }
       };
@@ -243,11 +290,16 @@ function StadiumLEDScreen(props: Props) {
     }
   }, [props.hasSubmitted, props.turnResult]);
 
-  let screenText = props.level.toUpperCase();
+  const localizedLevel =
+    props.level === "Strategie"
+      ? t("sc25_lvl_strategy")
+      : formatLevelName(props.level, lang).toUpperCase();
+
+  let screenText = localizedLevel;
   let textColor = "text-white";
   let glowColor = "drop-shadow-[0_0_15px_rgba(14,165,233,0.6)]";
   
-  let subText = "TAKTIK-TRAINER";
+  let subText = t("trainer_title").toUpperCase();
   let subTextColor = "text-sky-400";
   let textSize = "text-3xl"; 
   let textTransform = "uppercase"; 
@@ -255,7 +307,7 @@ function StadiumLEDScreen(props: Props) {
   if (props.feedbackMsg) {
     screenText = props.feedbackMsg; 
     glowColor = "drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]";
-    subText = "TAKTIK-KORREKTUR"; 
+    subText = t("sc25_tactic_correction"); 
     subTextColor = "text-red-400";
     textSize = screenText.length > 20 ? "text-[1.1rem] px-4 leading-relaxed" : "text-3xl"; 
     textTransform = "normal-case";
@@ -270,7 +322,6 @@ function StadiumLEDScreen(props: Props) {
 
     let isSuccess = false;
 
-    // Normale Logik-Prüfung der Zonen (funktioniert bei Laufrichtung / Spielzug am besten)
     if (currentLevel === "laufrichtung") {
       isSuccess = (perfLauf === selLauf) || acceptLauf.includes(selLauf);
     } else if (props.profiMode) {
@@ -280,11 +331,9 @@ function StadiumLEDScreen(props: Props) {
       const laufOk = !needsLauf || perfLauf === selLauf || acceptLauf.includes(selLauf);
       isSuccess = targetOk && laufOk;
     } else if (currentLevel === "schlag") {
-      // Wenn im Schlag-Modus ausnahmsweise mal eine Zone existiert
       if (selZone && (best.includes(selZone) || accept.includes(selZone))) {
         isSuccess = true;
       } else {
-        // Interne Textanalyse als Reserve
         const res = (props.turnResult || "").toLowerCase();
         const hasError = res.startsWith("falsch") || 
                          res.startsWith("leider") || 
@@ -297,21 +346,20 @@ function StadiumLEDScreen(props: Props) {
       isSuccess = best.includes(selZone) || accept.includes(selZone);
     }
 
-    // 🔥 DER ABSOLUTE OVERRIDE: Wenn die UI unten "Erfolgreich" sagt, wird alles auf Richtig gesetzt
     if (domSuccess === true) {
       isSuccess = true;
     }
 
     if (isSuccess) {
-      screenText = motivationText;
+      screenText = t(motivationKey);
       glowColor = "drop-shadow-[0_0_20px_rgba(52,211,153,0.8)]";
-      subText = "RICHTIGE WAHL";
+      subText = t("sc25_right_choice");
       subTextColor = "text-emerald-400";
       textSize = "text-4xl";
     } else {
-      screenText = props.turnResult ? props.turnResult : "FALSCHE WAHL";
+      screenText = props.turnResult ? props.turnResult : t("sc25_wrong_choice");
       glowColor = "drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]";
-      subText = "TAKTIK-KORREKTUR"; 
+      subText = t("sc25_tactic_correction"); 
       subTextColor = "text-red-400";
       textSize = screenText.length > 20 ? "text-[1.1rem] px-4 leading-relaxed" : "text-3xl"; 
       textTransform = screenText.length > 20 ? "normal-case" : "uppercase";
@@ -335,15 +383,19 @@ function StadiumLEDScreen(props: Props) {
 // 4. HAUPTKOMPONENTE
 // ==========================================
 export default function ScenarioCourt25(props: Props) {
-  const [playerName, setPlayerName] = useState("Gast");
+  const { t } = useTranslation();
+  const [playerName, setPlayerName] = useState(() => t("guest_name"));
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
     const fetchName = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
+        if (!user) {
+          setPlayerName(t("guest_name"));
+          return;
+        }
+        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || t("guest_name");
         const { data: profileData } = await supabase.from('user_stats').select('display_name').eq('id', user.id).maybeSingle();
         if (profileData?.display_name) name = profileData.display_name;
         setPlayerName(name);
@@ -352,7 +404,7 @@ export default function ScenarioCourt25(props: Props) {
       }
     };
     fetchName();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const hideHtmlInterval = setInterval(() => {
@@ -362,11 +414,11 @@ export default function ScenarioCourt25(props: Props) {
         elements.forEach(el => {
           const txt = el.textContent?.trim().toLowerCase() || "";
           
-          if (txt === "du" || txt === "partner" || txt === "ki 1" || txt === "ki 2" || txt === "gegner 1" || txt === "gegner 2" || txt === "opp1" || txt === "opp2") {
+          if (HIDDEN_PLAYER_LABELS.has(txt)) {
             (el as HTMLElement).style.display = 'none'; 
           }
           
-          if (txt.includes("team (du)") && txt.includes("match-tiebreak")) {
+          if ((txt.includes("team") || txt.includes("equipo")) && txt.includes("tiebreak")) {
             if (!el.querySelector('canvas') && !el.classList.contains('taktik-screen')) {
               (el as HTMLElement).style.display = 'none';
             }
@@ -398,7 +450,7 @@ export default function ScenarioCourt25(props: Props) {
           <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
           <Environment preset="city" environmentIntensity={0.5} />
 
-          <Suspense fallback={<Html center className="text-white text-xs font-bold tracking-widest uppercase">Lade Arena...</Html>}>
+          <Suspense fallback={<Html center className="text-white text-xs font-bold tracking-widest uppercase">{t("court_loading_arena")}</Html>}>
             <Effects />
             <CourtFloor 
               serverId={props.hitterId} 
@@ -419,7 +471,6 @@ export default function ScenarioCourt25(props: Props) {
             <StadiumLEDScreen {...props} />
 
             <HidePlayerLabels />
-            {/* as any zwingt TypeScript, die neuen Props an die externe Komponente weiterzugeben */}
             <TacticalData {...(props as any)} />
           </Suspense>
         </Canvas>
