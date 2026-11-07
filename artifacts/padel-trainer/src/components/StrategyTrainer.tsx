@@ -4,6 +4,7 @@ import ScenarioCourt25 from "./ScenarioCourt25";
 import { STRATEGIES, StrategySequence, StrategyStep } from "../lib/strategies";
 import StrategyBuilder from "./StrategyBuilder";
 import { supabase } from "../lib/supabase";
+import { useTranslation, formatShotName } from "../lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 
@@ -13,6 +14,8 @@ interface StrategyTrainerProps {
 }
 
 export default function StrategyTrainer({ onBack, onStrategyComplete }: StrategyTrainerProps) {
+  const { lang, t } = useTranslation();
+
   const [activeStrategy, setActiveStrategy] = useState<StrategySequence | null>(null);
   const [currentView, setCurrentView] = useState<"list" | "builder">("list");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -45,14 +48,13 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
       if (!session?.user) {
         setIsProUser(false);
       } else {
-        const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
+        const emailLower = session.user.email?.toLowerCase().trim() || "";
+        const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
 
         if (isAdmin) {
-          // Für dich als Admin gilt dein Test-Umschalter aus dem ProfilTab (Standard: true)
           const localOverride = localStorage.getItem("tacpadel_is_pro");
           setIsProUser(localOverride === null ? true : localOverride === "true");
         } else {
-          // Für alle normalen Spieler & Tester: Immer live den echten DB-Wert aus 'user_stats' nehmen
           const { data: statsData } = await supabase
             .from("user_stats")
             .select("is_pro")
@@ -83,7 +85,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
           }
           return {
             id: dbRow.id,
-            title: `${dbRow.title} (von ${dbRow.creator_name})`, 
+            title: `${dbRow.title} (${t("strat_by")} ${dbRow.creator_name})`, 
             theme: dbRow.theme as any,
             difficulty: dbRow.difficulty as any,
             description: dbRow.description,
@@ -96,10 +98,38 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     }
     
     initData();
-  }, []);
+  }, [lang]);
 
   const activeStep: StrategyStep | null = activeStrategy ? activeStrategy.steps[currentStepIndex] : null;
   const isAITurn = activeStep?.playerTurn === "ai";
+
+  // Hilfsfunktionen für mehrsprachige Strategie-Felder (falls in strategies.ts hinterlegt)
+  const getLocalizedStrategyTitle = (strat: any) =>
+    (lang === "en" && strat?.title_en) ||
+    (lang === "es" && strat?.title_es) ||
+    strat?.title || "";
+
+  const getLocalizedStrategyDesc = (strat: any) =>
+    (lang === "en" && strat?.description_en) ||
+    (lang === "es" && strat?.description_es) ||
+    strat?.description || "";
+
+  const getLocalizedStepDesc = (step: any) =>
+    (lang === "en" && step?.description_en) ||
+    (lang === "es" && step?.description_es) ||
+    step?.description || "";
+
+  const getLocalizedStepExp = (step: any) =>
+    (lang === "en" && step?.stepExplanation_en) ||
+    (lang === "es" && step?.stepExplanation_es) ||
+    step?.stepExplanation || "";
+
+  const formatThemeLabel = (theme: string) => {
+    if (theme === "Offensive") return t("strat_theme_off");
+    if (theme === "Defensive") return t("strat_theme_def");
+    if (theme === "Umschaltspiel") return t("strat_theme_trans");
+    return theme;
+  };
 
   const handleShotClick = (shot: string) => {
     if (hasSubmitted || isAITurn) return;
@@ -212,7 +242,6 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
   }
 
   if (!activeStrategy) {
-    // Free-User sehen nur die erste Strategie (ohne Paywall/Pro-Hinweise), Pro-User sehen alle
     const visibleStrategies = isProUser ? allStrategies : allStrategies.slice(0, 1);
 
     return (
@@ -220,10 +249,10 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button onClick={onBack} className="text-slate-400 hover:text-white transition-colors">
-              ← Zurück
+              {t("btn_back")}
             </button>
             <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 uppercase tracking-widest">
-              Strategie-Pfade
+              {t("strat_title")}
             </h2>
           </div>
 
@@ -233,13 +262,13 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
               onClick={() => setCurrentView("builder")} 
               className="text-xs px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-600/40"
             >
-              <span>+ Erstellen</span>
+              <span>{t("strat_create_btn")}</span>
             </button>
           )}
         </div>
         
         <p className="text-slate-400 text-sm">
-          Meistere zusammenhängende Ballwechsel. Spiele abwechselnd mit dem Gegner, um die Taktik Schritt für Schritt aufzubauen.
+          {t("strat_subtitle")}
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
@@ -256,18 +285,18 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
               <div className="flex justify-between items-start mb-3 relative z-10 gap-2">
                 <div className="flex gap-2 items-center flex-wrap">
                   <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${getThemeStyles(strat.theme)}`}>
-                    {strat.theme}
+                    {formatThemeLabel(strat.theme)}
                   </span>
                   <span className="text-[10px] tracking-widest drop-shadow-md">
                     {"⭐".repeat(strat.difficulty)}
                   </span>
                 </div>
-                <span className="text-xs font-bold text-slate-500 shrink-0">{strat.steps.length} Züge</span>
+                <span className="text-xs font-bold text-slate-500 shrink-0">{strat.steps.length} {t("strat_moves_count")}</span>
               </div>
               <h3 className="text-lg font-bold text-white mb-2 relative z-10 flex items-center gap-2">
-                <span>{strat.title}</span>
+                <span>{getLocalizedStrategyTitle(strat)}</span>
               </h3>
-              <p className="text-xs text-slate-400 line-clamp-2 relative z-10">{strat.description}</p>
+              <p className="text-xs text-slate-400 line-clamp-2 relative z-10">{getLocalizedStrategyDesc(strat)}</p>
             </div>
           ))}
         </div>
@@ -282,12 +311,12 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
         <div className="flex items-center justify-between bg-[#040914]/90 border border-purple-900/50 p-4 rounded-xl">
           <div className="flex flex-col">
             <span className={`text-[10px] font-bold tracking-widest uppercase ${isTestMode ? "text-blue-400" : "text-purple-400"}`}>
-              {isTestMode ? "🛡️ TESTMODUS" : "Aktuelle Strategie"}
+              {isTestMode ? t("strat_test_mode") : t("strat_current_label")}
             </span>
-            <span className="text-sm font-black text-white">{activeStrategy.title}</span>
+            <span className="text-sm font-black text-white">{getLocalizedStrategyTitle(activeStrategy)}</span>
           </div>
           <button onClick={leaveStrategy} className="text-xs bg-slate-900/50 text-slate-400 px-3 py-1.5 rounded-lg border border-slate-800 hover:text-white">
-            Abbrechen
+            {t("prof_cancel")}
           </button>
         </div>
 
@@ -296,12 +325,12 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
             <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${isAITurn ? 'bg-red-500' : 'bg-purple-500'}`} />
             <div className="flex justify-between items-center mb-3">
               <h3 className={`text-[10px] font-black tracking-widest uppercase ${isAITurn ? 'text-red-400' : 'text-slate-400'}`}>
-                {isAITurn ? "Gegner am Zug" : "Dein Zug"}
+                {isAITurn ? t("strat_opp_turn") : t("strat_your_turn")}
               </h3>
               <span className="text-[10px] text-slate-500 font-bold">{currentStepIndex + 1} / {activeStrategy.steps.length}</span>
             </div>
             <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-4">
-              {activeStep.description}
+              {getLocalizedStepDesc(activeStep)}
             </p>
           </div>
 
@@ -341,17 +370,17 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                 onClick={handleSubmit}
                 className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black text-xs tracking-widest uppercase rounded-lg transition-all"
               >
-                Gegnerischen Zug abspielen ➔
+                {t("strat_play_opp_turn")}
               </button>
             ) : (
               <div className="flex gap-2">
                 <div className={`flex-1 p-2 rounded-lg border ${selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/30 bg-purple-950/10'}`}>
-                  <span className="text-[9px] font-black tracking-widest text-purple-400 uppercase">1. Laufzone</span>
+                  <span className="text-[9px] font-black tracking-widest text-purple-400 uppercase">{t("trainer_step1_run")}</span>
                   <div className="text-xs font-bold">{selectedLaufZone || "-"}</div>
                 </div>         
                 
                 <div className={`flex-1 p-2 rounded-lg border ${selectedZone ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-emerald-500/30 bg-emerald-950/10'}`}>
-                  <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase">2. Schlagziel</span>
+                  <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase">{t("trainer_step2_target")}</span>
                   <div className="text-xs font-bold">{selectedZone || "-"}</div>
                 </div>
                 
@@ -359,8 +388,8 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                   onClick={() => setIsShotModalOpen(true)}
                   className={`flex-1 p-2 rounded-lg border cursor-pointer ${selectedShot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/50 bg-orange-950/30 animate-pulse'}`}
                 >
-                  <span className="text-[9px] font-black tracking-widest text-orange-400 uppercase">3. Schlag</span>
-                  <div className="text-xs font-bold">{selectedShot || "Wählen..."}</div>
+                  <span className="text-[9px] font-black tracking-widest text-orange-400 uppercase">{t("daily_step3_shot")}</span>
+                  <div className="text-xs font-bold">{selectedShot ? formatShotName(selectedShot, lang) : t("trainer_choose")}</div>
                 </div>
                 
                 <button
@@ -368,7 +397,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                   disabled={!canSubmit}
                   className="w-1/3 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white font-black text-[10px] uppercase rounded-lg transition-all"
                 >
-                  Ausführen
+                  {t("strat_execute_short")}
                 </button>
               </div>
             )}
@@ -391,7 +420,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
                     onClick={() => { handleShotClick(shot); setIsShotModalOpen(false); }}
                     className={`py-3 rounded-lg border text-[10px] font-black uppercase ${selectedShot === shot ? 'bg-orange-600/20 border-orange-500 text-orange-300' : 'bg-slate-900/40 border-slate-800 text-slate-400'}`}
                   >
-                    {shot}
+                    {formatShotName(shot, lang)}
                   </button>
                 ))}
               </div>
@@ -409,20 +438,20 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
               <h3 className={`text-xl font-black uppercase tracking-widest mb-2 ${
                 isAITurn ? "text-red-400" : (stepResult === "correct" ? "text-emerald-400" : "text-red-500")
               }`}>
-                {isAITurn ? "Gegner hat gespielt" : (stepResult === "correct" ? "Stark! Nächster Schritt..." : "Fehler! Kette gerissen.")}
+                {isAITurn ? t("strat_opp_played") : (stepResult === "correct" ? t("strat_step_correct") : t("strat_step_wrong"))}
               </h3>
               
               <p className="text-slate-300 text-sm mb-4">
                 {isAITurn || stepResult === "correct" 
-                  ? activeStep.stepExplanation 
-                  : "Deine Taktik ist fehlgeschlagen. Du musst die Strategie komplett neu aufbauen!"}
+                  ? getLocalizedStepExp(activeStep) 
+                  : t("strat_failed_desc")}
               </p>
               
               <button
                 onClick={handleNextStep}
                 className="w-full py-4 bg-white hover:bg-slate-300 text-black font-black text-xs uppercase rounded-xl transition-transform active:scale-95"
               >
-                {stepResult === "correct" ? "Weiter ➔" : "Neu starten ↺"}
+                {stepResult === "correct" ? t("gtut_next_btn") : t("strat_restart_btn")}
               </button>
             </motion.div>
           )}
@@ -439,18 +468,18 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
     >
       <span className="text-6xl mb-4">🏆</span>
       <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-500 uppercase tracking-widest">
-        {isTestMode ? "Test abgeschlossen" : "Strategie Meister"}
+        {isTestMode ? t("strat_test_done_title") : t("strat_master_title")}
       </h2>
       <p className="text-slate-400 mt-2 mb-6">
         {isTestMode 
-          ? "Der Testlauf ist beendet. Im Testmodus werden keine Punkte vergeben." 
-          : `Du hast alle Züge von "${activeStrategy?.title}" perfekt ausgeführt. +50 Punkte!`}
+          ? t("strat_test_done_desc") 
+          : `${t("strat_master_desc_1")} "${getLocalizedStrategyTitle(activeStrategy)}" ${t("strat_master_desc_2")}`}
       </p>
       <button 
         onClick={leaveStrategy}
         className="px-8 py-4 bg-gradient-to-r from-purple-600 to-cyan-600 hover:scale-105 transition-transform text-white uppercase font-black text-xs rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)]"
       >
-        {isTestMode ? "Zurück zum Entwurf" : "Zurück zur Übersicht"}
+        {isTestMode ? t("strat_back_draft") : t("strat_back_overview")}
       </button>
     </motion.div>
   );
