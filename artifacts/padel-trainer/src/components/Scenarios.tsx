@@ -1,1109 +1,1474 @@
-// Falls PlayerPositions in einer anderen Datei definiert ist, hier importieren, z.B.:
-// import { PlayerPositions } from './types';
-
 export interface Scenario {
   id: number;
   description: string;
+  description_en?: string;
+  description_es?: string;
   validShots: string[];
   bestZones: string[];
   explanation: string;
-  positions: any; // Hier kannst du wieder 'PlayerPositions' eintragen, wenn der Typ importiert ist
+  explanation_en?: string;
+  explanation_es?: string;
+  positions: any;
   laufZone: string;
 }
 
 export const SCENARIOS: Scenario[] = [
-  
-    {
+  // ==========================================
+  // LEVEL 1 & 2: GRUNDLAGEN (IDs 1 - 10)
+  // ==========================================
+  {
     id: 1,
     description: "Du stehst ganz hinten in der Ecke und bist unter Druck. Die Gegner warten angriffslustig vorne am Netz. Mit welchem Schlag kannst du den Ball in einem hohen Bogen über sie hinwegspielen, um Zeit zu gewinnen?",
+    description_en: "You are pinned deep in the back corner under pressure while the opponents wait aggressively at the net. Which shot lets you play the ball high over their heads to buy time?",
+    description_es: "Estás hundido en la esquina del fondo bajo presión y los rivales esperan agresivos en la red. ¿Con qué golpe puedes superarles por alto para ganar tiempo?",
     validShots: ["LOB"],
     bestZones: ["A1", "E1"],
     explanation: "Der Lob (Bogenlampe) ist der wichtigste Befreiungsschlag im Padel. Er zwingt die Gegner zum Rückzug an die Wand und gibt dir Zeit, selbst wieder anzugreifen.",
-    positions: {
-      you: "A1",
-      partner: "D1",
-      opp1: "A4",
-      opp2: "C4",
-      ball: { side: "left", zone: "A1" },
-    },
+    explanation_en: "The Lob is the most important defensive reset in Padel. It forces the opponents back to the glass wall and gives you time to take over the net.",
+    explanation_es: "El Globo (Lob) es el golpe defensivo más importante del pádel. Obliga a los rivales a retroceder hasta el cristal y te da tiempo para recuperar la red.",
+    positions: { you: "A1", partner: "D1", opp1: "A4", opp2: "C4", ball: { side: "left", zone: "A1" } },
     laufZone: "B4",
   },
   {
     id: 2,
     description: "Du stehst vorne am Netz. Der Gegner spielt den Ball hoch in die Luft, aber nicht weit genug, um dich ganz nach hinten zu treiben. Für einen harten Schmetterball bist du jedoch zu weit weg.",
+    description_en: "You are at the net. The opponent hits a high ball, but not deep enough to push you all the way back. However, you are too far from the net for an all-out power smash.",
+    description_es: "Estás en la red. El rival lanza un globo corto que no llega a pasarte del todo, pero estás demasiado lejos de la red para definir con un remate potente.",
     validShots: ["BANDEJA"],
     bestZones: ["A1", "E1"],
     explanation: "Die Bandeja (spanisch für 'Tablett') ist ein typischer Padel-Schlag. Du triffst den Ball auf Kopfhöhe und 'schiebst' ihn wie auf einem Tablett kontrolliert zurück, um deine Netzposition nicht zu verlieren.",
-    positions: {
-      you: "B3",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D1",
-      ball: { side: "left", zone: "B3" },
-    },
+    explanation_en: "The Bandeja ('tray' in Spanish) is a signature Padel shot. You strike the ball at head height with slice to keep it low off the glass and retain your net position.",
+    explanation_es: "La Bandeja es un golpe clásico del pádel. Impactas la bola a la altura de la cabeza con efecto cortado para que rebote baja en el cristal y así conservar la red.",
+    positions: { you: "B3", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B3" } },
     laufZone: "B4",
   },
   {
     id: 3,
     description: "Du stehst direkt am Netz. Plötzlich feuert der Gegner einen extrem harten, flachen Ball genau auf dich ab. Du hast absolut keine Zeit auszuholen.",
+    description_en: "You are right at the net. Suddenly, the opponent fires a flat, powerful shot straight at your body. You have zero time for a backswing.",
+    description_es: "Estás pegado a la red. De repente, el rival dispara un tiro plano y potentísimo directo a tu cuerpo. No tienes tiempo para armar el brazo.",
     validShots: ["BLOCK"],
     bestZones: ["B2", "C2"],
     explanation: "Beim Block hältst du den Schläger einfach nur stabil wie eine Wand hin. Du nutzt die Geschwindigkeit des gegnerischen Balles, um ihn kurz und flach abtropfen zu lassen.",
-    positions: {
-      you: "B4",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D1",
-      ball: { side: "left", zone: "B4" },
-    },
+    explanation_en: "With the Block, you hold your racket firm like a wall in front of your body, using the opponent's pace to absorb and redirect the ball safely over the net.",
+    explanation_es: "En el Bloqueo colocas la pala firme como un muro delante del cuerpo, aprovechando la velocidad de la bola rival para amortiguarla al otro lado.",
+    positions: { you: "B4", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B4" } },
     laufZone: "B4",
   },
   {
     id: 4,
     description: "Ein schwacher, sehr hoher Ball des Gegners fällt direkt vor dir nahe am Netz vom Himmel. Du stehst perfekt darunter und willst den Punkt jetzt endgültig mit purer Kraft gewinnen.",
+    description_en: "A weak, high lob drops right in front of you close to the net. You are perfectly positioned underneath it and want to finish the point with pure power.",
+    description_es: "Un globo muy corto del rival cae justo delante de ti cerca de la red. Estás perfectamente colocado debajo y quieres definir el punto con máxima potencia.",
     validShots: ["SMASH"],
     bestZones: ["A1", "E1"],
     explanation: "Der Smash (Schmetterball) wird mit maximaler Kraft von oben nach unten geschlagen. Aus so kurzer Distanz ist er ein sicherer Punktgewinn.",
-    positions: {
-      you: "B5",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D1",
-      ball: { side: "left", zone: "B5" },
-    },
+    explanation_en: "The Smash is hit downwards with maximum power. From this close to the net, it is a guaranteed winner.",
+    explanation_es: "El Smash (Remate) se golpea de arriba abajo con máxima potencia. Desde tan cerca de la red es un punto ganador seguro.",
+    positions: { you: "B5", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B5" } },
     laufZone: "B5",
   },
   {
     id: 5,
     description: "Ein gegnerischer Ball prallt hoch gegen deine hintere Glaswand und springt von dort bequem auf Kopfhöhe zu dir zurück. Wie nennst du den Schlag, bei dem du diesen Wandabpraller von oben nach unten schlägst?",
+    description_en: "An opponent's lob bounces high off your back glass wall and sits up comfortably at head height. What is the shot called where you whip this high wall rebound downwards?",
+    description_es: "Una bola rival rebota alta en tu cristal de fondo y te queda cómoda por encima de la cabeza. ¿Cómo se llama el golpe con el que atacas esa bola de arriba abajo?",
     validShots: ["BAJADA"],
     bestZones: ["B2", "C2"],
     explanation: "Die Bajada (de Pared) bedeutet 'Wand-Abstieg'. Du nutzt den hohen Abpraller von der Glasscheibe, um den Ball aggressiv von oben nach unten ins Feld zu peitschen.",
-    positions: {
-      you: "A2",
-      partner: "D1",
-      opp1: "A4",
-      opp2: "C4",
-      ball: { side: "left", zone: "A2" },
-    },
+    explanation_en: "The Bajada (de Pared) means 'bringing down from the wall'. You use the high glass rebound to whip the ball aggressively downwards into the opponent's court.",
+    explanation_es: "La Bajada de Pared aprovecha el rebote alto en el cristal de fondo para atacar la bola de arriba abajo con gran velocidad hacia el campo rival.",
+    positions: { you: "A2", partner: "D1", opp1: "A4", opp2: "C4", ball: { side: "left", zone: "A2" } },
     laufZone: "B4",
   },
   {
     id: 6,
     description: "Ein halbhoher Ball schwebt auf dich zu. Du greifst ihn seitlich auf Kopfhöhe an, um ihm einen starken seitlichen Drall (Spin) zu geben, damit er nach dem Bodenaufprall flach am Boden bleibt.",
+    description_en: "A medium-high ball floats towards you. You whip across it at head height with heavy side-spin so it skids low and fast off the opponent's corner walls.",
+    description_es: "Una bola a media altura viene hacia ti. La atacas lateralmente a la altura de la cabeza imprimiendo mucho efecto lateral para que salga rasante tras tocar la pared.",
     validShots: ["VIBORA"],
     bestZones: ["A1", "A2"],
     explanation: "Die Víbora (spanisch für 'Viper') ist ein aggressiver Angriffsschlag. Durch den starken seitlichen Schnitt rutscht der Ball giftig flach weg und prallt kaum noch von der gegnerischen Wand ab.",
-    positions: {
-      you: "B3",
-      partner: "D4",
-      opp1: "B2",
-      opp2: "D2",
-      ball: { side: "left", zone: "B3" },
-    },
+    explanation_en: "The Víbora ('viper' in Spanish) is an aggressive overhead. Its heavy side-spin makes the ball skid venomous and low off the glass.",
+    explanation_es: "La Víbora es un golpe aéreo agresivo. Gracias a su fuerte efecto lateral, la bola muerde el cristal y sale muy baja y difícil de defender.",
+    positions: { you: "B3", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B3" } },
     laufZone: "B4",
   },
   {
     id: 7,
     description: "Du stehst angriffslustig am Netz. Ein Ball kommt auf Brusthöhe auf dich zu. Welchen Schlag nutzt du, um den Ball direkt aus der Luft zu nehmen, bevor er überhaupt den Boden berührt?",
+    description_en: "You are commanding the net and a ball comes towards you at chest height. Which shot do you use to hit it directly out of the air before it bounces?",
+    description_es: "Dominas la red y viene una bola a la altura del pecho. ¿Qué golpe utilizas para impactarla directamente en el aire antes de que bote?",
     validShots: ["VOLLEY"],
     bestZones: ["B2", "C2", "D2"],
     explanation: "Der Volley (Flugball) wird direkt aus der Luft gespielt. Am Netz ist er deine wichtigste Waffe, um die Gegner unter Druck zu setzen und keine Zeit zum Reagieren zu lassen.",
-    positions: {
-      you: "B4",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D1",
-      ball: { side: "left", zone: "B4" },
-    },
+    explanation_en: "The Volley is struck directly out of the air. At the net, it is your primary weapon to keep opponents under pressure and take away their time.",
+    explanation_es: "La Volea se juega directamente en el aire. En la red es tu arma principal para presionar al rival y quitarle tiempo de reacción.",
+    positions: { you: "B4", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B4" } },
     laufZone: "B4",
   },
   {
     id: 8,
     description: "Du stehst ganz hinten. Die Gegner stehen bedrohlich nah am Netz und warten auf einen harten Ball von dir. Statt fest draufzuhauen, streichelst du den Ball extrem kurz und weich genau vor ihre Füße.",
+    description_en: "You are at the back while the opponents crowd the net expecting a hard drive. Instead, you caress the ball softly so it dips right at their feet.",
+    description_es: "Estás al fondo y los rivales esperan en la red un tiro fuerte. En lugar de pegar duro, acaricias la bola suave y corta justo a sus pies.",
     validShots: ["CHIQUITA"],
     bestZones: ["B3", "C3", "D3"],
     explanation: "Die Chiquita (spanisch für 'die Kleine') ist ein weicher, gefühlvoller Ball. Er fällt direkt hinter dem Netz ab und zwingt die Gegner dazu, den Ball mühsam von ganz unten heben zu müssen.",
-    positions: {
-      you: "A1",
-      partner: "D1",
-      opp1: "A4",
-      opp2: "C4",
-      ball: { side: "left", zone: "A1" },
-    },
+    explanation_en: "The Chiquita ('little one' in Spanish) is a soft, dipping shot that drops right over the net, forcing the net players to volley upwards from below net level.",
+    explanation_es: "La Chiquita es un golpe suave y preciso que cae justo detrás de la red, obligando a los rivales a levantar la bola desde los tobillos.",
+    positions: { you: "A1", partner: "D1", opp1: "A4", opp2: "C4", ball: { side: "left", zone: "A1" } },
     laufZone: "B3",
   },
   {
     id: 9,
     description: "Ein neuer Punkt beginnt. Du stehst rechts hinten hinter der Linie und musst den Ball ins Spiel bringen. Der Ball darf beim Schlagen maximal auf Hüfthöhe getroffen werden.",
+    description_en: "A new point starts. You stand behind the right baseline to put the ball in play, striking it at or below waist level after bouncing it once.",
+    description_es: "Comienza un punto nuevo. Estás detrás de la línea derecha para poner la bola en juego tras el bote, impactando como máximo a la altura de la cintura.",
     validShots: ["AUFSCHLAG"],
-    bestZones: ["A3","B3", "C3"],
+    bestZones: ["A3", "B3", "C3"],
     explanation: "Der Aufschlag eröffnet jeden Ballwechsel. Im Gegensatz zum Tennis wird er beim Padel nach dem Bodenaufprall 'von unten' geschlagen und muss diagonal ins gegnerische Feld fliegen.",
-    positions: {
-      you: "D1",
-      partner: "D4",
-      opp1: "B1",
-      opp2: "D2",
-      ball: { side: "left", zone: "D1" },
-    },
+    explanation_en: "The Serve starts every rally. Unlike tennis, in Padel it is hit underhand after bouncing the ball and must land diagonally in the opposite service box.",
+    explanation_es: "El Saque inicia cada punto. A diferencia del tenis, en el pádel se golpea por debajo de la cintura tras botar la bola y debe ir en diagonal.",
+    positions: { you: "D1", partner: "D4", opp1: "B1", opp2: "D2", ball: { side: "left", zone: "D1" } },
     laufZone: "D4",
   },
   {
     id: 10,
     description: "Du stehst hinten. Die Gegner am Netz haben eine große Lücke gelassen. Welchen klassischen, flachen Grundschlag (wie beim Tennis) nutzt du, um den Ball nach einem Bodenaufprall an ihnen vorbeizuspielen?",
+    description_en: "You are at the baseline and the opponents at the net have left a gap. Which classic flat groundstroke do you use after the bounce to pass them?",
+    description_es: "Estás en el fondo y los rivales en la red han dejado un hueco. ¿Qué golpe básico y plano tras bote utilizas para superarlos?",
     validShots: ["DRIVE"],
     bestZones: ["A1", "A1"],
     explanation: "Der Drive ist der klassische Vorhand- oder Rückhandschlag, nachdem der Ball einmal auf dem Boden aufgetippt ist. Man spielt ihn meist flach, um das Netz zu passieren.",
-    positions: {
-      you: "A2",
-      partner: "D2",
-      opp1: "B4",
-      opp2: "D4",
-      ball: { side: "left", zone: "A2" },
-    },
+    explanation_en: "The Drive is the classic forehand or backhand groundstroke hit after the ball bounces once on the turf.",
+    explanation_es: "El Drive (derecha o revés) es el golpe básico de fondo después de que la bola bote en el suelo.",
+    positions: { you: "A2", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
     laufZone: "B2",
   },
-  
+
   // ==========================================
-  // AB HIER NEUE ERWEITERTE SPIELZÜGE (11 - 35)
+  // LEVEL 2: SCHLAGRICHTUNG (IDs 11 - 31)
   // ==========================================
   {
     id: 11,
     description: "Der Ball prallt unkontrolliert vom Seitengitter ab (B3). Wähle den sichersten Schlag und die optimale Flugrichtung, um Zeit zu gewinnen.",
+    description_en: "The ball bounces unpredictably off the side wire mesh (B3). Choose the safest shot and target zone to buy time.",
+    description_es: "La bola rebota de forma irregular en la malla lateral (B3). Elige el golpe más seguro y la dirección óptima para ganar tiempo.",
     validShots: ["LOB"],
     bestZones: ["A1", "E1"],
     explanation: "Nach unberechenbaren Gittertreffern ist ein hoher Lob in die tiefen Ecken die sicherste Option, um den Angriff zu stoppen.",
+    explanation_en: "After an awkward bounce off the wire mesh, a high lob deep into the corners is the safest way to neutralize the opponent's attack.",
+    explanation_es: "Tras un rebote impredecible en la malla, un globo alto hacia las esquinas del fondo es la opción más segura para frenar el ataque.",
     positions: { you: "B3", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B3" } },
     laufZone: "B4",
   },
   {
     id: 12,
     description: "Gegner stehen nach einer Chiquita tief und eng in der Mitte. Was machst du um sie nun über außen in Verlegenheit zu bringen.",
+    description_en: "After a Chiquita, the opponents are bunched tightly in the center. How do you exploit the open outer angles?",
+    description_es: "Tras una Chiquita, los rivales están muy juntos en el centro. ¿Qué haces para abrir pista por las bandas?",
     validShots: ["VOLLEY", "DRIVE"],
-    bestZones: ["A4", "E4"], // Anpassung: Fokus auf außen
+    bestZones: ["A4", "E4"],
     explanation: "Durch einen Richtungswechsel nach außen zwingst du die Gegner, ihre kompakte Formation in der Mitte aufzugeben.",
-    positions: { you: "C4", partner: "A4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C4" } }, // Anpassung Positionierung am Netz
+    explanation_en: "By angling the ball wide towards the side mesh, you force the opponents to break up their compact central formation.",
+    explanation_es: "Cambiando la dirección hacia los laterales obligas a los rivales a romper su bloque compacto en el medio.",
+    positions: { you: "C4", partner: "A4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C4" } },
     laufZone: "C4",
   },
   {
     id: 13,
     description: "Du stehst auf der linken Netzseite (B4). Gegner steht tief hinten in der Ecke (A1). Du willst maximalen Druck aufbauen.",
+    description_en: "You are on the left net side (B4) and the opponent is pinned deep in the corner (A1). Keep maximum pressure on them.",
+    description_es: "Estás en la red izquierda (B4) y el rival está hundido en el rincón (A1). Quieres mantener la máxima presión.",
     validShots: ["VOLLEY"],
     bestZones: ["A1", "A2"],
     explanation: "Ein flacher Volley tief in die Ecke des defensiven Gegners zwingt ihn zu einem schweren Wand-Ball.",
+    explanation_en: "A crisp, low volley deep into the defender's corner forces a tough defensive shot off the back glass.",
+    explanation_es: "Una volea tensa y profunda al rincón obliga al defensor a jugar una bola muy difícil tras el cristal.",
     positions: { you: "B4", partner: "D4", opp1: "A1", opp2: "D2", ball: { side: "left", zone: "B4" } },
     laufZone: "B4",
   },
   {
     id: 14,
     description: "Cross-Aufschlag hart an die Seitenwand (A2). Wähle Schlag und Richtung, um das Serve-and-Volley der Gegner sofort zu brechen.",
+    description_en: "Hard cross-court serve spinning off the side glass (A2). Choose the shot and target to immediately break the opponent's serve-and-volley.",
+    description_es: "Saque cruzado duro al cristal lateral (A2). Elige golpe y dirección para romper de inmediato el saque y volea rival.",
     validShots: ["LOB"],
     bestZones: ["A1", "E1"],
     explanation: "Ein hoher Return-Lob über die vorstürmenden Netzspieler hinweg nimmt den Gegnern sofort die Initiative.",
+    explanation_en: "A high return lob over the rushing server immediately takes away the opponents' net advantage.",
+    explanation_es: "Un globo alto de resto sobre la subida del sacador les quita la iniciativa de inmediato.",
     positions: { you: "A2", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
     laufZone: "B4",
   },
   {
     id: 15,
     description: "Harter Ball kommt durch die Mitte auf dich zu (B4), Gegner rücken vor. Wie konterst du?.",
+    description_en: "A fast ball comes straight through the middle towards you (B4) as the opponents push forward. How do you counter?",
+    description_es: "Viene una bola rápida por el centro hacia ti (B4) mientras los rivales suben. ¿Cómo contraatacas?",
     validShots: ["VOLLEY", "BLOCK"],
-    bestZones: ["C4", "B3"], // Anpassung Zielzonen für Konter
+    bestZones: ["C4", "B3"],
     explanation: "In dieser Situation hilft nur ein schneller Reflex-Block oder ein kurzer Volley in den freien Raum, um die Gegner zu überraschen.",
-    positions: { you: "B4", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C3" } }, // Anpassung Ballposition
+    explanation_en: "Here you need a quick reflex block or compact volley into the open mid-court space to catch the advancing opponents off guard.",
+    explanation_es: "Aquí necesitas un bloqueo reflejo o una volea corta al espacio libre para sorprender a los rivales en plena subida.",
+    positions: { you: "B4", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C3" } },
     laufZone: "B4",
   },
   {
     id: 16,
     description: "Ein hoher Lob zwingt dich auf Reihe 3 zurück (B3). Wähle Schlag und Richtung, um die Offensive zurückzuerobern.",
+    description_en: "A high lob pushes you back to row 3 (B3). Select the shot and target zone to retain the offensive.",
+    description_es: "Un globo alto te obliga a retroceder a la fila 3 (B3). Elige golpe y dirección para mantener la iniciativa.",
     validShots: ["BANDEJA"],
-    bestZones: ["D1", "E1"], // Anpassung Zielzonen für Bandeja
+    bestZones: ["D1", "E1"],
     explanation: "Die Bandeja wird tief und cross gespielt, um den Gegner hinten links unter Druck zu setzen und wieder vorzurücken.",
+    explanation_en: "Play a deep cross-court Bandeja into the corner so the ball rebounds low off the glass, giving you time to reclaim the net.",
+    explanation_es: "Juega una Bandeja profunda y cruzada al rincón para que rebote baja en el cristal y puedas volver a la red.",
     positions: { you: "B3", partner: "D4", opp1: "A1", opp2: "D3", ball: { side: "left", zone: "B3" } },
     laufZone: "B4",
   },
   {
     id: 17,
     description: "Perfekter, halbhoher Ball auf Reihe 4 (C4). Was machst du, um den Gegner (B2) in die Ecke zu drängen.",
+    description_en: "A comfortable medium-high ball arrives at row 4 (C4). How do you pin the opponent (B2) deep in the corner?",
+    description_es: "Llega una bola cómoda a media altura en la fila 4 (C4). ¿Qué haces para acorralar al rival (B2) en la esquina?",
     validShots: ["VIBORA"],
     bestZones: ["A1", "B1"],
     explanation: "Die Víbora wird mit extremem Side-Spin scharf diagonal in die Ecke gezogen, damit sie flach an den Scheiben kleben bleibt.",
+    explanation_en: "Whip a Víbora with heavy side-spin diagonally into the corner so it stays glued low to the glass.",
+    explanation_es: "Cruza una Víbora con mucho efecto lateral hacia la esquina para que la bola muera baja contra los cristales.",
     positions: { you: "C4", partner: "A4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C4" } },
     laufZone: "C4",
   },
   {
     id: 18,
     description: "Kurzer, hoher Ball fliegt ins Halbfeld (C3). Wähle den besten Abschluss.",
+    description_en: "A short, high lob sits up in the mid-court (C3). Choose the best finishing shot.",
+    description_es: "Un globo corto se queda colgado a media pista (C3). Elige la mejor definición.",
     validShots: ["SMASH"],
     bestZones: ["C5", "D5"],
     explanation: "Ein kurzer Ball im Halbfeld ist die Einladung für einen harten Power-Smash.",
+    explanation_en: "A short lob in mid-court is a prime invitation for an explosive power Smash.",
+    explanation_es: "Un globo corto a media pista es la invitación perfecta para definir con un Smash potente.",
     positions: { you: "C3", partner: "A3", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "C3" } },
     laufZone: "C4",
   },
   {
     id: 19,
     description: "Gegner-Smash prallt weit nach vorne ab (C3). Wähle Schlag und Richtung, um den Ball effektiv zu kontern.",
+    description_en: "The opponent's smash rebounds high off your back wall all the way forward to C3. Choose the shot and direction for an effective counter-attack.",
+    description_es: "El remate del rival sale despedido del cristal hasta media pista (C3). Elige golpe y dirección para contraatacar en la red.",
     validShots: ["BLOCK", "VOLLEY"],
     bestZones: ["B4", "C4"],
     explanation: "Smashes, die weit abprallen, kontert man am besten, indem man den Ball einfach kurz hinter das Netz blockt.",
+    explanation_en: "Overhit smashes that rebound forward into mid-court are best countered with a quick volley or block short over the net.",
+    explanation_es: "Los remates que salen largos hacia media pista se contraatacan mejor bloqueando o voleando corto al otro lado de la red.",
     positions: { you: "C3", partner: "A2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "C3" } },
     laufZone: "C2",
   },
   {
     id: 20,
     description: "Aufschlag von links (B2). Wähle Schlagtyp und Flugrichtung für einen optimalen Start.",
+    description_en: "Serving from the left side (B2). Choose the shot type and target zone for an optimal point start.",
+    description_es: "Saque desde la izquierda (B2). Elige el tipo de golpe y la dirección para un inicio óptimo del punto.",
     validShots: ["AUFSCHLAG"],
     bestZones: ["D3", "E2"],
     explanation: "Ein Aufschlag hart cross an die Seitenwand zieht den Gegner nach außen und öffnet das Feld.",
+    explanation_en: "A slice serve angled towards the side glass pulls the returner wide and opens up the middle of the court.",
+    explanation_es: "Un saque cruzado hacia el cristal lateral saca al restador de la pista y abre hueco en el centro.",
     positions: { you: "B2", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B2" } },
     laufZone: "B4",
   },
   {
     id: 21,
     description: "Gegner weichen unkontrolliert vom Netz zurück (Reihe 3). Was tust du um den freien Raum vorne zu nutzen.",
+    description_en: "The opponents retreat awkwardly from the net to row 3. How do you exploit the space in front of them?",
+    description_es: "Los rivales retroceden desordenados hacia la fila 3. ¿Qué haces para aprovechar el espacio delante de ellos?",
     validShots: ["CHIQUITA"],
     bestZones: ["B4", "C4"],
     explanation: "Spielen die Gegner defensiv, spielst du eine kurze Chiquita, um selbst die Netzhoheit zu übernehmen.",
+    explanation_en: "Drop a soft Chiquita into the front zones so they have to hit upwards while you take over the net.",
+    explanation_es: "Juega una Chiquita suave a la zona delantera para obligarles a golpear desde abajo mientras subes a la red.",
     positions: { you: "B1", partner: "D1", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "B1" } },
     laufZone: "B4",
   },
   {
     id: 22,
     description: "Schneller Angriffsball kommt direkt auf deinen Körper (C4). Halte den Ball sicher im Spiel.",
+    description_en: "A fast attacking shot flies straight at your body at the net (C4). Keep the ball safely in play.",
+    description_es: "Un tiro rápido viene directo a tu cuerpo en la red (C4). Mantén la bola en juego con seguridad.",
     validShots: ["BLOCK"],
     bestZones: ["C2", "D2"],
     explanation: "Bei Bällen auf den Körper blockt man kompakt ab, ohne Schwung zu holen, um Fehler zu minimieren.",
+    explanation_en: "Against body shots at the net, block compactly without a backswing to minimize unforced errors.",
+    explanation_es: "Ante bolas al cuerpo en la red, bloquea firme y sin armar el brazo para evitar errores.",
     positions: { you: "C4", partner: "A4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "C4" } },
     laufZone: "C4",
   },
   {
     id: 23,
     description: "Gegnerischer Lob zwingt dich nach hinten an die Glasscheibe (B1). Wähle den Befreiungsschlag.",
+    description_en: "An opponent's lob forces you all the way back to the glass wall (B1). Choose the best defensive reset.",
+    description_es: "Un globo rival te obliga a retroceder hasta el cristal de fondo (B1). Elige el golpe de desahogo.",
     validShots: ["LOB"],
     bestZones: ["C1", "D1"],
     explanation: "Aus tiefster Bedrängnis an der Wand ist ein extrem hoher Lob das einzige Mittel, um Zeit zu gewinnen.",
+    explanation_en: "Pinned against the back glass, a high, deep lob is the best way to reset the rally and reorganize.",
+    explanation_es: "Pegado al cristal de fondo, un globo alto y profundo es la mejor vía para ganar tiempo y reorganizarse.",
     positions: { you: "B1", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     laufZone: "B2",
   },
   {
     id: 24,
     description: "Du stehst links vorne am Netz (A4). Ball kommt butterweich hoch an die linke Seitenwand (A5).",
+    description_en: "You are on the left side of the net (A4) and a soft, high ball floats near the left side wall (A5).",
+    description_es: "Estás en la red izquierda (A4) y queda una bola blanda a media altura cerca del lateral (A5).",
     validShots: ["VIBORA", "VOLLEY"],
     bestZones: ["D1", "E1"],
     explanation: "Aus extremen Außenpositionen spielst du den Ball mit viel Schnitt scharf diagonal in die andere Ecke.",
+    explanation_en: "From wide net positions, slice a sharp cross-court Víbora or volley deep into the opposite corner.",
+    explanation_es: "Desde posiciones abiertas en la red, cruza una Víbora o volea cortada profunda hacia la esquina opuesta.",
     positions: { you: "A4", partner: "C4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "A5" } },
     laufZone: "B4",
   },
   {
     id: 25,
     description: "Gegner spielen sehr eng beieinander in der Mitte. Öffne das Spielfeld über die Außenwände.",
+    description_en: "The opponents are standing very close together in the center. Open up the court using the side walls.",
+    description_es: "Los rivales están muy cerrados en el centro. Abre la pista buscando las paredes laterales.",
     validShots: ["DRIVE", "VOLLEY"],
     bestZones: ["A2", "E2"],
     explanation: "Ein flacher Ball cross an die Seitenwand (Gitter/Glas) zwingt die Gegner, ihre kompakte Formation aufzulösen.",
+    explanation_en: "An angled shot towards the side walls forces the opponents apart and opens space in the middle.",
+    explanation_es: "Un tiro angulado hacia las paredes laterales obliga a los rivales a separarse y abre el centro.",
     positions: { you: "B2", partner: "D2", opp1: "C4", opp2: "D4", ball: { side: "left", zone: "B2" } },
     laufZone: "B2",
   },
   {
     id: 26,
     description: "Harter Schlag detoniert an deiner Rückwand und springt steil hoch ab (B2). Wie konterst du?.",
+    description_en: "A hard shot rebounds high off your back glass into B2. How do you launch a counter-attack?",
+    description_es: "Un tiro fuerte rebota alto en tu pared de fondo hacia B2. ¿Cómo contraatacas?",
     validShots: ["BAJADA"],
     bestZones: ["C4", "D4"],
     explanation: "Nutze die Höhe des Abprallers, um den Ball mit einer harten Bajada peitschenartig nach unten in die Mitte zu ziehen.",
+    explanation_en: "Use the height of the rebound to whip a powerful Bajada downwards at the net players.",
+    explanation_es: "Aprovecha la altura del rebote para descargar una Bajada potente hacia el centro.",
     positions: { you: "B2", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B2" } },
     laufZone: "B4",
   },
   {
     id: 27,
     description: "Ball kommt hart durch die Mitte auf dich zu, Gegner am Netz. Wähle Schlag und Richtung für einen kontrollierten Abwehrball.",
+    description_en: "A fast ball comes deep into your corner while the opponents control the net. Choose a controlled defensive shot and target.",
+    description_es: "Llega una bola rápida al fondo con los rivales en la red. Elige golpe y dirección para una defensa controlada.",
     validShots: ["BLOCK", "DRIVE"],
-    bestZones: ["C2", "C1"], // Anpassung Zielzonen für Defensive
+    bestZones: ["C2", "C1"],
     explanation: "Bei Druck durch die Mitte spielst du den Ball flach und kontrolliert zurück, um den Winkel für den nächsten Angriff zu nehmen.",
+    explanation_en: "Under heavy pressure, play the ball low and controlled down the middle to cut off the opponents' angles.",
+    explanation_es: "Bajo presión, devuelve la bola baja y controlada por el centro para reducir los ángulos de volea del rival.",
     positions: { you: "A1", partner: "C1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     laufZone: "A1",
   },
   {
     id: 28,
     description: "Du stehst goldrichtig am Netz (B4). GEG2 (C3) rückt unüberlegt nach innen. Nutze den freien Raum.",
+    description_en: "You are well positioned at the net (B4). Opponent 2 (C3) drifts too far inside toward the center. Punish the open space.",
+    description_es: "Estás bien colocado en la red (B4). El rival 2 (C3) se cierra demasiado al centro. Aprovecha el pasillo libre.",
     validShots: ["VOLLEY"],
     bestZones: ["E4", "E5"],
     explanation: "Rückt ein Spieler zu weit in die Mitte ein, spielst du den Volley rigoros nach außen in den verwaisten Korridor.",
+    explanation_en: "When an opponent overcommits to the center, angle your volley sharply into the wide-open sideline corridor.",
+    explanation_es: "Si un rival se cierra en exceso al medio, dirige la volea con ángulo hacia el pasillo exterior libre.",
     positions: { you: "B4", partner: "D4", opp1: "B2", opp2: "C3", ball: { side: "left", zone: "B4" } },
     laufZone: "B4",
   },
   {
     id: 29,
     description: "Aufschlag von rechts (D2). Locke den Gegner sofort nach außen.",
+    description_en: "Serving from the right side (D2). Pull the receiver wide right away.",
+    description_es: "Saque desde la derecha (D2). Saca al rival hacia la pared lateral de inmediato.",
     validShots: ["AUFSCHLAG"],
     bestZones: ["A2"],
     explanation: "Ein Aufschlag cross an die Seitenwand öffnet das Feld für deinen Partner am Netz.",
+    explanation_en: "A slice serve out wide to the side glass pulls the receiver off court and opens the center.",
+    explanation_es: "Un saque cruzado hacia el cristal lateral desplaza al restador y abre toda la pista.",
     positions: { you: "C2", partner: "A4", opp1: "A1", opp2: "D1", ball: { side: "left", zone: "D2" } },
     laufZone: "D4",
   },
   {
     id: 30,
     description: "Mittelhoher Lob zwingt dich auf Reihe 3 zurück (B3). Wähle Schlag und Zielzone um in der Offensive zu bleiben.",
+    description_en: "A medium-high lob forces you back to row 3 (B3). Choose the shot and target zone to stay on the offensive.",
+    description_es: "Un globo a media altura te lleva a la fila 3 (B3). Elige golpe y zona objetivo para mantener el ataque.",
     validShots: ["BANDEJA"],
     bestZones: ["D1", "D2"],
     explanation: "Die Bandeja ist ein Übergangsschlag. Spiele den Ball flach cross, um die Offensive beizubehalten.",
+    explanation_en: "The Bandeja is a transition overhead. Play it low and cross-court so you can step right back up to the net.",
+    explanation_es: "La Bandeja es un golpe de conservación. Juégala baja y cruzada para recuperar tu posición en la red.",
     positions: { you: "B3", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B3" } },
     laufZone: "B4",
   },
   {
     id: 31,
     description: "Der Ball kratzt flach über das Glas tief in deine Ecke (A1). Es ist kaum noch Raum für eine Ausholbewegung. Wie rettest du dich mit einer letzten Reflexbewegung aus dem Schlamassel?",
+    description_en: "The ball skids low off the glass deep in your corner (A1), leaving almost no room for a backswing. How do you dig it out?",
+    description_es: "La bola resbala muy baja por el cristal en tu esquina (A1), sin apenas espacio para armar el brazo. ¿Cómo sales del apuro?",
     validShots: ["LOB"],
     bestZones: ["A1", "B1"],
     explanation: "Eingequetscht im Eck rettet nur ein defensiver Schaufel-Lob. Danach musst du sofort die Ecke verlassen und zentraler (B2) decken.",
+    explanation_en: "Trapped low in the corner, scoop a high defensive lob upwards, then immediately recover to B2.",
+    explanation_es: "Atrapado en el rincón, saca un globo defensivo de cuchara hacia arriba y recupera enseguida hacia B2.",
     positions: { you: "A1", partner: "C2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     laufZone: "B2",
-  },// ==========================================
-// ==========================================
+  },
+
+  // ==========================================
   // LEVEL 3: LAUFRICHTUNG (IDs 31 - 60)
-  // Fokus: Wohin bewege ich mich nach dem Schlag?
   // ==========================================
   {
     id: 31,
     description: "Du bist hinten links in die Ecke gedrängt. Die Gegner lauern aggressiv am Netz. Du schlägst einen perfekten, sehr hohen Lob über sie hinweg.",
+    description_en: "You are pinned back in the left corner while the opponents crowd the net. You hit a perfect, towering lob over their heads.",
+    description_es: "Estás encerrado atrás a la izquierda con los rivales en la red. Conectas un globo perfecto y altísimo que los supera.",
     positions: { you: "B1", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["LOB"],
     bestZones: ["E1", "E5"],
     laufZone: "B4",
-    explanation: "Nach einem perfekten Lob gibt es nur eine Richtung: Vor ans Netz (B4)! Wer hinten bleibt, verschenkt den taktischen Vorteil, während die Gegner nach hinten rennen."
+    explanation: "Nach einem perfekten Lob gibt es nur eine Richtung: Vor ans Netz (B4)! Wer hinten bleibt, verschenkt den taktischen Vorteil, während die Gegner nach hinten rennen.",
+    explanation_en: "After a deep lob that pushes the opponents back, there is only one direction: sprint forward to the net (B4)!",
+    explanation_es: "Tras un globo profundo que obliga a retroceder al rival, solo hay una dirección: ¡subir directo a la red (B4)!"
   },
   {
     id: 32,
     description: "Du stehst dicht am Netz. Der Gegner spielt aus dem Halbfeld einen harten Drive exakt auf deinen Oberkörper.",
+    description_en: "You are tight at the net. The opponent hits a hard drive from mid-court straight at your chest.",
+    description_es: "Estás muy cerca de la red. El rival lanza un drive potente desde media pista directo a tu pecho.",
     positions: { you: "B5", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B5" } },
     validShots: ["BLOCK"],
     bestZones: ["C1", "C5", "D3"],
     laufZone: "B5",
-    explanation: "Freeze! Bei Körpertreffern am Netz machst du dich kompakt und blockst. Jeder Schritt zur Seite oder nach hinten öffnet Lücken und führt meist zum Fehler. Stehenbleiben (B5)."
+    explanation: "Freeze! Bei Körpertreffern am Netz machst du dich kompakt und blockst. Jeder Schritt zur Seite oder nach hinten öffnet Lücken und führt meist zum Fehler. Stehenbleiben (B5).",
+    explanation_en: "Freeze! On body shots at the net, stay compact and block. Moving backwards while hitting causes errors—hold your ground (B5).",
+    explanation_es: "¡Quieto! Ante bolas al cuerpo en la red, mantente compacto y bloquea manteniendo tu posición (B5)."
   },
   {
     id: 33,
     description: "Du stehst am Netz. Der Gegner spielt einen Lob ins Halbfeld. Du gehst zwei Schritte zurück und spielst eine sichere Bandeja in die gegnerische Ecke.",
+    description_en: "You are at the net when the opponent hits a lob into mid-court. You step back to B3 and play a controlled Bandeja into the corner.",
+    description_es: "Estás en la red y el rival tira un globo a media pista. Retrocedes dos pasos a B3 y juegas una Bandeja segura a la esquina.",
     positions: { you: "B3", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B3" } },
     validShots: ["BANDEJA"],
     bestZones: ["E1", "E5"],
     laufZone: "B4",
-    explanation: "Die Bandeja ist ein Aufbauschlag. Du weichst zum Schlagen ins Halbfeld (B3) zurück, musst danach aber sofort wieder ans Netz (B4) aufrücken, um die Lücke zu schließen."
+    explanation: "Die Bandeja ist ein Aufbauschlag. Du weichst zum Schlagen ins Halbfeld (B3) zurück, musst danach aber sofort wieder ans Netz (B4) aufrücken, um die Lücke zu schließen.",
+    explanation_en: "After stepping back to hit a Bandeja in mid-court (B3), you must immediately recover forward to your net position (B4).",
+    explanation_es: "Tras retroceder a media pista (B3) para jugar la Bandeja, debes recuperar inmediatamente tu posición en la red (B4)."
   },
   {
     id: 34,
     description: "Der Gegner am Netz spielt einen schwachen Smash. Der Ball prallt hart an dein Glas und fliegt hoch bis ins Halbfeld zurück.",
+    description_en: "The opponent hits a weak smash that bounces off your back glass high into mid-court (B2).",
+    description_es: "El rival conecta un remate flojo que rebota en tu cristal y sale alto hacia media pista (B2).",
     positions: { you: "B2", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B2" } },
     validShots: ["BAJADA", "DRIVE"],
     bestZones: ["E1", "E5"],
     laufZone: "B4",
-    explanation: "Eine Einladung! Lauf dem Abpraller aggressiv ins Halbfeld (B2) entgegen, schlage ihn von oben herab und sprinte direkt weiter ans Netz (B4), um den Angriff abzuschließen."
+    explanation: "Eine Einladung! Lauf dem Abpraller aggressiv ins Halbfeld (B2) entgegen, schlage ihn von oben herab und sprinte direkt weiter ans Netz (B4), um den Angriff abzuschließen.",
+    explanation_en: "Step into mid-court (B2), attack the high rebound downwards, and follow your shot straight to the net (B4).",
+    explanation_es: "Entra a media pista (B2), ataca el rebote alto hacia abajo y sigue tu golpe directo hasta la red (B4)."
   },
   {
     id: 35,
     description: "Aus dem Halbfeld spielst du eine softe Chiquita direkt vor die Füße des Netzspielers. Der Ball taucht extrem früh ab.",
+    description_en: "From mid-court you play a soft dipping Chiquita right at the feet of the net player.",
+    description_es: "Desde media pista juegas una Chiquita suave que cae justo a los pies del jugador en la red.",
     positions: { you: "B3", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B3" } },
     validShots: ["CHIQUITA"],
     bestZones: ["B2", "C2"],
     laufZone: "B4",
-    explanation: "Eine Chiquita funktioniert nur mit dem anschließenden Netzangriff. Lauf sofort vor (B4), um den unweigerlich hoch kommenden Ball des Gegners als Volley abzufangen."
+    explanation: "Eine Chiquita funktioniert nur mit dem anschließenden Netzangriff. Lauf sofort vor (B4), um den unweigerlich hoch kommenden Ball des Gegners als Volley abzufangen.",
+    explanation_en: "A Chiquita is best followed by a net approach: move forward to B4 to intercept the opponent's pop-up volley.",
+    explanation_es: "La Chiquita funciona mejor acompañándola a la red: avanza a B4 para interceptar la devolución forzada del rival."
   },
   {
     id: 36,
     description: "Ein harter Ball zwingt dich tief in die Hocke. Du kannst den Ball gerade so als unkontrollierten Not-Lob zurückspielen, der eher zu kurz wird.",
+    description_en: "A low, hard shot forces you to dig out an emergency lob that stays too short.",
+    description_es: "Una bola muy baja te obliga a levantar un globo de emergencia que se queda corto.",
     positions: { you: "B1", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["LOB"],
     bestZones: ["D3", "E3"],
     laufZone: "B1",
-    explanation: "Gefahr! Ein schlechter Lob bedeutet, dass der Gegner sofort smashen wird. Bleibe hinten (B1) und mach dich bereit zur Verteidigung des Smashes. Vorlaufen wäre Selbstmord."
+    explanation: "Gefahr! Ein schlechter Lob bedeutet, dass der Gegner sofort smashen wird. Bleibe hinten (B1) und mach dich bereit zur Verteidigung des Smashes. Vorlaufen wäre Selbstmord.",
+    explanation_en: "Danger! A short lob invites an immediate smash. Stay back at B1 and prepare to defend—rushing forward would be fatal.",
+    explanation_es: "¡Peligro! Un globo corto invita al remate rival. Quédate atrás en B1 listo para defender."
   },
   {
     id: 37,
     description: "Aus dem Halbfeld zündest du eine aggressive Vibora, die flach in die gegenüberliegende Ecke zischt und kaum von der Wand abspringen wird.",
+    description_en: "From mid-court you rip an aggressive Víbora that skids low into the opposite corner.",
+    description_es: "Desde media pista conectas una Víbora agresiva que muere baja en el rincón opuesto.",
     positions: { you: "B3", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B3" } },
     validShots: ["VIBORA"],
     bestZones: ["E5"],
     laufZone: "A4",
-    explanation: "Nach einem extrem aggressiven Schlag gehst du auf den Kill. Rücke dichter ans Netz auf (A4 statt B4), um den schwachen Return direkt als harten Volley zu verwerten."
+    explanation: "Nach einem extrem aggressiven Schlag gehst du auf den Kill. Rücke dichter ans Netz auf (A4 statt B4), um den schwachen Return direkt als harten Volley zu verwerten.",
+    explanation_en: "After a venomous Víbora into the corner, close in tight at the net (A4) to cut off angles and finish the weak reply.",
+    explanation_es: "Tras una Víbora tan dañina al rincón, cierra ángulo en la red (A4) para definir la devolución forzada."
   },
   {
     id: 38,
     description: "Der Lob des Gegners war zu lang. Der Ball springt hoch von der Rückwand ab, du stehst perfekt, um ihn als Bajada wuchtig nach unten zu schlagen.",
+    description_en: "The opponent's lob bounces high off your back glass. You are perfectly set to crush a Bajada downwards.",
+    description_es: "El globo rival rebota alto en tu pared de fondo y estás perfecto para descargar una Bajada potente.",
     positions: { you: "B1", partner: "D4", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "B1" } },
     validShots: ["BAJADA"],
     bestZones: ["E3", "E5"],
     laufZone: "B4",
-    explanation: "Die Bajada ist ein offensiver Übergangsschlag. Du nutzt den Schwung der Bewegung, um sofort nach dem Schlag das Netz (B4) zu attackieren."
+    explanation: "Die Bajada ist ein offensiver Übergangsschlag. Du nutzt den Schwung der Bewegung, um sofort nach dem Schlag das Netz (B4) zu attackieren.",
+    explanation_en: "The Bajada is an offensive transition shot—use your forward momentum to charge straight to the net (B4).",
+    explanation_es: "La Bajada es un golpe ofensivo de transición: aprovecha la inercia hacia delante para tomar la red (B4)."
   },
   {
     id: 39,
     description: "Am Netz spielst du einen druckvollen Vorhand-Volley genau durch die Mitte zwischen die beiden tief stehenden Gegner.",
+    description_en: "At the net, you punch a deep volley straight down the middle between the two defenders.",
+    description_es: "En la red, conectas una volea profunda directo al medio entre los dos defensores.",
     positions: { you: "D4", partner: "B4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "D4" } },
     validShots: ["VOLLEY"],
     bestZones: ["E3"],
     laufZone: "C4",
-    explanation: "Wenn du in die Mitte spielst, verkleinerst du die Winkel für den Gegner. Verschiebe dich leicht zur Mitte (C4), um den direkten Passierball durch das Zentrum abzufangen."
+    explanation: "Wenn du in die Mitte spielst, verkleinerst du die Winkel für den Gegner. Verschiebe dich leicht zur Mitte (C4), um den direkten Passierball durch das Zentrum abzufangen.",
+    explanation_en: "Playing down the middle narrows the opponents' angles. Shift slightly towards the center (C4) to shut down the middle return.",
+    explanation_es: "Al jugar al medio reduces los ángulos rivales. Cierra ligeramente hacia el centro (C4) para cubrir la devolución."
   },
   {
     id: 40,
     description: "Du bist am Netz. Der Lob des Gegners ist perfekt und segelt unweigerlich über deinen Kopf hinweg. Dein Partner ist zu weit weg.",
+    description_en: "You are at the net when a perfect lob sails over your head. Your partner is too far away to help.",
+    description_es: "Estás en la red y un globo perfecto te supera por alto. Tu compañero está demasiado lejos.",
     positions: { you: "B4", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B4" } },
     validShots: ["LOB", "DRIVE"],
     bestZones: ["E1", "E5"],
     laufZone: "B1",
-    explanation: "Akzeptiere den verlorenen Netz-Vorteil. Drehe dich sofort um und sprinte in die Tiefe (B1), um den Ball nach dem Glasabpraller zu retten. Dein Partner zieht parallel mit zurück."
+    explanation: "Akzeptiere den verlorenen Netz-Vorteil. Drehe dich sofort um und sprinte in die Tiefe (B1), um den Ball nach dem Glasabpraller zu retten. Dein Partner zieht parallel mit zurück.",
+    explanation_en: "Accept that the net is lost, turn immediately and sprint back to the baseline (B1) to play the ball off the back glass.",
+    explanation_es: "Acepta que has perdido la red, gira de inmediato y corre al fondo (B1) para defender tras el rebote en el cristal."
   },
   {
     id: 41,
     description: "Der Gegner serviert flach. Du machst einen Schritt ins Feld und spielst einen harten Drive-Return auf den vorrückenden Aufschläger.",
+    description_en: "The opponent serves flat. You step in and hit a firm Drive return at the approaching server.",
+    description_es: "El rival saca raso. Das un paso adelante y conectas un resto firme de Drive hacia el sacador.",
     positions: { you: "D1", partner: "B2", opp1: "D4", opp2: "B4", ball: { side: "left", zone: "D1" } },
     validShots: ["DRIVE"],
     bestZones: ["E5"],
     laufZone: "D2",
-    explanation: "Obwohl der Return hart ist, bleibst du hinten (D2), bis du siehst, wie der Gegner den Volley spielt. Zu frühes Vorrücken öffnet den Raum für einen leichten Passierball."
+    explanation: "Obwohl der Return hart ist, bleibst du hinten (D2), bis du siehst, wie der Gegner den Volley spielt. Zu frühes Vorrücken öffnet den Raum für einen leichten Passierball.",
+    explanation_en: "Even after a solid drive return, hold your defensive base (D2) until you see whether the opponent's volley is weak.",
+    explanation_es: "Aunque el resto sea duro, mantén tu base defensiva (D2) hasta ver cómo volea el rival."
   },
   {
     id: 42,
     description: "Du stehst auf B4, der Gegner auf B4 (gegenüber). Er schlägt einen schnellen Volley direkt auf dich. Es ist ein reines Reaktionsduell.",
+    description_en: "You are at B4 facing the opponent at the net. They fire a quick volley straight at you in a reflex duel.",
+    description_es: "Estás en B4 frente al rival en la red. Te lanza una volea rápida en un duelo puro de reflejos.",
     positions: { you: "B4", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B4" } },
     validShots: ["BLOCK", "VOLLEY"],
     bestZones: ["D3"],
     laufZone: "B4",
-    explanation: "Beim direkten Schlagabtausch vorne gibt es keine Bewegung, nur Reflexe. Jede Gewichtsverlagerung nach hinten ist tödlich. Stehenbleiben (B4) und Schläger hinhalten!"
+    explanation: "Beim direkten Schlagabtausch vorne gibt es keine Bewegung, nur Reflexe. Jede Gewichtsverlagerung nach hinten ist tödlich. Stehenbleiben (B4) und Schläger hinhalten!",
+    explanation_en: "In a fast net-to-net exchange, don't backpedal—hold your ground (B4) with your racket out in front!",
+    explanation_es: "En un duelo rápido de voleas, no retrocedas: ¡mantén la posición (B4) con la pala delante!"
   },
   {
     id: 43,
     description: "Die Gegner kleben an der Rückwand. Du spielst von Netz aus einen gefühlvollen Stoppball knapp hinter das Netz.",
+    description_en: "The opponents are pinned behind their baseline. You play a delicate drop volley just over the net.",
+    description_es: "Los rivales están pegados al cristal de fondo. Juegas una dejada de volea suave justo detrás de la red.",
     positions: { you: "B4", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B4" } },
     validShots: ["VOLLEY"],
     bestZones: ["B2"],
     laufZone: "B5",
-    explanation: "Nach einem Stoppball wird der Gegner (falls er ihn erwischt) den Ball nur knapp über das Netz löffeln können. Rücke maximal auf (B5), um diesen Ball direkt abzufangen."
+    explanation: "Nach einem Stoppball wird der Gegner (falls er ihn erwischt) den Ball nur knapp über das Netz löffeln können. Rücke maximal auf (B5), um diesen Ball direkt abzufangen.",
+    explanation_en: "After a drop shot, close right up to the net (B5) so you can put away any desperate scoop return.",
+    explanation_es: "Tras una dejada, acércate al máximo a la red (B5) para cazar cualquier intento de globo o bote pronto."
   },
   {
     id: 44,
     description: "Am Netz drückst du den Volley scharf in Richtung der linken Seitenwand des Gegners.",
+    description_en: "At the net, you angle a sharp volley towards the opponent's left side wall.",
+    description_es: "En la red, angulas una volea cortada hacia la pared lateral izquierda del rival.",
     positions: { you: "B4", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B4" } },
     validShots: ["VOLLEY"],
     bestZones: ["E1"],
     laufZone: "A4",
-    explanation: "Wenn du nach außen spielst, öffnest du die Longline-Bahn. Verschiebe dich einen Schritt nach außen (A4), um den Passierball an der Linie zuzumachen."
+    explanation: "Wenn du nach außen spielst, öffnest du die Longline-Bahn. Verschiebe dich einen Schritt nach außen (A4), um den Passierball an der Linie zuzumachen.",
+    explanation_en: "When you angle the ball wide, shift one step towards the sideline (A4) to cover the down-the-line passing lane.",
+    explanation_es: "Al abrir ángulo hacia la banda, desplázate un paso al exterior (A4) para tapar el paralelo."
   },
   {
     id: 45,
     description: "Der Gegner schlägt einen Smash. Du bist weit hinten und wehrst den Ball als flachen Block vor die Füße der Netzspieler ab.",
+    description_en: "The opponent hits a smash. You defend from the back and block the ball low in front of the net players.",
+    description_es: "El rival remata. Defiendes desde atrás bloqueando la bola baja a los pies de los rivales en la red.",
     positions: { you: "B1", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["BLOCK"],
     bestZones: ["C2", "C4"],
     laufZone: "B1",
-    explanation: "Ein flacher Abwehrblock zwingt die Gegner zum tiefen Volley, berechtigt dich aber noch nicht zum Vorrücken. Position halten (B1) und auf den nächsten Ball warten."
+    explanation: "Ein flacher Abwehrblock zwingt die Gegner zum tiefen Volley, berechtigt dich aber noch nicht zum Vorrücken. Position halten (B1) und auf den nächsten Ball warten.",
+    explanation_en: "A defensive block keeps you in the point, but the opponents still own the net—hold your baseline position (B1).",
+    explanation_es: "Un bloqueo defensivo te mantiene vivo en el punto, pero los rivales siguen en la red: mantén tu posición (B1)."
   },
   {
     id: 46,
     description: "Du spielst von hinten einen etwas zu hohen Drive. Die Gegner rücken beide sofort aggressiv ans Netz auf.",
+    description_en: "Your drive from mid-court floats a bit too high, and both opponents rush the net aggressively.",
+    description_es: "Tu drive desde media pista sale algo alto y ambos rivales se lanzan agresivos a la red.",
     positions: { you: "B2", partner: "D2", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "B2" } },
     validShots: ["DRIVE"],
     bestZones: ["B2", "B4"],
     laufZone: "B1",
-    explanation: "Du hast den Druck abgegeben. Mach sofort einen Schritt zurück zur Glaswand (B1), um mehr Zeit für die Abwehr des kommenden Volleys zu haben."
+    explanation: "Du hast den Druck abgegeben. Mach sofort einen Schritt zurück zur Glaswand (B1), um mehr Zeit für die Abwehr des kommenden Volleys zu haben.",
+    explanation_en: "Take a step back to your defensive baseline (B1) so you aren't caught with a volley at your feet in no man's land.",
+    explanation_es: "Da un paso atrás hacia la línea de fondo (B1) para tener tiempo de defender la volea que viene."
   },
   {
     id: 47,
     description: "Du bekommst einen kurzen Lob. Du steigst hoch und hämmerst den Ball mit maximaler Kraft steil ins Feld, sodass er über die Rückwand fliegt (Por 3).",
+    description_en: "You get a short lob, jump up and crush a Por Tres smash that bounces out over the side wall.",
+    description_es: "Recibes un globo corto, saltas y conectas un remate Por Tres que sale de la pista.",
     positions: { you: "B3", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B3" } },
     validShots: ["SMASH"],
     bestZones: ["E1"],
     laufZone: "B3",
-    explanation: "Nach einem perfekten Gewinnschlag bleibst du stehen (B3). Die Gefahr ist gebannt, der Punkt gehört dir."
+    explanation: "Nach einem perfekten Gewinnschlag bleibst du stehen (B3). Die Gefahr ist gebannt, der Punkt gehört dir.",
+    explanation_en: "After a clean winning smash, stay balanced on your spot (B3)—the point is yours.",
+    explanation_es: "Tras un remate ganador definitivo, mantén tu posición (B3): el punto es tuyo."
   },
   {
     id: 48,
     description: "Eure Gegner stehen weit außen. Du spielst von hinten einen flachen Drive knallhart genau durch die Mitte.",
+    description_en: "The opponents are split wide apart. You rip a flat Drive straight down the middle.",
+    description_es: "Los rivales están muy abiertos en las bandas. Juegas un Drive plano y potente directo por el centro.",
     positions: { you: "B1", partner: "D1", opp1: "A2", opp2: "E2", ball: { side: "left", zone: "B1" } },
     validShots: ["DRIVE"],
     bestZones: ["D3"],
     laufZone: "C2",
-    explanation: "Nach einem Schlag durch die Mitte solltest du dich auch selbst leicht zur Mitte orientieren (C2), um den besten Winkel für den nächsten Ball zu haben."
+    explanation: "Nach einem Schlag durch die Mitte solltest du dich auch selbst leicht zur Mitte orientieren (C2), um den besten Winkel für den nächsten Ball zu haben.",
+    explanation_en: "After hitting through the center, shift slightly towards C2 to cover the return angles.",
+    explanation_es: "Tras golpear por el medio, desplázate ligeramente hacia C2 para cubrir los ángulos de respuesta."
   },
   {
     id: 49,
     description: "Der Gegner spielt einen perfekten Stoppball. Du sprintest von hinten los und kratzt den Ball gerade so über das Netz.",
+    description_en: "The opponent plays a drop shot. You sprint forward and barely scoop the ball over the net from B3.",
+    description_es: "El rival hace una dejada. Corres hacia delante y llegas justo para pasar la bola al otro lado desde B3.",
     positions: { you: "B3", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B3" } },
     validShots: ["LOB", "BLOCK"],
     bestZones: ["A4", "B3"],
     laufZone: "B5",
-    explanation: "Du hast dich nach vorne gekämpft und stehst jetzt direkt am Netz. Zurückgehen ist unmöglich. Bleib am Netz kleben (B5) und versuche, dich im Nahkampf durchzusetzen."
+    explanation: "Du hast dich nach vorne gekämpft und stehst jetzt direkt am Netz. Zurückgehen ist unmöglich. Bleib am Netz kleben (B5) und versuche, dich im Nahkampf durchzusetzen.",
+    explanation_en: "Since your momentum carries you all the way forward, stay right at the net (B5) and look to block the next shot.",
+    explanation_es: "Como la carrera te ha llevado hasta delante, quédate pegado a la red (B5) listo para bloquear."
   },
   {
     id: 50,
     description: "Dein Partner spielt aus der rechten Ecke einen super Lob und stürmt nach vorne ans Netz. Du bist noch hinten links.",
+    description_en: "Your partner hits a great lob from the right corner and charges the net. You are still back on the left (B1).",
+    description_es: "Tu compañero lanza un gran globo desde la derecha y sube a la red. Tú sigues atrás a la izquierda (B1).",
     positions: { you: "B1", partner: "D3", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["LOB"],
     bestZones: ["E1", "E5"],
     laufZone: "B4",
-    explanation: "Padel spielt man als Team! Wenn dein Partner nach einem guten Lob ans Netz geht (D4), musst du sofort parallel mit vorrücken (B4), sonst klafft eine riesige Lücke im Team."
+    explanation: "Padel spielt man als Team! Wenn dein Partner nach einem guten Lob ans Netz geht (D4), musst du sofort parallel mit vorrücken (B4), sonst klafft eine riesige Lücke im Team.",
+    explanation_en: "Remember the Rubber Band Principle! When your partner moves up to the net after a deep lob, you must move up with them (B4) as a unit.",
+    explanation_es: "¡Principio del elástico! Si tu compañero sube a la red tras un buen globo, debes subir en bloque con él (B4)."
   },
   {
     id: 51,
     description: "Du spielst eine Bandeja mit mittlerer Geschwindigkeit sicher in die Mitte, um keinen Fehler zu riskieren.",
+    description_en: "You play a controlled Bandeja safely into the center of the court.",
+    description_es: "Juegas una Bandeja controlada y segura hacia el centro de la pista.",
     positions: { you: "B3", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B3" } },
     validShots: ["BANDEJA"],
     bestZones: ["E3"],
     laufZone: "C4",
-    explanation: "Rücke nach der Bandeja nicht nur vor, sondern orientiere dich etwas zur Mitte (C4), da der Gegner den Ball aus dem Zentrum in beide Richtungen verteilen kann."
+    explanation: "Rücke nach der Bandeja nicht nur vor, sondern orientiere dich etwas zur Mitte (C4), da der Gegner den Ball aus dem Zentrum in beide Richtungen verteilen kann.",
+    explanation_en: "Step forward and shift slightly towards the center (C4) to close the middle gap after a central Bandeja.",
+    explanation_es: "Avanza tras la Bandeja cerrando ligeramente hacia el centro (C4) para tapar el medio."
   },
   {
     id: 52,
     description: "Der Gegner smasht gewaltig. Der Ball wird hoch von der Rückwand zurück zum gegnerischen Netz fliegen. Du hast keine Chance mehr.",
+    description_en: "The opponent hits a massive smash that will rebound high off your back glass all the way back towards the net.",
+    description_es: "El rival conecta un remate potentísimo que tras tocar tu cristal de fondo va a volver hacia la red.",
     positions: { you: "B1", partner: "D1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["BLOCK"],
     bestZones: ["A2"],
     laufZone: "B4",
-    explanation: "Wenn der Ball uneinholbar vom eigenen Glas zurück zum Gegner fliegt, renn nach vorne ans Netz (B4)! Das ist deine einzige, winzige Chance, den Ball noch zu blocken."
+    explanation: "Wenn der Ball uneinholbar vom eigenen Glas zurück zum Gegner fliegt, renn nach vorne ans Netz (B4)! Das ist deine einzige, winzige Chance, den Ball noch zu blocken.",
+    explanation_en: "When a smash rebounds high off your back wall towards the net, sprint forward (B4) to intercept it before it crosses back over!",
+    explanation_es: "Cuando un remate rebota muy alto en tu cristal hacia la red, ¡corre hacia delante (B4) para cazarlo arriba!"
   },
   {
     id: 53,
     description: "Am Netz spielst du einen scharfen Rückhand-Volley extrem cross an das gegnerische Gitter.",
+    description_en: "At the net (D4), you play a sharp cross-court backhand volley towards the opponent's wire mesh.",
+    description_es: "En la red (D4), conectas una volea cruzada hacia la malla lateral del rival.",
     positions: { you: "D4", partner: "B4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "D4" } },
     validShots: ["VOLLEY"],
     bestZones: ["D5"],
     laufZone: "D4",
-    explanation: "Ein Ball ans Gitter ist schwer zu kontrollieren. Behalte deine solide Grundposition (D4) bei, um alle Optionen abzudecken."
+    explanation: "Ein Ball ans Gitter ist schwer zu kontrollieren. Behalte deine solide Grundposition (D4) bei, um alle Optionen abzudecken.",
+    explanation_en: "Hold your solid net position at D4 to cover any awkward rebound off the mesh.",
+    explanation_es: "Mantén tu posición sólida en la red (D4) para cubrir cualquier rebote en la malla."
   },
   {
     id: 54,
     description: "Dein Lob rutscht dir ab und wird zu kurz und flach. Die Gegner formieren sich bereits zum Smash.",
+    description_en: "Your lob slips off the racket and stays too short and flat. The opponents are already setting up for a smash.",
+    description_es: "Tu globo sale corto y bajo. Los rivales ya se perfilan para rematar.",
     positions: { you: "B2", partner: "D2", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "B2" } },
     validShots: ["LOB"],
     bestZones: ["C2"],
     laufZone: "B1",
-    explanation: "Alarm! Du hast einen Fehler gemacht. Geh sofort komplett an die Rückwand (B1) und mach dich extrem tief, um den unausweichlichen Smash bestmöglich zu überleben."
+    explanation: "Alarm! Du hast einen Fehler gemacht. Geh sofort komplett an die Rückwand (B1) und mach dich extrem tief, um den unausweichlichen Smash bestmöglich zu überleben.",
+    explanation_en: "Retreat immediately to your defensive baseline (B1) and get low to defend the incoming smash.",
+    explanation_es: "Retrocede de inmediato a la línea de fondo (B1) y flexiona las piernas para defender el remate."
   },
   {
     id: 55,
     description: "Aus der Verteidigung blockst du den schweren Ball flach und langsam übers Netz. Die Gegner sind noch leicht auf dem Rückzug.",
+    description_en: "From deep defense you play a soft shot over the net while the opponents are slightly off-balance in row 3.",
+    description_es: "Desde el fondo juegas una bola suave mientras los rivales están algo retrasados en la fila 3.",
     positions: { you: "B1", partner: "D1", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "B1" } },
     validShots: ["CHIQUITA", "BLOCK"],
     bestZones: ["B3"],
     laufZone: "B2",
-    explanation: "Ein flacher, langsamer Ball gibt dir etwas Luft. Du kannst das Halbfeld noch nicht attackieren, aber einen Schritt vor (B2) gehen, um aus der reinen Defensive herauszukommen."
+    explanation: "Ein flacher, langsamer Ball gibt dir etwas Luft. Du kannst das Halbfeld noch nicht attackieren, aber einen Schritt vor (B2) gehen, um aus der reinen Defensive herauszukommen.",
+    explanation_en: "Step out of the corner to B2 to regain neutral court positioning without overcommitting.",
+    explanation_es: "Da un paso adelante hacia B2 para salir del rincón y ganar posición neutral."
   },
   {
     id: 56,
     description: "Du triffst die Vibora perfekt und der Ball rutscht flach und giftig genau zwischen den beiden Gegnern hindurch.",
+    description_en: "You strike a venomous Víbora that skids low right between the two opponents.",
+    description_es: "Conectas una Víbora perfecta que se cuela baja y rápida entre los dos rivales.",
     positions: { you: "B3", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B3" } },
     validShots: ["VIBORA"],
     bestZones: ["E3"],
     laufZone: "B5",
-    explanation: "Eine starke Vibora durch die Mitte zwingt die Gegner zu Chaos. Gehe extrem aggressiv ran (B5) und schnapp dir den zu erwartenden, hoch abprallenden Ball."
+    explanation: "Eine starke Vibora durch die Mitte zwingt die Gegner zu Chaos. Gehe extrem aggressiv ran (B5) und schnapp dir den zu erwartenden, hoch abprallenden Ball.",
+    explanation_en: "Press all the way up to the net (B5) to finish off the weak pop-up return.",
+    explanation_es: "Aprieta hasta la red (B5) para rematar la devolución forzada que dejarán los rivales."
   },
   {
     id: 57,
     description: "Du stehst tief in der Vorhand-Ecke, der Aufschlag kommt schnell. Du spielst den Return hart und flach cross.",
+    description_en: "Standing deep in the right corner (D1), you hit a firm cross-court Drive return.",
+    description_es: "Desde el rincón derecho (D1), conectas un resto firme y cruzado de Drive.",
     positions: { you: "D1", partner: "B2", opp1: "D4", opp2: "B4", ball: { side: "left", zone: "D1" } },
     validShots: ["DRIVE"],
     bestZones: ["E5"],
     laufZone: "D2",
-    explanation: "Ein solider Return ist wichtig, aber du darfst nicht blind losstürmen, da der Netzspieler bereitsteht. Geh in die sichere Grundposition (D2) und warte ab."
+    explanation: "Ein solider Return ist wichtig, aber du darfst nicht blind losstürmen, da der Netzspieler bereitsteht. Geh in die sichere Grundposition (D2) und warte ab.",
+    explanation_en: "Step out of the corner into your solid defensive base (D2) and prepare for the next shot.",
+    explanation_es: "Sal de la esquina hacia tu base defensiva sólida (D2) y prepárate para el siguiente tiro."
   },
   {
     id: 58,
     description: "Der Gegner spielt aus dem Nichts einen schwachen Lob, während du am Netz stehst. Er ist so kurz, dass du ihn direkt vor dem Netz schlagen kannst.",
+    description_en: "The opponent hits a weak lob that drops right in front of you at the net (B5).",
+    description_es: "El rival lanza un globo muy corto que cae justo delante de ti en la red (B5).",
     positions: { you: "B5", partner: "D4", opp1: "B2", opp2: "D2", ball: { side: "left", zone: "B5" } },
     validShots: ["SMASH", "VIBORA"],
     bestZones: ["E1", "E5"],
     laufZone: "B5",
-    explanation: "Ein kurzer Lob direkt vor dem Netz (B5) ist ein Geschenk. Du bleibst genau dort stehen, smasht ihn weg und beendest den Punkt. Zurückweichen wäre fatal."
+    explanation: "Ein kurzer Lob direkt vor dem Netz (B5) ist ein Geschenk. Du bleibst genau dort stehen, smasht ihn weg und beendest den Punkt. Zurückweichen wäre fatal.",
+    explanation_en: "A short lob right at the net (B5) is a gift—hold your spot and smash it away for the winner!",
+    explanation_es: "Un globo tan corto en la red (B5) es un regalo: mantén la posición y define por potencia."
   },
   {
     id: 59,
     description: "Der Ball klebt fast an der Rückwand. Du beugst dich weit hinunter und kratzt ihn mit einem extremen Bogen (Globo) unter die Hallendecke.",
+    description_en: "The ball is low near the back glass. You get underneath it and lift a towering Globo lob towards the back baseline.",
+    description_es: "La bola sale muy baja del cristal de fondo. Flexionas bien y levantas un Globo altísimo hacia el fondo rival.",
     positions: { you: "B1", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B1" } },
     validShots: ["LOB"],
     bestZones: ["E1", "E5"],
     laufZone: "B4",
-    explanation: "Wenn du einen Globo (sehr hohen Lob) spielst, ist der Ball ewig in der Luft. Das gibt dir massiv Zeit, dich in Ruhe vom Glas zu lösen und das Halbfeld/Netz (B4) zu erobern."
+    explanation: "Wenn du einen Globo (sehr hohen Lob) spielst, ist der Ball ewig in der Luft. Das gibt dir massiv Zeit, dich in Ruhe vom Glas zu lösen und das Halbfeld/Netz (B4) zu erobern.",
+    explanation_en: "A sky-high lob stays in the air long enough for you to sprint all the way up and take the net (B4).",
+    explanation_es: "Un globo tan alto permanece mucho tiempo en el aire y te permite subir a tomar la red (B4)."
   },
   {
     id: 60,
     description: "Der Ball kommt blitzschnell von rechts außen. Du stehst links am Netz und leitest die Energie in einen Cross-Block um.",
+    description_en: "A fast shot comes across from the right. Standing at the left net (B4), you redirect the pace with a compact cross-court Block.",
+    description_es: "Llega un tiro rapidísimo cruzado. En la red izquierda (B4), rediriges la velocidad con un Bloqueo firme.",
     positions: { you: "B4", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B4" } },
     validShots: ["BLOCK"],
     bestZones: ["E5"],
     laufZone: "B4",
-    explanation: "Wieder ein Reaktionsschlag. Nach dem Block am Netz verlässt du niemals deine kompakte Standposition. Stehenbleiben (B4)!"
+    explanation: "Wieder ein Reaktionsschlag. Nach dem Block am Netz verlässt du niemals deine kompakte Standposition. Stehenbleiben (B4)!",
+    explanation_en: "Hold your compact stance at the net (B4) so you are ready for the next reflex exchange.",
+    explanation_es: "Mantén tu posición firme en la red (B4) para estar listo en el siguiente intercambio."
   },
+
   // ==========================================
   // LEVEL 4: SPIELZUG (IDs 62 - 111)
-  // Fokus: Kompletter Spielzug (Schlag + Ziel + Laufweg)
   // ==========================================
-  
-  // --- AUFSCHLAG (Fokus: Spieleröffnung & Aufrücken) ---
   {
     id: 62,
     description: "Spieleröffnung von Rechts: Du servierst von der rechten Seite. Der Returnspieler hat sich sehr weit nach außen Richtung Gitter positioniert, die Mitte ist offen.",
+    description_en: "Serving from the Right: The returner is standing very wide near the side mesh, leaving the T-line wide open.",
+    description_es: "Saque desde la Derecha: El restador se ha colocado muy abierto junto a la malla, dejando el centro libre.",
     positions: { you: "D1", partner: "B4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "D1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["C3"],
     laufZone: "D4",
-    explanation: "Ein flacher Aufschlag auf das T (C3) nutzt die Lücke aus. Nach jedem Aufschlag sprintest du kompromisslos ans Netz (D4), um die Position zu sichern."
+    explanation: "Ein flacher Aufschlag auf das T (C3) nutzt die Lücke aus. Nach jedem Aufschlag sprintest du kompromisslos ans Netz (D4), um die Position zu sichern.",
+    explanation_en: "A flat serve down the T (C3) exploits the open center, followed immediately by a sprint to your net position (D4).",
+    explanation_es: "Un saque rápido a la T (C3) aprovecha el hueco central, seguido de la subida inmediata a la red (D4)."
   },
   {
     id: 63,
     description: "Spieleröffnung an die Wand: Du eröffnest den Punkt von rechts und möchtest den Gegner direkt in der Ecke einschnüren.",
+    description_en: "Serving to the Glass: You serve from the right side and want to pin the receiver deep in the backhand corner.",
+    description_es: "Saque al Cristal: Sacas desde la derecha buscando encerrar al rival directamente contra el cristal lateral.",
     positions: { you: "D1", partner: "A4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "D1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["E3"],
     laufZone: "D4",
-    explanation: "Der Aufschlag an die Scheibe (E3) ist schwer zu retournieren. Du nutzt die Flugzeit für den direkten Sprint ans Netz (D4)."
+    explanation: "Der Aufschlag an die Scheibe (E3) ist schwer zu retournieren. Du nutzt die Flugzeit für den direkten Sprint ans Netz (D4).",
+    explanation_en: "Angle the serve towards the side glass (E3) and use the flight time to sprint straight to the net (D4).",
+    explanation_es: "Dirige el saque hacia el cristal (E3) y aprovecha el vuelo de la bola para subir directo a la red (D4)."
   },
   {
     id: 64,
     description: "Service ins Eck: Du schlägst von der linken Seite auf die Rückhand des Gegners auf, direkt ans Glas.",
+    description_en: "Serve into the Corner: You serve from the left side aiming for the receiver's side glass.",
+    description_es: "Saque al Rincón: Sacas desde la izquierda buscando el cristal lateral del restador.",
     positions: { you: "B1", partner: "D4", opp1: "D1", opp2: "B1", ball: { side: "left", zone: "B1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["E3"],
     laufZone: "B4",
-    explanation: "Ein starker Kick-Aufschlag an die Scheibe (E3) bringt den Gegner in Not. Du rückst sofort auf deine Netzposition (B4) vor."
+    explanation: "Ein starker Kick-Aufschlag an die Scheibe (E3) bringt den Gegner in Not. Du rückst sofort auf deine Netzposition (B4) vor.",
+    explanation_en: "A slice serve into the side glass (E3) puts the receiver in trouble while you take your net position (B4).",
+    explanation_es: "Un saque cortado al cristal (E3) complica el resto mientras ocupas tu posición en la red (B4)."
   },
   {
     id: 65,
     description: "Überraschung im Zentrum: Der Gegner klebt förmlich an der Glasscheibe, um den Winkel zuzumachen. Die Mitte des Feldes ist völlig verwaist.",
+    description_en: "Surprise Down the Middle: The receiver is hugging the side glass to cover the wide angle, leaving the T-line completely open.",
+    description_es: "Sorpresa al Medio: El restador está pegado al cristal lateral cubriendo el ángulo y deja la T totalmente libre.",
     positions: { you: "B1", partner: "D4", opp1: "E1", opp2: "B1", ball: { side: "left", zone: "B1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["C3"],
     laufZone: "B4",
-    explanation: "Du bestrafst die schlechte Positionierung mit einem schnellen Service in die Mitte (C3) und sprintest nach vorne (B4), um den Return abzufangen."
+    explanation: "Du bestrafst die schlechte Positionierung mit einem schnellen Service in die Mitte (C3) und sprintest nach vorne (B4), um den Return abzufangen.",
+    explanation_en: "Punish the wide positioning with a fast serve down the T (C3) and rush forward to B4.",
+    explanation_es: "Castiga su colocación con un saque rápido a la T (C3) y sube de inmediato a B4."
   },
   {
     id: 66,
     description: "Aggressive Positionierung: Beide Gegner stehen extrem aggressiv am Netz und beim Return. Du willst sie direkt bei der Spieleröffnung einklemmen.",
+    description_en: "Jamming the Receiver: The receiver is standing aggressively inside the baseline. Jam them with a body serve.",
+    description_es: "Saque al Cuerpo: El restador espera muy metido en pista. Bloquéalo con un saque directo al cuerpo.",
     positions: { you: "D1", partner: "B4", opp1: "A1", opp2: "D2", ball: { side: "left", zone: "D1" } },
     validShots: ["AUFSCHLAG"],
     bestZones: ["D3"],
     laufZone: "D4",
-    explanation: "Ein harter, schneller Aufschlag direkt auf den Körper (D3) lässt dem Gegner keinen Platz zum Ausholen. Laufziel bleibt zwingend das Netz (D4)."
+    explanation: "Ein harter, schneller Aufschlag direkt auf den Körper (D3) lässt dem Gegner keinen Platz zum Ausholen. Laufziel bleibt zwingend das Netz (D4).",
+    explanation_en: "A firm serve straight at the body (D3) takes away their swing space while you advance to the net (D4).",
+    explanation_es: "Un saque firme al cuerpo (D3) le impide armar el brazo mientras subes a la red (D4)."
   },
-
-  // --- DRIVE (Fokus: Return & flache Konter) ---
   {
     id: 67,
     description: "Unter Druck an der Seitenwand: Der gegnerische Ball treibt dich extrem weit nach außen. Du bist fast am Gitter, der Netzspieler stürmt vor.",
+    description_en: "Pinned Wide: You are pulled far wide into A1 while the opponents crowd the right and center net, leaving the down-the-line alley open.",
+    description_es: "Forzado en la Banda: Te han sacado hasta A1 mientras los rivales cierran el centro, dejando libre el pasillo paralelo.",
     positions: { you: "A1", partner: "D2", opp1: "C4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     validShots: ["DRIVE"],
     bestZones: ["A1"],
     laufZone: "C1",
-    explanation: "Du ziehst den Drive extrem flach Longline (A1), um den Netzspieler zu passieren. Danach musst du sofort die offene Mitte (C1) in der Defensive schließen, da du weit aus dem Feld getrieben wurdest."
+    explanation: "Du ziehst den Drive extrem flach Longline (A1), um den Netzspieler zu passieren. Danach musst du sofort die offene Mitte (C1) in der Defensive schließen, da du weit aus dem Feld getrieben wurdest.",
+    explanation_en: "Thread a low Drive down the line (A1) past the net player, then immediately recover towards C1 to close the defensive gap.",
+    explanation_es: "Pasa un Drive raso por el paralelo (A1) y recupera enseguida hacia C1 para cerrar el hueco defensivo."
   },
   {
     id: 68,
     description: "Die Einladung beim Return: Der gegnerische Aufschlag ist viel zu langsam und springt hoch ab. Du trittst entschlossen ins Feld hinein.",
+    description_en: "Attacking a Weak Serve: The opponent's serve is slow and sits up high. You step inside the baseline at D2.",
+    description_es: "Atacando un Saque Blando: El saque rival queda lento y alto. Entras con decisión en D2.",
     positions: { you: "D2", partner: "B2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "D2" } },
     validShots: ["DRIVE"],
     bestZones: ["C1"],
     laufZone: "D3",
-    explanation: "Mit einem krachenden Drive durch die Mitte (C1) trennst du die Gegner. Da es ein Angriffsschlag ist, rückst du aggressiv ins Halbfeld (D3) auf."
+    explanation: "Mit einem krachenden Drive durch die Mitte (C1) trennst du die Gegner. Da es ein Angriffsschlag ist, rückst du aggressiv ins Halbfeld (D3) auf.",
+    explanation_en: "Rip a powerful Drive straight through the middle (C1) and follow your attacking shot into D3.",
+    explanation_es: "Conecta un Drive potente por el medio (C1) y acompaña el ataque avanzando hasta D3."
   },
   {
     id: 69,
     description: "Wenig Platz beim Return: Der Aufschläger rückt extrem schnell und dicht ans Netz auf. Du hast keine Zeit, um spitze Winkel zu spielen.",
+    description_en: "Server Rushing In: The server charges the net fast, leaving you no time for fancy angles from E1.",
+    description_es: "Sacador Encima de la Red: El sacador sube rapidísimo a la red y no tienes margen para buscar ángulos desde E1.",
     positions: { you: "E1", partner: "A2", opp1: "C4", opp2: "E4", ball: { side: "left", zone: "E1" } },
     validShots: ["DRIVE"],
     bestZones: ["E4"],
     laufZone: "E2",
-    explanation: "Du spielst den Drive direkt auf den Körper des Aufrückenden (E4). Da das Risiko hoch ist, bleibst du in einer soliden Defensivposition (E2) stehen."
+    explanation: "Du spielst den Drive direkt auf den Körper des Aufrückenden (E4). Da das Risiko hoch ist, bleibst du in einer soliden Defensivposition (E2) stehen.",
+    explanation_en: "Drive the ball low at the rushing server (E4) and step into your solid defensive base at E2.",
+    explanation_es: "Juega un Drive bajo directo al sacador en subida (E4) y mantén tu base defensiva en E2."
   },
   {
     id: 70,
     description: "Vorbereitung aus der Ecke: Du stehst hinten links. Du willst den diagonalen Netzspieler dazu zwingen, den Ball von ganz unten holen zu müssen.",
+    description_en: "Setting Up from the Corner: From the back left (A1), force the diagonal net player to volley from below net level.",
+    description_es: "Preparación desde la Esquina: Desde atrás a la izquierda (A1), obliga al voleador diagonal a golpear desde abajo.",
     positions: { you: "A1", partner: "D2", opp1: "D4", opp2: "B4", ball: { side: "left", zone: "A1" } },
     validShots: ["DRIVE"],
     bestZones: ["E4"],
     laufZone: "B2",
-    explanation: "Ein flacher Drive auf die Füße (E4) zwingt den Gegner zum Volley von unten. Du nutzt das, um moderat ins Halbfeld (B2) aufzurücken und den Druck zu erhöhen."
+    explanation: "Ein flacher Drive auf die Füße (E4) zwingt den Gegner zum Volley von unten. Du nutzt das, um moderat ins Halbfeld (B2) aufzurücken und den Druck zu erhöhen.",
+    explanation_en: "Play a low cross-court Drive at their feet (E4) and step into B2 ready to pounce on a high reply.",
+    explanation_es: "Juega un Drive bajo cruzado a los pies (E4) y da un paso adelante a B2 listo para presionar."
   },
   {
     id: 71,
     description: "Spin-Attacke aus der Tiefe: Du bist in der rechten Ecke. Du möchtest einen Ball spielen, der nach dem Aufkommen extrem schwer einzuschätzen ist.",
+    description_en: "Spin Towards the Mesh: From the back right corner (E1), play a tricky cross-court ball towards the side mesh.",
+    description_es: "Efecto a la Malla: Desde la esquina derecha (E1), busca un tiro cruzado hacia la malla lateral rival.",
     positions: { you: "E1", partner: "A2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["DRIVE"],
     bestZones: ["A4"],
     laufZone: "D2",
-    explanation: "Ein mit Topspin gezogener Drive aufs Gitter (A4) ist für den Gegner unberechenbar. Du sicherst deine Seite ab und gehst auf die neutrale Position (D2)."
+    explanation: "Ein mit Topspin gezogener Drive aufs Gitter (A4) ist für den Gegner unberechenbar. Du sicherst deine Seite ab und gehst auf die neutrale Position (D2).",
+    explanation_en: "A dipping cross-court Drive towards the mesh (A4) is tough to volley; recover to your neutral base at D2.",
+    explanation_es: "Un Drive cruzado hacia la malla (A4) complica la volea rival; recupera tu posición base en D2."
   },
-
-  // --- LOB (Fokus: Coast-to-Coast & Raumgewinn) ---
   {
     id: 72,
     description: "Gefangen in der Tiefe (Links): Du klebst tief im linken Eck. Beide Gegner stehen extrem nah und aggressiv am Netz. Du brauchst dringend Luft.",
+    description_en: "Pinned Deep Left: You are trapped in the back left corner (A1) with both opponents crowding the net.",
+    description_es: "Encerrado a la Izquierda: Estás hundido en el rincón izquierdo (A1) con ambos rivales pegados a la red.",
     positions: { you: "A1", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     validShots: ["LOB"],
     bestZones: ["E1"],
     laufZone: "B4",
-    explanation: "Der Lob geht extrem hoch und diagonal (E1). Du nutzt die ewig lange Flugzeit für einen Vollgas-Sprint direkt ans Netz (B4)!"
+    explanation: "Der Lob geht extrem hoch und diagonal (E1). Du nutzt die ewig lange Flugzeit für einen Vollgas-Sprint direkt ans Netz (B4)!",
+    explanation_en: "Launch a high cross-court Lob into E1 and use the hang time to sprint all the way up to the net (B4)!",
+    explanation_es: "Lanza un Globo alto y cruzado a E1 y aprovecha el tiempo de vuelo para subir directo a la red (B4)."
   },
   {
     id: 73,
     description: "Gefangen in der Tiefe (Rechts): Du wurdest in die rechte Ecke gedrängt, die Gegner riechen ihre Chance und machen das Netz dicht.",
+    description_en: "Pinned Deep Right: You are pushed into the back right corner (E1) while the opponents close down the net.",
+    description_es: "Encerrado a la Derecha: Te han llevado al rincón derecho (E1) y los rivales cierran la red.",
     positions: { you: "E1", partner: "A2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["LOB"],
     bestZones: ["A1"],
     laufZone: "D4",
-    explanation: "Ein perfekter Lob nach A1 kauft dir wertvolle Zeit. Wer nach einem guten Lob hinten stehen bleibt, verschenkt den Punkt. Sprint auf D4!"
+    explanation: "Ein perfekter Lob nach A1 kauft dir wertvolle Zeit. Wer nach einem guten Lob hinten stehen bleibt, verschenkt den Punkt. Sprint auf D4!",
+    explanation_en: "Play a deep cross-court Lob to A1 and immediately charge forward to reclaim the net at D4!",
+    explanation_es: "Juega un Globo profundo cruzado a A1 y sube de inmediato para tomar la red en D4."
   },
   {
     id: 74,
     description: "Zentrum unter Beschuss: Ein harter Schuss zwingt dich tief in die Mitte der Defensive. Du möchtest das Tempo komplett aus dem Spiel nehmen.",
+    description_en: "Center Under Fire: You are forced deep into the middle (C1) and want to slow the pace down completely.",
+    description_es: "Presión al Centro: Estás hundido en el centro del fondo (C1) y quieres quitarle todo el ritmo al punto.",
     positions: { you: "C1", partner: "A2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "C1" } },
     validShots: ["LOB"],
     bestZones: ["C1"],
     laufZone: "C4",
-    explanation: "Du überlopfst beide Spieler genau durch die Mitte (C1). Da die Gegner nach außen ausweichen müssen, stürmst du direkt auf C4 vor."
+    explanation: "Du überlopfst beide Spieler genau durch die Mitte (C1). Da die Gegner nach außen ausweichen müssen, stürmst du direkt auf C4 vor.",
+    explanation_en: "Lob high down the middle (C1) over both net players and move straight up to C4.",
+    explanation_es: "Supera a ambos rivales con un Globo por el centro (C1) y avanza directo hasta C4."
   },
   {
     id: 75,
     description: "Fehlschlag im Halbfeld: Du triffst den Ball unsauber. Er steigt auf, wird aber viel zu flach bleiben. Ein Gewitter bahnt sich an.",
+    description_en: "Mishit Lob: From A2 you mishit a lob that stays way too short (C3). A big smash is coming.",
+    description_es: "Globo Corto: Desde A2 golpeas mal el globo y se queda muy corto (C3). Se avecina un remate.",
     positions: { you: "A2", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
     validShots: ["LOB"],
     bestZones: ["C3"],
     laufZone: "A1",
-    explanation: "Fehler erkannt! Der Lob ist zu kurz (C3). Flucht nach hinten! Du musst sofort an die Scheibe (A1) und dich extrem tief machen, um den Smash zu überleben."
+    explanation: "Fehler erkannt! Der Lob ist zu kurz (C3). Flucht nach hinten! Du musst sofort an die Scheibe (A1) und dich extrem tief machen, um den Smash zu überleben.",
+    explanation_en: "Since your lob is short (C3), retreat immediately to the back corner (A1) and get low to defend the smash.",
+    explanation_es: "Al quedarse corto el globo (C3), retrocede de inmediato al fondo (A1) para defender el remate."
   },
   {
     id: 76,
     description: "Überraschung aus der Offensive: Du stehst auf B3. Die Gegner kleben etwas zu nah am Netz. Du entscheidest dich gegen rohe Gewalt und für Finesse.",
+    description_en: "Offensive Lob: You are at B3 and the opponents are crowding right on top of the net (B5/D5). Use finesse over power.",
+    description_es: "Globo Ofensivo: Estás en B3 y los rivales se han pegado demasiado a la red (B5/D5). Usa el toque en lugar de la fuerza.",
     positions: { you: "B3", partner: "D3", opp1: "B5", opp2: "D5", ball: { side: "left", zone: "B3" } },
     validShots: ["LOB"],
     bestZones: ["A1"],
     laufZone: "B4",
-    explanation: "Ein Lob aus dem Halbfeld ist tödlich. Der Ball geht tief in die Ecke (A1) und du schiebst sofort auf B4 nach, um den Gegnern keine Chance zur Rückkehr zu lassen."
+    explanation: "Ein Lob aus dem Halbfeld ist tödlich. Der Ball geht tief in die Ecke (A1) und du schiebst sofort auf B4 nach, um den Gegnern keine Chance zur Rückkehr zu lassen.",
+    explanation_en: "A surprise lob from mid-court into A1 catches them completely off guard while you step up to B4.",
+    explanation_es: "Un globo sorpresa desde media pista hacia A1 los deja vendidos mientras tomas la red en B4."
   },
-
-  // --- BANDEJA (Fokus: Position halten & Aufbau) ---
   {
     id: 77,
     description: "Rückzug aus der Offensive: Du hattest das Netz, aber ein hoher Ball zwingt dich zurück ins Halbfeld. Du nimmst den Ball aus der Luft, um den Druck aufrechtzuerhalten.",
+    description_en: "Stepping Back for the Overhead: A high ball pushes you back from the net to B2. Keep the pressure on without losing the net.",
+    description_es: "Paso Atrás para la Bandeja: Un globo te obliga a retroceder de la red a B2. Mantén la iniciativa sin ceder la red.",
     positions: { you: "B2", partner: "D4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "B2" } },
     validShots: ["BANDEJA"],
     bestZones: ["E1"],
     laufZone: "B4",
-    explanation: "Du spielst die Bandeja cross in die Ecke (E1). Da dies ein reiner Aufbauschlag ist, musst du sofort wie an einem Gummiband wieder ans Netz (B4) zurück."
+    explanation: "Du spielst die Bandeja cross in die Ecke (E1). Da dies ein reiner Aufbauschlag ist, musst du sofort wie an einem Gummiband wieder ans Netz (B4) zurück.",
+    explanation_en: "Play a cross-court Bandeja deep into E1 and immediately rebound back up to your net position at B4.",
+    explanation_es: "Juega una Bandeja cruzada a E1 y vuelve de inmediato como un elástico a tu posición de red en B4."
   },
   {
     id: 78,
     description: "Aufbau durchs Zentrum: Du wurdest ins zentrale Halbfeld zurückgedrängt. Du willst Verwirrung stiften, ohne ein hohes Risiko einzugehen.",
+    description_en: "Building Through the Center: Pushed back to C2, play a high-percentage overhead that gives the opponents no angles.",
+    description_es: "Construcción al Centro: Retrasado en C2, busca un golpe aéreo seguro que no dé ángulos a los rivales.",
     positions: { you: "C2", partner: "B4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "C2" } },
     validShots: ["BANDEJA"],
     bestZones: ["C1"],
     laufZone: "C4",
-    explanation: "Eine sichere Bandeja durch die Mitte (C1) nimmt dem Gegner den Winkel. Du rückst danach direkt wieder entschlossen auf C4 auf."
+    explanation: "Eine sichere Bandeja durch die Mitte (C1) nimmt dem Gegner den Winkel. Du rückst danach direkt wieder entschlossen auf C4 auf.",
+    explanation_en: "A Bandeja down the middle (C1) eliminates angles and lets you step right back up to C4.",
+    explanation_es: "Una Bandeja al centro (C1) elimina ángulos y te permite recuperar la red en C4."
   },
   {
     id: 79,
     description: "Sicherheit geht vor: Du bist auf D2, der Ball ist etwas zu tief gefallen, um noch extrem aggressiv zu werden. Du setzt auf Kontrolle.",
+    description_en: "Safety First: At D2, the ball has dropped slightly too low for an aggressive smash. Prioritize control.",
+    description_es: "Control ante Todo: En D2 la bola ha caído un poco baja para definir. Prioriza el control.",
     positions: { you: "D2", partner: "B4", opp1: "C1", opp2: "A1", ball: { side: "left", zone: "D2" } },
     validShots: ["BANDEJA"],
     bestZones: ["A1"],
     laufZone: "D3",
-    explanation: "Du legst den Ball kontrolliert mit einer Bandeja ab (A1). Da du nicht voll getroffen hast, rückst du nur auf D3 vor, um nicht in einen leichten Konter zu laufen."
+    explanation: "Du legst den Ball kontrolliert mit einer Bandeja ab (A1). Da du nicht voll getroffen hast, rückst du nur auf D3 vor, um nicht in einen leichten Konter zu laufen.",
+    explanation_en: "Place a controlled Bandeja into A1 and advance cautiously to D3 to stay balanced.",
+    explanation_es: "Coloca una Bandeja controlada en A1 y avanza con prudencia hasta D3."
   },
   {
     id: 80,
     description: "Distanz schaffen: Die Gegner rücken verdächtig nah auf. Du nimmst den halbhohen Ball aus der Luft, um sie wieder an die Wand zu drängen.",
+    description_en: "Pushing Them Back: The opponents are creeping forward to row 3. Use a deep overhead from B3 to push them back to the glass.",
+    description_es: "Frenar su Subida: Los rivales se adelantan a la fila 3. Usa un golpe aéreo profundo desde B3 para hundirlos de nuevo.",
     positions: { you: "B3", partner: "D4", opp1: "C3", opp2: "D3", ball: { side: "left", zone: "B3" } },
     validShots: ["BANDEJA"],
     bestZones: ["C1"],
     laufZone: "B4",
-    explanation: "Du feuerst die Bandeja flach auf den Körper des Gegners (C1). Durch den Druck hast du genug Zeit, deine ideale Netzposition (B4) zurückzuerobern."
+    explanation: "Du feuerst die Bandeja flach auf den Körper des Gegners (C1). Durch den Druck hast du genug Zeit, deine ideale Netzposition (B4) zurückzuerobern.",
+    explanation_en: "Drive a flat Bandeja deep into C1 and reclaim your net position at B4.",
+    explanation_es: "Conecta una Bandeja profunda a C1 y recupera tu posición de red en B4."
   },
   {
     id: 81,
     description: "Die Lücke an der Linie: Der Gegner vor dir steht viel zu weit in der Mitte. Du nimmst den Ball im Zurücklaufen und bestrafst diesen Stellungsfehler.",
+    description_en: "Open Sideline: The opponent in front of you is standing too far in the center (C1). Exploit the open left corner.",
+    description_es: "Hueco en el Paralelo: El rival de tu lado se ha cerrado demasiado al centro (C1). Castiga la esquina libre.",
     positions: { you: "B2", partner: "D4", opp1: "C1", opp2: "E1", ball: { side: "left", zone: "B2" } },
     validShots: ["BANDEJA"],
     bestZones: ["A1"],
     laufZone: "B4",
-    explanation: "Du ziehst die Bandeja die Linie entlang (A1). Danach musst du schnell wieder vor (B4), um einen möglichen Longline-Passierball abzusichern."
+    explanation: "Du ziehst die Bandeja die Linie entlang (A1). Danach musst du schnell wieder vor (B4), um einen möglichen Longline-Passierball abzusichern.",
+    explanation_en: "Place the Bandeja down the line into A1 and recover quickly to B4.",
+    explanation_es: "Coloca la Bandeja por el paralelo hacia A1 y recupera rápido tu sitio en B4."
   },
-
-  // --- VIBORA (Fokus: Agresisver Aufbau & Kill-Push) ---
   {
     id: 82,
     description: "Einladung im Halbfeld: Der Ball verhungert auf halbem Weg in der Luft (D2). Du stellst dich perfekt seitlich und willst maximalen Schnitt und Druck aufbauen.",
+    description_en: "Mid-Court Opportunity: The ball hangs in the air at D2. Turn sideways to apply maximum side-spin and pressure.",
+    description_es: "Oportunidad a Media Pista: La bola se queda flotando en D2. Perfílate de lado para aplicar el máximo efecto lateral y presión.",
     positions: { you: "D2", partner: "B4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "D2" } },
     validShots: ["VIBORA"],
     bestZones: ["A1"],
     laufZone: "D5",
-    explanation: "Die Vibora zischt tief ins Eck (A1). Da der Return der Gegner extrem schwach ausfallen wird, sprintest du ganz dicht ans Netz (D5) für den finalen Kill-Volley!"
+    explanation: "Die Vibora zischt tief ins Eck (A1). Da der Return der Gegner extrem schwach ausfallen wird, sprintest du ganz dicht ans Netz (D5) für den finalen Kill-Volley!",
+    explanation_en: "Whip a cross-court Víbora into A1 and press all the way up to D5 to put away the weak rebound!",
+    explanation_es: "Cruza una Víbora venenosa a A1 y aprieta hasta D5 para rematar la devolución forzada."
   },
   {
     id: 83,
     description: "Unberechenbarer Winkel: Du nimmst den Ball auf B3 an. Du willst ihn so schlagen, dass er an der gegnerischen Seite tot abrutscht.",
+    description_en: "Wicked Side-Spin: From B3, whip an overhead towards the side wall/mesh so it skids unpredictably.",
+    description_es: "Ángulo Venenoso: Desde B3, busca un golpe aéreo con efecto lateral hacia la banda opuesta.",
     positions: { you: "B3", partner: "D4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "B3" } },
     validShots: ["VIBORA"],
     bestZones: ["E2"],
     laufZone: "B4",
-    explanation: "Der schnelle Ball ans Gitter (E2) durch eine Vibora springt wild ab. Du gehst dominant vor auf B4, um jeden halbhohen Abpraller sofort zu bestrafen."
+    explanation: "Der schnelle Ball ans Gitter (E2) durch eine Vibora springt wild ab. Du gehst dominant vor auf B4, um jeden halbhohen Abpraller sofort zu bestrafen.",
+    explanation_en: "A sharp Víbora into E2 creates a tough side-wall bounce while you step up to B4.",
+    explanation_es: "Una Víbora angulada a E2 genera un rebote complicadísimo mientras avanzas a B4."
   },
   {
     id: 84,
     description: "Spaltung der Abwehr: Die Gegner lassen eine riesige Lücke in der Mitte. Du entscheidest dich für einen aggressiven, extrem flachen Schlag aus der Luft dazwischen.",
+    description_en: "Splitting the Defense: The opponents leave a huge gap in the middle. Rip a fast, low overhead right between them.",
+    description_es: "Romper el Medio: Los rivales dejan un gran hueco en el centro. Lanza un golpe aéreo rápido y rasante entre ambos.",
     positions: { you: "C2", partner: "D4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "C2" } },
     validShots: ["VIBORA"],
     bestZones: ["C1"],
     laufZone: "C4",
-    explanation: "Eine harte Vibora in die Mitte (C1) erzwingt Missverständnisse. Du rückst direkt ins Zentrum (C4) auf, um das Feld komplett dichtzumachen."
+    explanation: "Eine harte Vibora in die Mitte (C1) erzwingt Missverständnisse. Du rückst direkt ins Zentrum (C4) auf, um das Feld komplett dichtzumachen.",
+    explanation_en: "A fast Víbora down the middle (C1) forces confusion; step straight up to C4.",
+    explanation_es: "Una Víbora rápida al medio (C1) genera dudas en los rivales mientras tomas C4."
   },
   {
     id: 85,
     description: "Angriff auf die Füße: Einer der Gegner macht Anstalten aufzurücken. Du erwischst den Ball hoch genug, um ihn gnadenlos nach unten zu drücken.",
+    description_en: "Targeting the Feet: One opponent is creeping forward to C3. Drive an aggressive overhead right at their feet.",
+    description_es: "A los Pies: Uno de los rivales intenta adelantarse a C3. Castígale con un golpe aéreo agresivo a los pies.",
     positions: { you: "D2", partner: "B4", opp1: "C3", opp2: "A1", ball: { side: "left", zone: "D2" } },
     validShots: ["VIBORA"],
     bestZones: ["C4"],
     laufZone: "D4",
-    explanation: "Du drückst die Vibora brutal flach auf seine Füße (C4). Ein Fehler ist quasi garantiert. Ab nach vorne (D4)!"
+    explanation: "Du drückst die Vibora brutal flach auf seine Füße (C4). Ein Fehler ist quasi garantiert. Ab nach vorne (D4)!",
+    explanation_en: "Crush a low Víbora at their feet (C4) and follow it forward to D4!",
+    explanation_es: "Clava la Víbora baja a sus pies (C4) y sube inmediatamente a D4."
   },
   {
     id: 86,
     description: "Rettungstat aus der Schieflage: Der Ball ist dir leicht in den Rücken gefallen (E2), aber du reißt den Schläger noch hoch, um ihn mit Schnitt rüberzuzwingen.",
+    description_en: "Off-Balance Overhead: The ball gets slightly behind you at E2, but you still whip a spinning overhead cross-court.",
+    description_es: "Víbora Forzada: La bola te queda algo detrás en E2, pero logras sacar una Víbora cortada cruzada.",
     positions: { you: "E2", partner: "A4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "E2" } },
     validShots: ["VIBORA"],
     bestZones: ["B1"],
     laufZone: "E3",
-    explanation: "Die Not-Vibora nach B1 ist giftig, aber deine Balance war schlecht. Rücke nur moderat ins Halbfeld (E3) auf, bis du wieder sicher stehst."
+    explanation: "Die Not-Vibora nach B1 ist giftig, aber deine Balance war schlecht. Rücke nur moderat ins Halbfeld (E3) auf, bis du wieder sicher stehst.",
+    explanation_en: "Play the Víbora deep to B1 and recover one step to E3 until you regain full balance.",
+    explanation_es: "Juega la Víbora profunda a B1 y avanza con control a E3 hasta recuperar el equilibrio."
   },
-
-  // --- BAJADA (Fokus: Wandabpraller & Bungee-Sprint) ---
   {
     id: 87,
     description: "Geschenk von der Rückwand (Links): Der Ball prallt extrem hoch von deiner hinteren Scheibe ab. Du stehst bereit dahinter, das Feld liegt offen vor dir.",
+    description_en: "High Back-Glass Rebound (Left): The ball bounces high off your back glass at A1 with the court open in front of you.",
+    description_es: "Rebote Alto en el Cristal (Izquierda): La bola sale muy alta de tu pared de fondo en A1 con toda la pista por delante.",
     positions: { you: "A1", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     validShots: ["BAJADA"],
     bestZones: ["E1"],
     laufZone: "B4",
-    explanation: "Du feuerst die Bajada de Pared mit Vollgas cross (E1). Nimm den Vorwärtsimpuls des Schlags mit und sprinte wie an einem Bungee-Seil sofort wieder ans Netz (B4)!"
+    explanation: "Du feuerst die Bajada de Pared mit Vollgas cross (E1). Nimm den Vorwärtsimpuls des Schlags mit und sprinte wie an einem Bungee-Seil sofort wieder ans Netz (B4)!",
+    explanation_en: "Rip a cross-court Bajada into E1 and ride your forward momentum all the way up to the net (B4)!",
+    explanation_es: "Conecta una Bajada potente cruzada a E1 y aprovecha el impulso para subir directo a la red (B4)."
   },
   {
     id: 88,
     description: "Hoher Rebound (Rechts): Der Abpraller springt dir an der rechten Wand perfekt auf Schulterhöhe entgegen. Die Gegner kleben am Netz.",
+    description_en: "High Rebound (Right): The ball sits up at shoulder height off the right back glass (E1) while the opponents wait at the net.",
+    description_es: "Rebote Alto (Derecha): La bola sale perfecta a la altura del hombro en el cristal derecho (E1) con los rivales en la red.",
     positions: { you: "E1", partner: "B4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["BAJADA"],
     bestZones: ["C1"],
     laufZone: "D4",
-    explanation: "Du ziehst die Bajada hart durch die Mitte (C1), um die Gegner zu bestrafen. Keine Pause, sofort vorstürmen auf D4!"
+    explanation: "Du ziehst die Bajada hart durch die Mitte (C1), um die Gegner zu bestrafen. Keine Pause, sofort vorstürmen auf D4!",
+    explanation_en: "Blast the Bajada straight through the middle (C1) and charge forward to D4!",
+    explanation_es: "Descarga la Bajada con fuerza por el medio (C1) y sube sin dudar hasta D4."
   },
   {
     id: 89,
     description: "Die feine Klinge: Du tust so, als würdest du den hohen Wandabpraller voll durchziehen, nimmst aber im letzten Moment alles Tempo raus.",
+    description_en: "The Disguised Bajada: You set up as if to crush the high wall rebound from A1, but take off all the pace at the last second.",
+    description_es: "Amago de Bajada: Armas el brazo como si fueras a reventar la bola desde A1, pero en el último instante le quitas toda la velocidad.",
     positions: { you: "A1", partner: "D3", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A1" } },
     validShots: ["BAJADA"],
     bestZones: ["A4"],
     laufZone: "A3",
-    explanation: "Der Ball droppt weich (A4). Du überraschst die Gegner mit dieser Fake-Bajada, musst aber explosiv vorrücken (A3), um den resultierenden Notschlag abzufangen."
+    explanation: "Der Ball droppt weich (A4). Du überraschst die Gegner mit dieser Fake-Bajada, musst aber explosiv vorrücken (A3), um den resultierenden Notschlag abzufangen.",
+    explanation_en: "Drop the soft Bajada into A4 and move explosively forward to A3 to intercept the reply.",
+    explanation_es: "Deja caer la Bajada suave en A4 y avanza rápido a A3 para cazar la devolución."
   },
   {
     id: 90,
     description: "Die Schwachstelle anvisieren: Der Netzspieler auf deiner Seite wirkt wackelig. Du hast einen perfekten Abpraller von der Scheibe auf Schlägerhöhe.",
+    description_en: "Body Attack off the Glass: You have a high rebound at E2 and target the net player right in front of you.",
+    description_es: "Bajada al Cuerpo: Tienes un rebote franco en E2 y buscas fusilar al voleador que tienes enfrente.",
     positions: { you: "E2", partner: "B4", opp1: "D4", opp2: "B4", ball: { side: "left", zone: "E2" } },
     validShots: ["BAJADA"],
     bestZones: ["D4"],
     laufZone: "D2",
-    explanation: "Du schießt die Bajada kompromisslos auf den Körper des unsicheren Spielers (D4). Durch seinen flachen Block rückst du auf D2 auf, um das Feld eng zu machen."
+    explanation: "Du schießt die Bajada kompromisslos auf den Körper des unsicheren Spielers (D4). Durch seinen flachen Block rückst du auf D2 auf, um das Feld eng zu machen.",
+    explanation_en: "Fire the Bajada straight at the net player (D4) and hold a solid base at D2.",
+    explanation_es: "Dispara la Bajada directo al cuerpo del voleador (D4) y asegura tu posición en D2."
   },
   {
     id: 91,
     description: "Zu flach für den Angriff: Der Abpraller an der Scheibe (C1) war zu niedrig für einen brachialen Schuss von oben. Du musst ihn solide im Spiel halten.",
+    description_en: "Controlled Wall Exit: The rebound at C1 is slightly lower, so you play a controlled Bajada into the corner.",
+    description_es: "Salida de Pared Controlada: El rebote en C1 no es tan alto, por lo que buscas una Bajada controlada a la esquina.",
     positions: { you: "C1", partner: "D3", opp1: "A4", opp2: "E4", ball: { side: "left", zone: "C1" } },
     validShots: ["BAJADA"],
     bestZones: ["E1"],
     laufZone: "C1",
-    explanation: "Du streichst den Ball als kontrollierte Defensiv-Bajada nach E1. Da du nicht angegriffen hast, bleibst du hinten (C1) und sicherst die Basis."
+    explanation: "Du streichst den Ball als kontrollierte Defensiv-Bajada nach E1. Da du nicht angegriffen hast, bleibst du hinten (C1) und sicherst die Basis.",
+    explanation_en: "Place a controlled Bajada into E1 and stay back at C1 to protect the baseline.",
+    explanation_es: "Juega una Bajada controlada hacia E1 y mantén la posición defensiva en C1."
   },
-
-  // --- CHIQUITA (Fokus: Falle stellen & Rhythmuswechsel) ---
   {
     id: 92,
     description: "Die Falle im Niemandsland: Du stehst im Halbfeld. Die Gegner lauern angespannt am Netz auf einen harten Ball. Du nimmst komplett die Härte raus.",
+    description_en: "Setting the Trap: From C3, the opponents are bracing at the net for a hard drive. Take all the pace off the ball.",
+    description_es: "La Trampa: Desde C3, los rivales esperan en la red un tiro fuerte. Quítale toda la velocidad a la bola.",
     positions: { you: "C3", partner: "A2", opp1: "B5", opp2: "D5", ball: { side: "left", zone: "C3" } },
     validShots: ["CHIQUITA"],
     bestZones: ["B4"],
     laufZone: "C4",
-    explanation: "Du legst den Ball als softe Chiquita auf B4. Das ist ein Lockvogel! Du MUSST sofort vor ans Netz (C4) sprinten, um den Ball hoch abzugreifen."
+    explanation: "Du legst den Ball als softe Chiquita auf B4. Das ist ein Lockvogel! Du MUSST sofort vor ans Netz (C4) sprinten, um den Ball hoch abzugreifen.",
+    explanation_en: "Drop a soft Chiquita to B4 and immediately step up to C4 to attack the pop-up volley.",
+    explanation_es: "Juega una Chiquita suave a B4 y sube de inmediato a C4 para cazar la bola que levanten."
   },
   {
     id: 93,
     description: "Der extreme Winkel: Aus der Vorhand-Ecke willst du den Ball extrem kurz und flach vor die Füße des diagonalen Gegners abtropfen lassen.",
+    description_en: "Sharp Angled Chiquita: From D2, dip the ball short and low right at the diagonal net player's feet.",
+    description_es: "Chiquita Cruzada: Desde D2, deja caer la bola corta y baja a los pies del voleador diagonal.",
     positions: { you: "D2", partner: "B2", opp1: "A4", opp2: "D4", ball: { side: "left", zone: "D2" } },
     validShots: ["CHIQUITA"],
     bestZones: ["A4"],
     laufZone: "D4",
-    explanation: "Die Chiquita fällt auf A4 runter. Du drückst sofort aggressiv nach vorne (D4), da der Gegner den Ball nur noch von ganz unten nach oben heben kann."
+    explanation: "Die Chiquita fällt auf A4 runter. Du drückst sofort aggressiv nach vorne (D4), da der Gegner den Ball nur noch von ganz unten nach oben heben kann.",
+    explanation_en: "Dip the Chiquita into A4 and follow it straight up to the net (D4).",
+    explanation_es: "Coloca la Chiquita en A4 y acompáñala subiendo agresivo hasta la red (D4)."
   },
   {
     id: 94,
     description: "Chaos im Zentrum: Zwischen den Gegnern am Netz ist eine kleine Lücke. Du willst den Ball genau dort sanft fallen lassen, damit beide zögern.",
+    description_en: "Confusion in the Middle: Drop a soft ball right between the two net players so both hesitate.",
+    description_es: "Dudas en el Medio: Deja caer una bola suave justo entre los dos rivales en la red para que duden.",
     positions: { you: "A2", partner: "D2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "A2" } },
     validShots: ["CHIQUITA"],
     bestZones: ["C4"],
     laufZone: "B4",
-    explanation: "Der weiche Ball in die Mitte (C4) zwingt beide Gegner in die Knie. Du nutzt die Verwirrung und stürmst direkt an dein Netz (B4)."
+    explanation: "Der weiche Ball in die Mitte (C4) zwingt beide Gegner in die Knie. Du nutzt die Verwirrung und stürmst direkt an dein Netz (B4).",
+    explanation_en: "A soft Chiquita into the center (C4) forces them low while you advance to B4.",
+    explanation_es: "Una Chiquita suave al centro (C4) les obliga a agacharse mientras subes a B4."
   },
   {
     id: 95,
     description: "Das Netzduell drosseln: Du und der Gegner stehen euch sehr nah gegenüber. Statt roher Gewalt nimmst du das Tempo in einer riskanten Aktion komplett raus.",
+    description_en: "Taking the Pace Off: In a close net exchange at B4, surprise the opponents by taking all the speed off the ball.",
+    description_es: "Cambio de Ritmo en la Red: En un duelo cercano en B4, sorprende quitándole toda la velocidad a la bola.",
     positions: { you: "B4", partner: "D4", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "B4" } },
     validShots: ["CHIQUITA"],
     bestZones: ["C4"],
     laufZone: "B5",
-    explanation: "Du legst den Ball in Zeitlupe auf C4 ab (Chiquita). Das funktioniert nur, wenn du danach das Netz extrem zumachst (B5), um dem Gegner jeden Ausweg zu nehmen."
+    explanation: "Du legst den Ball in Zeitlupe auf C4 ab (Chiquita). Das funktioniert nur, wenn du danach das Netz extrem zumachst (B5), um dem Gegner jeden Ausweg zu nehmen.",
+    explanation_en: "Drop a soft Chiquita into C4 and crowd the net at B5 to smother the return.",
+    explanation_es: "Deja la bola muerta en C4 y pégalo todo en la red (B5) para cerrar cualquier salida."
   },
   {
     id: 96,
     description: "Abfallender Ball aus der Tiefe: Aus der hintersten Ecke spielst du einen weichen Ball, der genau vor den Füßen des gegnerischen Aufschlägers landen soll.",
+    description_en: "Deep Defensive Chiquita: From the back right corner (E1), play a soft dipping ball at the feet of the net player.",
+    description_es: "Chiquita desde el Fondo: Desde el rincón derecho (E1), juega una bola suave que caiga a los pies del voleador.",
     positions: { you: "E1", partner: "B2", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["CHIQUITA"],
     bestZones: ["D4"],
     laufZone: "E2",
-    explanation: "Die tiefe Chiquita fällt auf D4 ab. Da du von ganz hinten kommst, reicht die Zeit für einen Netzsprint nicht. Du sicherst immerhin das Halbfeld (E2) ab."
+    explanation: "Die tiefe Chiquita fällt auf D4 ab. Da du von ganz hinten kommst, reicht die Zeit für einen Netzsprint nicht. Du sicherst immerhin das Halbfeld (E2) ab.",
+    explanation_en: "Drop the Chiquita at D4 and step forward one zone to E2 to improve your court position.",
+    explanation_es: "Juega la Chiquita a D4 y da un paso adelante a E2 para ganar terreno."
   },
-
-  // --- VOLLEY (Fokus: Am Netz zuschlagen & Wischer-Bewegung) ---
   {
     id: 97,
     description: "Partner in Not: Dein Partner wird tief nach hinten rechts gedrängt. Du bist allein links am Netz und bekommst einen passablen Ball.",
+    description_en: "Partner Pinned Back: Your partner is pushed back to A2 while you are alone at the net (D4).",
+    description_es: "Compañero Atrás: Tu compañero se ha quedado atrás en A2 y estás solo en la red (D4).",
     positions: { you: "D4", partner: "A2", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "D4" } },
     validShots: ["VOLLEY"],
     bestZones: ["A1"],
     laufZone: "C3",
-    explanation: "Du spielst den Volley sicher auf A1. Sofort danach weichst du synchron mit deinem Partner in die Mitte/Halbfeld (C3) zurück. Das Netz gibt man immer im Team auf!"
+    explanation: "Du spielst den Volley sicher auf A1. Sofort danach weichst du synchron mit deinem Partner in die Mitte/Halbfeld (C3) zurück. Das Netz gibt man immer im Team auf!",
+    explanation_en: "Volley deep to A1 and adjust towards C3 so you don't leave a massive gap between you and your partner.",
+    explanation_es: "Volea profundo a A1 y ajusta hacia C3 para no dejar un hueco enorme con tu compañero."
   },
   {
     id: 98,
     description: "Der hohe Abschluss: Du erwischst den Ball extrem hoch am Netz. Die Gegner sind weit hinten. Es ist Zeit, den Sack zuzumachen.",
+    description_en: "High Put-Away Volley: You catch the ball high at the net (B4) with both opponents pinned at the back.",
+    description_es: "Volea Alta de Definición: Tomas la bola muy arriba en la red (B4) con ambos rivales hundidos atrás.",
     positions: { you: "B4", partner: "D4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "B4" } },
     validShots: ["VOLLEY"],
     bestZones: ["E1"],
     laufZone: "B5",
-    explanation: "Du drückst den Volley kompromisslos in die Ecke (E1). Wenn du den Gegner derart in die Enge treibst, schiebst du bis auf B5 vor, um ihn komplett zu ersticken."
+    explanation: "Du drückst den Volley kompromisslos in die Ecke (E1). Wenn du den Gegner derart in die Enge treibst, schiebst du bis auf B5 vor, um ihn komplett zu ersticken.",
+    explanation_en: "Punch the Volley deep into E1 and press tight to B5 to finish the point.",
+    explanation_es: "Clava la Volea profunda en E1 y cierra en B5 para rematar la jugada."
   },
   {
     id: 99,
     description: "Sicherheit im Zentrum: Der Ball kommt schnell auf dich zu, du willst kein Risiko eingehen und drückst ihn direkt zwischen die Verteidiger.",
+    description_en: "High-Percentage Center Volley: Punch a fast incoming ball straight down the middle between the defenders.",
+    description_es: "Volea Segura al Medio: Dirige la volea firme y profunda justo entre los dos defensores.",
     positions: { you: "C4", partner: "A4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "C4" } },
     validShots: ["VOLLEY"],
     bestZones: ["C1"],
     laufZone: "C4",
-    explanation: "Ein Volley in die Mitte (C1) ist die sicherste Option. Du behältst deine dominante und zentrale Position (C4) einfach bei."
+    explanation: "Ein Volley in die Mitte (C1) ist die sicherste Option. Du behältst deine dominante und zentrale Position (C4) einfach bei.",
+    explanation_en: "A deep Volley to C1 is the highest-percentage play; hold your commanding position at C4.",
+    explanation_es: "Una Volea profunda a C1 es la opción más segura; mantén tu posición dominante en C4."
   },
   {
     id: 100,
     description: "Das feine Händchen: Die Gegner kleben an der hinteren Glaswand und erwarten einen harten Schuss. Du lässt den Ball am Netz einfach abtropfen.",
+    description_en: "Drop Volley Touch: With both opponents glued to the back glass, play a delicate drop volley right behind the net.",
+    description_es: "Dejada de Volea: Con los rivales pegados al cristal de fondo, deja caer la bola muerta detrás de la red.",
     positions: { you: "D4", partner: "B4", opp1: "A1", opp2: "D1", ball: { side: "left", zone: "D4" } },
     validShots: ["VOLLEY"],
     bestZones: ["D5"],
     laufZone: "D5",
-    explanation: "Ein perfekter Stop-Volley fällt tot hinter das Netz (D5). Du musst sofort ganz heran (D5), da der heranstürmende Gegner ihn (wenn überhaupt) nur noch sanft anheben kann."
+    explanation: "Ein perfekter Stop-Volley fällt tot hinter das Netz (D5). Du musst sofort ganz heran (D5), da der heranstürmende Gegner ihn (wenn überhaupt) nur noch sanft anheben kann.",
+    explanation_en: "Drop the Volley short into D5 and step right up to the net (D5).",
+    explanation_es: "Deja la Volea corta en D5 y pégate a la red (D5)."
   },
   {
     id: 101,
     description: "Schuss aufs Metall: Aus der linken Position feuerst du den Ball ohne Vorwarnung scharf auf das gegenüberliegende Gitter.",
+    description_en: "Angled Volley to the Mesh: From B4, angle a sharp volley into the opponent's wire mesh.",
+    description_es: "Volea a la Malla: Desde B4, angula una volea cortada hacia la malla metálica rival.",
     positions: { you: "B4", partner: "D4", opp1: "E1", opp2: "A1", ball: { side: "left", zone: "B4" } },
     validShots: ["VOLLEY"],
     bestZones: ["E3"],
     laufZone: "A4",
-    explanation: "Ein aggressiver Volley ans Gitter (E2) öffnet kurz deine Longline-Seite. Verschiebe dich einen Schritt nach links (A4), um diesen Passierball direkt zu verhindern."
+    explanation: "Ein aggressiver Volley ans Gitter (E2) öffnet kurz deine Longline-Seite. Verschiebe dich einen Schritt nach links (A4), um diesen Passierball direkt zu verhindern.",
+    explanation_en: "Angle the Volley into E3 and shift one step wide to A4 to cover the sideline.",
+    explanation_es: "Angula la Volea hacia E3 y desplázate un paso a A4 para cubrir tu paralelo."
   },
-
-  // --- SMASH (Fokus: Punkt beenden & Fake) ---
   {
     id: 102,
     description: "Der perfekte Abschluss (Links): Ein viel zu kurzer, hoher Ball trudelt genau auf dich (B4) zu. Das ist deine Chance, den Punkt spektakulär zu beenden.",
+    description_en: "The Finisher (Left): A short, high lob drops right to you at B4. Finish the point in style.",
+    description_es: "Remate Definidor (Izquierda): Un globo muy corto cae justo en B4. Define el punto por todo lo alto.",
     positions: { you: "B4", partner: "D4", opp1: "B1", opp2: "E1", ball: { side: "left", zone: "B4" } },
     validShots: ["SMASH"],
     bestZones: ["C2"],
     laufZone: "B4",
-    explanation: "Du hämmerst den Smash so hart auf C2, dass er über die 3-Meter-Wand fliegt (Por 3). Punkt für dich! Keine Bewegung mehr nötig, genieße es auf B4."
+    explanation: "Du hämmerst den Smash so hart auf C2, dass er über die 3-Meter-Wand fliegt (Por 3). Punkt für dich! Keine Bewegung mehr nötig, genieße es auf B4.",
+    explanation_en: "Hammer the Smash onto C2 so it bounces out over the 3-meter side wall (Por Tres). Hold B4!",
+    explanation_es: "Estrella el Smash en C2 para sacarla Por Tres. ¡Punto directo desde B4!"
   },
   {
     id: 103,
     description: "Die Einladung (Rechts): Der hohe Ball ist eine absolute Einladung. Du bist auf D4 positioniert und holst mit maximaler Kraft aus.",
+    description_en: "The Finisher (Right): A sitter lob arrives at D4. Unleash maximum power.",
+    description_es: "Remate Definidor (Derecha): Llega un globo caramelo a D4. Suelta el brazo al máximo.",
     positions: { you: "D4", partner: "B4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "D4" } },
     validShots: ["SMASH"],
     bestZones: ["C2"],
     laufZone: "D4",
-    explanation: "Auch hier: Der krachende Smash über die Seitenwand beendet den Ballwechsel sofort. Du bleibst entspannt auf D4 stehen."
+    explanation: "Auch hier: Der krachende Smash über die Seitenwand beendet den Ballwechsel sofort. Du bleibst entspannt auf D4 stehen.",
+    explanation_en: "Crush the Smash onto C2 for an instant winner and hold your position at D4.",
+    explanation_es: "Revienta el Smash en C2 para ganar el punto al instante y mantén D4."
   },
   {
     id: 104,
     description: "Rohe Gewalt: Der Ball ist hoch, aber ziemlich weit hinten. Du ziehst voll durch, um ihn mit reiner Gewalt flach an die Rückwand zu schmettern.",
+    description_en: "Power Smash Back to Your Side: From C3, hit a flat power smash straight down the middle so it rebounds high back to your side.",
+    description_es: "Remate para Traerla: Desde C3, pega un remate plano al centro para que tras tocar el cristal de fondo vuelva a tu campo.",
     positions: { you: "C3", partner: "A3", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "C3" } },
     validShots: ["SMASH"],
     bestZones: ["C1"],
     laufZone: "C4",
-    explanation: "Der Smash knallt auf C1 und kommt extrem schnell zurück ins Feld. Du musst nach dem Schlag sofort ans Netz (C4) nachrücken, um Herr der Lage zu bleiben."
+    explanation: "Der Smash knallt auf C1 und kommt extrem schnell zurück ins Feld. Du musst nach dem Schlag sofort ans Netz (C4) nachrücken, um Herr der Lage zu bleiben.",
+    explanation_en: "Smash hard into C1 and immediately follow up to C4 to control the net.",
+    explanation_es: "Remata fuerte a C1 y sigue la jugada hasta C4 para dominar la red."
   },
   {
     id: 105,
     description: "Kick über die Rückwand: Du stehst direkt unter dem Ball auf B5. Du gehst volles Risiko, um den Ball senkrecht steigen zu lassen.",
+    description_en: "Por Cuatro Smash: Right at the net (B5), hit a steep smash that clears the 4-meter back wall.",
+    description_es: "Remate Por Cuatro: Pegado a la red (B5), conecta un remate picado que supere el muro de fondo de 4 metros.",
     positions: { you: "B5", partner: "D4", opp1: "B1", opp2: "D1", ball: { side: "left", zone: "B5" } },
     validShots: ["SMASH"],
     bestZones: ["B2"],
     laufZone: "B5",
-    explanation: "Du kickst den Smash bei B2 so an, dass er direkt über die 4-Meter-Rückwand springt (Por 4). Ein fehlerfreier Winner. Stehenbleiben (B5)!"
+    explanation: "Du kickst den Smash bei B2 so an, dass er direkt über die 4-Meter-Rückwand springt (Por 4). Ein fehlerfreier Winner. Stehenbleiben (B5)!",
+    explanation_en: "Bounce the Smash steeply in B2 so it flies straight over the 4-meter back wall (Por Cuatro). Stay at B5!",
+    explanation_es: "Pica el Smash en B2 para sacarla Por Cuatro por encima del cristal de fondo. ¡Mantén B5!"
   },
   {
     id: 106,
     description: "Der große Bluff: Die Gegner rennen panisch nach hinten, weil sie deinen gewaltigen Ausholschwung sehen und das Schlimmste erwarten.",
+    description_en: "The Fake Smash: The opponents sprint forward/back expecting a huge smash from D4, so you disguise a soft drop smash.",
+    description_es: "Amago de Remate: Los rivales corren esperando un remate potente desde D4 y ejecutas una finta suave.",
     positions: { you: "D4", partner: "B4", opp1: "A1", opp2: "E1", ball: { side: "left", zone: "D4" } },
     validShots: ["SMASH"],
     bestZones: ["D4"],
     laufZone: "D5",
-    explanation: "Du stoppst den Smash-Schwung im letzten Moment und tippst den Ball nur butterweich ans Netz (D4). Rücke sofort auf D5 vor, da der Ball sehr flach bleiben wird."
+    explanation: "Du stoppst den Smash-Schwung im letzten Moment und tippst den Ball nur butterweich ans Netz (D4). Rücke sofort auf D5 vor, da der Ball sehr flach bleiben wird.",
+    explanation_en: "Slow your swing at the last second to tap the ball short into D4, then close in to D5.",
+    explanation_es: "Frena el brazo en el último instante para tocar corto en D4 y cierra rápido en D5."
   },
-
-  // --- BLOCK (Fokus: Notsituationen & Einfrieren) ---
   {
     id: 107,
     description: "Überleben am Netz: Du klebst am Netz (A5), während der Gegner aus kurzer Distanz mit voller Wucht auf dich abzieht. Du reißt den Schläger schützend hoch.",
+    description_en: "Surviving at the Net: You are at A5 when the opponent rips a hard shot from B3. You get your racket up for an emergency block.",
+    description_es: "Supervivencia en la Red: Estás en A5 cuando el rival fusila desde B3. Pones la pala de emergencia para bloquear.",
     positions: { you: "A5", partner: "D4", opp1: "B3", opp2: "D3", ball: { side: "left", zone: "A5" } },
     validShots: ["BLOCK"],
     bestZones: ["C3"],
     laufZone: "A1",
-    explanation: "Alarm! Du hast durch den Not-Block eine Smash-Vorlage für den Gegner in die Luft gelegt (C3). Wer jetzt vorne bleibt, wird abgeschossen. Panik-Sprint rückwärts an die Scheibe (A1)!"
+    explanation: "Alarm! Du hast durch den Not-Block eine Smash-Vorlage für den Gegner in die Luft gelegt (C3). Wer jetzt vorne bleibt, wird abgeschossen. Panik-Sprint rückwärts an die Scheibe (A1)!",
+    explanation_en: "Your emergency Block pops up to C3, setting up an opponent smash—sprint back to A1 immediately to defend!",
+    explanation_es: "Tu bloqueo de emergencia queda flotando en C3 para el remate rival: ¡retrocede rápido a A1 para defender!"
   },
   {
     id: 108,
     description: "Eingefroren: Du stehst auf B4. Ein knallharter, flacher Laser-Schuss kommt direkt auf deinen Magen zugeflogen.",
+    description_en: "Body Laser: Standing at B4, a flat laser drive flies straight at your stomach.",
+    description_es: "Misil al Cuerpo: Estás en B4 y un tiro plano rapidísimo viene directo a tu abdomen.",
     positions: { you: "B4", partner: "D4", opp1: "C2", opp2: "A2", ball: { side: "left", zone: "B4" } },
     validShots: ["BLOCK"],
     bestZones: ["A1"],
     laufZone: "B4",
-    explanation: "Freeze! Bei Körpertreffern machst du dich kompakt und nutzt einen Block. Jeder Schritt nach hinten ist falsch. Bleib wie angewurzelt auf B4 stehen."
+    explanation: "Freeze! Bei Körpertreffern machst du dich kompakt und nutzt einen Block. Jeder Schritt nach hinten ist falsch. Bleib wie angewurzelt auf B4 stehen.",
+    explanation_en: "Stay compact, block the ball deep into A1, and hold your ground at B4.",
+    explanation_es: "Mantente firme, bloquea profundo hacia A1 y conserva tu posición en B4."
   },
   {
     id: 109,
     description: "Verteidigung aus der Hocke: Du gehst in der tiefsten Ecke extrem in die Knie, um einen harten Schmetterball gerade noch so abzuwehren.",
+    description_en: "Low Corner Defense: Deep in E1, you get low to block a hard shot softly over the net.",
+    description_es: "Defensa Baja en la Esquina: Hundido en E1, flexionas al máximo para bloquear suave al otro lado.",
     positions: { you: "E1", partner: "B1", opp1: "B4", opp2: "D4", ball: { side: "left", zone: "E1" } },
     validShots: ["BLOCK"],
     bestZones: ["C4"],
     laufZone: "E2",
-    explanation: "Der Block tropft sicher vor die Füße der Gegner (C4) ab. Da du noch nicht aktiv angegriffen hast, gehst du nur einen Sicherheitsschritt auf E2 vor."
+    explanation: "Der Block tropft sicher vor die Füße der Gegner (C4) ab. Da du noch nicht aktiv angegriffen hast, gehst du nur einen Sicherheitsschritt auf E2 vor.",
+    explanation_en: "Block the ball low into C4 and take one step out of the corner to E2.",
+    explanation_es: "Bloquea bajo hacia C4 y da un paso hacia delante a E2 para salir del rincón."
   },
   {
     id: 110,
     description: "Feuergefecht auf engstem Raum: Schneller Schlagabtausch, Reflex gegen Reflex, direkt an der Netzkante.",
+    description_en: "Close-Quarters Firefight: A rapid-fire reflex exchange right at the net (D4).",
+    description_es: "Duelo de Reflejos: Intercambio rapidísimo de bote pronto y voleas pegados a la red (D4).",
     positions: { you: "D4", partner: "B4", opp1: "D4", opp2: "A4", ball: { side: "left", zone: "D4" } },
     validShots: ["BLOCK"],
     bestZones: ["E4"],
     laufZone: "D4",
-    explanation: "Pures Reflex-Padel. Block den Ball entschlossen cross (E4) und bleib auf deiner Position (D4) kleben, um sofort den nächsten Reflex parat zu haben."
+    explanation: "Pures Reflex-Padel. Block den Ball entschlossen cross (E4) und bleib auf deiner Position (D4) kleben, um sofort den nächsten Reflex parat zu haben.",
+    explanation_en: "Pure reflex Padel—block firmly into E4 and hold your stance at D4.",
+    explanation_es: "Puro reflejo: bloquea firme hacia E4 y mantén tu posición en D4."
   },
   {
     id: 111,
     description: "Den Rückzug antreten: Dein Partner spielt einen Fehlpass. Die Gegner stürmen vor, du kannst den Ball nur noch passiv entschärfen.",
+    description_en: "Tactical Retreat: Your partner is pinned at E1 and the opponents charge the net. You can only block defensively from B3.",
+    description_es: "Repliegue Táctico: Tu compañero está atrás en E1 y los rivales toman la red. Solo puedes bloquear desde B3.",
     positions: { you: "B3", partner: "E1", opp1: "A4", opp2: "D4", ball: { side: "left", zone: "B3" } },
     validShots: ["BLOCK"],
     bestZones: ["C1"],
     laufZone: "B1",
-    explanation: "Du blockst den Ball tief in die Mitte (C1). Da das Momentum klar bei den heranfliegenden Gegnern liegt, weichst du schnell und sicher in die Abwehrreihe (B1) zurück."
+    explanation: "Du blockst den Ball tief in die Mitte (C1). Da das Momentum klar bei den heranfliegenden Gegnern liegt, weichst du schnell und sicher in die Abwehrreihe (B1) zurück.",
+    explanation_en: "Block the ball deep into C1 and retreat to B1 to form a solid defensive line with your partner.",
+    explanation_es: "Bloquea profundo al centro (C1) y repliega a B1 para formar línea defensiva con tu compañero."
   }
-
-
 ];
