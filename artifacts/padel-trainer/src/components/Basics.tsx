@@ -106,7 +106,7 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
 
   en: {
     shots: {
-      "Serve (Aufschlag)": "In Padel, the serve is hit underhand below waist level after bouncing the ball once. It must land diagonally in the opponent's service box. Hitting the wire mesh after the bounce is a fault; hitting the glass wall is valid.",
+      "Serve": "In Padel, the serve is hit underhand below waist level after bouncing the ball once. It must land diagonally in the opponent's service box. Hitting the wire mesh after the bounce is a fault; hitting the glass wall is valid.",
       "Return": "The first shot answering the opponent's serve. The golden rule of returning: keep the ball safely in play. Players often use a low Chiquita or a deep Lob to take over the net.",
       "Lob": "The most important tactical shot in Padel. A high, deep ball towards the opponent's baseline designed to push net players back to the glass so your team can take the net.",
       "Volley": "A shot hit directly out of the air before the ball bounces, played close to the net. Volleys are ideally hit with slice (backspin) deep into the corners.",

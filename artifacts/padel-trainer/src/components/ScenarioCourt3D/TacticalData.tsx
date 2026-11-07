@@ -3,9 +3,11 @@ import * as THREE from "three";
 import { Plane, Html, QuadraticBezierLine, Cylinder, Sphere, Ring, Edges, Text, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { Props } from "./ScenarioCourt3D";
+import { useTranslation } from "../../lib/i18n";
 
 const LETTERS = ["A", "B", "C", "D", "E"];
 const NUMBERS = [1, 2, 3, 4, 5];
+
 
 function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
   if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0, side === "left" ? 5 : -5);
@@ -487,6 +489,7 @@ const Real3DPlayer = memo(function Real3DPlayer({
 export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; }) {
   
   const currentUserName = props.playerName || props.userName || "DU";
+  const { t } = useTranslation();
 
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
@@ -551,10 +554,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
   return (
     <group name="TacticalData">
       <Text position={[0, 0.03, 11]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
-        DEINE SEITE
+        {t("court_your_side")}
       </Text>
       <Text position={[0, 0.03, -11]} rotation={[-Math.PI / 2, 0, Math.PI]} fontSize={0.8} color="rgba(255,255,255,0.2)" letterSpacing={0.2} anchorX="center" anchorY="middle" fontWeight="bold">
-        GEGNERISCHE SEITE
+        {t("court_opp_side")}
       </Text>
 
       {allZoneIds.map((zoneId) => {

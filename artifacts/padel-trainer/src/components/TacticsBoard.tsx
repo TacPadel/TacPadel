@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import ScenarioCourt4D from "./ScenarioCourt4D";
 import { supabase } from "../lib/supabase";
+import { useTranslation, TranslationKey } from "../lib/i18n";
 
 interface DraggableItem {
   id: string;
@@ -62,12 +63,12 @@ const getControlPointX = (isTeamA: boolean) => {
 
 // VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS)
 const SCENARIOS: Record<string, {
-  name: string;
+  nameKey: TranslationKey;
   items: DraggableItem[];
-  customAnalysis?: { targetX: number; targetY: number; recommendation: string };
+  customAnalysis?: { targetX: number; targetY: number; recommendationKey: TranslationKey };
 }> = {
   initial: {
-    name: "Standard Startaufstellung",
+    nameKey: "tb_scen_initial_name",
     items: [
       { id: "a1", x: 120, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },
       { id: "a2", x: 120, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
@@ -77,7 +78,7 @@ const SCENARIOS: Record<string, {
     ]
   },
   angriff_dynamisch: {
-    name: "Taktik: Dynamischer Angriff (Scheibenwischer)",
+    nameKey: "tb_scen_wiper_name",
     items: [
       { id: "a1", x: getArcX(110, true), y: 110, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: getArcX(270, true), y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
@@ -88,11 +89,11 @@ const SCENARIOS: Record<string, {
     customAnalysis: {
       targetX: 680,
       targetY: 60,
-      recommendation: "Volley in die Ecke! Verschieb das Team wie einen Scheibenwischer zur Ballseite."
+      recommendationKey: "tb_scen_wiper_rec"
     }
   },
   aufschlag_a: {
-    name: "Taktik: Eigener Aufschlag (Team A)",
+    nameKey: "tb_scen_serve_name",
     items: [
       { id: "a1", x: 60, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 320, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },      
@@ -103,11 +104,11 @@ const SCENARIOS: Record<string, {
     customAnalysis: {
       targetX: 660,
       targetY: 100,
-      recommendation: "Tiefer Aufschlag in die Rückhand oder auf die T-Linie."
+      recommendationKey: "tb_scen_serve_rec"
     }
   },
   return_a: {
-    name: "Taktik: Return-Abwehr (Gegner schlägt auf)",
+    nameKey: "tb_scen_return_name",
     items: [
       { id: "a1", x: 80, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 90, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },      
@@ -118,11 +119,11 @@ const SCENARIOS: Record<string, {
     customAnalysis: {
       targetX: 100,
       targetY: 280,
-      recommendation: "Bereite dich auf einen tiefen Slice-Aufschlag vor."
+      recommendationKey: "tb_scen_return_rec"
     }
   },
   angriff_netz_a: {
-    name: "Taktik: Team A besetzt das Netz",
+    nameKey: "tb_scen_net_name",
     items: [
       { id: "a1", x: 310, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },      
       { id: "a2", x: 310, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
@@ -133,7 +134,7 @@ const SCENARIOS: Record<string, {
     customAnalysis: {
       targetX: 680,
       targetY: 195,
-      recommendation: "Aggressiver Volley tief durch die goldene Mitte!"
+      recommendationKey: "tb_scen_net_rec"
     }
   }
 };
@@ -145,7 +146,8 @@ const getTacticalTargetAndRec = (
   teamB: DraggableItem[],
   filters: TacticalFilters,
   scenarioKey: string,
-  customTarget: { x: number; y: number } | null
+  customTarget: { x: number; y: number } | null,
+  t: (key: TranslationKey) => string
 ) => {
   const netX = V_WIDTH / 2;
   const isBallOnSideA = ball.x <= netX;
@@ -157,41 +159,41 @@ const getTacticalTargetAndRec = (
   if (customTarget) {
     targetX = customTarget.x;
     targetY = customTarget.y;
-    recommendation = "Manueller Zielpunkt gesetzt! Die Taktikketten verschieben sich zum Landepunkt.";
+    recommendation = t("tb_rec_custom_target");
   } else if (scenarioKey !== "custom" && SCENARIOS[scenarioKey]?.customAnalysis) {
     const custom = SCENARIOS[scenarioKey].customAnalysis;
     targetX = custom.targetX;
     targetY = custom.targetY;
-    recommendation = custom.recommendation;
+    recommendation = t(custom.recommendationKey);
   } else {
     if (isBallOnSideA) {
       targetX = V_WIDTH - 80;
       targetY = V_HEIGHT / 2;
-      recommendation = "Befreiungsschlag: Versuche einen Lob oder spiele flach in die Ecke.";
+      recommendation = t("tb_rec_clear_lob");
       
       const isBMiddleOpen = Math.abs(teamB[0].y - teamB[1].y) > GAP_THRESHOLD + 2;
       if (teamB_X < netX + DEEP_DEF_THRESHOLD) {
-        recommendation = "Die Gegner kleben am Netz. Zeit für einen hohen Lob in den Rückraum!";
+        recommendation = t("tb_rec_opp_at_net");
         targetX = V_WIDTH - 40;
         targetY = ball.y > V_HEIGHT / 2 ? V_HEIGHT * 0.25 : V_HEIGHT * 0.75;
       } else if (isBMiddleOpen && filters.showWeaknessZones) {
-        recommendation = "Lücke erkannt! Spiel den Ball scharf durch die gegnerische Mitte.";
+        recommendation = t("tb_rec_gap_middle");
         targetX = (teamB[0].x + teamB[1].x) / 2;
         targetY = (teamB[0].y + teamB[1].y) / 2;
       }
     } else {
       targetX = 80;
       targetY = V_HEIGHT / 2;
-      recommendation = "Gegner am Ball. Halte die Netzposition und decke die Winkel.";
+      recommendation = t("tb_rec_hold_net");
       
       const isAMiddleOpen = Math.abs(teamA[0].y - teamA[1].y) > GAP_THRESHOLD + 2;
       const isAAtNet = teamA_X > netX - DEEP_DEF_THRESHOLD;
       if (isAAtNet) {
-        recommendation = "Gefahr eines Lobs! Ihr seid weit vorne am Netz, bereitet euch auf den Rückzug vor.";
+        recommendation = t("tb_rec_lob_danger");
         targetX = 40;
         targetY = ball.y > V_HEIGHT / 2 ? V_HEIGHT * 0.25 : V_HEIGHT * 0.75;
       } else if (isAMiddleOpen && filters.showWeaknessZones) {
-        recommendation = "Achtung: Eure Mitte ist zu offen! Der Gegner kann durchspielen.";
+        recommendation = t("tb_rec_own_middle_open");
         targetX = (teamA[0].x + teamA[1].x) / 2;
         targetY = (teamA[0].y + teamA[1].y) / 2;
       }
@@ -204,7 +206,8 @@ const getTacticalAnalysis = (
   items: DraggableItem[],
   filters: TacticalFilters,
   scenarioKey: string,
-  customTarget: { x: number; y: number } | null
+  customTarget: { x: number; y: number } | null,
+  t: (key: TranslationKey) => string
 ) => {
   const teamA = items.filter((i) => i.id.startsWith("a"));
   const teamB = items.filter((i) => i.id.startsWith("b"));
@@ -218,7 +221,7 @@ const getTacticalAnalysis = (
   const closestA = teamA.reduce((prev, curr) => Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev);
   const closestB = teamB.reduce((prev, curr) => Math.hypot(curr.x - ball.x, curr.y - ball.y) < Math.hypot(prev.x - ball.x, prev.y - ball.y) ? curr : prev);
 
-  const { targetX, targetY, recommendation } = getTacticalTargetAndRec(ball, teamA, teamB, filters, scenarioKey, customTarget);
+  const { targetX, targetY, recommendation } = getTacticalTargetAndRec(ball, teamA, teamB, filters, scenarioKey, customTarget, t);
 
   const movements: Record<string, { tx: number; ty: number }> = {};
   let title = ""; let bodyText = ""; let color = ""; let activePlayerId = "";
@@ -260,8 +263,8 @@ const getTacticalAnalysis = (
       }
     });
 
-    bodyText = `Der Ball liegt in eurer Hälfte. Spieler ${closestA.label} führt den Schlag aus.`;
-    title = `Abwehr-Modus — Spieler ${closestA.label} schlägt`;
+    bodyText = `${t("tb_body_side_a_1")} ${closestA.label} ${t("tb_body_side_a_2")}`;
+    title = `${t("tb_title_side_a_1")} ${closestA.label} ${t("tb_title_side_a_2")}`;
     color = isAInTransition ? "bg-red-700" : (isBMiddleOpen && filters.showWeaknessZones) ? "bg-emerald-600" : "bg-indigo-700";
     activePlayerId = closestA.id;
   } else {
@@ -295,8 +298,8 @@ const getTacticalAnalysis = (
       }
     });
 
-    bodyText = `Der Ball befindet sich in der gegnerischen Hälfte. Spieler ${closestB.label} bereitet den Schlag vor.`;
-    title = `Defensiv-Modus — Gegner ${closestB.label} am Ball`;
+    bodyText = `${t("tb_body_side_b_1")} ${closestB.label} ${t("tb_body_side_b_2")}`;
+    title = `${t("tb_title_side_b_1")} ${closestB.label} ${t("tb_title_side_b_2")}`;
     color = "bg-blue-900";
     activePlayerId = closestB.id;
   }
@@ -308,6 +311,8 @@ const getTacticalAnalysis = (
 // 3D ANSICHT MIT TAKTIK-RADAR HUD
 // ==========================================
 function TrajectoryView3D() {
+  const { t } = useTranslation();
+
   const [shotType, setShotType] = useState("BAJADA");
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -414,8 +419,8 @@ function TrajectoryView3D() {
           <div className="absolute top-2 left-2 z-10 w-[calc(100%-16px)] max-w-[300px] sm:max-w-none sm:w-72 bg-black/80 sm:bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col gap-2 sm:gap-3 pointer-events-auto transition-opacity animate-in fade-in">
             <div className="flex justify-between items-center sm:block">
               <div>
-                <span className="text-[#5cd6ff] text-[9px] sm:text-[10px] font-black uppercase tracking-widest block mb-0.5">Taktik Radar</span>
-                <h3 className="text-white text-xs sm:text-sm font-bold">Start & Ziel wählen</h3>
+                <span className="text-[#5cd6ff] text-[9px] sm:text-[10px] font-black uppercase tracking-widest block mb-0.5">{t("tb_radar_badge")}</span>
+                <h3 className="text-white text-xs sm:text-sm font-bold">{t("tb_radar_title")}</h3>
               </div>
             </div>
             
@@ -438,26 +443,26 @@ function TrajectoryView3D() {
                   <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
                     <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
                     <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
-                    <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>DU</text>
+                    <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>{t("tb_radar_you")}</text>
                   </g>
                 </g>
               </svg>
             </div>
 
             <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-white/80 font-bold px-1">
-              <span>Pos: <span className="text-[#e74c3c] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">X:{playerCoords.x} Z:{playerCoords.z}</span></span>
-              <span>Ziel: <span className="text-[#f1c40f] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">X:{targetCoords.x} Z:{targetCoords.z}</span></span>
+              <span>{t("tb_radar_pos")} <span className="text-[#e74c3c] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">X:{playerCoords.x} Z:{playerCoords.z}</span></span>
+              <span>{t("tb_radar_target")} <span className="text-[#f1c40f] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">X:{targetCoords.x} Z:{targetCoords.z}</span></span>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 mt-1">
               <select value={shotType} onChange={(e) => setShotType(e.target.value)} className="w-full bg-white/10 text-white text-xs font-bold p-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                <option value="BAJADA" className="text-black">Topspin (Bajada / Chiquita)</option>
-                <option value="VIBORA" className="text-black">Slice (Vibora / Bandeja)</option>
-                <option value="SMASH" className="text-black">Flat (Smash - Finisher)</option>
-                <option value="LOB" className="text-black">Lob (Defensiv)</option>
+                <option value="BAJADA" className="text-black">{t("tb_shot_topspin")}</option>
+                <option value="VIBORA" className="text-black">{t("tb_shot_slice")}</option>
+                <option value="SMASH" className="text-black">{t("tb_shot_flat")}</option>
+                <option value="LOB" className="text-black">{t("tb_shot_lob")}</option>
               </select>
               <button onClick={handleSimulate} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold py-2 px-3 rounded-lg shadow-md transition-transform active:scale-95 whitespace-nowrap">
-                Simulieren
+                {t("tb_btn_simulate")}
               </button>
             </div>
           </div>
@@ -465,7 +470,7 @@ function TrajectoryView3D() {
 
         {isSimulating && (
           <button onClick={handleBack} className="absolute top-4 left-4 z-10 bg-gray-900/80 backdrop-blur-md border border-white/20 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold shadow-lg hover:bg-gray-800 transition-colors pointer-events-auto animate-in fade-in">
-            ← Zurück zur Planung
+            {t("tb_btn_back_plan")}
           </button>
         )}
       </div>
@@ -477,6 +482,8 @@ function TrajectoryView3D() {
 // HAUPT-KOMPONENTE (INKL. TACTICAL STUDIO PRO)
 // ==========================================
 export default function TacticsBoard() {
+  const { lang, t } = useTranslation();
+
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [items, setItems] = useState<DraggableItem[]>(SCENARIOS.initial.items);
@@ -503,14 +510,14 @@ export default function TacticsBoard() {
         return;
       }
 
-      const isAdmin = session.user.email?.toLowerCase().trim() === "caposion@gmail.com";
+      const emailLower = session.user.email?.toLowerCase().trim() || "";
+      const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
       if (isAdmin) {
         const localOverride = localStorage.getItem("tacpadel_is_pro");
         setIsProUser(localOverride === null ? true : localOverride === "true");
         return;
       }
 
-      // Für alle normalen Spieler & Tester: Live aus Supabase 'user_stats' abfragen
       const { data: statsData } = await supabase
         .from("user_stats")
         .select("is_pro")
@@ -526,7 +533,7 @@ export default function TacticsBoard() {
 
   // --- TACTICAL STUDIO STATES (Zeichnen, Aufnehmen, Teilen) ---
   const [studioTool, setStudioTool] = useState<StudioTool>("move");
-  const [studioTitle, setStudioTitle] = useState<string>("Meine Padel-Taktik");
+  const [studioTitle, setStudioTitle] = useState<string>(() => t("tb_default_studio_title"));
   const [drawings, setDrawings] = useState<StudioDrawing[]>([]);
   const [currentDraft, setCurrentDraft] = useState<StudioDrawing | null>(null);
 
@@ -559,13 +566,12 @@ export default function TacticsBoard() {
   const offsetX = 10 + (V_WIDTH - 20) * 0.15;
 
   const analysis = useMemo(
-    () => getTacticalAnalysis(items, filters, selectedScenarioKey, customTarget),
-    [items, filters, selectedScenarioKey, customTarget]
+    () => getTacticalAnalysis(items, filters, selectedScenarioKey, customTarget, t),
+    [items, filters, selectedScenarioKey, customTarget, lang]
   );
 
   const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
 
-  // Live-Ref auf den aktuellen Board-Zustand für die synchrone 30-FPS-Videoaufnahme
   const liveStateRef = useRef({
     items,
     drawings: allDrawingsToRender,
@@ -721,7 +727,7 @@ export default function TacticsBoard() {
         const pTeamA = prev.filter(i => i.id.startsWith("a"));
         const pTeamB = prev.filter(i => i.id.startsWith("b"));
         const simBall = { x: newX, y: newY };
-        const { targetY: simTargetY } = getTacticalTargetAndRec(simBall, pTeamA, pTeamB, filters, selectedScenarioKey, customTarget);
+        const { targetY: simTargetY } = getTacticalTargetAndRec(simBall, pTeamA, pTeamB, filters, selectedScenarioKey, customTarget, t);
         const targetRatio = Math.max(0, Math.min(1, simTargetY / V_HEIGHT));
 
         return prev.map((item) => {
@@ -785,7 +791,7 @@ export default function TacticsBoard() {
         return item;
       });
     });
-  }, [getPoint, filters, selectedScenarioKey, customTarget, currentDraft, netX]);
+  }, [getPoint, filters, selectedScenarioKey, customTarget, currentDraft, netX, t]);
 
   const onPointerUp = useCallback(() => {
     if (currentDraft) {
@@ -826,25 +832,20 @@ export default function TacticsBoard() {
 
     const state = liveStateRef.current;
 
-    // 1. Hintergrund leeren
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 2. Exakt dieselbe Matrix-Transformation wie das SVG anwenden
     ctx.save();
     ctx.translate(60, 60);
     ctx.transform(0, -1, 1, 0, 0, 760);
 
-    // 3. Padel-Court zeichnen
     ctx.fillStyle = "#1034A6";
     ctx.fillRect(10, 10, V_WIDTH - 20, V_HEIGHT - 20);
 
-    // Glaswände-Rahmen außen
     ctx.strokeStyle = "#555555";
     ctx.lineWidth = 4;
     ctx.strokeRect(-30, -30, 820, 440);
 
-    // Spielfeld-Linien
     ctx.strokeStyle = "rgba(255,255,255,0.9)";
     ctx.lineWidth = 3;
     ctx.strokeRect(10, 10, V_WIDTH - 20, V_HEIGHT - 20);
@@ -860,7 +861,6 @@ export default function TacticsBoard() {
     ctx.lineTo(V_WIDTH - offsetX, V_HEIGHT / 2);
     ctx.stroke();
 
-    // Netz
     ctx.fillStyle = "#111111";
     ctx.fillRect(netX - 2, 10, 4, V_HEIGHT - 20);
     ctx.strokeStyle = "rgba(255,255,255,0.85)";
@@ -871,7 +871,6 @@ export default function TacticsBoard() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Hilfsfunktion für Pfeilspitzen im Canvas
     const drawArrowhead = (x1: number, y1: number, x2: number, y2: number, color: string, size: number = 12) => {
       const angle = Math.atan2(y2 - y1, x2 - x1);
       ctx.fillStyle = color;
@@ -883,7 +882,6 @@ export default function TacticsBoard() {
       ctx.fill();
     };
 
-    // 4. Taktik-Analyse-Overlays (falls aktiviert)
     if (state.showTactics) {
       if (state.filters.showWeaknessZones) {
         const ball = state.items.find((i) => i.id === "ball");
@@ -961,7 +959,6 @@ export default function TacticsBoard() {
       }
     }
 
-    // 5. Eingezeichnete Studio-Pfeile & Zonen zeichnen
     state.drawings.forEach((d) => {
       if (d.type === "zone_circle") {
         const radius = Math.max(18, Math.hypot(d.x2 - d.x1, d.y2 - d.y1));
@@ -990,7 +987,6 @@ export default function TacticsBoard() {
       drawArrowhead(d.x1, d.y1, d.x2, d.y2, color, 14);
     });
 
-    // 6. Spieler & Ball zeichnen
     state.items.forEach((item) => {
       const r = item.isPlayer ? 16 : 10;
       ctx.fillStyle = item.color;
@@ -1001,7 +997,6 @@ export default function TacticsBoard() {
       ctx.fill();
       ctx.stroke();
 
-      // Label aufrecht gedreht einzeichnen
       ctx.save();
       ctx.translate(item.x, item.y);
       ctx.rotate(Math.PI / 2);
@@ -1015,7 +1010,6 @@ export default function TacticsBoard() {
 
     ctx.restore();
 
-    // 7. Gebrandetes TacPadel Studio Wasserzeichen unten einzeichnen
     ctx.fillStyle = "rgba(4, 9, 20, 0.94)";
     ctx.fillRect(0, canvas.height - 48, canvas.width, 48);
     ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
@@ -1033,10 +1027,10 @@ export default function TacticsBoard() {
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 12px sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText((state.studioTitle || "Taktik-Analyse").toUpperCase(), canvas.width - 16, canvas.height - 19);
+    ctx.fillText((state.studioTitle || t("tb_watermark_fallback")).toUpperCase(), canvas.width - 16, canvas.height - 19);
 
     return canvas;
-  }, [netX, offsetX]);
+  }, [netX, offsetX, t]);
 
   // 📸 1. FOTO SNAPSHOT ERSTELLEN
   const handleTakeSnapshot = () => {
@@ -1045,7 +1039,7 @@ export default function TacticsBoard() {
 
     canvas.toBlob((blob) => {
       if (!blob) return;
-      const file = new File([blob], `tacpadel-taktik-${Date.now()}.png`, {
+      const file = new File([blob], `tacpadel-tactic-${Date.now()}.png`, {
         type: "image/png",
         lastModified: Date.now(),
       });
@@ -1058,17 +1052,16 @@ export default function TacticsBoard() {
   const startVideoRecording = () => {
     const canvas = drawBoardFrameSynchronously();
     if (!canvas || typeof MediaRecorder === "undefined") {
-      alert("Dein Gerät unterstützt leider keine direkte Video-Aufnahme. Nutze bitte die Foto-Funktion!");
+      alert(t("tb_alert_no_video"));
       return;
     }
 
     const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
     if (!stream) {
-      alert("Video-Stream wird auf diesem Gerät nicht unterstützt. Nutze bitte die Foto-Funktion!");
+      alert(t("tb_alert_no_stream"));
       return;
     }
 
-    // Bevorzuge MP4 für WhatsApp-Kompatibilität, sonst WebM
     const mimeCandidates = [
       "video/mp4;codecs=avc1",
       "video/mp4",
@@ -1080,7 +1073,7 @@ export default function TacticsBoard() {
 
     recChunksRef.current = [];
     const options: MediaRecorderOptions = {
-      videoBitsPerSecond: 1500000, // ~1.5 Mbit/s hält 25s Videos kompakt (~4 MB) für WhatsApp
+      videoBitsPerSecond: 1500000,
     };
     if (supportedMime) options.mimeType = supportedMime;
 
@@ -1142,7 +1135,7 @@ export default function TacticsBoard() {
     if (!exportMedia || isSharing) return;
     setIsSharing(true);
 
-    const shareText = `🎾 Schau dir diesen Padel-Spielzug an: "${studioTitle}" – erstellt im TacPadel Tactical Studio! 🔥`;
+    const shareText = `${t("tb_share_text_1")} "${studioTitle}" ${t("tb_share_text_2")}`;
 
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
@@ -1153,12 +1146,12 @@ export default function TacticsBoard() {
             if (exportMedia.type === "video") {
               await navigator.share({
                 files: [exportMedia.file],
-                title: studioTitle || "TacPadel Taktik",
+                title: studioTitle || "TacPadel",
               });
             } else {
               await navigator.share({
                 files: [exportMedia.file],
-                title: studioTitle || "TacPadel Taktik",
+                title: studioTitle || "TacPadel",
                 text: shareText,
               });
             }
@@ -1191,7 +1184,7 @@ export default function TacticsBoard() {
 
     handleDownloadMedia();
     setIsSharing(false);
-    alert("Das Video wurde auf deinem Gerät gespeichert – du kannst es jetzt direkt in WhatsApp aus deiner Galerie anhängen!");
+    alert(t("tb_alert_video_saved"));
   };
 
   const handleDownloadMedia = () => {
@@ -1216,10 +1209,10 @@ export default function TacticsBoard() {
             <div className="flex justify-between items-center w-full border-b border-slate-800 pb-3">
               <div>
                 <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400 block">
-                  Tactical Studio Export
+                  {t("tb_export_badge")}
                 </span>
                 <h3 className="text-base font-black text-white uppercase tracking-wider">
-                  {exportMedia.type === "video" ? "🎬 Dein Taktik-Shortclip" : "📸 Dein Taktik-Snapshot"}
+                  {exportMedia.type === "video" ? t("tb_export_video_title") : t("tb_export_img_title")}
                 </h3>
               </div>
               <button
@@ -1255,13 +1248,13 @@ export default function TacticsBoard() {
                 disabled={isSharing}
                 className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
               >
-                <span>{isSharing ? "Öffne Teilen-Menü..." : "📲 WhatsApp / Teilen"}</span>
+                <span>{isSharing ? t("tb_export_sharing") : t("tb_export_share_btn")}</span>
               </button>
               <button
                 onClick={handleDownloadMedia}
                 className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-xs uppercase tracking-widest rounded-xl border border-slate-700 transition-all"
               >
-                💾 Speichern
+                {t("tb_export_save_btn")}
               </button>
             </div>
           </div>
@@ -1288,7 +1281,7 @@ export default function TacticsBoard() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            2D Taktik
+            {t("tb_mode_2d")}
           </button>
 
           {/* NUR SICHTBAR FÜR PRO-USER & FREIGESCHALTETE TESTER */}
@@ -1301,7 +1294,7 @@ export default function TacticsBoard() {
                   : "text-pink-400 hover:text-pink-300"
               }`}
             >
-              <span>🎬 Studio Pro</span>
+              <span>{t("tb_mode_studio")}</span>
             </button>
           )}
 
@@ -1316,7 +1309,7 @@ export default function TacticsBoard() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            3D Flugkurven
+            {t("tb_mode_3d")}
           </button>
         </div>
       </div>
@@ -1343,7 +1336,7 @@ export default function TacticsBoard() {
                       type="text"
                       value={studioTitle}
                       onChange={(e) => setStudioTitle(e.target.value)}
-                      placeholder="Titel deiner Taktik..."
+                      placeholder={t("tb_studio_title_placeholder")}
                       className="w-full bg-slate-900 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none"
                     />
                   </div>
@@ -1353,7 +1346,7 @@ export default function TacticsBoard() {
                       onClick={handleTakeSnapshot}
                       className="flex-1 sm:flex-initial px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
                     >
-                      📸 Foto
+                      {t("tb_studio_photo_btn")}
                     </button>
 
                     {!isRecording ? (
@@ -1362,14 +1355,14 @@ export default function TacticsBoard() {
                         className="flex-1 sm:flex-initial px-3 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
                       >
                         <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                        <span>Video REC</span>
+                        <span>{t("tb_studio_rec_btn")}</span>
                       </button>
                     ) : (
                       <button
                         onClick={stopVideoRecording}
                         className="flex-1 sm:flex-initial px-3.5 py-2 bg-red-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)] flex items-center justify-center gap-1.5"
                       >
-                        <span>⏹️ Stopp ({recSeconds}s)</span>
+                        <span>{t("tb_studio_stop_btn")} ({recSeconds}s)</span>
                       </button>
                     )}
                   </div>
@@ -1385,7 +1378,7 @@ export default function TacticsBoard() {
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
                     }`}
                   >
-                    ✋ Bewegen
+                    {t("tb_tool_move")}
                   </button>
                   <button
                     onClick={() => setStudioTool("arrow_run")}
@@ -1395,7 +1388,7 @@ export default function TacticsBoard() {
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-cyan-300"
                     }`}
                   >
-                    🏃 Laufweg
+                    {t("tb_tool_run")}
                   </button>
                   <button
                     onClick={() => setStudioTool("arrow_ball")}
@@ -1405,7 +1398,7 @@ export default function TacticsBoard() {
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-amber-300"
                     }`}
                   >
-                    🎾 Ballweg
+                    {t("tb_tool_ball")}
                   </button>
                   <button
                     onClick={() => setStudioTool("zone_circle")}
@@ -1415,21 +1408,21 @@ export default function TacticsBoard() {
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-pink-300"
                     }`}
                   >
-                    ⭕ Zone
+                    {t("tb_tool_zone")}
                   </button>
                   <button
                     onClick={() => setDrawings((prev) => prev.slice(0, -1))}
                     disabled={drawings.length === 0}
                     className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 disabled:opacity-40"
                   >
-                    ↩️ Zurück
+                    {t("tb_tool_undo")}
                   </button>
                   <button
                     onClick={() => setDrawings([])}
                     disabled={drawings.length === 0}
                     className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-red-950/30 text-red-400 border border-red-900/40 hover:bg-red-900/40 disabled:opacity-40"
                   >
-                    🗑️ Clear
+                    {t("tb_tool_clear")}
                   </button>
                 </div>
               </div>
@@ -1441,8 +1434,8 @@ export default function TacticsBoard() {
             <div className="w-full max-w-5xl px-3 flex flex-col gap-3">
               <div className="p-3 sm:p-4 bg-white border border-gray-200 rounded-xl shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-xs uppercase tracking-widest font-bold block text-gray-400 mb-0.5">Taktik-Vorlage</span>
-                  <h4 className="text-sm font-bold text-gray-800">Szenario auf dem Platz laden:</h4>
+                  <span className="text-xs uppercase tracking-widest font-bold block text-gray-400 mb-0.5">{t("tb_preset_badge")}</span>
+                  <h4 className="text-sm font-bold text-gray-800">{t("tb_preset_title")}</h4>
                 </div>
                 <div className="relative w-full sm:w-72">
                   <select
@@ -1451,57 +1444,57 @@ export default function TacticsBoard() {
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none pr-8 shadow-inner"
                   >
                     {Object.entries(SCENARIOS).map(([key, value]) => (
-                      <option key={key} value={key}>{value.name}</option>
+                      <option key={key} value={key}>{t(value.nameKey)}</option>
                     ))}
-                    <option value="custom" disabled>Freies Board / Eigene Platzierung</option>
+                    <option value="custom" disabled>{t("tb_preset_custom")}</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">▼</div>
                 </div>
               </div>
 
               <div className="p-3 sm:p-4 bg-white border border-gray-200 rounded-xl shadow-md w-full">
-                <span className="text-xs uppercase tracking-widest font-bold block mb-3 text-gray-500">Taktische Overlays filtern:</span>
+                <span className="text-xs uppercase tracking-widest font-bold block mb-3 text-gray-500">{t("tb_filter_title")}</span>
                 <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm">
                   <label className="flex items-center gap-2 sm:gap-3 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg border border-indigo-200 cursor-pointer select-none transition-all shadow-sm">
                     <input type="checkbox" checked={filters.showAttackArc} onChange={() => toggleFilter("showAttackArc")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-full border-2 border-indigo-500 inline-block" />
-                      <span className="font-bold text-indigo-900">Angriffs-Bogen (Scheibenwischer)</span>
+                      <span className="font-bold text-indigo-900">{t("tb_filter_arc")}</span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer select-none transition-all">
                     <input type="checkbox" checked={filters.showBallVector} onChange={() => toggleFilter("showBallVector")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-3 h-0.5 bg-yellow-400 inline-block" />
-                      <span className="font-medium text-gray-800">Ballbahn &amp; Zielpunkt</span>
+                      <span className="font-medium text-gray-800">{t("tb_filter_vector")}</span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer select-none transition-all">
                     <input type="checkbox" checked={filters.showMovements} onChange={() => toggleFilter("showMovements")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-3 h-0.5 border-t-2 border-dashed border-[#5cd6ff] inline-block" />
-                      <span className="font-medium text-gray-800">Laufrichtungen</span>
+                      <span className="font-medium text-gray-800">{t("tb_filter_moves")}</span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer select-none transition-all">
                     <input type="checkbox" checked={filters.showWeaknessZones} onChange={() => toggleFilter("showWeaknessZones")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-3 h-3 bg-red-400/50 border border-red-500 rounded inline-block" />
-                      <span className="font-medium text-gray-800">Schwächen-Zonen</span>
+                      <span className="font-medium text-gray-800">{t("tb_filter_weakness")}</span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer select-none transition-all">
                     <input type="checkbox" checked={filters.showTeamLines} onChange={() => toggleFilter("showTeamLines")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-3 h-0.5 bg-emerald-500 inline-block" />
-                      <span className="font-medium text-gray-800">Team-Abstände</span>
+                      <span className="font-medium text-gray-800">{t("tb_filter_teamlines")}</span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer select-none transition-all">
                     <input type="checkbox" checked={filters.showPulse} onChange={() => toggleFilter("showPulse")} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
                     <div className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full border border-gray-400 bg-white inline-block animate-pulse" />
-                      <span className="font-medium text-gray-800">Aktiver Spieler</span>
+                      <span className="font-medium text-gray-800">{t("tb_filter_pulse")}</span>
                     </div>
                   </label>
                 </div>
@@ -1625,9 +1618,9 @@ export default function TacticsBoard() {
                   <line x1="805" y1="435" x2="815" y2="425" stroke="#fff" strokeWidth="6" />
                 </g>
 
-                <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">NETZ</text>
-                <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM A</text>
-                <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">TEAM B</text>
+                <text x={netX} y={V_HEIGHT / 2} transform={`rotate(90 ${netX} ${V_HEIGHT / 2})`} textAnchor="middle" dominantBaseline="middle" fill="white" fillOpacity={0.25} fontSize={16} fontWeight="bold" letterSpacing="4">{t("tb_court_net")}</text>
+                <text x={offsetX / 2 + 5} y={V_HEIGHT - 18} transform={`rotate(90 ${offsetX / 2 + 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">{t("tb_court_team_a")}</text>
+                <text x={V_WIDTH - offsetX / 2 - 5} y={V_HEIGHT - 18} transform={`rotate(90 ${V_WIDTH - offsetX / 2 - 5} ${V_HEIGHT - 18})`} textAnchor="middle" fill="white" fillOpacity={0.5} fontSize={12} fontWeight="bold">{t("tb_court_team_b")}</text>
 
                 {showTactics && (
                   <>
@@ -1768,18 +1761,18 @@ export default function TacticsBoard() {
                 <h3 className="text-lg sm:text-xl font-bold mb-2 flex items-center gap-2"><span className="text-xl sm:text-2xl">📋</span> {analysis.title}</h3>
                 <p className="text-sm sm:text-lg leading-relaxed font-medium opacity-90">{analysis.body}</p>
                 <div className="mt-4 bg-white/20 p-3 sm:p-4 rounded-xl border border-white/30 backdrop-blur-sm">
-                  <span className="text-[10px] sm:text-xs uppercase tracking-widest font-bold block mb-1">{items.find((i) => i.id === "ball")!.x < netX ? "Deine Angriffs-Empfehlung:" : "Gegner-Gefahrenzone / Deine Stellungs-Aufgabe:"}</span>
+                  <span className="text-[10px] sm:text-xs uppercase tracking-widest font-bold block mb-1">{items.find((i) => i.id === "ball")!.x < netX ? t("tb_rec_header_attack") : t("tb_rec_header_defense")}</span>
                   <span className="text-lg sm:text-2xl font-black">{analysis.recommendation}</span>
                 </div>
                 
                 <div className="mt-6 pt-4 border-t border-white/20">
-                  <span className="text-[10px] sm:text-xs uppercase tracking-widest font-bold block mb-3 text-white/80">Aktive Legende:</span>
+                  <span className="text-[10px] sm:text-xs uppercase tracking-widest font-bold block mb-3 text-white/80">{t("tb_legend_title")}</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 text-xs bg-black/20 p-3 rounded-xl border border-white/10">
-                    {filters.showAttackArc && (<div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full border border-indigo-300 border-dashed inline-block" /><span><strong className="text-indigo-200">Bogen:</strong> Scheibenwischer</span></div>)}
-                    {filters.showMovements && (<div className="flex items-center gap-2"><span className="w-5 h-0.5 border-t-2 border-dashed border-[#5cd6ff] inline-block" /><span><strong className="text-[#5cd6ff]">Blauer Pfeil:</strong> Laufrichtung</span></div>)}
-                    {filters.showPulse && (<div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full border-2 border-white inline-block animate-pulse bg-white/20" /><span><strong className="text-white">Pulsierend:</strong> Am Ball</span></div>)}
-                    {filters.showBallVector && (<><div className="flex items-center gap-2"><span className="flex items-center justify-center w-5 h-5 rounded-full border border-yellow-400 border-dashed text-[9px] font-bold text-yellow-300">◎</span><span><strong className="text-yellow-300">Fadenkreuz:</strong> Ziel</span></div><div className="flex items-center gap-2"><span className="w-5 h-0.5 border-t-2 border-dashed border-yellow-400 inline-block" /><span><strong className="text-yellow-300">Gelb:</strong> Flugbahn</span></div></>)}
-                    {filters.showWeaknessZones && (<><div className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500/30 rounded inline-block border border-red-500/40" /><span><strong className="text-red-300">Rot:</strong> Offene Mitte</span></div><div className="flex items-center gap-2"><span className="w-3 h-3 bg-orange-500/30 rounded inline-block border border-orange-500/40" /><span><strong className="text-orange-300">Orange:</strong> Tiefe</span></div></>)}
+                    {filters.showAttackArc && (<div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full border border-indigo-300 border-dashed inline-block" /><span><strong className="text-indigo-200">{t("tb_leg_arc_b")}</strong> {t("tb_leg_arc_t")}</span></div>)}
+                    {filters.showMovements && (<div className="flex items-center gap-2"><span className="w-5 h-0.5 border-t-2 border-dashed border-[#5cd6ff] inline-block" /><span><strong className="text-[#5cd6ff]">{t("tb_leg_move_b")}</strong> {t("tb_leg_move_t")}</span></div>)}
+                    {filters.showPulse && (<div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full border-2 border-white inline-block animate-pulse bg-white/20" /><span><strong className="text-white">{t("tb_leg_pulse_b")}</strong> {t("tb_leg_pulse_t")}</span></div>)}
+                    {filters.showBallVector && (<><div className="flex items-center gap-2"><span className="flex items-center justify-center w-5 h-5 rounded-full border border-yellow-400 border-dashed text-[9px] font-bold text-yellow-300">◎</span><span><strong className="text-yellow-300">{t("tb_leg_target_b")}</strong> {t("tb_leg_target_t")}</span></div><div className="flex items-center gap-2"><span className="w-5 h-0.5 border-t-2 border-dashed border-yellow-400 inline-block" /><span><strong className="text-yellow-300">{t("tb_leg_vec_b")}</strong> {t("tb_leg_vec_t")}</span></div></>)}
+                    {filters.showWeaknessZones && (<><div className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500/30 rounded inline-block border border-red-500/40" /><span><strong className="text-red-300">{t("tb_leg_red_b")}</strong> {t("tb_leg_red_t")}</span></div><div className="flex items-center gap-2"><span className="w-3 h-3 bg-orange-500/30 rounded inline-block border border-orange-500/40" /><span><strong className="text-orange-300">{t("tb_leg_orange_b")}</strong> {t("tb_leg_orange_t")}</span></div></>)}
                   </div>
                 </div>
               </div>
@@ -1787,8 +1780,8 @@ export default function TacticsBoard() {
           </div>
 
           <div className="flex gap-2 sm:gap-3 flex-wrap justify-center px-3 mb-6 w-full">
-            <button onClick={reset} className="px-3 sm:px-4 py-2 bg-red-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-red-700 active:scale-95 transition-all shadow-md">Positionen zurücksetzen</button>
-            <button onClick={() => setShowTactics(!showTactics)} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-md ${showTactics ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-gray-200 text-gray-800 hover:bg-gray-300"}`}>{showTactics ? "Analyse aus" : "Analyse ein"}</button>
+            <button onClick={reset} className="px-3 sm:px-4 py-2 bg-red-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-red-700 active:scale-95 transition-all shadow-md">{t("tb_btn_reset_pos")}</button>
+            <button onClick={() => setShowTactics(!showTactics)} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-md ${showTactics ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-gray-200 text-gray-800 hover:bg-gray-300"}`}>{showTactics ? t("tb_btn_analysis_off") : t("tb_btn_analysis_on")}</button>
           </div>
         </>
       )}

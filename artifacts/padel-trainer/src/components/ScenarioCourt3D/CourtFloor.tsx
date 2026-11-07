@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF, Html, Text } from "@react-three/drei";
 
 import { AiProfile } from "../../engine/AiProfiles"; 
+import { useTranslation } from "../../lib/i18n";
 
 // =========================================================
 // HILFSFUNKTION: Schwache / Ältere Geräte erkennen
@@ -121,7 +122,7 @@ const HologramBanner = React.memo(function HologramBanner({ lowQuality }: { lowQ
 });
 
 // --- DIE SCHWEBENDEN TRIBÜNEN-BANNER (Mit Team-Name) ---
-const TribuneBanners = React.memo(function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM KI" }: { userTeamName?: string, aiTeamName?: string }) {
+const TribuneBanners = React.memo(function TribuneBanners({ userTeamName = "TEAM", aiTeamName = "TEAM AI" }: { userTeamName?: string, aiTeamName?: string }) {
   const leftRef = useRef<THREE.Group>(null);
   const rightRef = useRef<THREE.Group>(null);
 
@@ -168,7 +169,6 @@ const TribuneBanners = React.memo(function TribuneBanners({ userTeamName = "TEAM
 
 // --- HOCHOPTIMIERTE 3D-MEEPLE-ZUSCHAUER ---
 function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: number | string, aiScore: number | string, lowQuality: boolean }) {
-  // Auf älteren Geräten 180 statt 450 Zuschauer -> spart 60% Instanzen
   const count = lowQuality ? 180 : 450; 
   
   const headRef = useRef<THREE.InstancedMesh>(null);
@@ -191,7 +191,6 @@ function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: num
     }
   }, [playerScore, aiScore]);
 
-  // Statische Positionen & Blickrichtungen EINMALIG berechnen (kein lookAt() mehr in useFrame!)
   const crowdData = useMemo(() => {
     const data = [];
     const rowsCount = 4.5; 
@@ -209,17 +208,17 @@ function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: num
       
       let x, z, baseColor, isBackStand = false;
 
-      if (i < fansPerStand) { // Linke Tribüne
+      if (i < fansPerStand) {
         const exactX = startOffset + (rowIndex * stepDepth);
         x = -(exactX + (Math.random() - 0.5) * 0.2);
         z = -6.5 + Math.random() * 16;
         baseColor = "#f97316"; 
-      } else if (i < fansPerStand * 2) { // Rechte Tribüne
+      } else if (i < fansPerStand * 2) {
         const exactX = startOffset + (rowIndex * stepDepth);
         x = exactX + (Math.random() - 0.5) * 0.2;
         z = -6.5 + Math.random() * 16;
         baseColor = "#00f0ff"; 
-      } else { // Hintere Tribüne
+      } else {
         const startOffsetBack = 18.3; 
         const exactZ = startOffsetBack + (rowIndex * stepDepth);
         z = exactZ + (Math.random() - 0.5) * 0.2; 
@@ -231,7 +230,6 @@ function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: num
       const scale = 0.8 + Math.random() * 0.2;
       const randomYaw = (Math.random() - 0.5) * 0.4;
 
-      // Blickrichtung einmalig vorab bestimmen
       tempObj.position.set(x, y, z);
       if (isBackStand) {
         tempObj.lookAt(x, y, 0);
@@ -245,7 +243,6 @@ function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: num
     return data;
   }, [count]);
 
-  // Direkte Referenzen statt 2.700 getObjectByName()-Aufrufe pro Frame
   const dummyParts = useMemo(() => {
     const group = new THREE.Group();
     const head = new THREE.Object3D(); head.position.set(0, 0.55, 0);
@@ -274,7 +271,6 @@ function SpectatorCrowd({ playerScore, aiScore, lowQuality }: { playerScore: num
   useFrame((state, delta) => {
     if (!headRef.current || !torsoRef.current || !lArmRef.current || !rArmRef.current || !lLegRef.current || !rLegRef.current) return;
 
-    // Im Low-Quality-Modus: Wenn der Jubel vorbei ist und die Figuren stehen, 0% CPU verbrauchen!
     if (lowQuality && cheerIntensity.current === 0 && staticPlacedRef.current) {
       return;
     }
@@ -377,10 +373,12 @@ export interface ScoreboardProps {
   targetScore?: number; 
   matchTitle?: string;
   arenaModel?: string; 
-  hideCrowd?: boolean; // <-- NEU: Steuert das Ausblenden der Zuschauer
+  hideCrowd?: boolean;
 }
 
 export default function CourtFloor(props: ScoreboardProps) {
+  const { t } = useTranslation();
+
   const {
     serverId = "you",
     playerScore = 0,
@@ -389,30 +387,30 @@ export default function CourtFloor(props: ScoreboardProps) {
     phase = "player_turn",
     isTimerPhase = false,
     isPlayerTeamServe = true,
-    playerName = "Gast",
+    playerName,
     partnerName = "Partner",
-    userTeamName = "Dein Team",
+    userTeamName,
     isSimulationMode = false,
     activeAiProfile,
     targetScore = 7,
-    matchTitle = "Tiebreak",
+    matchTitle,
     arenaModel = "/TacPadel.glb",
     hideCrowd
   } = props;
 
+  const resolvedUserTeamName =
+    !userTeamName || userTeamName === "Dein Team"
+      ? t("court_default_user_team")
+      : userTeamName;
+  const resolvedMatchTitle = matchTitle || t("game_tiebreak");
+
   const [lowQuality] = useState<boolean>(() => detectLowEndDevice());
 
-  // Automatische Erkennung:
-  // In ScenarioCourt4D ist isSimulationMode === true.
-  // In ScenarioCourt25 wird kein partnerName übergeben (props.partnerName === undefined).
-  // Nur in ScenarioCourt3D werden partnerName & Match-Daten übergeben -> Zuschauer nur dort sichtbar!
   const shouldHideCrowd = hideCrowd ?? (isSimulationMode || props.partnerName === undefined);
 
-  // Dynamisches Laden des Models
   const { scene } = useGLTF(arenaModel);
 
   useEffect(() => {
-    // WICHTIG: Den Abdunklungs-Shader nur anwenden, wenn es die Standard-Arena ist!
     if (arenaModel === "/TacPadel.glb") {
       scene.traverse((child: any) => {
         if (child.isMesh && child.material) {
@@ -433,7 +431,6 @@ export default function CourtFloor(props: ScoreboardProps) {
       });
     }
 
-    // VRAM-Schutz: Wenn eine Turnier-Arena verlassen wird, aus dem Cache räumen
     return () => {
       if (arenaModel !== "/TacPadel.glb") {
         useGLTF.clear(arenaModel);
@@ -442,17 +439,16 @@ export default function CourtFloor(props: ScoreboardProps) {
   }, [scene, arenaModel]);
 
   const aiTeamName = activeAiProfile?.teamName || "TACPADEL AI";
-  const opp1Name = activeAiProfile?.p1 || "KI 1";
-  const opp2Name = activeAiProfile?.p2 || "KI 2";
+  const opp1Name = activeAiProfile?.p1 || t("court_ai_1");
+  const opp2Name = activeAiProfile?.p2 || t("court_ai_2");
 
   return (
     <group name="Environment">
       <primitive object={scene} rotation={[0, Math.PI / 2, 0]} />
       <OfficialCourtLines />
       <HologramBanner lowQuality={lowQuality} />
-      <TribuneBanners userTeamName={userTeamName} aiTeamName={aiTeamName} />
+      <TribuneBanners userTeamName={resolvedUserTeamName} aiTeamName={aiTeamName} />
       
-      {/* Zuschauer werden nur in ScenarioCourt3D gerendert */}
       {!shouldHideCrowd && (
         <SpectatorCrowd playerScore={playerScore} aiScore={aiScore} lowQuality={lowQuality} />
       )}
@@ -478,7 +474,7 @@ export default function CourtFloor(props: ScoreboardProps) {
                   TACPADEL
                 </h1>
                 <p className="text-sm font-bold text-orange-400 tracking-[0.4em] uppercase opacity-90">
-                  Simulation
+                  {t("court_sim_label")}
                 </p>
               </div>
             </div>
@@ -491,8 +487,8 @@ export default function CourtFloor(props: ScoreboardProps) {
                 {/* LINKE SEITE (DEIN TEAM) */}
                 <div className="text-left flex flex-col items-start w-1/3">
                   <p className="text-[11px] text-orange-400 font-bold tracking-widest uppercase mb-2">
-                    {isPlayerTeamServe && "🎾"} {userTeamName} <br/> 
-                    {serverId === "you" && <span className="text-purple-300">(Du)</span>} 
+                    {isPlayerTeamServe && "🎾"} {resolvedUserTeamName} <br/> 
+                    {serverId === "you" && <span className="text-purple-300">({playerName || t("home_you_tag")})</span>} 
                     {serverId === "partner" && <span className="text-purple-300">({partnerName})</span>}
                   </p>
                   <p className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,119,0,0.6)]">{playerScore}</p>
@@ -501,11 +497,11 @@ export default function CourtFloor(props: ScoreboardProps) {
                 {/* MITTE (STATUS & TURNIERINFO) */}
                 <div className="text-center flex flex-col items-center flex-1 px-6 border-x border-slate-700/50">
                   <p className={`text-sm uppercase tracking-widest font-black mb-3 ${isAiActive ? "text-red-400" : "text-emerald-400"}`}>
-                    {phase === "ai_prepare" ? "🔴 Gegner bereitet vor..." : (isTimerPhase ? "🔴 Ball fliegt!" : "🟢 Dein Zug")}
+                    {phase === "ai_prepare" ? t("court_ai_prep") : (isTimerPhase ? t("court_ball_flying") : t("court_your_turn"))}
                   </p>
                   <p className="text-lg font-semibold text-slate-300 leading-snug">
-                    {matchTitle}<br/>
-                    <span className="text-sm font-normal text-slate-500">(bis {targetScore} Punkte)</span>
+                    {resolvedMatchTitle}<br/>
+                    <span className="text-sm font-normal text-slate-500">({t("court_up_to")} {targetScore} {t("game_points_label")})</span>
                   </p>
                 </div>
                 
@@ -528,5 +524,4 @@ export default function CourtFloor(props: ScoreboardProps) {
   );
 }
 
-// Preload der Standard-Arena, um Ladezeiten bei Start zu verkürzen
 useGLTF.preload("/TacPadel.glb");

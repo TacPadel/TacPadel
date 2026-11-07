@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import { useTranslation } from '../lib/i18n';
 
 interface PublicProfileModalProps {
   userId: string;
@@ -9,6 +10,8 @@ interface PublicProfileModalProps {
 }
 
 export default function PublicProfileModal({ userId, defaultTab = "single", onClose }: PublicProfileModalProps) {
+  const { t } = useTranslation();
+
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -91,6 +94,13 @@ export default function PublicProfileModal({ userId, defaultTab = "single", onCl
   const displayScore = isTourney ? (profile?.tac_points || 0) : (profile?.points || 0);
   const scoreLabel = isTourney ? "TacPoints (Season)" : "TacScore (All-Time)";
 
+  const formatPosition = (pos?: string) => {
+    if (!pos) return "";
+    if (pos.toLowerCase() === "rechts") return t("pub_pos_right");
+    if (pos.toLowerCase() === "links") return t("pub_pos_left");
+    return pos;
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -111,7 +121,7 @@ export default function PublicProfileModal({ userId, defaultTab = "single", onCl
 
           {loading ? (
             <div className="flex flex-col items-center justify-center h-48">
-              <span className={`${themeColor} font-black tracking-widest uppercase animate-pulse`}>Scanne Spieler-Akte...</span>
+              <span className={`${themeColor} font-black tracking-widest uppercase animate-pulse`}>{t("pub_scanning")}</span>
             </div>
           ) : (
             <div className="flex flex-col gap-6 relative z-0">
@@ -127,20 +137,30 @@ export default function PublicProfileModal({ userId, defaultTab = "single", onCl
                 </div>
                 
                 <div className="text-center mt-2">
-                  <h2 className="text-2xl font-black text-white">{profile?.display_name || 'Unbekannter Spieler'}</h2>
+                  <h2 className="text-2xl font-black text-white">{profile?.display_name || t("pub_unknown_player")}</h2>
                   <p className={`${themeColor} font-bold text-xs tracking-widest uppercase mt-1`}>{displayScore} {scoreLabel}</p>
                 </div>
                 
                 <div className="flex gap-2 justify-center mt-1">
-                  {profile?.team_name && <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">Team: {profile.team_name}</span>}
-                  {profile?.preferred_position && <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">Pos: {profile.preferred_position}</span>}
+                  {profile?.team_name && (
+                    <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">
+                      {t("pub_team_prefix")} {profile.team_name}
+                    </span>
+                  )}
+                  {profile?.preferred_position && (
+                    <span className="bg-[#030611] border border-slate-800 px-2 py-1 rounded text-[9px] font-bold text-slate-400">
+                      {t("pub_pos_prefix")} {formatPosition(profile.preferred_position)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* MATCH BILANZ */}
               <div className="bg-[#050b18] border border-slate-800 rounded-2xl p-4 flex justify-between items-center shadow-[inset_0_0_15px_rgba(0,0,0,0.5)]">
                 <div>
-                  <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">Bilanz ({isTourney ? 'Turniere' : 'Einzel'})</h3>
+                  <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                    {t("pub_record_title")} ({isTourney ? t("prof_filter_tour") : t("prof_mode_single")})
+                  </h3>
                   <div className="flex gap-3 text-[10px] font-black tracking-widest uppercase mt-2">
                     <span className="text-emerald-400">{wins} W</span>
                     <span className="text-slate-600">|</span>
@@ -154,15 +174,15 @@ export default function PublicProfileModal({ userId, defaultTab = "single", onCl
 
               {/* SCHLAG ANALYSE */}
               <div>
-                <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-3">Ø Schlag-Analyse</h3>
+                <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-3">{t("pub_avg_shot_analysis")}</h3>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-[#050b18] py-3 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center">
                     <span className="text-lg font-black text-white">{aggStats.avgWinners}</span>
-                    <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mt-1">Winner</span>
+                    <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("prof_stat_winners")}</span>
                   </div>
                   <div className="bg-[#050b18] py-3 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center">
                     <span className="text-lg font-black text-emerald-400">{aggStats.perfectRatio}%</span>
-                    <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mt-1">Perfekt</span>
+                    <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("game_perfect")}</span>
                   </div>
                   <div className="bg-[#050b18] py-3 rounded-lg border border-red-900/20 flex flex-col items-center justify-center text-center">
                     <span className="text-lg font-black text-red-400">{aggStats.avgErrors}</span>

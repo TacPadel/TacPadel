@@ -10,7 +10,7 @@ import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
 import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles";
 import { SHOP_PARTNERS } from "../../lib/loadout";
-
+import { useTranslation } from "../../lib/i18n";
 
 // =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
@@ -25,6 +25,21 @@ const isEcoModeEnabled = (): boolean => {
     if (nav.deviceMemory && nav.deviceMemory <= 2) return true;
   } catch (e) {}
   return false;
+};
+
+// Löst eine Partner-ID (Shop oder altes KI-Profil) sauber in den Anzeigenamen auf
+const resolvePartnerNameFromId = (rawId?: string | null): string => {
+  const pId = rawId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+  const shopPartner = SHOP_PARTNERS.find((p) => p.id === pId);
+  if (shopPartner) {
+    return shopPartner.name.split(" (")[0];
+  }
+  if (pId.includes("-")) {
+    const [baseId, pNum] = pId.split("-");
+    const prof = AI_PROFILES.find((p) => p.id === baseId);
+    if (prof) return pNum === "1" ? prof.p1 : prof.p2;
+  }
+  return SHOP_PARTNERS[0].name.split(" (")[0];
 };
 
 // =========================================================
@@ -301,9 +316,11 @@ export interface Props {
 }
 
 export default function ScenarioCourt3D(props: Props) {
+  const { t } = useTranslation();
+
   const [introFinished, setIntroFinished] = useState(false);
-  const [playerName, setPlayerName] = useState("Gast");
-  const [partnerName, setPartnerName] = useState("Partner"); 
+  const [playerName, setPlayerName] = useState(() => t("guest_name"));
+  const [partnerName, setPartnerName] = useState(() => resolvePartnerNameFromId()); 
   const [blackout, setBlackout] = useState(false);
   const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
   
@@ -316,14 +333,20 @@ export default function ScenarioCourt3D(props: Props) {
     }
   }, [props.playIntro]);
 
-    useEffect(() => {
+  useEffect(() => {
     const fetchUserData = async () => {
+      // Immer zuerst den aktuellen lokalen Partner setzen (greift auch für Gäste & sofort nach Shop-Kauf)
+      setPartnerName(resolvePartnerNameFromId());
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+          setPlayerName(t("guest_name"));
+          return;
+        }
 
-        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
-        let resolvedPartnerName = "Partner";
+        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || t("guest_name");
+        let resolvedPartnerName = resolvePartnerNameFromId();
         
         const { data: profileData } = await supabase
           .from('user_stats')
@@ -336,22 +359,7 @@ export default function ScenarioCourt3D(props: Props) {
             name = profileData.display_name;
           }
           if (profileData.partner_id) {
-            const pId = profileData.partner_id;
-            
-            // 1. Prüfen, ob es ein neuer Shop-Partner ist (z.B. "partner_wall")
-            const shopPartner = SHOP_PARTNERS.find(p => p.id === pId);
-            if (shopPartner) {
-              // Den Namen vor der Klammer extrahieren (z.B. "Mateo 'El Muro' Ruiz")
-              resolvedPartnerName = shopPartner.name.split(" (")[0];
-            } 
-            // 2. Fallback für alte IDs (z.B. "pro_1-1")
-            else if (pId.includes("-")) {
-              const [rawId, pNum] = pId.split("-");
-              const prof = AI_PROFILES.find(p => p.id === rawId);
-              if (prof) {
-                resolvedPartnerName = pNum === '1' ? prof.p1 : prof.p2;
-              }
-            }
+            resolvedPartnerName = resolvePartnerNameFromId(profileData.partner_id);
           }
         }
 
@@ -362,8 +370,7 @@ export default function ScenarioCourt3D(props: Props) {
       }
     };
     fetchUserData();
-  }, []);
-
+  }, [t]);
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
@@ -394,7 +401,7 @@ export default function ScenarioCourt3D(props: Props) {
           <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
           <Environment preset="city" environmentIntensity={0.5} />
 
-          <Suspense fallback={<Html center className="text-white font-bold tracking-widest uppercase">Arena lädt...</Html>}>
+          <Suspense fallback={<Html center className="text-white font-bold tracking-widest uppercase">{t("court_loading_arena")}</Html>}>
             
             {/* 1. INTRO KAMERA */}
             {!introFinished && !props.gameOver && (
