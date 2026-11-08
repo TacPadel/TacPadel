@@ -825,26 +825,27 @@ export default function GameScreen() {
         if (staminaModeEnabled) {
           const currentAiStamina = staminaRef.current[currentAiHitter];
           if (currentAiStamina <= 0) {
+             const aiName = currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2;
              if (finalAiResult === "perfect") {
                  finalAiResult = "success";
              } else if (finalAiResult === "success") {
                  finalAiResult = "recovery";
              } else if (finalAiResult === "recovery" || (finalAiResult && !finalAiResult.startsWith("error"))) {
                  finalAiResult = "error_net";
-                 finalAiTitle = `🤖 ${currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2} ERSCHÖPFT`;
-                 finalAiMessage = `${currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2} pfeift aus dem letzten Loch und schlägt den Ball kraftlos ins Netz!`;
+                 finalAiTitle = `🤖 ${aiName} ${t("game_ai_exhausted_title")}`;
+                 finalAiMessage = `${aiName} ${t("game_ai_exhausted_msg")}`;
              }
           }
         }
 
         // =========================================================================
-        // 🛡️ DEFENSE-MODIFIKATOR: Chance, einen KI-Winner per Reflex-Block zu entschärfen
+        // 🛡️ CLUTCH DEFENSE-SAVE: Chance, einen verbleibenden KI-Winner per Reflex zu retten
         // =========================================================================
-        const defSaveChance = Math.max(0, currentLoadout.matchModifiers.defenseSaveBonus);
+        const defSaveChance = Math.max(0, currentLoadout.matchModifiers.defenseSaveBonus * 0.5);
         if (finalAiResult === "perfect" && defSaveChance > 0 && Math.random() < defSaveChance) {
           finalAiResult = "success";
-          finalAiTitle = `🛡️ REFLEX-SAVE (${partnerName.toUpperCase()})!`;
-          finalAiMessage = `Strong Defense (${currentLoadout.stats.defense} DEF): ${partnerName} saves the opponent's winner at the last second!`;
+          finalAiTitle = `${t("game_reflex_save_title")} (${partnerName.toUpperCase()})!`;
+          finalAiMessage = `${t("game_reflex_save_msg_1")} (${currentLoadout.stats.defense} DEF): ${partnerName} ${t("game_reflex_save_msg_2")}`;
           setActiveGearBoostMsg(`🛡️ DEFENSE SAVE (${currentLoadout.stats.defense} DEF)`);
         }
 
@@ -924,7 +925,7 @@ export default function GameScreen() {
         if (finalAiResult?.startsWith("error")) fColor = "text-emerald-400";
         else if (finalAiResult === "recovery") fColor = "text-amber-400";
         else if (finalAiResult === "perfect") fColor = "text-red-600";
-        else if (finalAiTitle.includes("REFLEX-SAVE")) fColor = "text-cyan-400";
+        else if (finalAiTitle.includes("REFLEX") || finalAiTitle.includes("SALVADA")) fColor = "text-cyan-400";
         
         showFlash(finalAiTitle, fColor, calcDuration + 800);
 
@@ -1065,14 +1066,22 @@ export default function GameScreen() {
             
             // ⚡ AGILITY-MODIFIKATOR BEIM ANLAUFEN DES BALLS
             if (staminaModeEnabled) {
-              const drainMult = calculateLoadoutStats().matchModifiers.staminaDrainMultiplier;
-              const youDist = Number((getZoneDist(currentYouPos, interceptYouRun) * drainMult).toFixed(1));
-              const partnerDist = Number((getZoneDist(currentPartnerPos, interceptPartnerRun) * drainMult).toFixed(1));
+              const currentLoadout = calculateLoadoutStats();
+              const drainMult = currentLoadout.matchModifiers.staminaDrainMultiplier;
+              const rawYouDist = getZoneDist(currentYouPos, interceptYouRun);
+              const rawPartnerDist = getZoneDist(currentPartnerPos, interceptPartnerRun);
+              const youDist = Number((rawYouDist * drainMult).toFixed(1));
+              const partnerDist = Number((rawPartnerDist * drainMult).toFixed(1));
+
               setStamina(s => ({
                 ...s,
                 you: Math.max(0, Number((s.you - youDist).toFixed(1))),
                 partner: Math.max(0, Number((s.partner - partnerDist).toFixed(1)))
               }));
+
+              if (drainMult < 0.95 && (rawYouDist >= 3 || rawPartnerDist >= 3)) {
+                setActiveGearBoostMsg(`${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`);
+              }
             }
 
             setHitterId(bestHitter);
@@ -1098,16 +1107,16 @@ export default function GameScreen() {
             
             if (status === "smash_over_head") {
               errorResult = "error_smash_over_head"; 
-              tTitle = "❌ ÜBERWORFEN!"; 
-              message = "Time-Out! Der Smash war zu hart und flog hoch über dich hinweg! Du hättest ans Netz kommen müssen.";
+              tTitle = t("game_err_lobbed_title"); 
+              message = t("game_err_lobbed_msg");
             } else if (status === "missed_time") {
               errorResult = "error_net"; 
-              tTitle = "❌ ZU SPÄT!"; 
-              message = "Time-Out! Du bist wie angewurzelt stehen geblieben und hast den Ball völlig verpasst.";
+              tTitle = t("game_err_too_late_title"); 
+              message = t("game_err_too_late_msg");
             } else {
               errorResult = "error_wrong_zone"; 
-              tTitle = "❌ LUFTLOCH!"; 
-              message = "Time-Out! Du bist völlig in die falsche Richtung gelaufen und konntest den Ball nicht mehr erreichen.";
+              tTitle = t("game_err_wrong_dir_title"); 
+              message = t("game_err_wrong_dir_msg");
             }
 
             playSfx("error_net");
@@ -1239,8 +1248,10 @@ export default function GameScreen() {
       const o2Row = parseInt(courtState.opp2[1]);
       const oppsAtNet = o1Row >= 3 || o2Row >= 3;
 
-      const youDist = Number((getZoneDist(courtState.you, recoveryYouRun) * drainMult).toFixed(1));
-      const partnerDist = Number((getZoneDist(courtState.partner, recoveryPartnerRun) * drainMult).toFixed(1));
+      const rawYouDist = getZoneDist(courtState.you, recoveryYouRun);
+      const rawPartnerDist = getZoneDist(courtState.partner, recoveryPartnerRun);
+      const youDist = Number((rawYouDist * drainMult).toFixed(1));
+      const partnerDist = Number((rawPartnerDist * drainMult).toFixed(1));
       const youRegen = evalRunTactics(chosenShot, recoveryYouRun, oppsAtNet);
       const partnerRegen = evalRunTactics(chosenShot, recoveryPartnerRun, oppsAtNet);
 
@@ -1249,6 +1260,10 @@ export default function GameScreen() {
         you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.you - youDist + youRegen - (hitterId === "you" ? staminaCostPerShot : 0)).toFixed(1)))),
         partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.partner - partnerDist + partnerRegen - (hitterId === "partner" ? staminaCostPerShot : 0)).toFixed(1))))
       }));
+
+      if (drainMult < 0.95 && (rawYouDist >= 3 || rawPartnerDist >= 3)) {
+        setActiveGearBoostMsg(`${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`);
+      }
     }
 
     setCourtState(prev => ({ 
@@ -1278,8 +1293,10 @@ export default function GameScreen() {
 
     if (isPlayerServingTurn && hitterId !== serverId) {
       currentTurnResult = "error_wrong_zone";
-      tTitle = "❌ FALSCHER AUFSCHLÄGER!";
-      message = `Regelfehler! Falscher Aufschlag. Laut Rotation ${serverId === "you" ? "bist DU" : `ist ${partnerName}`} an der Reihe!`;
+      tTitle = t("game_err_wrong_server_title");
+      message = serverId === "you"
+        ? t("game_err_wrong_server_you")
+        : `${t("game_err_wrong_server_partner_1")} ${partnerName} ${t("game_err_wrong_server_partner_2")}`;
       isRuleError = true;
     } 
     else if (isPlayerServingTurn) {
@@ -1293,8 +1310,8 @@ export default function GameScreen() {
       
       if ((isHitRight && isTargetRight) || (isHitLeft && isTargetLeft)) {
          currentTurnResult = "error_out"; 
-         tTitle = "❌ FEHLAUFSCHLAG!";
-         message = "Regelfehler! Der Aufschlag muss diagonal ins gegenüberliegende Feld (oder auf die T-Linie) gespielt werden. Geradeaus ist ein Fehler!";
+         tTitle = t("game_err_serve_diag_title");
+         message = t("game_err_serve_diag_msg");
          isRuleError = true;
       }
     }
@@ -1304,8 +1321,10 @@ export default function GameScreen() {
 
       if (hitterId !== expectedReturner) {
          currentTurnResult = "error_wrong_zone";
-         tTitle = "❌ FALSCHER RETURNER!";
-         message = `Regelfehler! Der Aufschlag kam diagonal auf ${expectedReturner === "you" ? "dich" : partnerName}. Abfangen ist beim Return verboten!`;
+         tTitle = t("game_err_wrong_returner_title");
+         message = expectedReturner === "you"
+           ? t("game_err_wrong_returner_you")
+           : `${t("game_err_wrong_returner_partner_1")} ${partnerName}${t("game_err_wrong_returner_partner_2")}`;
          isRuleError = true;
       }
     }
@@ -1322,20 +1341,26 @@ export default function GameScreen() {
       message = evalResult.message;
 
       // =======================================================================
-      // 🎾 MICRO-BALANCING: CONTROL & SMASH POWER + SPEZIAL-FOKUS SYNERGIE
+      // 🎾 CLUTCH GEAR FEEDBACK: CONTROL & SMASH POWER + SPEZIAL-FOKUS SYNERGIE
       // =======================================================================
       const hitterStamina = staminaRef.current[hitterId];
       const isExhausted = staminaModeEnabled && hitterStamina <= 0;
 
       if (!isExhausted) {
-        const controlBonusChance = Math.max(0, 1 - currentLoadout.matchModifiers.errorReductionFactor);
+        const controlBonusChance = Math.max(0, (1 - currentLoadout.matchModifiers.errorReductionFactor) * 0.5);
         const smashBonusChance = Math.max(
           0,
-          currentLoadout.matchModifiers.winnerChanceBonus + (isUsingFocusShot ? 0.04 : 0)
+          (currentLoadout.matchModifiers.winnerChanceBonus + (isUsingFocusShot ? 0.04 : 0)) * 0.5
         );
 
-        // 1. CONTROL-RETTUNG: Knapper Aus-/Netz-Fehler kratzt noch die Linie -> Recovery
-        if (
+        if (currentTurnResult === "perfect" && (isUsingFocusShot || currentLoadout.stats.smash > 50)) {
+          setActiveGearBoostMsg(
+            isUsingFocusShot
+              ? `⚡ ${currentLoadout.shot.name}`
+              : `💥 SMASH POWER (${currentLoadout.stats.smash} PWR)`
+          );
+        }
+        else if (
           (currentTurnResult === "error_out" || currentTurnResult === "error_net") &&
           controlBonusChance > 0 &&
           Math.random() < controlBonusChance
@@ -1344,7 +1369,6 @@ export default function GameScreen() {
           tTitle = `🎯 CONTROL SAVE (${currentLoadout.stats.control} CTRL)!`;
           setActiveGearBoostMsg(`🎯 CONTROL SAVE (${currentLoadout.racket.name})`);
         }
-        // 2. CONTROL-STABILISIERUNG: Wackler (Recovery) wird zu solidem Schlag (Success)
         else if (
           currentTurnResult === "recovery" &&
           controlBonusChance > 0 &&
@@ -1354,7 +1378,6 @@ export default function GameScreen() {
           tTitle = `🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)!`;
           setActiveGearBoostMsg(`🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)`);
         }
-        // 3. SMASH-POWER & SPEZIAL-FOKUS: Solider Offensivschlag wird zum direkten Winner!
         else if (
           currentTurnResult === "success" &&
           ["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(chosenShot) &&
@@ -1380,7 +1403,7 @@ export default function GameScreen() {
             currentTurnResult = "recovery"; 
           } else if (currentTurnResult === "recovery") {
             currentTurnResult = "error_net"; 
-            tTitle = "❌ KRAFTLOS IM NETZ";
+            tTitle = t("game_exhausted_net_title");
           }
         }
       }
@@ -1434,7 +1457,7 @@ export default function GameScreen() {
     let newPlayerScore = playerScore;
     let newAiScore = aiScore;
     
-    const isTimeout = turnMessage.includes("Time-Out");
+    const isTimeout = turnMessage.includes("Time-Out") || turnMessage.includes("Tiempo agotado");
     const wasAiTurn = !commands[hitterId].shot && !isTimeout; 
 
     const newStats = { ...matchStats };
@@ -1453,7 +1476,7 @@ export default function GameScreen() {
         newPlayerScore += 1; 
         newStats.ai.unforcedErrors += 1; 
       } else {
-        newAiScore += 1;               
+        newAiScore += 1;                
         newStats.player.unforcedErrors += 1; 
       }
       setActiveScenario(null); 
@@ -1463,7 +1486,7 @@ export default function GameScreen() {
         newAiScore += 1;    
         if (isAce) newStats.ai.aces += 1; else newStats.ai.winners += 1;
       } else {
-        newPlayerScore += 1;           
+        newPlayerScore += 1;            
         if (isAce) newStats.player.aces += 1; else newStats.player.winners += 1;
       }
       setActiveScenario(null); 
@@ -1718,9 +1741,14 @@ export default function GameScreen() {
          const aiTargetScore = activeTournamentId 
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
              : tacScore;
+         // ⚡ AGILITY-BONUS AUCH BEI DER REGENERATION ZWISCHEN ZWEI PUNKTEN
+         const currentLoadout = calculateLoadoutStats();
+         const playerRegenPerPoint = Number(
+           (1 / currentLoadout.matchModifiers.staminaDrainMultiplier).toFixed(1)
+         );
          newStamina = {
-           you: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.you + 1).toFixed(1))),
-           partner: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.partner + 1).toFixed(1))),
+           you: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.you + playerRegenPerPoint).toFixed(1))),
+           partner: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.partner + playerRegenPerPoint).toFixed(1))),
            opp1: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp1 + 1),
            opp2: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp2 + 1)
          };
@@ -1880,7 +1908,6 @@ export default function GameScreen() {
               ?
             </button>
 
-            {/* Hintergrundbild leicht nach oben versetzt, damit der TacPadel-Schriftzug frei über der Loadout-Box steht */}
             <div className="absolute inset-0 pointer-events-none">
               <img
                 src="/logo.png"

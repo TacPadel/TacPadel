@@ -1,5 +1,6 @@
 import { AiStyle } from "./AiProfiles";
 import { translate as t, getAppLanguage, formatShotName } from "../lib/i18n";
+import { calculateLoadoutStats } from "../lib/loadout";
 
 export const SHOT_TYPES = [
   "AUFSCHLAG", "DRIVE", "VOLLEY", "BLOCK", 
@@ -319,6 +320,16 @@ export const calculateSmartAITurn = (
   }
   if (shot === "SMASH") { perfectChance += 8; hitChance -= 5; }
   if (shot === "LOB") { hitChance += 5; }
+
+  // --- LOADOUT DEFENSE-SCHUTZ GEGEN KI-WINNER ---
+  const { matchModifiers: playerMods } = calculateLoadoutStats();
+  const defProtection = Math.round(playerMods.defenseSaveBonus * 100);
+  if (defProtection !== 0) {
+    const reducedPerfect = Math.max(1, perfectChance - Math.round(defProtection * 0.5));
+    const diff = perfectChance - reducedPerfect;
+    perfectChance = reducedPerfect;
+    hitChance += diff;
+  }
 
   let aiResult: TurnResult = "success";
   const roll = Math.floor(Math.random() * 100) + 1;
@@ -827,9 +838,50 @@ export const evaluatePlayerShot = (
     }
   }
 
+  // =========================================================================
+  // LOADOUT-ATTRIBUTE (PARTNER + SCHLÄGER + SPEZIAL-SCHLAG) ANWENDEN
+  // =========================================================================
+  const loadout = calculateLoadoutStats();
+  const { winnerChanceBonus, errorReductionFactor, defenseSaveBonus } = loadout.matchModifiers;
+
+  // 1. SMASH POWER: Erhöht Winner-Chance bei Offensivschlägen (bis +10%)
+  const offensiveShots = ["SMASH", "VIBORA", "BAJADA", "VOLLEY", "BANDEJA"];
+  if (offensiveShots.includes(shot)) {
+    const smashBonusPts = Math.round(winnerChanceBonus * 100);
+    perfectChance = Math.max(0, perfectChance + smashBonusPts);
+  }
+
+  // 2. SPEZIAL-FOKUS SYNERGIE: +4% Extra-Winner-Chance & +4% Sicherheit beim ausgerüsteten Spezial-Schlag
+  const eqShotId = loadout.shot.id;
+  const isSignatureShot =
+    (eqShotId === "smash" && shot === "SMASH") ||
+    (eqShotId === "kick_x3" && shot === "SMASH") ||
+    (eqShotId === "bandeja" && shot === "BANDEJA") ||
+    (eqShotId === "vibora" && shot === "VIBORA");
+
+  if (isSignatureShot) {
+    perfectChance += 4;
+    hitChance += 4;
+  }
+
+  // 3. DEFENSE: Rettet Notschläge an der Glaswand (isDugOut) & defensive Befreiungsschläge
+  const defBonusPts = Math.round(defenseSaveBonus * 100);
+  if (isDugOut || ["LOB", "BLOCK", "CHIQUITA"].includes(shot)) {
+    hitChance += defBonusPts;
+    recoveryChance = Math.max(4, recoveryChance - Math.round(defBonusPts * 0.6));
+  }
+
+  // 4. CONTROL: Reduziert Unforced Errors um bis zu 15%
   hitChance = Math.max(5, Math.min(95, hitChance)); 
   perfectChance = Math.max(0, perfectChance);
   recoveryChance = Math.max(0, Math.min(100, recoveryChance));
+
+  const rawErrorChance = Math.max(0, 100 - (hitChance + perfectChance + recoveryChance));
+  if (rawErrorChance > 0 && errorReductionFactor !== 1) {
+    const adjustedErrorChance = Math.max(2, Math.round(rawErrorChance * errorReductionFactor));
+    const savedErrorPts = rawErrorChance - adjustedErrorChance;
+    hitChance = Math.max(5, Math.min(95, hitChance + savedErrorPts));
+  }
 
   const roll = Math.floor(Math.random() * 100) + 1;
 

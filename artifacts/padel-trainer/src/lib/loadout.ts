@@ -1,12 +1,17 @@
 import { getAppLanguage } from "./i18n";
 
+export type SkillFocus = "classic" | "power" | "control" | "defense" | "agility";
+
 export interface ShopItem {
   id: string;
   name: string;
+  focus: SkillFocus;
+  tier: number; // Stufe 0 = Klassik, Stufe 1 = Basis-Spezialisierung (bereit für spätere Stufen)
   price: number;
-  reqScore: number; // Benötigter TacScore zum Freischalten/Benutzen
+  reqScore: number;
   badge: string;
   perk?: string;
+  shotType?: string; // Für Spezial-Schläge: Welcher Schlag im Spiel geboostet wird
   modifiers: {
     smash: number;
     control: number;
@@ -16,206 +21,284 @@ export interface ShopItem {
 }
 
 // =========================================================
-// 1. KURATIERTE KI-TEAMPARTNER (Mehrsprachig & Skaliert)
+// 1. KI-TEAMPARTNER (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_PARTNERS: ShopItem[] = [
+  // 0. KLASSIK (Keine Buffs)
   {
     id: "partner_rookie",
     name: "Leo 'Base' Vega",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Starter" : l === "en" ? "Starter" : "Starter";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Juego sólido de fondo sin riesgos extremos"
+        ? "Juego equilibrado sin bonificaciones ni penalizaciones"
         : l === "en"
-        ? "Solid baseline play without extreme risks"
-        : "Solides Grundlinienspiel ohne extreme Risiken";
+        ? "Balanced baseline play without buffs or penalties"
+        : "Ausgeglichenes Basis-Spiel ohne Buffs oder Mali";
     },
-    modifiers: { smash: 0, control: 1, defense: 1, agility: 0 },
+    modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
-  {
-    id: "partner_wall",
-    name: "Mateo 'El Muro' Ruiz",
-    price: 350,
-    reqScore: 1500,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "+Defensa" : "+Defense";
-    },
-    get perk() {
-      const l = getAppLanguage();
-      return l === "es"
-        ? "Recupera hasta las bolas más difíciles del cristal de fondo"
-        : l === "en"
-        ? "Retrieves even the toughest balls from back glass corners"
-        : "Holt selbst schwerste Bälle aus der hinteren Glasecke";
-    },
-    modifiers: { smash: -1, control: 2, defense: 4, agility: 1 },
-  },
-  {
-    id: "partner_tactician",
-    name: "Sofia 'La Profesora' Navarro",
-    price: 700,
-    reqScore: 2500,
-    get badge() {
-      return "+Control";
-    },
-    get perk() {
-      const l = getAppLanguage();
-      return l === "es"
-        ? "Juega globos y Chiquitas milimétricos"
-        : l === "en"
-        ? "Plays pinpoint lobs and Chiquitas"
-        : "Spielt millimetergenaue Lobs und Chiquitas";
-    },
-    modifiers: { smash: 0, control: 5, defense: 2, agility: 2 },
-  },
+
+  // 1. POWER-FOKUS (+2 Smash, -2 Defense, -1 Control, 0 Agility)
   {
     id: "partner_cannon",
     name: "Diego 'El Cañón' Morales",
-    price: 1200,
-    reqScore: 3500,
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Remate" : "+Smash";
+      return l === "es" ? "Potencia I" : "Power I";
     },
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Domina en la red con remates demoledores"
+        ? "Especialista ofensivo: busca definir fuerte en la red (+2 PWR)"
         : l === "en"
-        ? "Dominates at the net with explosive smashes"
-        : "Dominiert am Netz mit extrem harten Smashes";
+        ? "Offensive specialist: looks to finish hard at the net (+2 PWR)"
+        : "Offensiv-Spezialist: Sucht den harten Abschluss am Netz (+2 PWR)";
     },
-    modifiers: { smash: 6, control: -1, defense: -1, agility: 2 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
+
+  // 2. CONTROL-FOKUS (+2 Control, -2 Smash, -1 Agility, 0 Defense)
   {
-    id: "partner_legend",
-    name: "Ale 'El Rey' Mendoza",
-    price: 2200,
-    reqScore: 4500,
-    badge: "👑 Master",
+    id: "partner_tactician",
+    name: "Sofia 'La Profesora' Navarro",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      return "Control I";
+    },
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Máxima cobertura de pista, visión y potencia"
+        ? "Especialista en control: coloca globos y chiquitas precisas (+2 CTRL)"
         : l === "en"
-        ? "Maximum court coverage, vision & power"
-        : "Maximale Platzabdeckung, Übersicht & Power";
+        ? "Control specialist: places pinpoint lobs and chiquitas (+2 CTRL)"
+        : "Kontroll-Spezialistin: Spielt präzise Lobs und Chiquitas (+2 CTRL)";
     },
-    modifiers: { smash: 5, control: 5, defense: 4, agility: 4 },
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
+  },
+
+  // 3. DEFENSE-FOKUS (+2 Defense, -2 Smash, -1 Agility, 0 Control)
+  {
+    id: "partner_wall",
+    name: "Mateo 'El Muro' Ruiz",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Defensa I" : "Defense I";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Especialista defensivo: devuelve bolas difíciles desde el cristal (+2 DEF)"
+        : l === "en"
+        ? "Defensive specialist: digs out tough balls off the back glass (+2 DEF)"
+        : "Defensiv-Spezialist: Holt schwere Bälle von der Glaswand (+2 DEF)";
+    },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
+  },
+
+  // 4. AGILITY-FOKUS (+2 Agility, -2 Defense, -1 Control, 0 Smash)
+  {
+    id: "partner_runner",
+    name: "Lucas 'El Rayo' Silva",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Agilidad I" : "Agility I";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Especialista en velocidad: cubre huecos rápido y ahorra energía (+2 AGI)"
+        : l === "en"
+        ? "Speed specialist: covers court gaps fast and saves stamina (+2 AGI)"
+        : "Tempo-Spezialist: Schließt Lücken schnell & spart Ausdauer (+2 AGI)";
+    },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
 // =========================================================
-// 2. SCHLÄGER (RACKETS - Mehrsprachig & Skaliert)
+// 2. SCHLÄGER / RACKETS (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_RACKETS: ShopItem[] = [
+  // 0. KLASSIK (Keine Buffs)
   {
     id: "racket_starter",
-    name: "Rookie Frame Basic",
+    name: "Classic Allround Frame",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Estándar" : "Standard";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
-  {
-    id: "racket_aero",
-    name: "Aero Swift Pro X",
-    price: 300,
-    reqScore: 1200,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "+Agilidad" : "+Agility";
-    },
-    modifiers: { smash: 1, control: 1, defense: 0, agility: 3 },
-  },
-  {
-    id: "racket_titan",
-    name: "Titan Matrix CTRL",
-    price: 550,
-    reqScore: 2200,
-    get badge() {
-      return "+Control";
-    },
-    modifiers: { smash: -1, control: 4, defense: 2, agility: 0 },
-  },
+
+  // 1. POWER-SCHLÄGER (+2 Smash, -2 Defense, -1 Control, 0 Agility)
   {
     id: "racket_eclipse",
-    name: "Eclipse Carbon Strike",
-    price: 850,
-    reqScore: 3200,
+    name: "Diamond Striker",
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Potencia" : "+Power";
+      return l === "es" ? "Potencia I" : "Power I";
     },
-    modifiers: { smash: 3, control: 2, defense: -1, agility: 1 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
+
+  // 2. CONTROL-SCHLÄGER (+2 Control, -2 Smash, -1 Agility, 0 Defense)
   {
-    id: "racket_apex_pro",
-    name: "Apex Signature 18K",
-    price: 1800,
-    reqScore: 4200,
-    badge: "Tour Elite",
-    modifiers: { smash: 4, control: 4, defense: 2, agility: 3 },
+    id: "racket_titan",
+    name: "Precision Round CTRL",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      return "Control I";
+    },
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
+  },
+
+  // 3. DEFENSE-SCHLÄGER (+2 Defense, -2 Smash, -1 Agility, 0 Control)
+  {
+    id: "racket_shield",
+    name: "Guardian Soft Core",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Defensa I" : "Defense I";
+    },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
+  },
+
+  // 4. AGILITY-SCHLÄGER (+2 Agility, -2 Defense, -1 Control, 0 Smash)
+  {
+    id: "racket_aero",
+    name: "Aero Featherlight",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Agilidad I" : "Agility I";
+    },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
 // =========================================================
-// 3. SPEZIAL-FOKUS (POWER SHOTS - Mehrsprachig & Skaliert)
+// 3. SPEZIAL-SCHLÄGE / SHOTS (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
+  // 0. KLASSIK (Keine Buffs)
   {
     id: "smash",
-    name: "Topspin Smash",
+    name: "Klassik-Technik",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
+    shotType: "DRIVE",
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Estándar" : "Standard";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
-  {
-    id: "bandeja",
-    name: "Bandeja Control",
-    price: 300,
-    reqScore: 1800,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "+Táctica" : "+Tactics";
-    },
-    modifiers: { smash: 1, control: 2, defense: 2, agility: 0 },
-  },
-  {
-    id: "vibora",
-    name: "Víbora Slice",
-    price: 550,
-    reqScore: 2800,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "+Cortado" : "+Slice";
-    },
-    modifiers: { smash: 2, control: 2, defense: 0, agility: 1 },
-  },
+
+  // 1. POWER-SCHLAG (+2 Smash, -2 Defense, -1 Control, 0 Agility)
   {
     id: "kick_x3",
-    name: "Kick-Smash Por Tres (x3)",
-    price: 1200,
-    reqScore: 3800,
+    name: "Power-Smash Fokus",
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "SMASH",
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Definidor" : "Finisher";
+      return l === "es" ? "Potencia I" : "Power I";
     },
-    modifiers: { smash: 5, control: 0, defense: -1, agility: 1 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
+  },
+
+  // 2. CONTROL-SCHLAG (+2 Control, -2 Smash, -1 Agility, 0 Defense)
+  {
+    id: "bandeja",
+    name: "Bandeja-Control Fokus",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "BANDEJA",
+    get badge() {
+      return "Control I";
+    },
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
+  },
+
+  // 3. DEFENSE-SCHLAG (+2 Defense, -2 Smash, -1 Agility, 0 Control)
+  {
+    id: "shot_defense_wall",
+    name: "Reflex-Block & Lob Fokus",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "BLOCK",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Defensa I" : "Defense I";
+    },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
+  },
+
+  // 4. AGILITY-SCHLAG (+2 Agility, -2 Defense, -1 Control, 0 Smash)
+  {
+    id: "vibora",
+    name: "Tempo-Víbora & Chiquita Fokus",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "VIBORA",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Agilidad I" : "Agility I";
+    },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
@@ -240,9 +323,13 @@ export function calculateLoadoutStats(
   const rId = racketId || localStorage.getItem("tacpadel_racket_id") || "racket_starter";
   const sId = shotId || localStorage.getItem("tacpadel_power_shot") || "smash";
 
-  const pMods = SHOP_PARTNERS.find((p) => p.id === pId)?.modifiers || SHOP_PARTNERS[0].modifiers;
-  const rMods = SHOP_RACKETS.find((r) => r.id === rId)?.modifiers || SHOP_RACKETS[0].modifiers;
-  const sMods = SHOP_SHOTS.find((s) => s.id === sId)?.modifiers || SHOP_SHOTS[0].modifiers;
+  const partner = SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0];
+  const racket = SHOP_RACKETS.find((r) => r.id === rId) || SHOP_RACKETS[0];
+  const shot = SHOP_SHOTS.find((s) => s.id === sId) || SHOP_SHOTS[0];
+
+  const pMods = partner.modifiers;
+  const rMods = racket.modifiers;
+  const sMods = shot.modifiers;
 
   const diffs = {
     smash: pMods.smash + rMods.smash + sMods.smash,
@@ -258,20 +345,21 @@ export function calculateLoadoutStats(
     agility: 50 + diffs.agility,
   };
 
-  // Streng gedeckelte Multiplikatoren (Hard-Caps schützen das Spiel-Balancing):
+  // Auf Stufe 1 (Maximal +6 bei 3x gleichem Fokus) skalieren die Effekte spürbar,
+  // lassen aber noch Raum für spätere Upgrade-Stufen (Tier 2 / Tier 3):
   const matchModifiers = {
-    winnerChanceBonus: clamp((stats.smash - 50) * 0.005, -0.03, 0.10),
-    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.0075, 0.85, 1.05),
-    defenseSaveBonus: clamp((stats.defense - 50) * 0.006, -0.03, 0.12),
-    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.008, 0.85, 1.04),
+    winnerChanceBonus: clamp((stats.smash - 50) * 0.008, -0.05, 0.12),
+    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.012, 0.82, 1.08),
+    defenseSaveBonus: clamp((stats.defense - 50) * 0.01, -0.05, 0.14),
+    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.012, 0.82, 1.08),
   };
 
   return {
     stats,
     diffs,
     matchModifiers,
-    partner: SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0],
-    racket: SHOP_RACKETS.find((r) => r.id === rId) || SHOP_RACKETS[0],
-    shot: SHOP_SHOTS.find((s) => s.id === sId) || SHOP_SHOTS[0],
+    partner,
+    racket,
+    shot,
   };
 }
