@@ -6,7 +6,6 @@ import {
   SHOP_RACKETS,
   SHOP_SHOTS,
   ShopItem,
-  checkItemRequirement,
   calculateLoadoutStats,
 } from "../lib/loadout";
 import { useTranslation, formatPartnerPerk } from "../lib/i18n";
@@ -39,11 +38,6 @@ export default function InGameShopModal({
     return saved ? parseInt(saved, 10) : 0;
   });
 
-  const [currentScore, setCurrentScore] = useState<number>(() => {
-    const saved = localStorage.getItem("tacpadel_score");
-    return saved ? parseInt(saved, 10) : 0;
-  });
-
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
@@ -71,7 +65,7 @@ export default function InGameShopModal({
   const [isBuying, setIsBuying] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Beim Öffnen aktuelle Daten (inkl. TacScore) aus localStorage & Supabase synchronisieren
+  // Beim Öffnen aktuelle Daten aus localStorage & Supabase synchronisieren
   useEffect(() => {
     if (!isOpen) return;
 
@@ -79,7 +73,6 @@ export default function InGameShopModal({
     const localRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
     const localShot = localStorage.getItem("tacpadel_power_shot") || "smash";
     const localTp = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
-    const localScore = parseInt(localStorage.getItem("tacpadel_score") || "0", 10);
 
     setEquippedPartner(localPartner);
     setEquippedRacket(localRacket);
@@ -88,22 +81,17 @@ export default function InGameShopModal({
     setPreviewRacket(localRacket);
     setPreviewShot(localShot);
     setTacPoints(localTp);
-    setCurrentScore(localScore);
 
     if (!userId) return;
 
     (async () => {
       const { data } = await supabase
         .from("user_stats")
-        .select("points, tac_points, unlocked_items, partner_id, equipped_racket, equipped_shot")
+        .select("tac_points, unlocked_items, partner_id, equipped_racket, equipped_shot")
         .eq("id", userId)
         .maybeSingle();
 
       if (data) {
-        if (data.points != null) {
-          setCurrentScore(data.points);
-          localStorage.setItem("tacpadel_score", String(data.points));
-        }
         if (data.tac_points != null) {
           setTacPoints(data.tac_points);
           localStorage.setItem("tacpadel_tac_points", String(data.tac_points));
@@ -147,19 +135,7 @@ export default function InGameShopModal({
 
   const handleEquipOrBuy = async (item: ShopItem, category: "partner" | "racket" | "shot") => {
     const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
-    const meetsScoreReq = checkItemRequirement(item, currentScore);
 
-    // 1. Prüfe TacScore-Anforderung
-    if (!meetsScoreReq) {
-      setFeedback({
-        type: "error",
-        text: `${t("shop_err_score_low_1")} ${item.reqScore} ${t("shop_err_score_low_2")}`,
-      });
-      setTimeout(() => setFeedback(null), 2500);
-      return;
-    }
-
-    // 2. Falls bereits freigeschaltet -> Ausrüsten
     if (isUnlocked) {
       if (category === "partner") {
         setEquippedPartner(item.id);
@@ -184,7 +160,6 @@ export default function InGameShopModal({
       return;
     }
 
-    // 3. Prüfe TacPoints-Guthaben
     if (tacPoints < item.price) {
       setFeedback({
         type: "error",
@@ -194,7 +169,6 @@ export default function InGameShopModal({
       return;
     }
 
-    // 4. Kaufen & direkt ausrüsten
     setIsBuying(true);
     const nextTp = tacPoints - item.price;
     const nextUnlocked = Array.from(new Set([...unlockedItems, item.id]));
@@ -278,25 +252,19 @@ export default function InGameShopModal({
             exit={{ opacity: 0, scale: 0.94, y: 20 }}
             className="w-full max-w-lg bg-[#050b18] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.2)] flex flex-col max-h-[88vh] overflow-hidden relative"
           >
-            {/* HEADER INKL. TACSCORE & TACPOINTS */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-[#030611] gap-2">
-              <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-widest truncate">
+            {/* HEADER */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-[#030611]">
+              <div>
+                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-widest">
                   🛒 {t("prof_shop_title")}
                 </h2>
-                <p className="text-[9px] text-slate-400 font-bold mt-0.5 truncate">
+                <p className="text-[9px] text-slate-400 font-bold mt-0.5">
                   {t("prof_shop_sub")}
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                <div className="flex items-center gap-1 bg-purple-950/50 border border-purple-500/40 px-2 py-1 rounded-lg">
-                  <span className="text-[9px] font-bold text-purple-300 uppercase">
-                    {t("shop_your_score")}
-                  </span>
-                  <span className="text-xs font-black text-white">{currentScore}</span>
-                </div>
-                <div className="flex items-center gap-1 bg-amber-950/50 border border-amber-500/40 px-2.5 py-1 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-amber-950/50 border border-amber-500/40 px-2.5 py-1 rounded-lg">
                   <span className="text-xs">🪙</span>
                   <span className="text-xs font-black text-amber-400">{tacPoints} TP</span>
                 </div>
@@ -421,16 +389,13 @@ export default function InGameShopModal({
               </div>
             )}
 
-            {/* ITEM-LISTE INKL. TACSCORE-SKALIERUNG */}
+            {/* ITEM-LISTE */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col gap-2.5 custom-scrollbar">
               {currentItems.map((item) => {
                 const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
-                const meetsScoreReq = checkItemRequirement(item, currentScore);
                 const isEquipped = currentEquippedId === item.id && isUnlocked;
                 const isSelected = currentPreviewId === item.id;
                 const canAfford = tacPoints >= item.price;
-                const scoreProgress =
-                  item.reqScore > 0 ? Math.min(100, Math.round((currentScore / item.reqScore) * 100)) : 100;
 
                 return (
                   <div
@@ -441,37 +406,19 @@ export default function InGameShopModal({
                         ? "bg-cyan-950/30 border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                         : isSelected
                           ? "bg-slate-900/90 border-amber-500/60"
-                          : !meetsScoreReq
-                            ? "bg-[#030611]/60 border-slate-800/60 opacity-80"
-                            : "bg-[#030611]/90 border-slate-800 hover:border-slate-700"
+                          : "bg-[#030611]/90 border-slate-800 hover:border-slate-700"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs sm:text-sm font-black text-white">
                             {item.name}
                           </span>
                           <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
                             {item.badge}
                           </span>
-
-                          {/* TACSCORE REQUIREMENT BADGE */}
-                          {item.reqScore > 0 && (
-                            <span
-                              className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                                meetsScoreReq
-                                  ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30"
-                                  : "bg-red-950/50 text-red-400 border-red-500/40"
-                              }`}
-                            >
-                              {meetsScoreReq
-                                ? `✓ ${t("shop_req_score_label")} ${item.reqScore} TacScore`
-                                : `${t("shop_locked_by_score")} ${item.reqScore} TacScore`}
-                            </span>
-                          )}
                         </div>
-
                         {activeCategory === "partner" && item.perk && (
                           <span className="text-[10px] text-slate-400 italic mt-0.5">
                             ⚡ {formatPartnerPerk(item.id, lang, item.perk)}
@@ -480,7 +427,7 @@ export default function InGameShopModal({
                       </div>
 
                       {/* MODIFIER PILLS */}
-                      <div className="flex items-center gap-1 shrink-0 text-[9px] font-black flex-wrap justify-end">
+                      <div className="flex items-center gap-1 shrink-0 text-[9px] font-black">
                         {item.modifiers.smash !== 0 && (
                           <span className={`px-1.5 py-0.5 rounded ${item.modifiers.smash > 0 ? "bg-orange-950/60 text-orange-400" : "bg-red-950/40 text-red-400"}`}>
                             PWR {item.modifiers.smash > 0 ? `+${item.modifiers.smash}` : item.modifiers.smash}
@@ -504,29 +451,11 @@ export default function InGameShopModal({
                       </div>
                     </div>
 
-                    {/* FORTSCHRITTSBALKEN WENN TACSCORE NOCH NICHT ERREICHT */}
-                    {!meetsScoreReq && item.reqScore > 0 && (
-                      <div className="bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
-                        <div className="flex justify-between text-[8px] font-bold text-slate-400 mb-1">
-                          <span>TacScore</span>
-                          <span className="text-red-400">
-                            {currentScore} / {item.reqScore} ({scoreProgress}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-1 bg-slate-950 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-red-500 to-amber-500 transition-all"
-                            style={{ width: `${scoreProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
                     {/* BUTTON ZEILE */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                         {isUnlocked ? (
-                          <span className="text-emerald-400">{t("shop_unlocked_badge")}</span>
+                          <span className="text-emerald-400">✓ Freigeschaltet</span>
                         ) : (
                           <span className="text-amber-400">🪙 {item.price} TP</span>
                         )}
@@ -536,16 +465,6 @@ export default function InGameShopModal({
                         <span className="px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[9px] font-black uppercase tracking-widest">
                           {t("prof_equipped")}
                         </span>
-                      ) : !meetsScoreReq ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEquipOrBuy(item, activeCategory);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-900 text-red-400/90 border border-red-900/40 cursor-not-allowed"
-                        >
-                          {`${t("shop_locked_by_score")} ${item.reqScore} TacScore`}
-                        </button>
                       ) : (
                         <button
                           disabled={isBuying || (!isUnlocked && !canAfford)}
