@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
@@ -17,6 +17,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow"; 
 import AdminDashboard from "./AdminDashboard";
+import InGameShopModal from "./InGameShopModal";
 
 // =========================================================
 // HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
@@ -294,6 +295,49 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [equippedPartner, setEquippedPartner] = useState<string>(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id")));
   const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
   const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
+
+  // --- State für das InGameShopModal ---
+  const [isShopModalOpen, setIsShopModalOpen] = useState(false);
+
+  // Synchronisiert Inventar & Ausrüstung sofort nach Einkäufen im InGameShopModal
+  const syncLoadoutFromStorage = useCallback(() => {
+    try {
+      const savedUnlocked = localStorage.getItem("tacpadel_unlocked_items");
+      if (savedUnlocked) {
+        setUnlockedItems(
+          Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...JSON.parse(savedUnlocked)]))
+        );
+      }
+    } catch {}
+
+    const savedTp = localStorage.getItem("tacpadel_tac_points");
+    if (savedTp) setTacPoints(parseInt(savedTp, 10));
+
+    const nextPartner = normalizePartnerId(localStorage.getItem("tacpadel_partner_id"));
+    const nextRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
+    const nextShot = localStorage.getItem("tacpadel_power_shot") || "smash";
+
+    setEquippedPartner(nextPartner);
+    setPartnerId(nextPartner);
+    setEquippedRacket(nextRacket);
+    setRacketId(nextRacket);
+    setEquippedShot(nextShot);
+    setShotId(nextShot);
+  }, []);
+
+  // --- GEFILTERTE INVENTAR-LISTEN (Nur gekaufte/freigeschaltete Items!) ---
+  const ownedPartners = useMemo(
+    () => SHOP_PARTNERS.filter((p) => unlockedItems.includes(p.id) || p.price === 0),
+    [unlockedItems]
+  );
+  const ownedRackets = useMemo(
+    () => SHOP_RACKETS.filter((r) => unlockedItems.includes(r.id) || r.price === 0),
+    [unlockedItems]
+  );
+  const ownedShots = useMemo(
+    () => SHOP_SHOTS.filter((s) => unlockedItems.includes(s.id) || s.price === 0),
+    [unlockedItems]
+  );
   
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -401,29 +445,39 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           localStorage.setItem("tacpadel_tac_points", String(profileData.tac_points));
         }
 
+        const mergedUnlocked = Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0
+          ? Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...profileData.unlocked_items]))
+          : unlockedItems;
+
         if (Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0) {
-          const merged = Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...profileData.unlocked_items]));
-          setUnlockedItems(merged);
-          localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(merged));
+          setUnlockedItems(mergedUnlocked);
+          localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(mergedUnlocked));
         }
 
         if (profileData.partner_id) {
           const validPartner = normalizePartnerId(profileData.partner_id);
-          setEquippedPartner(validPartner);
-          setPartnerId(validPartner);
-          localStorage.setItem("tacpadel_partner_id", validPartner);
+          const safePartner = mergedUnlocked.includes(validPartner) ? validPartner : "partner_rookie";
+          setEquippedPartner(safePartner);
+          setPartnerId(safePartner);
+          localStorage.setItem("tacpadel_partner_id", safePartner);
         }
 
         if (profileData.equipped_racket) {
-          setEquippedRacket(profileData.equipped_racket);
-          setRacketId(profileData.equipped_racket);
-          localStorage.setItem("tacpadel_racket_id", profileData.equipped_racket);
+          const safeRacket = mergedUnlocked.includes(profileData.equipped_racket)
+            ? profileData.equipped_racket
+            : "racket_starter";
+          setEquippedRacket(safeRacket);
+          setRacketId(safeRacket);
+          localStorage.setItem("tacpadel_racket_id", safeRacket);
         }
 
         if (profileData.equipped_shot) {
-          setEquippedShot(profileData.equipped_shot);
-          setShotId(profileData.equipped_shot);
-          localStorage.setItem("tacpadel_power_shot", profileData.equipped_shot);
+          const safeShot = mergedUnlocked.includes(profileData.equipped_shot)
+            ? profileData.equipped_shot
+            : "smash";
+          setEquippedShot(safeShot);
+          setShotId(safeShot);
+          localStorage.setItem("tacpadel_power_shot", safeShot);
         }
         
         if (profileData.team_name) {
@@ -563,23 +617,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     );
   };
 
-  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR (NUR BEREITS FREIGESCHALTETE ITEMS AUSRÜSTEN) ---
+  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR (NUR BEREITS FREIGESCHALTETE ITEMS) ---
   const handleEquipItem = async (item: ShopItem, category: 'partner' | 'racket' | 'shot') => {
-    const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
-    const hasEnoughScore = currentScore >= item.reqScore;
-
-    if (!isUnlocked) {
-      setMessage({ type: 'error', text: `${t("prof_status_locked")}` });
-      setTimeout(() => setMessage(null), 2500);
-      return;
-    }
-
-    if (!hasEnoughScore) {
-      setMessage({ type: 'error', text: `${t("prof_unlocked_at")} ${item.reqScore} TacScore` });
-      setTimeout(() => setMessage(null), 2500);
-      return;
-    }
-
     if (category === 'partner') {
       setEquippedPartner(item.id);
       setPartnerId(item.id);
@@ -706,9 +745,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   const formatTourName = (id: string) => id.replace(/-/g, ' ').toUpperCase();
 
-  const selectedPartnerObj = SHOP_PARTNERS.find(p => p.id === partnerId) || SHOP_PARTNERS[0];
-  const selectedRacketObj = SHOP_RACKETS.find(r => r.id === racketId) || SHOP_RACKETS[0];
-  const selectedShotObj = SHOP_SHOTS.find(s => s.id === shotId) || SHOP_SHOTS[0];
+  const selectedPartnerObj = ownedPartners.find(p => p.id === partnerId) || ownedPartners[0] || SHOP_PARTNERS[0];
+  const selectedRacketObj = ownedRackets.find(r => r.id === racketId) || ownedRackets[0] || SHOP_RACKETS[0];
+  const selectedShotObj = ownedShots.find(s => s.id === shotId) || ownedShots[0] || SHOP_SHOTS[0];
 
   return (
     <motion.div
@@ -718,7 +757,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       transition={{ duration: 0.18 }}
       className={`flex flex-col items-center justify-start p-4 sm:p-8 ${lowPerfMode ? 'bg-[#040914]' : 'bg-[#040914]/90 backdrop-blur-md'} border border-slate-800 rounded-2xl shadow-2xl max-w-3xl mx-auto mt-6 mb-24 gap-6 w-full`}
     >
-      
+      {/* ========================================= */}
+      {/* IN-GAME SHOP MODAL                        */}
+      {/* ========================================= */}
+      <InGameShopModal
+        isOpen={isShopModalOpen}
+        onClose={() => {
+          setIsShopModalOpen(false);
+          syncLoadoutFromStorage();
+        }}
+        userId={user?.id || null}
+        onLoadoutChanged={syncLoadoutFromStorage}
+      />
+
       {/* ========================================= */}
       {/* 1. KOPFBEREICH: Avatar & Name             */}
       {/* ========================================= */}
@@ -977,13 +1028,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
       {/* ========================================================= */}
-      {/* 2. STATS & GEAR INVENTAR (NUR EIGENE FREIGESCHALTETE ITEMS) */}
+      {/* 2. STATS & GEAR INVENTAR (NUR GEKAUFTE / EIGENE ITEMS)    */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
         {/* INVENTAR & AUSSTATTUNGS-BOX */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
-          <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3">
+          <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3 gap-2">
             <div>
               <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
                 {t("prof_inventory_title")}
@@ -993,20 +1044,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               </span>
             </div>
             <button 
-              onClick={() => setActiveTab("trainer")} // Oder direkt zum Shop-Tab falls vorhanden, Standard im Home/Shop
-              className="text-[10px] font-black text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl hover:bg-cyan-900/40 transition-colors"
+              onClick={() => setIsShopModalOpen(true)}
+              className="text-[10px] font-black text-amber-300 bg-amber-950/40 border border-amber-500/40 px-3.5 py-2 rounded-xl hover:bg-amber-900/50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)] shrink-0 flex items-center gap-1.5"
             >
-              🪙 In-Game Shop ➔
+              <span>🪙 In-Game Shop ({tacPoints} TP) ➔</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="flex flex-col gap-3">
-              {/* 1. PARTNER-INVENTAR */}
+              {/* 1. PARTNER-INVENTAR (NUR GEKAUFTE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_partner_sec")}</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
+                    {t("prof_partner_sec")} ({ownedPartners.length})
+                  </label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">
                     {equippedPartner === partnerId ? t("prof_status_equipped") : selectedPartnerObj.badge}
                   </span>
@@ -1016,25 +1069,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   onChange={(e) => {
                     const nextPartner = e.target.value;
                     setPartnerId(nextPartner);
-                    const isUnlocked = unlockedItems.includes(nextPartner) || nextPartner === 'partner_rookie';
-                    const hasScore = currentScore >= (SHOP_PARTNERS.find(p => p.id === nextPartner)?.reqScore || 0);
-                    if (isUnlocked && hasScore) {
-                      setEquippedPartner(nextPartner);
-                      localStorage.setItem("tacpadel_partner_id", nextPartner);
-                      supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
-                    }
+                    setEquippedPartner(nextPartner);
+                    localStorage.setItem("tacpadel_partner_id", nextPartner);
+                    supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_PARTNERS.map(p => {
-                    const owned = unlockedItems.includes(p.id) || p.price === 0;
-                    const hasScore = currentScore >= p.reqScore;
-                    return (
-                      <option key={p.id} value={p.id} disabled={!owned || !hasScore}>
-                        {owned && hasScore ? `✓ ${p.name}` : !owned ? `🔒 ${p.name} (${t("prof_status_locked")})` : `🔒 ${p.name} (TacScore ${p.reqScore})`}
-                      </option>
-                    );
-                  })}
+                  {ownedPartners.map(p => (
+                    <option key={p.id} value={p.id}>
+                      ✓ {p.name} ({p.badge})
+                    </option>
+                  ))}
                 </select>
                 {selectedPartnerObj.perk && (
                   <span className="text-[10px] text-slate-400 italic">
@@ -1052,10 +1097,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 )}
               </div>
 
-              {/* 2. SCHLÄGER-INVENTAR */}
+              {/* 2. SCHLÄGER-INVENTAR (NUR GEKAUFTE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_racket_sec")}</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
+                    {t("prof_racket_sec")} ({ownedRackets.length})
+                  </label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
                     {equippedRacket === racketId ? t("prof_status_equipped") : selectedRacketObj.badge}
                   </span>
@@ -1065,25 +1112,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   onChange={(e) => {
                     const nextId = e.target.value;
                     setRacketId(nextId);
-                    const isUnlocked = unlockedItems.includes(nextId) || nextId === 'racket_starter';
-                    const hasScore = currentScore >= (SHOP_RACKETS.find(r => r.id === nextId)?.reqScore || 0);
-                    if (isUnlocked && hasScore) {
-                      setEquippedRacket(nextId);
-                      localStorage.setItem("tacpadel_racket_id", nextId);
-                      supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
-                    }
+                    setEquippedRacket(nextId);
+                    localStorage.setItem("tacpadel_racket_id", nextId);
+                    supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_RACKETS.map(r => {
-                    const owned = unlockedItems.includes(r.id) || r.price === 0;
-                    const hasScore = currentScore >= r.reqScore;
-                    return (
-                      <option key={r.id} value={r.id} disabled={!owned || !hasScore}>
-                        {owned && hasScore ? `✓ ${r.name}` : !owned ? `🔒 ${r.name} (${t("prof_status_locked")})` : `🔒 ${r.name} (TacScore ${r.reqScore})`}
-                      </option>
-                    );
-                  })}
+                  {ownedRackets.map(r => (
+                    <option key={r.id} value={r.id}>
+                      ✓ {r.name} ({r.badge})
+                    </option>
+                  ))}
                 </select>
 
                 {equippedRacket !== racketId && (
@@ -1096,10 +1135,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 )}
               </div>
 
-              {/* 3. SPEZIAL-SCHLAG-INVENTAR */}
+              {/* 3. SPEZIAL-SCHLAG-INVENTAR (NUR GEKAUFTE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
-                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">{t("prof_shot_sec")}</label>
+                  <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
+                    {t("prof_shot_sec")} ({ownedShots.length})
+                  </label>
                   <span className="text-[9px] font-black uppercase tracking-wider text-orange-400">
                     {equippedShot === shotId ? t("prof_status_equipped") : selectedShotObj.badge}
                   </span>
@@ -1109,25 +1150,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   onChange={(e) => {
                     const nextShot = e.target.value;
                     setShotId(nextShot);
-                    const isUnlocked = unlockedItems.includes(nextShot) || nextShot === 'smash';
-                    const hasScore = currentScore >= (SHOP_SHOTS.find(s => s.id === nextShot)?.reqScore || 0);
-                    if (isUnlocked && hasScore) {
-                      setEquippedShot(nextShot);
-                      localStorage.setItem("tacpadel_power_shot", nextShot);
-                      supabase.from('user_stats').update({ equipped_shot: nextShot }).eq('id', user.id).then(() => {});
-                    }
+                    setEquippedShot(nextShot);
+                    localStorage.setItem("tacpadel_power_shot", nextShot);
+                    supabase.from('user_stats').update({ equipped_shot: nextShot }).eq('id', user.id).then(() => {});
                   }}
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {SHOP_SHOTS.map(s => {
-                    const owned = unlockedItems.includes(s.id) || s.price === 0;
-                    const hasScore = currentScore >= s.reqScore;
-                    return (
-                      <option key={s.id} value={s.id} disabled={!owned || !hasScore}>
-                        {owned && hasScore ? `✓ ${s.name}` : !owned ? `🔒 ${s.name} (${t("prof_status_locked")})` : `🔒 ${s.name} (TacScore ${s.reqScore})`}
-                      </option>
-                    );
-                  })}
+                  {ownedShots.map(s => (
+                    <option key={s.id} value={s.id}>
+                      ✓ {s.name} ({s.badge})
+                    </option>
+                  ))}
                 </select>
 
                 {equippedShot !== shotId && (
