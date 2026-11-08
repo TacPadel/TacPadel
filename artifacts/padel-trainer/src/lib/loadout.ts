@@ -1,8 +1,10 @@
+import { getAppLanguage } from "./i18n";
+
 export interface ShopItem {
   id: string;
   name: string;
   price: number;
-  reqScore: number; // Neu: Benötigter TacScore zum Freischalten/Benutzen
+  reqScore: number; // Benötigter TacScore zum Freischalten/Benutzen
   badge: string;
   perk?: string;
   modifiers: {
@@ -14,58 +16,104 @@ export interface ShopItem {
 }
 
 // =========================================================
-// 1. KURATIERTE KI-TEAMPARTNER (Skaliert nach TacScore & TacPoints)
+// 1. KURATIERTE KI-TEAMPARTNER (Mehrsprachig & Skaliert)
 // =========================================================
 export const SHOP_PARTNERS: ShopItem[] = [
   {
     id: "partner_rookie",
-    name: "Leo 'Base' Vega (Allrounder)",
+    name: "Leo 'Base' Vega",
     price: 0,
     reqScore: 0,
-    badge: "Starter",
-    perk: "Solides Grundlinienspiel ohne extreme Risiken",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Starter" : l === "en" ? "Starter" : "Starter";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Juego sólido de fondo sin riesgos extremos"
+        : l === "en"
+        ? "Solid baseline play without extreme risks"
+        : "Solides Grundlinienspiel ohne extreme Risiken";
+    },
     modifiers: { smash: 0, control: 1, defense: 1, agility: 0 },
   },
   {
     id: "partner_wall",
-    name: "Mateo 'El Muro' Ruiz (Defensiv-Mauer)",
+    name: "Mateo 'El Muro' Ruiz",
     price: 350,
     reqScore: 1500,
-    badge: "+Defense",
-    perk: "Holt selbst schwerste Bälle aus der hinteren Glasecke",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Defensa" : "+Defense";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Recupera hasta las bolas más difíciles del cristal de fondo"
+        : l === "en"
+        ? "Retrieves even the toughest balls from back glass corners"
+        : "Holt selbst schwerste Bälle aus der hinteren Glasecke";
+    },
     modifiers: { smash: -1, control: 2, defense: 4, agility: 1 },
   },
   {
     id: "partner_tactician",
-    name: "Sofia 'La Profesora' Navarro (Taktikerin)",
+    name: "Sofia 'La Profesora' Navarro",
     price: 700,
     reqScore: 2500,
-    badge: "+Control",
-    perk: "Spielt millimetergenaue Lobs und Chiquitas",
+    get badge() {
+      return "+Control";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Juega globos y Chiquitas milimétricos"
+        : l === "en"
+        ? "Plays pinpoint lobs and Chiquitas"
+        : "Spielt millimetergenaue Lobs und Chiquitas";
+    },
     modifiers: { smash: 0, control: 5, defense: 2, agility: 2 },
   },
   {
     id: "partner_cannon",
-    name: "Diego 'El Cañón' Morales (Finisher)",
+    name: "Diego 'El Cañón' Morales",
     price: 1200,
     reqScore: 3500,
-    badge: "+Smash",
-    perk: "Dominiert am Netz mit extrem harten Smashes",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Remate" : "+Smash";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Domina en la red con remates demoledores"
+        : l === "en"
+        ? "Dominates at the net with explosive smashes"
+        : "Dominiert am Netz mit extrem harten Smashes";
+    },
     modifiers: { smash: 6, control: -1, defense: -1, agility: 2 },
   },
   {
     id: "partner_legend",
-    name: "Ale 'El Rey' Mendoza (World Tour Pro)",
+    name: "Ale 'El Rey' Mendoza",
     price: 2200,
     reqScore: 4500,
     badge: "👑 Master",
-    perk: "Maximale Platzabdeckung, Übersicht & Power",
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Máxima cobertura de pista, visión y potencia"
+        : l === "en"
+        ? "Maximum court coverage, vision & power"
+        : "Maximale Platzabdeckung, Übersicht & Power";
+    },
     modifiers: { smash: 5, control: 5, defense: 4, agility: 4 },
   },
 ];
 
 // =========================================================
-// 2. SCHLÄGER (RACKETS - Skaliert nach TacScore)
+// 2. SCHLÄGER (RACKETS - Mehrsprachig & Skaliert)
 // =========================================================
 export const SHOP_RACKETS: ShopItem[] = [
   {
@@ -73,7 +121,10 @@ export const SHOP_RACKETS: ShopItem[] = [
     name: "Rookie Frame Basic",
     price: 0,
     reqScore: 0,
-    badge: "Standard",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Estándar" : "Standard";
+    },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
   {
@@ -81,7 +132,10 @@ export const SHOP_RACKETS: ShopItem[] = [
     name: "Aero Swift Pro X",
     price: 300,
     reqScore: 1200,
-    badge: "+Agility",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Agilidad" : "+Agility";
+    },
     modifiers: { smash: 1, control: 1, defense: 0, agility: 3 },
   },
   {
@@ -89,7 +143,9 @@ export const SHOP_RACKETS: ShopItem[] = [
     name: "Titan Matrix CTRL",
     price: 550,
     reqScore: 2200,
-    badge: "+Control",
+    get badge() {
+      return "+Control";
+    },
     modifiers: { smash: -1, control: 4, defense: 2, agility: 0 },
   },
   {
@@ -97,7 +153,10 @@ export const SHOP_RACKETS: ShopItem[] = [
     name: "Eclipse Carbon Strike",
     price: 850,
     reqScore: 3200,
-    badge: "+Power",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Potencia" : "+Power";
+    },
     modifiers: { smash: 3, control: 2, defense: -1, agility: 1 },
   },
   {
@@ -111,15 +170,18 @@ export const SHOP_RACKETS: ShopItem[] = [
 ];
 
 // =========================================================
-// 3. SPEZIAL-FOKUS (POWER SHOTS - Skaliert nach TacScore)
+// 3. SPEZIAL-FOKUS (POWER SHOTS - Mehrsprachig & Skaliert)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
   {
     id: "smash",
-    name: "Topspin Smash (Klassik)",
+    name: "Topspin Smash",
     price: 0,
     reqScore: 0,
-    badge: "Standard",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Estándar" : "Standard";
+    },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
   {
@@ -127,7 +189,10 @@ export const SHOP_SHOTS: ShopItem[] = [
     name: "Bandeja Control",
     price: 300,
     reqScore: 1800,
-    badge: "+Taktik",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Táctica" : "+Tactics";
+    },
     modifiers: { smash: 1, control: 2, defense: 2, agility: 0 },
   },
   {
@@ -135,7 +200,10 @@ export const SHOP_SHOTS: ShopItem[] = [
     name: "Víbora Slice",
     price: 550,
     reqScore: 2800,
-    badge: "+Slice",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "+Cortado" : "+Slice";
+    },
     modifiers: { smash: 2, control: 2, defense: 0, agility: 1 },
   },
   {
@@ -143,7 +211,10 @@ export const SHOP_SHOTS: ShopItem[] = [
     name: "Kick-Smash Por Tres (x3)",
     price: 1200,
     reqScore: 3800,
-    badge: "Finisher",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Definidor" : "Finisher";
+    },
     modifiers: { smash: 5, control: 0, defense: -1, agility: 1 },
   },
 ];
@@ -189,16 +260,9 @@ export function calculateLoadoutStats(
 
   // Streng gedeckelte Multiplikatoren (Hard-Caps schützen das Spiel-Balancing):
   const matchModifiers = {
-    // Max. +10% Winner-Chance bei echten Offensivschlägen (0.005 pro Punkt über 50)
     winnerChanceBonus: clamp((stats.smash - 50) * 0.005, -0.03, 0.10),
-
-    // Max. 15% weniger Unforced Errors bei ungenauen Schlägen (Faktor 0.85 bis 1.05)
     errorReductionFactor: clamp(1 - (stats.control - 50) * 0.0075, 0.85, 1.05),
-
-    // Max. +12% höhere Abwehr-Rettungschance gegen KI-Angriffe (0.006 pro Punkt über 50)
     defenseSaveBonus: clamp((stats.defense - 50) * 0.006, -0.03, 0.12),
-
-    // Max. 15% weniger Ausdauer-Verlust pro Ballwechsel (Faktor 0.85 bis 1.04)
     staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.008, 0.85, 1.04),
   };
 

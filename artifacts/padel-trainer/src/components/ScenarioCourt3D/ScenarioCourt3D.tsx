@@ -13,6 +13,12 @@ import { SHOP_PARTNERS } from "../../lib/loadout";
 import { useTranslation } from "../../lib/i18n";
 
 // =========================================================
+// ZENTRALE KAMERA-KONSTANTEN (Für nahtlose Übergänge)
+// =========================================================
+const DEFAULT_CAM_POS = new THREE.Vector3(0, 15.0, 27.5);
+const DEFAULT_LOOK_AT = new THREE.Vector3(0, -0.5, -2);
+
+// =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
 // =========================================================
 const isEcoModeEnabled = (): boolean => {
@@ -43,7 +49,7 @@ const resolvePartnerNameFromId = (rawId?: string | null): string => {
 };
 
 // =========================================================
-// 1. CINEMATIC INTRO KAMERA (Ruckelfrei über useRef)
+// 1. CINEMATIC INTRO KAMERA (Endet exakt auf DEFAULT_CAM_POS)
 // =========================================================
 function IntroCamera({ onFinished }: { onFinished: () => void }) {
   const progressRef = useRef(0);
@@ -54,9 +60,9 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     new THREE.Vector3(0, 0.5, -15),  
     new THREE.Vector3(0, 4.0, -7),   
     new THREE.Vector3(0, 1.5, 0),    
-    new THREE.Vector3(0, 6.0, 9),    
-    new THREE.Vector3(8, 9.0, 15),   
-    new THREE.Vector3(0, 12.5, 23)   
+    new THREE.Vector3(0, 6.5, 10),    
+    new THREE.Vector3(8, 11.0, 18),   
+    DEFAULT_CAM_POS.clone()   
   ]), []);
 
   const lookAtPath = useMemo(() => new THREE.CatmullRomCurve3([
@@ -65,7 +71,7 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     new THREE.Vector3(0, 3, 10),
     new THREE.Vector3(0, 1, 4),
     new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, -0.5, -2)
+    DEFAULT_LOOK_AT.clone()
   ]), []);
 
   useFrame((state, delta) => {
@@ -86,6 +92,8 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     if (progressRef.current >= 1) {
       progressRef.current = 1;
       finishedRef.current = true;
+      state.camera.position.copy(DEFAULT_CAM_POS);
+      state.camera.lookAt(DEFAULT_LOOK_AT);
       onFinished();
       return;
     }
@@ -101,21 +109,21 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
 }
 
 // =========================================================
-// 1b. CINEMATIC OUTRO KAMERA (Perfekter Crash-Flug)
+// 1b. CINEMATIC OUTRO KAMERA (Startet exakt auf DEFAULT_CAM_POS)
 // =========================================================
 function OutroCamera({ onCrash }: { onCrash: () => void }) {
   const progressRef = useRef(0); 
   const hasCrashed = useRef(false);
   
   const cameraPath = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 12.5, 23),    
-    new THREE.Vector3(0, 7.0, 5),      
+    DEFAULT_CAM_POS.clone(),    
+    new THREE.Vector3(0, 7.5, 6),      
     new THREE.Vector3(0.5, 6.23, -6),  
     new THREE.Vector3(0.5, 6.23, -11)  
   ]), []);
 
   const lookAtPath = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, -0.5, -2),    
+    DEFAULT_LOOK_AT.clone(),    
     new THREE.Vector3(0.5, 6.23, -11), 
     new THREE.Vector3(0.5, 6.23, -11.5), 
     new THREE.Vector3(0.5, 6.23, -11.7) 
@@ -146,7 +154,7 @@ function OutroCamera({ onCrash }: { onCrash: () => void }) {
 }
 
 // =========================================================
-// 2. DYNAMISCHE ACTION-KAMERA (V4 - Epic Finisher & Shake)
+// 2. DYNAMISCHE ACTION-KAMERA (V4 - Angepasst an neuen Zoom)
 // =========================================================
 function DynamicActionCamera({ 
   hasSubmitted, 
@@ -164,25 +172,25 @@ function DynamicActionCamera({
   selectedZone: string | null;
 }) {
   const { camera } = useThree();
-  const targetPos = useRef(new THREE.Vector3());
-  const targetLook = useRef(new THREE.Vector3());
-  const currentLook = useRef(new THREE.Vector3(0, -0.5, -2));
+  const targetPos = useRef(DEFAULT_CAM_POS.clone());
+  const targetLook = useRef(DEFAULT_LOOK_AT.clone());
+  const currentLook = useRef(DEFAULT_LOOK_AT.clone());
   
   const timeSinceSubmit = useRef(0);
 
   useEffect(() => {
     if (!hasSubmitted) {
       timeSinceSubmit.current = 0;
-      targetPos.current.set(0, 12.5, 23);
-      targetLook.current.set(0, -0.5, -2);
-      currentLook.current.set(0, -0.5, -2);
+      targetPos.current.copy(DEFAULT_CAM_POS);
+      targetLook.current.copy(DEFAULT_LOOK_AT);
+      currentLook.current.copy(DEFAULT_LOOK_AT);
 
-      camera.position.set(0, 12.5, 23);
-      camera.lookAt(0, -0.5, -2);
+      camera.position.copy(DEFAULT_CAM_POS);
+      camera.lookAt(DEFAULT_LOOK_AT);
 
       requestAnimationFrame(() => {
         if (controlsRef.current) {
-          controlsRef.current.target.set(0, -0.5, -2);
+          controlsRef.current.target.copy(DEFAULT_LOOK_AT);
           controlsRef.current.update(); 
         }
       });
@@ -207,25 +215,25 @@ function DynamicActionCamera({
     let speed = 2.5;
 
     if (isFinisher) {
-      targetPos.current.set(0, 3.5, 9); 
+      targetPos.current.set(0, 4.2, 11); 
       targetLook.current.set(0, 1, -8); 
       speed = 1.2; 
     } 
     else if (isOpponent && !isPerfect && !isError) {
-      targetPos.current.set(0, 12.5, 23);
-      targetLook.current.set(0, -0.5, -2);
+      targetPos.current.copy(DEFAULT_CAM_POS);
+      targetLook.current.copy(DEFAULT_LOOK_AT);
     } 
     else if (sType === "LOB") {
-      targetPos.current.set(0, 16, 23); 
-      targetLook.current.set(0, -0.5, -2);
+      targetPos.current.set(0, 18.5, 28.0); 
+      targetLook.current.copy(DEFAULT_LOOK_AT);
     } 
     else if (isPerfect || isError) {
-      targetPos.current.set(0, 6, 14);
+      targetPos.current.set(0, 7.5, 16.5);
       targetLook.current.set(0, 0, -4);
     } 
     else {
       const panX = hitToRight ? -3 : 3; 
-      targetPos.current.set(panX, 9, 17);
+      targetPos.current.set(panX, 11.0, 20.5);
       targetLook.current.set(0, 0, -2);
     }
 
@@ -335,7 +343,6 @@ export default function ScenarioCourt3D(props: Props) {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      // Immer zuerst den aktuellen lokalen Partner setzen (greift auch für Gäste & sofort nach Shop-Kauf)
       setPartnerName(resolvePartnerNameFromId());
 
       try {
@@ -379,7 +386,7 @@ export default function ScenarioCourt3D(props: Props) {
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas 
           dpr={ecoMode ? 1.0 : [1, 1.5]}
-          camera={{ position: [0, 12.5, 23.0], fov: 45 }} 
+          camera={{ position: [DEFAULT_CAM_POS.x, DEFAULT_CAM_POS.y, DEFAULT_CAM_POS.z], fov: 48 }} 
           gl={{ 
             antialias: true, 
             toneMapping: THREE.ACESFilmicToneMapping, 
@@ -433,13 +440,13 @@ export default function ScenarioCourt3D(props: Props) {
                 enableDamping={true} 
                 dampingFactor={0.05}
                 minDistance={8} 
-                maxDistance={27} 
+                maxDistance={36} 
                 screenSpacePanning={false}
                 maxPolarAngle={Math.PI / 2.2} 
                 minPolarAngle={0.1}
                 minAzimuthAngle={-Math.PI / 2.5} 
                 maxAzimuthAngle={Math.PI / 2.5}
-                target={[0, -0.5, -2]} 
+                target={[DEFAULT_LOOK_AT.x, DEFAULT_LOOK_AT.y, DEFAULT_LOOK_AT.z]} 
               />
             )}
 
