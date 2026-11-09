@@ -2067,7 +2067,7 @@ export default function GameScreen() {
           else if (isWarning) { leftGlow = "from-amber-400"; iconColor = "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]"; line1Color = "text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]"; }
 
           return (
-            <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="fixed top-24 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
+            <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="fixed top-28 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
               <div className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`} style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
                 <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
                   <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
