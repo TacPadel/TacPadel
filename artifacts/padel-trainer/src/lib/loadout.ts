@@ -1,12 +1,17 @@
 import { getAppLanguage } from "./i18n";
 
+export type SkillFocus = "classic" | "power" | "control" | "defense" | "agility";
+
 export interface ShopItem {
   id: string;
   name: string;
+  focus: SkillFocus;
+  tier: number;
   price: number;
-  reqScore: number; // Benötigter TacScore zum Freischalten/Benutzen
+  reqScore: number;
   badge: string;
   perk?: string;
+  shotType?: string;
   modifiers: {
     smash: number;
     control: number;
@@ -16,206 +21,493 @@ export interface ShopItem {
 }
 
 // =========================================================
-// 1. KURATIERTE KI-TEAMPARTNER (Mehrsprachig & Skaliert)
+// RPG UPGRADE & XP SYSTEM (TYPEN & KONSTANTEN)
+// =========================================================
+export const MAX_ITEM_UPGRADE_LEVEL = 5; // +0 bis +5
+
+export interface ItemProgress {
+  level: number; // 0 = Basis, 1 = "+1", 2 = "+2" ... bis 5 = "+5"
+  xp: number;    // Aktuell gesammelte Punkte (gewonnene Punkte in Matches)
+}
+
+export type ItemProgressMap = Record<string, ItemProgress>;
+
+export interface UpgradedItemDetails {
+  item: ShopItem;
+  level: number;
+  displayName: string; // z.B. "Diamond Striker +2"
+  xp: number;
+  reqXp: number;       // Benötigte XP für das nächste "+1"
+  upgradeCostTp: number; // Kleine TP-Gebühr für das nächste "+1"
+  canUpgrade: boolean; // true, wenn XP voll sind & Max-Level noch nicht erreicht
+  isMaxLevel: boolean;
+  effectiveModifiers: {
+    smash: number;
+    control: number;
+    defense: number;
+    agility: number;
+  };
+}
+
+// Dynamische XP-Schwelle für das nächste Level (Level 0->1 = 15 Punkte, 1->2 = 30 Punkte, etc.)
+export function getRequiredXpForNextLevel(currentLevel: number): number {
+  if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
+  return (currentLevel + 1) * 15;
+}
+
+// Dynamische, kleinere TP-Kosten für das Upgrade (+1 = 100 TP, +2 = 175 TP, +3 = 250 TP...)
+export function getUpgradeTpCost(currentLevel: number): number {
+  if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
+  return 100 + currentLevel * 75;
+}
+
+// Liest den RPG-Fortschritt aller Items aus dem LocalStorage
+export function getSavedItemProgress(): ItemProgressMap {
+  try {
+    const raw = localStorage.getItem("tacpadel_item_progress");
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {};
+}
+
+// Speichert den RPG-Fortschritt im LocalStorage
+export function saveItemProgress(map: ItemProgressMap): void {
+  try {
+    localStorage.setItem("tacpadel_item_progress", JSON.stringify(map));
+  } catch (e) {}
+}
+
+// Berechnet die dynamisch skalierten Attribute eines Items anhand seines "+X" Levels
+export function getEffectiveItemModifiers(item: ShopItem, level: number) {
+  const lvl = Math.max(0, Math.min(MAX_ITEM_UPGRADE_LEVEL, level));
+  const mods = { ...item.modifiers };
+
+  if (lvl === 0) return mods;
+
+  // Meisterungs-Bonus: Auf Level +3 und +5 reduziert sich der Haupt-Malus um je 1 Punkt
+  const penaltyRelief = (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
+
+  switch (item.focus) {
+    case "power":
+      mods.smash += lvl; // +1 Hauptskill pro Level
+      mods.defense = Math.min(0, mods.defense + penaltyRelief);
+      break;
+    case "control":
+      mods.control += lvl;
+      mods.smash = Math.min(0, mods.smash + penaltyRelief);
+      break;
+    case "defense":
+      mods.defense += lvl;
+      mods.smash = Math.min(0, mods.smash + penaltyRelief);
+      break;
+    case "agility":
+      mods.agility += lvl;
+      mods.defense = Math.min(0, mods.defense + penaltyRelief);
+      break;
+    case "classic":
+      // Klassik-Items bekommen alle paar Stufen einen sanften +1 Allround-Bonus ohne Mali
+      if (lvl >= 1) mods.control += 1;
+      if (lvl >= 2) mods.defense += 1;
+      if (lvl >= 3) mods.agility += 1;
+      if (lvl >= 4) mods.smash += 1;
+      if (lvl >= 5) {
+        mods.control += 1;
+        mods.defense += 1;
+      }
+      break;
+  }
+
+  return mods;
+}
+
+// Liefert alle RPG-Daten zu einem bestimmten Item (für UI, Shop & Inventar)
+export function getUpgradedItemDetails(
+  item: ShopItem,
+  customProgressMap?: ItemProgressMap
+): UpgradedItemDetails {
+  const map = customProgressMap || getSavedItemProgress();
+  const prog = map[item.id] || { level: 0, xp: 0 };
+  const level = Math.max(0, Math.min(MAX_ITEM_UPGRADE_LEVEL, prog.level));
+  const isMaxLevel = level >= MAX_ITEM_UPGRADE_LEVEL;
+  const reqXp = getRequiredXpForNextLevel(level);
+  const xp = isMaxLevel ? reqXp : prog.xp;
+  const upgradeCostTp = getUpgradeTpCost(level);
+  const canUpgrade = !isMaxLevel && xp >= reqXp;
+
+  return {
+    item,
+    level,
+    displayName: level > 0 ? `${item.name} +${level}` : item.name,
+    xp,
+    reqXp,
+    upgradeCostTp,
+    canUpgrade,
+    isMaxLevel,
+    effectiveModifiers: getEffectiveItemModifiers(item, level),
+  };
+}
+
+// =========================================================
+// XP-VERGABE NACH JEDEM MATCH (GEWONNENE PUNKTE = ITEM-XP)
+// =========================================================
+export function addMatchXpToEquippedLoadout(pointsWonByPlayer: number) {
+  const xpGained = Math.max(0, Math.floor(pointsWonByPlayer));
+  const progressMap = getSavedItemProgress();
+
+  const pId = localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+  const rId = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
+  const sId = localStorage.getItem("tacpadel_power_shot") || "smash";
+
+  const equippedIds = [pId, rId, sId];
+  const newlyReadyToUpgrade: string[] = [];
+
+  equippedIds.forEach((id) => {
+    const current = progressMap[id] || { level: 0, xp: 0 };
+    if (current.level >= MAX_ITEM_UPGRADE_LEVEL) return;
+
+    const reqXp = getRequiredXpForNextLevel(current.level);
+    const wasReady = current.xp >= reqXp;
+    const nextXp = current.xp + xpGained;
+
+    progressMap[id] = {
+      level: current.level,
+      xp: nextXp,
+    };
+
+    if (!wasReady && nextXp >= reqXp) {
+      newlyReadyToUpgrade.push(id);
+    }
+  });
+
+  saveItemProgress(progressMap);
+
+  return {
+    xpGained,
+    progressMap,
+    newlyReadyToUpgrade, // IDs der Items, deren XP-Balken in diesem Match voll geworden ist
+  };
+}
+
+// =========================================================
+// ITEM MIT TP AUFLEVELN (+1 UPGRADE DURCHFÜHREN)
+// =========================================================
+export function performItemUpgrade(
+  itemId: string,
+  currentTacPoints: number
+): {
+  success: boolean;
+  newLevel: number;
+  newTacPoints: number;
+  cost: number;
+  updatedProgressMap: ItemProgressMap;
+  errorReason?: "max_level" | "not_enough_xp" | "not_enough_tp";
+} {
+  const progressMap = getSavedItemProgress();
+  const current = progressMap[itemId] || { level: 0, xp: 0 };
+
+  if (current.level >= MAX_ITEM_UPGRADE_LEVEL) {
+    return {
+      success: false,
+      newLevel: current.level,
+      newTacPoints: currentTacPoints,
+      cost: 0,
+      updatedProgressMap: progressMap,
+      errorReason: "max_level",
+    };
+  }
+
+  const reqXp = getRequiredXpForNextLevel(current.level);
+  if (current.xp < reqXp) {
+    return {
+      success: false,
+      newLevel: current.level,
+      newTacPoints: currentTacPoints,
+      cost: 0,
+      updatedProgressMap: progressMap,
+      errorReason: "not_enough_xp",
+    };
+  }
+
+  const cost = getUpgradeTpCost(current.level);
+  if (currentTacPoints < cost) {
+    return {
+      success: false,
+      newLevel: current.level,
+      newTacPoints: currentTacPoints,
+      cost,
+      updatedProgressMap: progressMap,
+      errorReason: "not_enough_tp",
+    };
+  }
+
+  // Überschüssige XP aus dem letzten Match werden fair ins nächste Level übernommen!
+  const carryOverXp = Math.max(0, current.xp - reqXp);
+  const newLevel = current.level + 1;
+  const newTacPoints = currentTacPoints - cost;
+
+  progressMap[itemId] = {
+    level: newLevel,
+    xp: carryOverXp,
+  };
+
+  saveItemProgress(progressMap);
+  localStorage.setItem("tacpadel_tac_points", String(newTacPoints));
+
+  return {
+    success: true,
+    newLevel,
+    newTacPoints,
+    cost,
+    updatedProgressMap: progressMap,
+  };
+}
+
+// =========================================================
+// 1. KI-TEAMPARTNER (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_PARTNERS: ShopItem[] = [
   {
     id: "partner_rookie",
     name: "Leo 'Base' Vega",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Starter" : l === "en" ? "Starter" : "Starter";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Juego sólido de fondo sin riesgos extremos"
+        ? "Juego equilibrado sin bonificaciones ni penalizaciones"
         : l === "en"
-        ? "Solid baseline play without extreme risks"
-        : "Solides Grundlinienspiel ohne extreme Risiken";
+        ? "Balanced baseline play without buffs or penalties"
+        : "Ausgeglichenes Basis-Spiel ohne Buffs oder Mali";
     },
-    modifiers: { smash: 0, control: 1, defense: 1, agility: 0 },
-  },
-  {
-    id: "partner_wall",
-    name: "Mateo 'El Muro' Ruiz",
-    price: 350,
-    reqScore: 1500,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "+Defensa" : "+Defense";
-    },
-    get perk() {
-      const l = getAppLanguage();
-      return l === "es"
-        ? "Recupera hasta las bolas más difíciles del cristal de fondo"
-        : l === "en"
-        ? "Retrieves even the toughest balls from back glass corners"
-        : "Holt selbst schwerste Bälle aus der hinteren Glasecke";
-    },
-    modifiers: { smash: -1, control: 2, defense: 4, agility: 1 },
-  },
-  {
-    id: "partner_tactician",
-    name: "Sofia 'La Profesora' Navarro",
-    price: 700,
-    reqScore: 2500,
-    get badge() {
-      return "+Control";
-    },
-    get perk() {
-      const l = getAppLanguage();
-      return l === "es"
-        ? "Juega globos y Chiquitas milimétricos"
-        : l === "en"
-        ? "Plays pinpoint lobs and Chiquitas"
-        : "Spielt millimetergenaue Lobs und Chiquitas";
-    },
-    modifiers: { smash: 0, control: 5, defense: 2, agility: 2 },
+    modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
   {
     id: "partner_cannon",
     name: "Diego 'El Cañón' Morales",
-    price: 1200,
-    reqScore: 3500,
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Remate" : "+Smash";
+      return l === "es" ? "Potencia" : "Power";
     },
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Domina en la red con remates demoledores"
+        ? "Especialista ofensivo: busca definir fuerte en la red"
         : l === "en"
-        ? "Dominates at the net with explosive smashes"
-        : "Dominiert am Netz mit extrem harten Smashes";
+        ? "Offensive specialist: looks to finish hard at the net"
+        : "Offensiv-Spezialist: Sucht den harten Abschluss am Netz";
     },
-    modifiers: { smash: 6, control: -1, defense: -1, agility: 2 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
   {
-    id: "partner_legend",
-    name: "Ale 'El Rey' Mendoza",
-    price: 2200,
-    reqScore: 4500,
-    badge: "👑 Master",
+    id: "partner_tactician",
+    name: "Sofia 'La Profesora' Navarro",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    badge: "Control",
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Máxima cobertura de pista, visión y potencia"
+        ? "Especialista en control: coloca globos y chiquitas precisas"
         : l === "en"
-        ? "Maximum court coverage, vision & power"
-        : "Maximale Platzabdeckung, Übersicht & Power";
+        ? "Control specialist: places pinpoint lobs and chiquitas"
+        : "Kontroll-Spezialistin: Spielt präzise Lobs und Chiquitas";
     },
-    modifiers: { smash: 5, control: 5, defense: 4, agility: 4 },
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
+  },
+  {
+    id: "partner_wall",
+    name: "Mateo 'El Muro' Ruiz",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Defensa" : "Defense";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Especialista defensivo: devuelve bolas difíciles desde el cristal"
+        : l === "en"
+        ? "Defensive specialist: digs out tough balls off the back glass"
+        : "Defensiv-Spezialist: Holt schwere Bälle von der Glaswand";
+    },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
+  },
+  {
+    id: "partner_runner",
+    name: "Lucas 'El Rayo' Silva",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Agilidad" : "Agility";
+    },
+    get perk() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Especialista en velocidad: cubre huecos rápido y ahorra energía"
+        : l === "en"
+        ? "Speed specialist: covers court gaps fast and saves stamina"
+        : "Tempo-Spezialist: Schließt Lücken schnell & spart Ausdauer";
+    },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
 // =========================================================
-// 2. SCHLÄGER (RACKETS - Mehrsprachig & Skaliert)
+// 2. SCHLÄGER / RACKETS (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_RACKETS: ShopItem[] = [
   {
     id: "racket_starter",
-    name: "Rookie Frame Basic",
+    name: "Classic Allround Frame",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Estándar" : "Standard";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
   {
-    id: "racket_aero",
-    name: "Aero Swift Pro X",
-    price: 300,
-    reqScore: 1200,
+    id: "racket_eclipse",
+    name: "Diamond Striker",
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Agilidad" : "+Agility";
+      return l === "es" ? "Potencia" : "Power";
     },
-    modifiers: { smash: 1, control: 1, defense: 0, agility: 3 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
   {
     id: "racket_titan",
-    name: "Titan Matrix CTRL",
-    price: 550,
-    reqScore: 2200,
-    get badge() {
-      return "+Control";
-    },
-    modifiers: { smash: -1, control: 4, defense: 2, agility: 0 },
+    name: "Precision Round CTRL",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    badge: "Control",
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
   {
-    id: "racket_eclipse",
-    name: "Eclipse Carbon Strike",
-    price: 850,
-    reqScore: 3200,
+    id: "racket_shield",
+    name: "Guardian Soft Core",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Potencia" : "+Power";
+      return l === "es" ? "Defensa" : "Defense";
     },
-    modifiers: { smash: 3, control: 2, defense: -1, agility: 1 },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
   },
   {
-    id: "racket_apex_pro",
-    name: "Apex Signature 18K",
-    price: 1800,
-    reqScore: 4200,
-    badge: "Tour Elite",
-    modifiers: { smash: 4, control: 4, defense: 2, agility: 3 },
+    id: "racket_aero",
+    name: "Aero Featherlight",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Agilidad" : "Agility";
+    },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
 // =========================================================
-// 3. SPEZIAL-FOKUS (POWER SHOTS - Mehrsprachig & Skaliert)
+// 3. SPEZIAL-SCHLÄGE / SHOTS (1x Klassik + 4x Skill-Fokus)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
   {
     id: "smash",
-    name: "Topspin Smash",
+    name: "Klassik-Technik",
+    focus: "classic",
+    tier: 0,
     price: 0,
     reqScore: 0,
+    shotType: "DRIVE",
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "Estándar" : "Standard";
+      return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
   {
-    id: "bandeja",
-    name: "Bandeja Control",
-    price: 300,
-    reqScore: 1800,
+    id: "kick_x3",
+    name: "Power-Smash Fokus",
+    focus: "power",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "SMASH",
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Táctica" : "+Tactics";
+      return l === "es" ? "Potencia" : "Power";
     },
-    modifiers: { smash: 1, control: 2, defense: 2, agility: 0 },
+    modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
+  },
+  {
+    id: "bandeja",
+    name: "Bandeja-Control Fokus",
+    focus: "control",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "BANDEJA",
+    badge: "Control",
+    modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
+  },
+  {
+    id: "shot_defense_wall",
+    name: "Reflex-Block & Lob Fokus",
+    focus: "defense",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "BLOCK",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Defensa" : "Defense";
+    },
+    modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
   },
   {
     id: "vibora",
-    name: "Víbora Slice",
-    price: 550,
-    reqScore: 2800,
+    name: "Tempo-Víbora Fokus",
+    focus: "agility",
+    tier: 1,
+    price: 400,
+    reqScore: 1500,
+    shotType: "VIBORA",
     get badge() {
       const l = getAppLanguage();
-      return l === "es" ? "+Cortado" : "+Slice";
+      return l === "es" ? "Agilidad" : "Agility";
     },
-    modifiers: { smash: 2, control: 2, defense: 0, agility: 1 },
-  },
-  {
-    id: "kick_x3",
-    name: "Kick-Smash Por Tres (x3)",
-    price: 1200,
-    reqScore: 3800,
-    get badge() {
-      const l = getAppLanguage();
-      return l === "es" ? "Definidor" : "Finisher";
-    },
-    modifiers: { smash: 5, control: 0, defense: -1, agility: 1 },
+    modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
 ];
 
@@ -227,22 +519,31 @@ export function checkItemRequirement(item: ShopItem, userTacScore: number): bool
 }
 
 // =========================================================
-// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (MIT HARD-CAPS)
+// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (INKL. "+X" UPGRADE-LEVEL)
 // =========================================================
 const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
 
 export function calculateLoadoutStats(
   partnerId?: string,
   racketId?: string,
-  shotId?: string
+  shotId?: string,
+  customProgressMap?: ItemProgressMap
 ) {
   const pId = partnerId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
   const rId = racketId || localStorage.getItem("tacpadel_racket_id") || "racket_starter";
   const sId = shotId || localStorage.getItem("tacpadel_power_shot") || "smash";
 
-  const pMods = SHOP_PARTNERS.find((p) => p.id === pId)?.modifiers || SHOP_PARTNERS[0].modifiers;
-  const rMods = SHOP_RACKETS.find((r) => r.id === rId)?.modifiers || SHOP_RACKETS[0].modifiers;
-  const sMods = SHOP_SHOTS.find((s) => s.id === sId)?.modifiers || SHOP_SHOTS[0].modifiers;
+  const basePartner = SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0];
+  const baseRacket = SHOP_RACKETS.find((r) => r.id === rId) || SHOP_RACKETS[0];
+  const baseShot = SHOP_SHOTS.find((s) => s.id === sId) || SHOP_SHOTS[0];
+
+  const partnerDetails = getUpgradedItemDetails(basePartner, customProgressMap);
+  const racketDetails = getUpgradedItemDetails(baseRacket, customProgressMap);
+  const shotDetails = getUpgradedItemDetails(baseShot, customProgressMap);
+
+  const pMods = partnerDetails.effectiveModifiers;
+  const rMods = racketDetails.effectiveModifiers;
+  const sMods = shotDetails.effectiveModifiers;
 
   const diffs = {
     smash: pMods.smash + rMods.smash + sMods.smash,
@@ -258,20 +559,23 @@ export function calculateLoadoutStats(
     agility: 50 + diffs.agility,
   };
 
-  // Streng gedeckelte Multiplikatoren (Hard-Caps schützen das Spiel-Balancing):
+  // Dynamisch skalierte Match-Multiplikatoren (inkl. "+1" bis "+5" Upgrades):
   const matchModifiers = {
-    winnerChanceBonus: clamp((stats.smash - 50) * 0.005, -0.03, 0.10),
-    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.0075, 0.85, 1.05),
-    defenseSaveBonus: clamp((stats.defense - 50) * 0.006, -0.03, 0.12),
-    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.008, 0.85, 1.04),
+    winnerChanceBonus: clamp((stats.smash - 50) * 0.006, -0.05, 0.14),
+    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.009, 0.80, 1.08),
+    defenseSaveBonus: clamp((stats.defense - 50) * 0.008, -0.05, 0.15),
+    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.009, 0.80, 1.08),
   };
 
   return {
     stats,
     diffs,
     matchModifiers,
-    partner: SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0],
-    racket: SHOP_RACKETS.find((r) => r.id === rId) || SHOP_RACKETS[0],
-    shot: SHOP_SHOTS.find((s) => s.id === sId) || SHOP_SHOTS[0],
+    partner: { ...basePartner, name: partnerDetails.displayName, modifiers: pMods },
+    racket: { ...baseRacket, name: racketDetails.displayName, modifiers: rMods },
+    shot: { ...baseShot, name: shotDetails.displayName, modifiers: sMods },
+    partnerDetails,
+    racketDetails,
+    shotDetails,
   };
 }

@@ -6,6 +6,11 @@ import {
   SHOP_RACKETS,
   SHOP_SHOTS,
   ShopItem,
+  ItemProgressMap,
+  getSavedItemProgress,
+  getUpgradedItemDetails,
+  performItemUpgrade,
+  checkItemRequirement,
   calculateLoadoutStats,
 } from "../lib/loadout";
 import { useTranslation, formatPartnerPerk } from "../lib/i18n";
@@ -38,6 +43,11 @@ export default function InGameShopModal({
     return saved ? parseInt(saved, 10) : 0;
   });
 
+  const [currentScore, setCurrentScore] = useState<number>(() => {
+    const saved = localStorage.getItem("tacpadel_score");
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
@@ -46,6 +56,8 @@ export default function InGameShopModal({
       return ["partner_rookie", "racket_starter", "smash"];
     }
   });
+
+  const [itemProgressMap, setItemProgressMap] = useState<ItemProgressMap>(() => getSavedItemProgress());
 
   const [equippedPartner, setEquippedPartner] = useState<string>(() =>
     normalizePartnerId(localStorage.getItem("tacpadel_partner_id"))
@@ -57,7 +69,6 @@ export default function InGameShopModal({
     () => localStorage.getItem("tacpadel_power_shot") || "smash"
   );
 
-  // Vorschau-Auswahl beim Antippen eines Items
   const [previewPartner, setPreviewPartner] = useState<string>(equippedPartner);
   const [previewRacket, setPreviewRacket] = useState<string>(equippedRacket);
   const [previewShot, setPreviewShot] = useState<string>(equippedShot);
@@ -65,7 +76,6 @@ export default function InGameShopModal({
   const [isBuying, setIsBuying] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Beim Öffnen aktuelle Daten aus localStorage & Supabase synchronisieren
   useEffect(() => {
     if (!isOpen) return;
 
@@ -73,6 +83,7 @@ export default function InGameShopModal({
     const localRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
     const localShot = localStorage.getItem("tacpadel_power_shot") || "smash";
     const localTp = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+    const localScore = parseInt(localStorage.getItem("tacpadel_score") || "0", 10);
 
     setEquippedPartner(localPartner);
     setEquippedRacket(localRacket);
@@ -81,17 +92,23 @@ export default function InGameShopModal({
     setPreviewRacket(localRacket);
     setPreviewShot(localShot);
     setTacPoints(localTp);
+    setCurrentScore(localScore);
+    setItemProgressMap(getSavedItemProgress());
 
     if (!userId) return;
 
     (async () => {
       const { data } = await supabase
         .from("user_stats")
-        .select("tac_points, unlocked_items, partner_id, equipped_racket, equipped_shot")
+        .select("points, tac_points, unlocked_items, partner_id, equipped_racket, equipped_shot")
         .eq("id", userId)
         .maybeSingle();
 
       if (data) {
+        if (data.points != null) {
+          setCurrentScore(data.points);
+          localStorage.setItem("tacpadel_score", String(data.points));
+        }
         if (data.tac_points != null) {
           setTacPoints(data.tac_points);
           localStorage.setItem("tacpadel_tac_points", String(data.tac_points));
@@ -124,8 +141,8 @@ export default function InGameShopModal({
   }, [isOpen, userId]);
 
   const previewStats = useMemo(
-    () => calculateLoadoutStats(previewPartner, previewRacket, previewShot),
-    [previewPartner, previewRacket, previewShot]
+    () => calculateLoadoutStats(previewPartner, previewRacket, previewShot, itemProgressMap),
+    [previewPartner, previewRacket, previewShot, itemProgressMap]
   );
 
   const isPreviewMode =
@@ -133,8 +150,61 @@ export default function InGameShopModal({
     previewRacket !== equippedRacket ||
     previewShot !== equippedShot;
 
+  // RPG UPGRADE LOGIK IM SHOP
+  const handleUpgradeItem = async (item: ShopItem) => {
+    const details = getUpgradedItemDetails(item, itemProgressMap);
+    if (details.isMaxLevel) return;
+
+    if (!details.canUpgrade) {
+      const missingXp = Math.max(1, details.reqXp - details.xp);
+      setFeedback({
+        type: "error",
+        text: `${t("rpg_need_more_xp_1")} ${missingXp} ${t("rpg_need_more_xp_2")}`,
+      });
+      setTimeout(() => setFeedback(null), 3000);
+      return;
+    }
+
+    if (tacPoints < details.upgradeCostTp) {
+      setFeedback({
+        type: "error",
+        text: `${t("prof_msg_need_tp_1")} ${details.upgradeCostTp - tacPoints} ${t("prof_msg_need_tp_2")}`,
+      });
+      setTimeout(() => setFeedback(null), 2500);
+      return;
+    }
+
+    const res = performItemUpgrade(item.id, tacPoints);
+    if (!res.success) return;
+
+    setTacPoints(res.newTacPoints);
+    setItemProgressMap({ ...res.updatedProgressMap });
+
+    if (userId) {
+      await supabase.from("user_stats").update({ tac_points: res.newTacPoints }).eq("id", userId);
+      await supabase.auth.updateUser({ data: { item_progress: res.updatedProgressMap } }).catch(() => {});
+    }
+
+    onLoadoutChanged();
+    setFeedback({
+      type: "success",
+      text: `⬆️ ${item.name} ${t("rpg_upgrade_success")} +${res.newLevel}!`,
+    });
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
   const handleEquipOrBuy = async (item: ShopItem, category: "partner" | "racket" | "shot") => {
     const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
+    const meetsScoreReq = checkItemRequirement(item, currentScore);
+
+    if (!meetsScoreReq) {
+      setFeedback({
+        type: "error",
+        text: `${t("shop_err_score_low_1")} ${item.reqScore} ${t("shop_err_score_low_2")}`,
+      });
+      setTimeout(() => setFeedback(null), 2500);
+      return;
+    }
 
     if (isUnlocked) {
       if (category === "partner") {
@@ -245,26 +315,35 @@ export default function InGameShopModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[280] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md pointer-events-auto">
+        <div
+          className="fixed inset-0 z-[280] flex items-center justify-center pt-14 pb-6 px-3 sm:p-4 bg-black/85 backdrop-blur-md pointer-events-auto"
+          style={{ paddingTop: "max(3.5rem, calc(env(safe-area-inset-top, 0px) + 2.5rem))" }}
+        >
           <motion.div
             initial={{ opacity: 0, scale: 0.94, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 20 }}
-            className="w-full max-w-lg bg-[#050b18] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.2)] flex flex-col max-h-[88vh] overflow-hidden relative"
+            className="w-full max-w-lg bg-[#050b18] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.2)] flex flex-col max-h-[80vh] overflow-hidden relative"
           >
             {/* HEADER */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-[#030611]">
-              <div>
-                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-widest">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-[#030611] gap-2">
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-widest truncate">
                   🛒 {t("prof_shop_title")}
                 </h2>
-                <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                <p className="text-[9px] text-slate-400 font-bold mt-0.5 truncate">
                   {t("prof_shop_sub")}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-amber-950/50 border border-amber-500/40 px-2.5 py-1 rounded-lg">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <div className="flex items-center gap-1 bg-purple-950/50 border border-purple-500/40 px-2 py-1 rounded-lg">
+                  <span className="text-[9px] font-bold text-purple-300 uppercase">
+                    {t("shop_your_score")}
+                  </span>
+                  <span className="text-xs font-black text-white">{currentScore}</span>
+                </div>
+                <div className="flex items-center gap-1 bg-amber-950/50 border border-amber-500/40 px-2.5 py-1 rounded-lg">
                   <span className="text-xs">🪙</span>
                   <span className="text-xs font-black text-amber-400">{tacPoints} TP</span>
                 </div>
@@ -393,9 +472,16 @@ export default function InGameShopModal({
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col gap-2.5 custom-scrollbar">
               {currentItems.map((item) => {
                 const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
+                const meetsScoreReq = checkItemRequirement(item, currentScore);
                 const isEquipped = currentEquippedId === item.id && isUnlocked;
                 const isSelected = currentPreviewId === item.id;
                 const canAfford = tacPoints >= item.price;
+                const scoreProgress =
+                  item.reqScore > 0 ? Math.min(100, Math.round((currentScore / item.reqScore) * 100)) : 100;
+                
+                const details = getUpgradedItemDetails(item, itemProgressMap);
+                const xpPct = details.isMaxLevel ? 100 : details.reqXp > 0 ? Math.min(100, Math.round((details.xp / details.reqXp) * 100)) : 0;
+                const canAffordUpgrade = tacPoints >= details.upgradeCostTp;
 
                 return (
                   <div
@@ -406,19 +492,36 @@ export default function InGameShopModal({
                         ? "bg-cyan-950/30 border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                         : isSelected
                           ? "bg-slate-900/90 border-amber-500/60"
-                          : "bg-[#030611]/90 border-slate-800 hover:border-slate-700"
+                          : !meetsScoreReq
+                            ? "bg-[#030611]/60 border-slate-800/60 opacity-80"
+                            : "bg-[#030611]/90 border-slate-800 hover:border-slate-700"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs sm:text-sm font-black text-white">
-                            {item.name}
+                            {details.displayName}
                           </span>
                           <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
                             {item.badge}
                           </span>
+
+                          {item.reqScore > 0 && (
+                            <span
+                              className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                                meetsScoreReq
+                                  ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30"
+                                  : "bg-red-950/50 text-red-400 border-red-500/40"
+                              }`}
+                            >
+                              {meetsScoreReq
+                                ? `✓ ${t("shop_req_score_label")} ${item.reqScore} TacScore`
+                                : `${t("shop_locked_by_score")} ${item.reqScore} TacScore`}
+                            </span>
+                          )}
                         </div>
+
                         {activeCategory === "partner" && item.perk && (
                           <span className="text-[10px] text-slate-400 italic mt-0.5">
                             ⚡ {formatPartnerPerk(item.id, lang, item.perk)}
@@ -426,36 +529,89 @@ export default function InGameShopModal({
                         )}
                       </div>
 
-                      {/* MODIFIER PILLS */}
-                      <div className="flex items-center gap-1 shrink-0 text-[9px] font-black">
-                        {item.modifiers.smash !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${item.modifiers.smash > 0 ? "bg-orange-950/60 text-orange-400" : "bg-red-950/40 text-red-400"}`}>
-                            PWR {item.modifiers.smash > 0 ? `+${item.modifiers.smash}` : item.modifiers.smash}
+                      {/* MODIFIER PILLS (EFFEKTIVE WERTE) */}
+                      <div className="flex items-center gap-1 shrink-0 text-[9px] font-black flex-wrap justify-end">
+                        {details.effectiveModifiers.smash !== 0 && (
+                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.smash > 0 ? "bg-orange-950/60 text-orange-400" : "bg-red-950/40 text-red-400"}`}>
+                            PWR {details.effectiveModifiers.smash > 0 ? `+${details.effectiveModifiers.smash}` : details.effectiveModifiers.smash}
                           </span>
                         )}
-                        {item.modifiers.control !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${item.modifiers.control > 0 ? "bg-cyan-950/60 text-cyan-400" : "bg-red-950/40 text-red-400"}`}>
-                            CTRL {item.modifiers.control > 0 ? `+${item.modifiers.control}` : item.modifiers.control}
+                        {details.effectiveModifiers.control !== 0 && (
+                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.control > 0 ? "bg-cyan-950/60 text-cyan-400" : "bg-red-950/40 text-red-400"}`}>
+                            CTRL {details.effectiveModifiers.control > 0 ? `+${details.effectiveModifiers.control}` : details.effectiveModifiers.control}
                           </span>
                         )}
-                        {item.modifiers.defense !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${item.modifiers.defense > 0 ? "bg-emerald-950/60 text-emerald-400" : "bg-red-950/40 text-red-400"}`}>
-                            DEF {item.modifiers.defense > 0 ? `+${item.modifiers.defense}` : item.modifiers.defense}
+                        {details.effectiveModifiers.defense !== 0 && (
+                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.defense > 0 ? "bg-emerald-950/60 text-emerald-400" : "bg-red-950/40 text-red-400"}`}>
+                            DEF {details.effectiveModifiers.defense > 0 ? `+${details.effectiveModifiers.defense}` : details.effectiveModifiers.defense}
                           </span>
                         )}
-                        {item.modifiers.agility !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${item.modifiers.agility > 0 ? "bg-purple-950/60 text-purple-400" : "bg-red-950/40 text-red-400"}`}>
-                            AGI {item.modifiers.agility > 0 ? `+${item.modifiers.agility}` : item.modifiers.agility}
+                        {details.effectiveModifiers.agility !== 0 && (
+                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.agility > 0 ? "bg-purple-950/60 text-purple-400" : "bg-red-950/40 text-red-400"}`}>
+                            AGI {details.effectiveModifiers.agility > 0 ? `+${details.effectiveModifiers.agility}` : details.effectiveModifiers.agility}
                           </span>
                         )}
                       </div>
                     </div>
 
+                    {/* WENN GEKAUFT: DIREKTER XP-BALKEN & +1 UPGRADE BUTTON IM SHOP */}
+                    {isUnlocked && (
+                      <div className="mt-1 pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
+                          <span className={details.canUpgrade ? "text-amber-400 animate-pulse" : "text-slate-400"}>
+                            {details.isMaxLevel ? t("rpg_max_level") : details.canUpgrade ? t("rpg_ready_upgrade") : `${t("rpg_xp_label")} (+${details.level} ➔ +${details.level + 1})`}
+                          </span>
+                          {!details.isMaxLevel && (
+                            <span className="text-cyan-300">{details.xp} / {details.reqXp} {t("rpg_xp_pts")}</span>
+                          )}
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                          <div
+                            className={`h-full transition-all duration-500 ${details.isMaxLevel ? "bg-gradient-to-r from-amber-400 to-yellow-300" : details.canUpgrade ? "bg-gradient-to-r from-amber-500 to-emerald-400" : "bg-gradient-to-r from-cyan-600 to-purple-500"}`}
+                            style={{ width: `${xpPct}%` }}
+                          />
+                        </div>
+
+                        {!details.isMaxLevel && details.canUpgrade && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpgradeItem(item);
+                            }}
+                            className={`w-full mt-1 py-1.5 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 ${
+                              canAffordUpgrade
+                                ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-[0_0_10px_rgba(245,158,11,0.4)]"
+                                : "bg-slate-800 text-amber-400/70 border border-amber-500/30"
+                            }`}
+                          >
+                            <span>{t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP 🪙)</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {!meetsScoreReq && item.reqScore > 0 && (
+                      <div className="bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+                        <div className="flex justify-between text-[8px] font-bold text-slate-400 mb-1">
+                          <span>TacScore</span>
+                          <span className="text-red-400">
+                            {currentScore} / {item.reqScore} ({scoreProgress}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-1 bg-slate-950 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-red-500 to-amber-500 transition-all"
+                            style={{ width: `${scoreProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* BUTTON ZEILE */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                         {isUnlocked ? (
-                          <span className="text-emerald-400">✓ Freigeschaltet</span>
+                          <span className="text-emerald-400">{t("shop_unlocked_badge")}</span>
                         ) : (
                           <span className="text-amber-400">🪙 {item.price} TP</span>
                         )}
@@ -465,6 +621,16 @@ export default function InGameShopModal({
                         <span className="px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[9px] font-black uppercase tracking-widest">
                           {t("prof_equipped")}
                         </span>
+                      ) : !meetsScoreReq ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEquipOrBuy(item, activeCategory);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-900 text-red-400/90 border border-red-900/40 cursor-not-allowed"
+                        >
+                          {`${t("shop_locked_by_score")} ${item.reqScore} TacScore`}
+                        </button>
                       ) : (
                         <button
                           disabled={isBuying || (!isUnlocked && !canAfford)}

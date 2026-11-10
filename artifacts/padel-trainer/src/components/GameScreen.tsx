@@ -5,7 +5,7 @@ import { Haptics } from "@capacitor/haptics";
 import { supabase } from '../lib/supabase';
 
 import { 
-  SHOT_TYPES, TurnResult, PlayerId, GamePhase, Command, Scenario,
+  SHOT_TYPES, TurnResult, GamePhase, Command, Scenario,
   getServerInfo, evaluatePlayerShot, calculateSmartAITurn 
 } from "../engine/GameLogic";
 import { soundManager } from '../lib/SoundManager';
@@ -18,7 +18,11 @@ import InGameShopModal from "./InGameShopModal";
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
 import { TOURNAMENTS } from "../engine/Tournaments";
-import { calculateLoadoutStats, SHOP_PARTNERS } from "../lib/loadout";
+import {
+  calculateLoadoutStats,
+  SHOP_PARTNERS,
+  addMatchXpToEquippedLoadout,
+} from "../lib/loadout";
 import { useTranslation, formatShotName } from "../lib/i18n";
 
 // --- HILFSFUNKTION: Partnernamen aus Shop (oder altem KI-Profil) sauber auflösen ---
@@ -41,6 +45,7 @@ const getFocusShotType = (shotId?: string | null): string => {
   const s = (shotId || localStorage.getItem("tacpadel_power_shot") || "smash").toLowerCase();
   if (s.includes("bandeja")) return "BANDEJA";
   if (s.includes("vibora")) return "VIBORA";
+  if (s.includes("defense") || s.includes("block")) return "BLOCK";
   return "SMASH";
 };
 
@@ -135,6 +140,7 @@ export default function GameScreen() {
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
+  const [earnedItemXp, setEarnedItemXp] = useState<number>(0);
 
   const [retryUsed, setRetryUsed] = useState<boolean>(false);
   const [isProcessingRetry, setIsProcessingRetry] = useState<boolean>(false);
@@ -647,6 +653,7 @@ export default function GameScreen() {
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
     setEarnedTP(0);
+    setEarnedItemXp(0);
 
     if (isRematch) {
       setRetryUsed(true);
@@ -742,6 +749,7 @@ export default function GameScreen() {
     setGameOver(false);
     setShowGameOverUI(false);
     setEarnedTP(0);
+    setEarnedItemXp(0);
     
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
@@ -1517,6 +1525,16 @@ export default function GameScreen() {
       setGameOver(true); 
       setPhase("player_planning"); 
       
+      // =========================================================================
+      // ⚡ RPG ITEM-XP VERGABE: Gewonnene Punkte = XP für ausgerüstete Items!
+      // =========================================================================
+      const xpResult = addMatchXpToEquippedLoadout(newPlayerScore);
+      setEarnedItemXp(xpResult.xpGained);
+      setActiveLoadout(calculateLoadoutStats());
+      if (xpResult.newlyReadyToUpgrade.length > 0) {
+        showFlash(`⚡ +${xpResult.xpGained} XP – ${t("rpg_ready_upgrade")}`, "text-amber-400", 3500);
+      }
+
       setTimeout(() => {
         setShowGameOverUI(true); 
       }, 4000);
@@ -1552,7 +1570,8 @@ export default function GameScreen() {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
-              
+              await supabase.auth.updateUser({ data: { item_progress: xpResult.progressMap } }).catch(() => {});
+
               const { data: statsData } = await supabase.from("user_stats").select("tac_points").eq("id", session.user.id).single();
               let updatedTp = statsData?.tac_points || parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
               
@@ -1637,6 +1656,7 @@ export default function GameScreen() {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
+              await supabase.auth.updateUser({ data: { item_progress: xpResult.progressMap } }).catch(() => {});
               await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
               const matchResult = playerWon ? "win" : "loss";
               
@@ -1741,7 +1761,6 @@ export default function GameScreen() {
          const aiTargetScore = activeTournamentId 
              ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
              : tacScore;
-         // ⚡ AGILITY-BONUS AUCH BEI DER REGENERATION ZWISCHEN ZWEI PUNKTEN
          const currentLoadout = calculateLoadoutStats();
          const playerRegenPerPoint = Number(
            (1 / currentLoadout.matchModifiers.staminaDrainMultiplier).toFixed(1)
@@ -2011,6 +2030,7 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
+      {/* PROFI BANNER (Sitzt per absolute top-24 immer sauber im Spielfeld-Fenster) */}
       <AnimatePresence>
         {showProfiBanner && (
           <motion.div
@@ -2018,7 +2038,7 @@ export default function GameScreen() {
             animate={{ x: 0, skewX: 0, opacity: 1 }}
             exit={{ x: -800, skewX: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }}
-            className="fixed top-44 left-0 right-0 z-[140] pointer-events-none flex justify-center px-4"
+            className="absolute top-24 left-0 right-0 z-[140] pointer-events-none flex justify-center px-4"
           >
             <div className="p-[2px] bg-gradient-to-r from-purple-500 via-[#050b14] to-fuchsia-500 shadow-[0_10px_30px_rgba(168,85,247,0.4)]" style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
               <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
@@ -2043,6 +2063,7 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
+      {/* TRON FLASH BANNER (Sitzt per absolute top-6 immer exakt über dem Scoreboard) */}
       <AnimatePresence>
         {flashMsg && !isMenuOpen && (() => {
           let rawText = flashMsg.text;
@@ -2067,7 +2088,7 @@ export default function GameScreen() {
           else if (isWarning) { leftGlow = "from-amber-400"; iconColor = "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]"; line1Color = "text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]"; }
 
           return (
-            <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="fixed top-28 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
+            <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="absolute top-6 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
               <div className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`} style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
                 <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
                   <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
@@ -2112,13 +2133,22 @@ export default function GameScreen() {
                   </h2>
                   <p className="text-slate-300 text-lg font-bold">{t("game_final_score_tb")} {playerScore} : {aiScore}</p>
                   
-                  <div className="mt-4 flex justify-center">
+                  <div className="mt-4 flex flex-wrap justify-center gap-3">
                     <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
                       <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{t("game_match_duration")}</span>
                       <span className="text-xl text-white font-black tracking-wider">
                         ⏱️ {formatMatchTime(matchSeconds)}
                       </span>
                     </div>
+
+                    {earnedItemXp > 0 && (
+                      <div className="bg-cyan-950/40 border border-cyan-500/40 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
+                        <span className="text-[10px] text-cyan-400 uppercase tracking-widest font-black">{t("rpg_xp_label")}</span>
+                        <span className="text-xl text-white font-black tracking-wider">
+                          ⚡ +{earnedItemXp} XP
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {activeTournamentId && playerScore < aiScore && getContinueFee(activeTournamentId, activeTournamentRound) !== null && !retryUsed && (

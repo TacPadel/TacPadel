@@ -1057,14 +1057,21 @@ export const TRANSLATIONS = {
     prof_racket_sec: "Schläger-Inventar",
     prof_shot_sec: "Spezial-Schlag-Inventar",
     prof_unlocked_at: "Freischaltung ab TacScore:",
-    // --- IN DEN BLOCK "de:" UNTER prof_unlocked_at EINFÜGEN ---
+    // --- IN DEN BLOCK "de:" EINFÜGEN ---
     shop_your_score: "TacScore:",
     shop_req_score_label: "Ab",
     shop_locked_by_score: "🔒 Ab",
     shop_err_score_low_1: "Noch gesperrt! Du benötigst mindestens",
     shop_err_score_low_2: "TacScore für dieses Upgrade.",
     shop_unlocked_badge: "✓ Freigeschaltet",
-    // --- IN DEN BLOCK "de:" UNTER shop_unlocked_badge EINFÜGEN ---
+    rpg_xp_label: "Meisterung (XP)",
+    rpg_xp_pts: "Pkt.",
+    rpg_max_level: "👑 MAX LEVEL (+5)",
+    rpg_ready_upgrade: "⚡ BEREIT FÜR UPGRADE!",
+    rpg_upgrade_btn: "⬆️ Upgrade auf",
+    rpg_upgrade_success: "erfolgreich aufgewertet auf",
+    rpg_need_more_xp_1: "Spiele noch",
+    rpg_need_more_xp_2: "Punkte mit diesem Item für das nächste Upgrade!",
     game_ai_exhausted_title: "ERSCHÖPFT",
     game_ai_exhausted_msg: "pfeift aus dem letzten Loch und schlägt den Ball kraftlos ins Netz!",
     game_reflex_save_title: "🛡️ REFLEX-SAVE",
@@ -1088,15 +1095,6 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". Abfangen ist beim Return verboten!",
     game_exhausted_net_title: "❌ KRAFTLOS IM NETZ",
     game_agility_save_badge: "👟 AGILITY SAVE",
-    // --- IN DEN BLOCK "de:" UNTER game_agility_save_badge EINFÜGEN ---
-    rpg_xp_label: "Meisterung (XP)",
-    rpg_xp_pts: "Pkt.",
-    rpg_max_level: "👑 MAX LEVEL (+5)",
-    rpg_ready_upgrade: "⚡ BEREIT FÜR UPGRADE!",
-    rpg_upgrade_btn: "⬆️ Upgrade auf",
-    rpg_upgrade_success: "erfolgreich aufgewertet auf",
-    rpg_need_more_xp_1: "Spiele noch",
-    rpg_need_more_xp_2: "Punkte mit diesem Item für das nächste Upgrade!",
   },
 
   en: {
@@ -1986,14 +1984,21 @@ export const TRANSLATIONS = {
     prof_racket_sec: "Racket Inventory",
     prof_shot_sec: "Special Shot Inventory",
     prof_unlocked_at: "Unlocked at TacScore:",
-    // --- IN DEN BLOCK "en:" UNTER prof_unlocked_at EINFÜGEN ---
+   // --- IN DEN BLOCK "en:" EINFÜGEN ---
     shop_your_score: "TacScore:",
     shop_req_score_label: "Req.",
     shop_locked_by_score: "🔒 Req.",
     shop_err_score_low_1: "Still locked! You need at least",
     shop_err_score_low_2: "TacScore for this upgrade.",
     shop_unlocked_badge: "✓ Unlocked",
-    // --- IN DEN BLOCK "en:" UNTER shop_unlocked_badge EINFÜGEN ---
+    rpg_xp_label: "Mastery (XP)",
+    rpg_xp_pts: "Pts",
+    rpg_max_level: "👑 MAX LEVEL (+5)",
+    rpg_ready_upgrade: "⚡ READY TO UPGRADE!",
+    rpg_upgrade_btn: "⬆️ Upgrade to",
+    rpg_upgrade_success: "successfully upgraded to",
+    rpg_need_more_xp_1: "Win",
+    rpg_need_more_xp_2: "more points with this item for the next upgrade!",
     game_ai_exhausted_title: "EXHAUSTED",
     game_ai_exhausted_msg: "is completely out of breath and hits a weak ball into the net!",
     game_reflex_save_title: "🛡️ REFLEX SAVE",
@@ -2017,15 +2022,6 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". Poaching on the return is not allowed!",
     game_exhausted_net_title: "❌ NO STAMINA - NET ERROR",
     game_agility_save_badge: "👟 AGILITY SAVE",
-    // --- IN DEN BLOCK "en:" UNTER game_agility_save_badge EINFÜGEN ---
-    rpg_xp_label: "Mastery (XP)",
-    rpg_xp_pts: "Pts",
-    rpg_max_level: "👑 MAX LEVEL (+5)",
-    rpg_ready_upgrade: "⚡ READY TO UPGRADE!",
-    rpg_upgrade_btn: "⬆️ Upgrade to",
-    rpg_upgrade_success: "successfully upgraded to",
-    rpg_need_more_xp_1: "Win",
-    rpg_need_more_xp_2: "more points with this item for the next upgrade!",
   },
 
   es: {
@@ -2915,14 +2911,21 @@ export const TRANSLATIONS = {
     prof_racket_sec: "Inventario de Palas",
     prof_shot_sec: "Inventario de Golpes Especiales",
     prof_unlocked_at: "Desbloqueo a partir de TacScore:",
-    // --- IN DEN BLOCK "es:" UNTER prof_unlocked_at EINFÜGEN ---
+    // --- IN DEN BLOCK "es:" EINFÜGEN ---
     shop_your_score: "TacScore:",
     shop_req_score_label: "Req.",
     shop_locked_by_score: "🔒 Req.",
     shop_err_score_low_1: "¡Todavía bloqueado! Necesitas al menos",
     shop_err_score_low_2: "TacScore para esta mejora.",
     shop_unlocked_badge: "✓ Desbloqueado",
-    // --- IN DEN BLOCK "es:" UNTER shop_unlocked_badge EINFÜGEN ---
+    rpg_xp_label: "Maestría (XP)",
+    rpg_xp_pts: "Pts",
+    rpg_max_level: "👑 NIVEL MÁX (+5)",
+    rpg_ready_upgrade: "⚡ ¡LISTO PARA MEJORAR!",
+    rpg_upgrade_btn: "⬆️ Mejorar a",
+    rpg_upgrade_success: "mejorado con éxito a",
+    rpg_need_more_xp_1: "¡Gana",
+    rpg_need_more_xp_2: "puntos más con este objeto para la siguiente mejora!",
     game_ai_exhausted_title: "AGOTADO",
     game_ai_exhausted_msg: "¡está al límite físicamente y deja la bola sin fuerza en la red!",
     game_reflex_save_title: "🛡️ SALVADA REFLEJO",
@@ -2946,16 +2949,6 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". ¡No vale interceptar el resto!",
     game_exhausted_net_title: "❌ SIN ENERGÍA EN LA RED",
     game_agility_save_badge: "👟 AHORRO AGILIDAD",
-    // --- IN DEN BLOCK "es:" UNTER game_agility_save_badge EINFÜGEN ---
-    rpg_xp_label: "Maestría (XP)",
-    rpg_xp_pts: "Pts",
-    rpg_max_level: "👑 NIVEL MÁX (+5)",
-    rpg_ready_upgrade: "⚡ ¡LISTO PARA MEJORAR!",
-    rpg_upgrade_btn: "⬆️ Mejorar a",
-    rpg_upgrade_success: "mejorado con éxito a",
-    rpg_need_more_xp_1: "¡Gana",
-    rpg_need_more_xp_2: "puntos más con este objeto para la siguiente mejora!",
-    
   },
 } as const;
 

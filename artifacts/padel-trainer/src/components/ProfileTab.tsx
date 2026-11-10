@@ -4,12 +4,17 @@ import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three'; 
 
-// --- Imports für Loadout-Shop, Admin, 3D & i18n ---
+// --- Imports für Loadout-Shop, RPG-Upgrades, Admin, 3D & i18n ---
 import {
   SHOP_PARTNERS,
   SHOP_RACKETS,
   SHOP_SHOTS,
   ShopItem,
+  ItemProgressMap,
+  getSavedItemProgress,
+  saveItemProgress,
+  getUpgradedItemDetails,
+  performItemUpgrade,
   calculateLoadoutStats,
 } from '../lib/loadout';
 import { useTranslation, formatPartnerPerk } from '../lib/i18n';
@@ -274,7 +279,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
   const [shotId, setShotId] = useState(() => localStorage.getItem("tacpadel_power_shot") || "smash");
 
-  // --- FEST AUSGERÜSTETE IDS & FREIGESCHALTETE SHOP-ITEMS ---
+  // --- FEST AUSGERÜSTETE IDS, FREIGESCHALTETE SHOP-ITEMS & RPG-UPGRADE-PROGRESS ---
   const [tacPoints, setTacPoints] = useState<number>(() => {
     const saved = localStorage.getItem("tacpadel_tac_points");
     return saved ? parseInt(saved, 10) : 0;
@@ -292,6 +297,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       return ["partner_rookie", "racket_starter", "smash"];
     }
   });
+  const [itemProgressMap, setItemProgressMap] = useState<ItemProgressMap>(() => getSavedItemProgress());
+
   const [equippedPartner, setEquippedPartner] = useState<string>(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id")));
   const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
   const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
@@ -299,7 +306,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   // --- State für das InGameShopModal ---
   const [isShopModalOpen, setIsShopModalOpen] = useState(false);
 
-  // Synchronisiert Inventar & Ausrüstung sofort nach Einkäufen im InGameShopModal
+  // Synchronisiert Inventar, Ausrüstung & RPG-Progress nach Einkäufen/Upgrades
   const syncLoadoutFromStorage = useCallback(() => {
     try {
       const savedUnlocked = localStorage.getItem("tacpadel_unlocked_items");
@@ -312,6 +319,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
     const savedTp = localStorage.getItem("tacpadel_tac_points");
     if (savedTp) setTacPoints(parseInt(savedTp, 10));
+
+    setItemProgressMap(getSavedItemProgress());
 
     const nextPartner = normalizePartnerId(localStorage.getItem("tacpadel_partner_id"));
     const nextRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
@@ -431,6 +440,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         .maybeSingle();
 
       let trueScore = currentScore; 
+
+      // Lade ggf. in user_metadata gespeicherten RPG-Fortschritt und führe ihn mit localStorage zusammen
+      if (user?.user_metadata?.item_progress) {
+        const localProg = getSavedItemProgress();
+        const remoteProg = user.user_metadata.item_progress as ItemProgressMap;
+        const mergedProg: ItemProgressMap = { ...remoteProg, ...localProg };
+        Object.keys(remoteProg).forEach((k) => {
+          const r = remoteProg[k];
+          const l = localProg[k];
+          if (!l || r.level > l.level || (r.level === l.level && r.xp > l.xp)) {
+            mergedProg[k] = r;
+          }
+        });
+        saveItemProgress(mergedProg);
+        setItemProgressMap(mergedProg);
+      }
 
       if (profileData) {
         if (profileData.display_name) {
@@ -602,10 +627,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
-  // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE AUS src/lib/loadout.ts ---
+  // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE (INKL. +1 BIS +5 UPGRADES) ---
   const loadoutStats = useMemo(
-    () => calculateLoadoutStats(partnerId, racketId, shotId),
-    [partnerId, racketId, shotId]
+    () => calculateLoadoutStats(partnerId, racketId, shotId, itemProgressMap),
+    [partnerId, racketId, shotId, itemProgressMap]
   );
 
   const renderStatDiff = (diff: number) => {
@@ -617,7 +642,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     );
   };
 
-  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR (NUR BEREITS FREIGESCHALTETE ITEMS) ---
+  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR ---
   const handleEquipItem = async (item: ShopItem, category: 'partner' | 'racket' | 'shot') => {
     if (category === 'partner') {
       setEquippedPartner(item.id);
@@ -635,8 +660,145 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       localStorage.setItem("tacpadel_power_shot", item.id);
       await supabase.from('user_stats').update({ equipped_shot: item.id }).eq('id', user.id);
     }
-    setMessage({ type: 'success', text: `${item.name} ${t("prof_msg_equipped")}` });
+    const details = getUpgradedItemDetails(item, itemProgressMap);
+    setMessage({ type: 'success', text: `${details.displayName} ${t("prof_msg_equipped")}` });
     setTimeout(() => setMessage(null), 2000);
+  };
+
+  // --- RPG "+1" UPGRADE-LOGIK DIREKT IM INVENTAR ---
+  const handleUpgradeItem = async (item: ShopItem) => {
+    const details = getUpgradedItemDetails(item, itemProgressMap);
+
+    if (details.isMaxLevel) return;
+
+    if (!details.canUpgrade) {
+      const missingXp = Math.max(1, details.reqXp - details.xp);
+      setMessage({
+        type: 'error',
+        text: `${t("rpg_need_more_xp_1")} ${missingXp} ${t("rpg_need_more_xp_2")}`,
+      });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+
+    if (tacPoints < details.upgradeCostTp) {
+      setMessage({
+        type: 'error',
+        text: `${t("prof_msg_need_tp_1")} ${details.upgradeCostTp - tacPoints} ${t("prof_msg_need_tp_2")}`,
+      });
+      setTimeout(() => setMessage(null), 2500);
+      return;
+    }
+
+    const res = performItemUpgrade(item.id, tacPoints);
+    if (!res.success) return;
+
+    setTacPoints(res.newTacPoints);
+    setItemProgressMap({ ...res.updatedProgressMap });
+
+    if (user?.id) {
+      await supabase
+        .from('user_stats')
+        .update({ tac_points: res.newTacPoints })
+        .eq('id', user.id);
+      await supabase.auth
+        .updateUser({ data: { item_progress: res.updatedProgressMap } })
+        .catch(() => {});
+    }
+
+    setMessage({
+      type: 'success',
+      text: `⬆️ ${item.name} ${t("rpg_upgrade_success")} +${res.newLevel}!`,
+    });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  // Hilfs-Renderer für die XP-Leiste + "+1 Upgrade"-Button unter jedem ausgewählten Inventar-Item
+  const renderRpgUpgradeSection = (item: ShopItem) => {
+    const details = getUpgradedItemDetails(item, itemProgressMap);
+    const xpPct = details.isMaxLevel
+      ? 100
+      : details.reqXp > 0
+      ? Math.min(100, Math.round((details.xp / details.reqXp) * 100))
+      : 0;
+    const canAffordTp = tacPoints >= details.upgradeCostTp;
+    const mods = details.effectiveModifiers;
+
+    return (
+      <div className="mt-1.5 pt-2 border-t border-slate-800/80 flex flex-col gap-2">
+        {/* Aktuelle effektive Attribut-Pills (inkl. +X Upgrade-Bonus) */}
+        <div className="flex flex-wrap items-center gap-1 text-[8px] font-black">
+          {mods.smash !== 0 && (
+            <span className={`px-1.5 py-0.5 rounded ${mods.smash > 0 ? "bg-orange-950/60 text-orange-400 border border-orange-500/30" : "bg-red-950/40 text-red-400"}`}>
+              PWR {mods.smash > 0 ? `+${mods.smash}` : mods.smash}
+            </span>
+          )}
+          {mods.control !== 0 && (
+            <span className={`px-1.5 py-0.5 rounded ${mods.control > 0 ? "bg-cyan-950/60 text-cyan-400 border border-cyan-500/30" : "bg-red-950/40 text-red-400"}`}>
+              CTRL {mods.control > 0 ? `+${mods.control}` : mods.control}
+            </span>
+          )}
+          {mods.defense !== 0 && (
+            <span className={`px-1.5 py-0.5 rounded ${mods.defense > 0 ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30" : "bg-red-950/40 text-red-400"}`}>
+              DEF {mods.defense > 0 ? `+${mods.defense}` : mods.defense}
+            </span>
+          )}
+          {mods.agility !== 0 && (
+            <span className={`px-1.5 py-0.5 rounded ${mods.agility > 0 ? "bg-purple-950/60 text-purple-400 border border-purple-500/30" : "bg-red-950/40 text-red-400"}`}>
+              AGI {mods.agility > 0 ? `+${mods.agility}` : mods.agility}
+            </span>
+          )}
+        </div>
+
+        {/* XP-Balken */}
+        <div className="flex flex-col gap-1">
+          <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
+            <span className={details.canUpgrade ? "text-amber-400 animate-pulse" : "text-slate-400"}>
+              {details.isMaxLevel
+                ? t("rpg_max_level")
+                : details.canUpgrade
+                ? t("rpg_ready_upgrade")
+                : `${t("rpg_xp_label")} (Lvl +${details.level} ➔ +${details.level + 1})`}
+            </span>
+            {!details.isMaxLevel && (
+              <span className="text-cyan-300">
+                {details.xp} / {details.reqXp} {t("rpg_xp_pts")} ({xpPct}%)
+              </span>
+            )}
+          </div>
+          <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+            <div
+              className={`h-full transition-all duration-500 ${
+                details.isMaxLevel
+                  ? "bg-gradient-to-r from-amber-400 to-yellow-300"
+                  : details.canUpgrade
+                  ? "bg-gradient-to-r from-amber-500 via-orange-400 to-emerald-400"
+                  : "bg-gradient-to-r from-cyan-600 to-purple-500"
+              }`}
+              style={{ width: `${xpPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* "+1 Upgrade"-Button sobald XP voll sind (oder ausgegraute Vorschau) */}
+        {!details.isMaxLevel && (
+          <button
+            onClick={() => handleUpgradeItem(item)}
+            className={`w-full py-1.5 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
+              details.canUpgrade && canAffordTp
+                ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                : details.canUpgrade && !canAffordTp
+                ? "bg-slate-800 text-amber-400/70 border border-amber-500/30"
+                : "bg-slate-900/80 text-slate-500 border border-slate-800"
+            }`}
+          >
+            <span>
+              {t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP 🪙)
+            </span>
+          </button>
+        )}
+      </div>
+    );
   };
 
   const handleAutoSave = async () => {
@@ -1028,7 +1190,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
       {/* ========================================================= */}
-      {/* 2. STATS & GEAR INVENTAR (NUR GEKAUFTE / EIGENE ITEMS)    */}
+      {/* 2. STATS & GEAR INVENTAR (INKL. RPG +1 UPGRADES)          */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
@@ -1054,7 +1216,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="flex flex-col gap-3">
-              {/* 1. PARTNER-INVENTAR (NUR GEKAUFTE) */}
+              {/* 1. PARTNER-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1075,17 +1237,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {ownedPartners.map(p => (
-                    <option key={p.id} value={p.id}>
-                      ✓ {p.name} ({p.badge})
-                    </option>
-                  ))}
+                  {ownedPartners.map(p => {
+                    const d = getUpgradedItemDetails(p, itemProgressMap);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        ✓ {d.displayName} ({p.badge})
+                      </option>
+                    );
+                  })}
                 </select>
                 {selectedPartnerObj.perk && (
                   <span className="text-[10px] text-slate-400 italic">
                     ⚡ {formatPartnerPerk(selectedPartnerObj.id, lang, selectedPartnerObj.perk)}
                   </span>
                 )}
+
+                {renderRpgUpgradeSection(selectedPartnerObj)}
 
                 {equippedPartner !== partnerId && (
                   <button
@@ -1097,7 +1264,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 )}
               </div>
 
-              {/* 2. SCHLÄGER-INVENTAR (NUR GEKAUFTE) */}
+              {/* 2. SCHLÄGER-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1118,12 +1285,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   }} 
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {ownedRackets.map(r => (
-                    <option key={r.id} value={r.id}>
-                      ✓ {r.name} ({r.badge})
-                    </option>
-                  ))}
+                  {ownedRackets.map(r => {
+                    const d = getUpgradedItemDetails(r, itemProgressMap);
+                    return (
+                      <option key={r.id} value={r.id}>
+                        ✓ {d.displayName} ({r.badge})
+                      </option>
+                    );
+                  })}
                 </select>
+
+                {renderRpgUpgradeSection(selectedRacketObj)}
 
                 {equippedRacket !== racketId && (
                   <button
@@ -1135,7 +1307,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 )}
               </div>
 
-              {/* 3. SPEZIAL-SCHLAG-INVENTAR (NUR GEKAUFTE) */}
+              {/* 3. SPEZIAL-SCHLAG-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1156,12 +1328,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   }}
                   className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
                 >
-                  {ownedShots.map(s => (
-                    <option key={s.id} value={s.id}>
-                      ✓ {s.name} ({s.badge})
-                    </option>
-                  ))}
+                  {ownedShots.map(s => {
+                    const d = getUpgradedItemDetails(s, itemProgressMap);
+                    return (
+                      <option key={s.id} value={s.id}>
+                        ✓ {d.displayName} ({s.badge})
+                      </option>
+                    );
+                  })}
                 </select>
+
+                {renderRpgUpgradeSection(selectedShotObj)}
 
                 {equippedShot !== shotId && (
                   <button
