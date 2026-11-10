@@ -94,7 +94,7 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 pt-12 bg-background/90 backdrop-blur-md">
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -137,11 +137,11 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 pt-12 bg-background/90 backdrop-blur-md">
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-[#050b18] border border-cyan-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] max-w-lg w-full flex flex-col gap-6 relative overflow-hidden"
+        className="bg-[#050b18] border border-cyan-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] max-w-lg w-full max-h-[82vh] overflow-y-auto flex flex-col gap-6 relative"
       >
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-500" />
         
@@ -754,7 +754,6 @@ export default function App(): React.JSX.Element {
 
   const scenario = filteredScenarios[currentScenarioIndex] || filteredScenarios[0];
 
-  // Unterstützt mehrsprachige Szenario-Texte (sobald Scenarios.ts übersetzt ist)
   const scenarioDescription =
     (lang === "en" && (scenario as any)?.description_en) ||
     (lang === "es" && (scenario as any)?.description_es) ||
@@ -1015,21 +1014,21 @@ export default function App(): React.JSX.Element {
   const isIOS = Capacitor.getPlatform() === "ios";
 
   return (
-  <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
+  <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans relative">
     
-    {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS (iOS & Android Store-Build) */}
+    {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS (Kompakt auf 24px für Android, ohne z-50 Blockade) */}
     {isNative && (
       <div 
-        className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-50"
+        className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-10"
         style={{ 
           height: isIOS 
-            ? "max(env(safe-area-inset-top, 0px), 50px)" 
-            : "max(env(safe-area-inset-top, 0px), 38px)" 
+            ? "max(env(safe-area-inset-top, 0px), 44px)" 
+            : "max(env(safe-area-inset-top, 0px), 24px)" 
         }}
       />
     )}
 
-    <header className="w-full max-w-4xl flex justify-between items-center px-4 py-3 z-20 bg-background/50 backdrop-blur-md border-b border-border/40">
+    <header className="w-full max-w-4xl flex justify-between items-center px-4 py-2.5 z-10 bg-background/50 backdrop-blur-md border-b border-border/40 shrink-0">
       <span className="font-black text-lg tracking-wider text-primary">TacPadel</span>
       <div>
         {user ? (
@@ -1099,7 +1098,7 @@ export default function App(): React.JSX.Element {
       {/* --- UNLOCK MODAL --- */}
       <AnimatePresence>
         {showUnlockModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pt-12 bg-background/80 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1148,10 +1147,10 @@ export default function App(): React.JSX.Element {
         )}
       </AnimatePresence>
         
-      {/* Tech-Shell */}
-      <div className="flex-grow w-full tech-shell flex flex-col items-center p-4 pb-32 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent z-10">
+      {/* Tech-Shell (Ohne z-10 Stacking-Trap, damit Modals & Banner frei über dem Header liegen können) */}
+      <div className="flex-grow w-full tech-shell flex flex-col items-center p-3 sm:p-4 pb-28 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent">
         
-        <div className="max-w-4xl w-full flex flex-col gap-6">
+        <div className="max-w-4xl w-full flex flex-col gap-4 sm:gap-6">
 
           <AnimatePresence mode="wait">
             
@@ -1809,13 +1808,13 @@ export default function App(): React.JSX.Element {
               <ProfileTab key="profile-page" user={user} setActiveTab={(t) => setActiveTab(t as Tab)} />
             )}
 
-            {/* GAME SCREEN */}
+            {/* GAME SCREEN (Ohne y-Transform, damit fixed-Modals und Banner nicht verschoben werden) */}
             {activeTab === "game" && (
               <motion.div
                 key="game"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
                 className="flex flex-col gap-4"
               >
@@ -1827,9 +1826,9 @@ export default function App(): React.JSX.Element {
             {(activeTab === "board" || activeTab === "taktik") && (
               <motion.div
                 key="board"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
                 className="flex flex-col gap-4"
               >
@@ -1847,7 +1846,7 @@ export default function App(): React.JSX.Element {
             )}
 
           </AnimatePresence>  
-        </div>    
+        </div>   
       </div>
       
       <Navigation activeTab={activeTab as any} setActiveTab={setActiveTab as any} />

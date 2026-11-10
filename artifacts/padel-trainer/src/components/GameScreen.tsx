@@ -43,10 +43,11 @@ const resolvePartnerDisplayName = (rawPartnerId?: string | null): string => {
 // Ordnet die Shop-ID des Spezial-Fokus dem echten Schlag-Typ im Spiel zu
 const getFocusShotType = (shotId?: string | null): string => {
   const s = (shotId || localStorage.getItem("tacpadel_power_shot") || "smash").toLowerCase();
+  if (s.includes("volley") || s === "kick_x3") return "VOLLEY";
+  if (s.includes("chiquita") || s === "vibora") return "CHIQUITA";
   if (s.includes("bandeja")) return "BANDEJA";
-  if (s.includes("vibora")) return "VIBORA";
   if (s.includes("defense") || s.includes("block")) return "BLOCK";
-  return "SMASH";
+  return ""; // Klassik-Technik hat keinen Fokus-Boost
 };
 
 // --- HAPTICS: Kräftiger, synchroner Impuls bei Punktgewinn ---

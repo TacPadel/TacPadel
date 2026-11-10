@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { SCENARIOS } from "./Scenarios";
 import { supabase } from "../lib/supabase";
@@ -38,6 +39,8 @@ export default function DailyChallengeModal({
   onRewardEarned,
 }: DailyChallengeModalProps) {
   const { lang, t } = useTranslation();
+  const isNative = Capacitor.isNativePlatform();
+  const isIOS = Capacitor.getPlatform() === "ios";
 
   const scenario = useMemo(() => getDailyScenario(), []);
   const todayStr = getTodayDateString();
@@ -151,7 +154,21 @@ export default function DailyChallengeModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] h-[100dvh] w-screen bg-[#02050d]/95 backdrop-blur-xl flex flex-col items-center justify-between p-2 sm:p-4 overflow-hidden select-none">
+    <div
+      className="fixed inset-0 z-[300] h-[100dvh] w-screen bg-[#02050d]/95 backdrop-blur-xl flex flex-col items-center justify-between px-2.5 sm:px-4 overflow-hidden select-none"
+      style={{
+        paddingTop: isNative
+          ? isIOS
+            ? "max(env(safe-area-inset-top, 0px), 52px)"
+            : "max(env(safe-area-inset-top, 0px), 38px)"
+          : "max(env(safe-area-inset-top, 0px), 12px)",
+        paddingBottom: isNative
+          ? isIOS
+            ? "max(env(safe-area-inset-bottom, 0px), 24px)"
+            : "max(env(safe-area-inset-bottom, 0px), 20px)"
+          : "max(env(safe-area-inset-bottom, 0px), 12px)",
+      }}
+    >
       <div className="w-full max-w-4xl h-full flex flex-col gap-2 sm:gap-3">
         
         {/* KOMPAKTER KOMBI-HEADER INKL. BRIEFING */}
@@ -309,6 +326,13 @@ export default function DailyChallengeModal({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[310] bg-[#050b18] border-t border-amber-500/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)]"
+            style={{
+              paddingBottom: isNative
+                ? isIOS
+                  ? "max(env(safe-area-inset-bottom, 0px), 28px)"
+                  : "max(env(safe-area-inset-bottom, 0px), 24px)"
+                : "24px",
+            }}
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-black tracking-widest text-amber-400 uppercase">
@@ -318,7 +342,7 @@ export default function DailyChallengeModal({
                 {t("daily_close")}
               </button>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pb-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pb-2">
               {SHOTS.map((shot) => (
                 <button
                   key={shot}

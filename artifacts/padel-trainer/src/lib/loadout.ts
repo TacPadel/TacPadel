@@ -11,7 +11,7 @@ export interface ShopItem {
   reqScore: number;
   badge: string;
   perk?: string;
-  shotType?: string;
+  shotType?: string; // Welcher Schlag im Match den Fokus-Bonus erhält (undefined bei Klassik)
   modifiers: {
     smash: number;
     control: number;
@@ -35,11 +35,11 @@ export type ItemProgressMap = Record<string, ItemProgress>;
 export interface UpgradedItemDetails {
   item: ShopItem;
   level: number;
-  displayName: string; // z.B. "Diamond Striker +2"
+  displayName: string; // z.B. "Angriffs-Volley Fokus +2"
   xp: number;
-  reqXp: number;       // Benötigte XP für das nächste "+1"
-  upgradeCostTp: number; // Kleine TP-Gebühr für das nächste "+1"
-  canUpgrade: boolean; // true, wenn XP voll sind & Max-Level noch nicht erreicht
+  reqXp: number;
+  upgradeCostTp: number;
+  canUpgrade: boolean;
   isMaxLevel: boolean;
   effectiveModifiers: {
     smash: number;
@@ -47,6 +47,14 @@ export interface UpgradedItemDetails {
     defense: number;
     agility: number;
   };
+}
+
+// Migriert alte Schlag-IDs (kick_x3 / vibora) nahtlos auf die neuen Basis-Schläge (volley / chiquita)
+export function normalizeShotId(rawId?: string | null): string {
+  if (!rawId) return "smash";
+  if (rawId === "kick_x3") return "volley";
+  if (rawId === "vibora") return "chiquita";
+  return rawId;
 }
 
 // Dynamische XP-Schwelle für das nächste Level (Level 0->1 = 15 Punkte, 1->2 = 30 Punkte, etc.)
@@ -89,7 +97,7 @@ export function getEffectiveItemModifiers(item: ShopItem, level: number) {
 
   switch (item.focus) {
     case "power":
-      mods.smash += lvl; // +1 Hauptskill pro Level
+      mods.smash += lvl;
       mods.defense = Math.min(0, mods.defense + penaltyRelief);
       break;
     case "control":
@@ -105,7 +113,7 @@ export function getEffectiveItemModifiers(item: ShopItem, level: number) {
       mods.defense = Math.min(0, mods.defense + penaltyRelief);
       break;
     case "classic":
-      // Klassik-Items bekommen alle paar Stufen einen sanften +1 Allround-Bonus ohne Mali
+      // Klassik-Items bleiben komplett ohne Buffs (oder erhalten erst durch Upgrades minimale +1 Werte)
       if (lvl >= 1) mods.control += 1;
       if (lvl >= 2) mods.defense += 1;
       if (lvl >= 3) mods.agility += 1;
@@ -156,7 +164,7 @@ export function addMatchXpToEquippedLoadout(pointsWonByPlayer: number) {
 
   const pId = localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
   const rId = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-  const sId = localStorage.getItem("tacpadel_power_shot") || "smash";
+  const sId = normalizeShotId(localStorage.getItem("tacpadel_power_shot"));
 
   const equippedIds = [pId, rId, sId];
   const newlyReadyToUpgrade: string[] = [];
@@ -184,7 +192,7 @@ export function addMatchXpToEquippedLoadout(pointsWonByPlayer: number) {
   return {
     xpGained,
     progressMap,
-    newlyReadyToUpgrade, // IDs der Items, deren XP-Balken in diesem Match voll geworden ist
+    newlyReadyToUpgrade,
   };
 }
 
@@ -240,7 +248,6 @@ export function performItemUpgrade(
     };
   }
 
-  // Überschüssige XP aus dem letzten Match werden fair ins nächste Level übernommen!
   const carryOverXp = Math.max(0, current.xp - reqXp);
   const newLevel = current.level + 1;
   const newTacPoints = currentTacPoints - cost;
@@ -301,10 +308,10 @@ export const SHOP_PARTNERS: ShopItem[] = [
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Especialista ofensivo: busca definir fuerte en la red"
+        ? "Especialista ofensivo: presiona fuerte en la red"
         : l === "en"
-        ? "Offensive specialist: looks to finish hard at the net"
-        : "Offensiv-Spezialist: Sucht den harten Abschluss am Netz";
+        ? "Offensive specialist: applies heavy pressure at the net"
+        : "Offensiv-Spezialist: Macht hohen Druck am Netz";
     },
     modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
@@ -319,10 +326,10 @@ export const SHOP_PARTNERS: ShopItem[] = [
     get perk() {
       const l = getAppLanguage();
       return l === "es"
-        ? "Especialista en control: coloca globos y chiquitas precisas"
+        ? "Especialista en control: coloca globos y bandejas precisas"
         : l === "en"
-        ? "Control specialist: places pinpoint lobs and chiquitas"
-        : "Kontroll-Spezialistin: Spielt präzise Lobs und Chiquitas";
+        ? "Control specialist: places pinpoint lobs and bandejas"
+        : "Kontroll-Spezialistin: Spielt präzise Lobs und Bandejas";
     },
     modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
@@ -439,40 +446,66 @@ export const SHOP_RACKETS: ShopItem[] = [
 ];
 
 // =========================================================
-// 3. SPEZIAL-SCHLÄGE / SHOTS (1x Klassik + 4x Skill-Fokus)
+// 3. SCHLÄGE / SHOTS (1x Klassik + Volley, Bandeja, Block, Chiquita)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
+  // 0. KLASSIK (Keine Buffs, kein Spezial-Fokus)
   {
-    id: "smash",
-    name: "Klassik-Technik",
+    id: "smash", // Behält "smash" als technische Basis-ID für Spielstand-Kompatibilität
+    get name() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Técnica Clásica (Sin Buffs)"
+        : l === "en"
+        ? "Classic Technique (No Buffs)"
+        : "Klassik-Technik (Ohne Buffs)";
+    },
     focus: "classic",
     tier: 0,
     price: 0,
     reqScore: 0,
-    shotType: "DRIVE",
+    shotType: undefined,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
+
+  // 1. POWER-SCHLAG: VOLLEY (+2 Smash/Power, -2 Defense, -1 Control, 0 Agility)
   {
-    id: "kick_x3",
-    name: "Power-Smash Fokus",
+    id: "volley",
+    get name() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Enfoque Volea Ofensiva"
+        : l === "en"
+        ? "Power Volley Focus"
+        : "Power-Volley Fokus";
+    },
     focus: "power",
     tier: 1,
     price: 400,
     reqScore: 1500,
-    shotType: "SMASH",
+    shotType: "VOLLEY",
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Potencia" : "Power";
     },
     modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
+
+  // 2. CONTROL-SCHLAG: BANDEJA (+2 Control, -2 Smash, -1 Agility, 0 Defense)
   {
     id: "bandeja",
-    name: "Bandeja-Control Fokus",
+    get name() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Enfoque Bandeja Control"
+        : l === "en"
+        ? "Bandeja Control Focus"
+        : "Bandeja-Control Fokus";
+    },
     focus: "control",
     tier: 1,
     price: 400,
@@ -481,9 +514,18 @@ export const SHOP_SHOTS: ShopItem[] = [
     badge: "Control",
     modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
+
+  // 3. DEFENSE-SCHLAG: BLOCK & LOB (+2 Defense, -2 Smash, -1 Agility, 0 Control)
   {
     id: "shot_defense_wall",
-    name: "Reflex-Block & Lob Fokus",
+    get name() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Enfoque Bloqueo y Globo"
+        : l === "en"
+        ? "Reflex Block & Lob Focus"
+        : "Reflex-Block & Lob Fokus";
+    },
     focus: "defense",
     tier: 1,
     price: 400,
@@ -495,14 +537,23 @@ export const SHOP_SHOTS: ShopItem[] = [
     },
     modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
   },
+
+  // 4. AGILITY-SCHLAG: CHIQUITA (+2 Agility, -2 Defense, -1 Control, 0 Smash)
   {
-    id: "vibora",
-    name: "Tempo-Víbora Fokus",
+    id: "chiquita",
+    get name() {
+      const l = getAppLanguage();
+      return l === "es"
+        ? "Enfoque Chiquita Rápida"
+        : l === "en"
+        ? "Tempo Chiquita Focus"
+        : "Tempo-Chiquita Fokus";
+    },
     focus: "agility",
     tier: 1,
     price: 400,
     reqScore: 1500,
-    shotType: "VIBORA",
+    shotType: "CHIQUITA",
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Agilidad" : "Agility";
@@ -531,7 +582,8 @@ export function calculateLoadoutStats(
 ) {
   const pId = partnerId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
   const rId = racketId || localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-  const sId = shotId || localStorage.getItem("tacpadel_power_shot") || "smash";
+  const rawSId = shotId || localStorage.getItem("tacpadel_power_shot") || "smash";
+  const sId = normalizeShotId(rawSId);
 
   const basePartner = SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0];
   const baseRacket = SHOP_RACKETS.find((r) => r.id === rId) || SHOP_RACKETS[0];
@@ -559,7 +611,6 @@ export function calculateLoadoutStats(
     agility: 50 + diffs.agility,
   };
 
-  // Dynamisch skalierte Match-Multiplikatoren (inkl. "+1" bis "+5" Upgrades):
   const matchModifiers = {
     winnerChanceBonus: clamp((stats.smash - 50) * 0.006, -0.05, 0.14),
     errorReductionFactor: clamp(1 - (stats.control - 50) * 0.009, 0.80, 1.08),

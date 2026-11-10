@@ -851,13 +851,12 @@ export const evaluatePlayerShot = (
     perfectChance = Math.max(0, perfectChance + smashBonusPts);
   }
 
-  // 2. SPEZIAL-FOKUS SYNERGIE: +4% Extra-Winner-Chance & +4% Sicherheit beim ausgerüsteten Spezial-Schlag
-  const eqShotId = loadout.shot.id;
-  const isSignatureShot =
-    (eqShotId === "smash" && shot === "SMASH") ||
-    (eqShotId === "kick_x3" && shot === "SMASH") ||
-    (eqShotId === "bandeja" && shot === "BANDEJA") ||
-    (eqShotId === "vibora" && shot === "VIBORA");
+// 2. SPEZIAL-FOKUS SYNERGIE: +4% Extra-Winner-Chance & +4% Sicherheit beim ausgerüsteten Spezial-Schlag
+  const eqShotType = loadout.shot.shotType;
+  const isSignatureShot = Boolean(
+    eqShotType &&
+    (shot === eqShotType || (eqShotType === "BLOCK" && shot === "LOB"))
+  );
 
   if (isSignatureShot) {
     perfectChance += 4;

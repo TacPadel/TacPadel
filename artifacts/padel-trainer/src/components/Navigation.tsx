@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useTranslation } from "../lib/i18n";
 
 interface NavigationProps {
@@ -7,9 +8,20 @@ interface NavigationProps {
 
 export default function Navigation({ activeTab, setActiveTab }: NavigationProps) {
   const { t } = useTranslation();
+  const isNative = Capacitor.isNativePlatform();
+  const isIOS = Capacitor.getPlatform() === "ios";
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 tech-panel border-t border-border z-50 pb-safe shadow-lg bg-[#050b15]/95 backdrop-blur-sm">
+    <nav
+      className="fixed bottom-0 left-0 right-0 tech-panel border-t border-border z-50 shadow-lg bg-[#050b15]/95 backdrop-blur-sm"
+      style={{
+        paddingBottom: isNative
+          ? isIOS
+            ? "max(env(safe-area-inset-bottom, 0px), 20px)"
+            : "max(env(safe-area-inset-bottom, 0px), 16px)"
+          : "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
       <div className="flex justify-around items-center h-16">
         
         {/* Button 1: Home */}

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import {
   SHOP_PARTNERS,
@@ -35,6 +37,8 @@ export default function InGameShopModal({
   onLoadoutChanged,
 }: InGameShopModalProps) {
   const { lang, t } = useTranslation();
+  const isNative = Capacitor.isNativePlatform();
+  const isIOS = Capacitor.getPlatform() === "ios";
 
   const [activeCategory, setActiveCategory] = useState<"partner" | "racket" | "shot">("partner");
 
@@ -166,9 +170,10 @@ export default function InGameShopModal({
     }
 
     if (tacPoints < details.upgradeCostTp) {
+      const missingUpgradeTp = details.upgradeCostTp - tacPoints;
       setFeedback({
         type: "error",
-        text: `${t("prof_msg_need_tp_1")} ${details.upgradeCostTp - tacPoints} ${t("prof_msg_need_tp_2")}`,
+        text: `${t("prof_msg_need_tp_1")} ${missingUpgradeTp} ${t("prof_msg_need_tp_2")}`,
       });
       setTimeout(() => setFeedback(null), 2500);
       return;
@@ -231,9 +236,10 @@ export default function InGameShopModal({
     }
 
     if (tacPoints < item.price) {
+      const missingBuyTp = item.price - tacPoints;
       setFeedback({
         type: "error",
-        text: `${t("prof_msg_need_tp_1")} ${item.price - tacPoints} ${t("prof_msg_need_tp_2")}`,
+        text: `${t("prof_msg_need_tp_1")} ${missingBuyTp} ${t("prof_msg_need_tp_2")}`,
       });
       setTimeout(() => setFeedback(null), 2500);
       return;
@@ -312,21 +318,34 @@ export default function InGameShopModal({
     else setPreviewShot(id);
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div
-          className="fixed inset-0 z-[280] flex items-center justify-center pt-14 pb-6 px-3 sm:p-4 bg-black/85 backdrop-blur-md pointer-events-auto"
-          style={{ paddingTop: "max(3.5rem, calc(env(safe-area-inset-top, 0px) + 2.5rem))" }}
+          className="fixed inset-0 z-[300] h-[100dvh] w-screen flex items-center justify-center px-3 sm:px-4 bg-black/85 backdrop-blur-md pointer-events-auto select-none"
+          style={{
+            paddingTop: isNative
+              ? isIOS
+                ? "max(env(safe-area-inset-top, 0px), 52px)"
+                : "max(env(safe-area-inset-top, 0px), 38px)"
+              : "max(env(safe-area-inset-top, 0px), 16px)",
+            paddingBottom: isNative
+              ? isIOS
+                ? "max(env(safe-area-inset-bottom, 0px), 24px)"
+                : "max(env(safe-area-inset-bottom, 0px), 20px)"
+              : "max(env(safe-area-inset-bottom, 0px), 16px)",
+          }}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.94, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 20 }}
-            className="w-full max-w-lg bg-[#050b18] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.2)] flex flex-col max-h-[80vh] overflow-hidden relative"
+            className="w-full max-w-lg h-full max-h-[82dvh] bg-[#050b18] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.2)] flex flex-col overflow-hidden relative"
           >
             {/* HEADER */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-[#030611] gap-2">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#030611] gap-2 shrink-0">
               <div className="min-w-0">
                 <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-widest truncate">
                   🛒 {t("prof_shop_title")}
@@ -458,7 +477,7 @@ export default function InGameShopModal({
             {/* FEEDBACK BANNER */}
             {feedback && (
               <div
-                className={`mx-4 mt-2.5 px-3 py-1.5 rounded-lg text-center text-xs font-bold border ${
+                className={`mx-4 mt-2.5 px-3 py-1.5 rounded-lg text-center text-xs font-bold border shrink-0 ${
                   feedback.type === "success"
                     ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
                     : "bg-red-500/15 text-red-300 border-red-500/30"
@@ -469,7 +488,7 @@ export default function InGameShopModal({
             )}
 
             {/* ITEM-LISTE */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col gap-2.5 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col gap-2.5 custom-scrollbar min-h-0">
               {currentItems.map((item) => {
                 const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
                 const meetsScoreReq = checkItemRequirement(item, currentScore);
@@ -659,6 +678,7 @@ export default function InGameShopModal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
