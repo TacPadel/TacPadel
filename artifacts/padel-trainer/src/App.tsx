@@ -1014,7 +1014,7 @@ export default function App(): React.JSX.Element {
   const isIOS = Capacitor.getPlatform() === "ios";
 
   return (
-  <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans relative">
+  <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
     
     {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS (Kompakt auf 24px für Android, ohne z-50 Blockade) */}
     {isNative && (
@@ -1074,8 +1074,8 @@ export default function App(): React.JSX.Element {
       </div>
     </header>
 
-      {/* Hintergrundbild */}
-      <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center opacity-40 mix-blend-screen">
+      {/* Hintergrundbild fest in den tiefsten Hintergrund (-z-10) legen */}
+      <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center opacity-40 mix-blend-screen">
         <img 
           src={"/background_app.png"} 
           alt="Tactical Background" 
@@ -1147,8 +1147,8 @@ export default function App(): React.JSX.Element {
         )}
       </AnimatePresence>
         
-      {/* Tech-Shell (Ohne z-10 Stacking-Trap, damit Modals & Banner frei über dem Header liegen können) */}
-      <div className="flex-grow w-full tech-shell flex flex-col items-center p-3 sm:p-4 pb-28 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent">
+      {/* Tech-Shell wieder mit relative z-10 über das Hintergrundbild legen */}
+      <div className="flex-grow w-full tech-shell flex flex-col items-center p-3 sm:p-4 pb-28 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent relative z-10">
         
         <div className="max-w-4xl w-full flex flex-col gap-4 sm:gap-6">
 

@@ -1777,6 +1777,19 @@ export default function GameScreen() {
     }
 
     if (userIdRef.current) {
+      // Bestehendes eingefrorenes Loadout aus laufendem Spiel übernehmen oder beim 1. Punkt neu einfrieren:
+      let matchLockedLoadout = {
+        partnerId: localStorage.getItem("tacpadel_partner_id") || "partner_rookie",
+        racketId: localStorage.getItem("tacpadel_racket_id") || "racket_starter",
+        shotId: localStorage.getItem("tacpadel_power_shot") || "smash",
+      };
+      if (totalPointsForServe > 0 || isSecondServe) {
+        try {
+          const prevSave = JSON.parse(localStorage.getItem("tacpadel_savegame") || "{}");
+          if (prevSave?.lockedLoadout) matchLockedLoadout = prevSave.lockedLoadout;
+        } catch {}
+      }
+
       const gameStateToSave = {
         userId: userIdRef.current,
         playerScore: pScore,
@@ -1789,7 +1802,8 @@ export default function GameScreen() {
         tournamentRound: activeTournamentRound,
         tournamentDifficulty: activeTournamentDifficulty,
         activeAiProfile,
-        matchSeconds: matchSecondsRef.current
+        matchSeconds: matchSecondsRef.current,
+        lockedLoadout: matchLockedLoadout, // <-- NEU: Friert das Loadout für dieses Match ein!
       };
       localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
     } else {

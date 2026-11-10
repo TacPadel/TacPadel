@@ -11,7 +11,7 @@ export interface ShopItem {
   reqScore: number;
   badge: string;
   perk?: string;
-  shotType?: string; // Welcher Schlag im Match den Fokus-Bonus erhält (undefined bei Klassik)
+  shotType?: string;
   modifiers: {
     smash: number;
     control: number;
@@ -26,8 +26,8 @@ export interface ShopItem {
 export const MAX_ITEM_UPGRADE_LEVEL = 5; // +0 bis +5
 
 export interface ItemProgress {
-  level: number; // 0 = Basis, 1 = "+1", 2 = "+2" ... bis 5 = "+5"
-  xp: number;    // Aktuell gesammelte Punkte (gewonnene Punkte in Matches)
+  level: number;
+  xp: number;
 }
 
 export type ItemProgressMap = Record<string, ItemProgress>;
@@ -35,7 +35,7 @@ export type ItemProgressMap = Record<string, ItemProgress>;
 export interface UpgradedItemDetails {
   item: ShopItem;
   level: number;
-  displayName: string; // z.B. "Angriffs-Volley Fokus +2"
+  displayName: string;
   xp: number;
   reqXp: number;
   upgradeCostTp: number;
@@ -57,19 +57,54 @@ export function normalizeShotId(rawId?: string | null): string {
   return rawId;
 }
 
-// Dynamische XP-Schwelle für das nächste Level (Level 0->1 = 15 Punkte, 1->2 = 30 Punkte, etc.)
+// =========================================================
+// MATCH-LOCK: VERHINDERT LOADOUT-WECHSEL IM LAUFENDEN SPIEL
+// =========================================================
+export function getActiveMatchLockedLoadout(): {
+  partnerId: string;
+  racketId: string;
+  shotId: string;
+  userId?: string;
+} | null {
+  try {
+    const raw = localStorage.getItem("tacpadel_savegame");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.lockedLoadout) {
+      return {
+        partnerId: parsed.lockedLoadout.partnerId || "partner_rookie",
+        racketId: parsed.lockedLoadout.racketId || "racket_starter",
+        shotId: normalizeShotId(parsed.lockedLoadout.shotId),
+        userId: parsed.userId,
+      };
+    }
+  } catch (e) {}
+  return null;
+}
+
+export function isLoadoutLockedByActiveMatch(userId?: string | null): boolean {
+  try {
+    const raw = localStorage.getItem("tacpadel_savegame");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed) return false;
+    if (userId && parsed.userId && parsed.userId !== userId) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getRequiredXpForNextLevel(currentLevel: number): number {
   if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
   return (currentLevel + 1) * 15;
 }
 
-// Dynamische, kleinere TP-Kosten für das Upgrade (+1 = 100 TP, +2 = 175 TP, +3 = 250 TP...)
 export function getUpgradeTpCost(currentLevel: number): number {
   if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
   return 100 + currentLevel * 75;
 }
 
-// Liest den RPG-Fortschritt aller Items aus dem LocalStorage
 export function getSavedItemProgress(): ItemProgressMap {
   try {
     const raw = localStorage.getItem("tacpadel_item_progress");
@@ -78,21 +113,18 @@ export function getSavedItemProgress(): ItemProgressMap {
   return {};
 }
 
-// Speichert den RPG-Fortschritt im LocalStorage
 export function saveItemProgress(map: ItemProgressMap): void {
   try {
     localStorage.setItem("tacpadel_item_progress", JSON.stringify(map));
   } catch (e) {}
 }
 
-// Berechnet die dynamisch skalierten Attribute eines Items anhand seines "+X" Levels
 export function getEffectiveItemModifiers(item: ShopItem, level: number) {
   const lvl = Math.max(0, Math.min(MAX_ITEM_UPGRADE_LEVEL, level));
   const mods = { ...item.modifiers };
 
   if (lvl === 0) return mods;
 
-  // Meisterungs-Bonus: Auf Level +3 und +5 reduziert sich der Haupt-Malus um je 1 Punkt
   const penaltyRelief = (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
 
   switch (item.focus) {
@@ -113,7 +145,6 @@ export function getEffectiveItemModifiers(item: ShopItem, level: number) {
       mods.defense = Math.min(0, mods.defense + penaltyRelief);
       break;
     case "classic":
-      // Klassik-Items bleiben komplett ohne Buffs (oder erhalten erst durch Upgrades minimale +1 Werte)
       if (lvl >= 1) mods.control += 1;
       if (lvl >= 2) mods.defense += 1;
       if (lvl >= 3) mods.agility += 1;
@@ -128,7 +159,6 @@ export function getEffectiveItemModifiers(item: ShopItem, level: number) {
   return mods;
 }
 
-// Liefert alle RPG-Daten zu einem bestimmten Item (für UI, Shop & Inventar)
 export function getUpgradedItemDetails(
   item: ShopItem,
   customProgressMap?: ItemProgressMap
@@ -156,15 +186,17 @@ export function getUpgradedItemDetails(
 }
 
 // =========================================================
-// XP-VERGABE NACH JEDEM MATCH (GEWONNENE PUNKTE = ITEM-XP)
+// XP-VERGABE NACH JEDEM MATCH (NUTZT EINGEFRORENES LOADOUT)
 // =========================================================
 export function addMatchXpToEquippedLoadout(pointsWonByPlayer: number) {
   const xpGained = Math.max(0, Math.floor(pointsWonByPlayer));
   const progressMap = getSavedItemProgress();
 
-  const pId = localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
-  const rId = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-  const sId = normalizeShotId(localStorage.getItem("tacpadel_power_shot"));
+  // Falls im Savegame ein Loadout beim Matchstart eingefroren wurde, bekommt exakt dieses die XP!
+  const locked = getActiveMatchLockedLoadout();
+  const pId = locked?.partnerId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+  const rId = locked?.racketId || localStorage.getItem("tacpadel_racket_id") || "racket_starter";
+  const sId = locked?.shotId || normalizeShotId(localStorage.getItem("tacpadel_power_shot"));
 
   const equippedIds = [pId, rId, sId];
   const newlyReadyToUpgrade: string[] = [];
@@ -275,7 +307,7 @@ export function performItemUpgrade(
 export const SHOP_PARTNERS: ShopItem[] = [
   {
     id: "partner_rookie",
-    name: "Leo 'Base' Vega",
+    name: "Leo",
     focus: "classic",
     tier: 0,
     price: 0,
@@ -296,7 +328,7 @@ export const SHOP_PARTNERS: ShopItem[] = [
   },
   {
     id: "partner_cannon",
-    name: "Diego 'El Cañón' Morales",
+    name: "Diego",
     focus: "power",
     tier: 1,
     price: 400,
@@ -317,7 +349,7 @@ export const SHOP_PARTNERS: ShopItem[] = [
   },
   {
     id: "partner_tactician",
-    name: "Sofia 'La Profesora' Navarro",
+    name: "Sofia",
     focus: "control",
     tier: 1,
     price: 400,
@@ -335,7 +367,7 @@ export const SHOP_PARTNERS: ShopItem[] = [
   },
   {
     id: "partner_wall",
-    name: "Mateo 'El Muro' Ruiz",
+    name: "Mateo",
     focus: "defense",
     tier: 1,
     price: 400,
@@ -356,7 +388,7 @@ export const SHOP_PARTNERS: ShopItem[] = [
   },
   {
     id: "partner_runner",
-    name: "Lucas 'El Rayo' Silva",
+    name: "Lucas",
     focus: "agility",
     tier: 1,
     price: 400,
@@ -449,9 +481,8 @@ export const SHOP_RACKETS: ShopItem[] = [
 // 3. SCHLÄGE / SHOTS (1x Klassik + Volley, Bandeja, Block, Chiquita)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
-  // 0. KLASSIK (Keine Buffs, kein Spezial-Fokus)
   {
-    id: "smash", // Behält "smash" als technische Basis-ID für Spielstand-Kompatibilität
+    id: "smash",
     get name() {
       const l = getAppLanguage();
       return l === "es"
@@ -471,8 +502,6 @@ export const SHOP_SHOTS: ShopItem[] = [
     },
     modifiers: { smash: 0, control: 0, defense: 0, agility: 0 },
   },
-
-  // 1. POWER-SCHLAG: VOLLEY (+2 Smash/Power, -2 Defense, -1 Control, 0 Agility)
   {
     id: "volley",
     get name() {
@@ -494,8 +523,6 @@ export const SHOP_SHOTS: ShopItem[] = [
     },
     modifiers: { smash: 2, control: -1, defense: -2, agility: 0 },
   },
-
-  // 2. CONTROL-SCHLAG: BANDEJA (+2 Control, -2 Smash, -1 Agility, 0 Defense)
   {
     id: "bandeja",
     get name() {
@@ -514,8 +541,6 @@ export const SHOP_SHOTS: ShopItem[] = [
     badge: "Control",
     modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
-
-  // 3. DEFENSE-SCHLAG: BLOCK & LOB (+2 Defense, -2 Smash, -1 Agility, 0 Control)
   {
     id: "shot_defense_wall",
     get name() {
@@ -537,8 +562,6 @@ export const SHOP_SHOTS: ShopItem[] = [
     },
     modifiers: { smash: -2, control: 0, defense: 2, agility: -1 },
   },
-
-  // 4. AGILITY-SCHLAG: CHIQUITA (+2 Agility, -2 Defense, -1 Control, 0 Smash)
   {
     id: "chiquita",
     get name() {
@@ -570,7 +593,7 @@ export function checkItemRequirement(item: ShopItem, userTacScore: number): bool
 }
 
 // =========================================================
-// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (INKL. "+X" UPGRADE-LEVEL)
+// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (INKL. MATCH-LOCK)
 // =========================================================
 const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
 
@@ -580,9 +603,24 @@ export function calculateLoadoutStats(
   shotId?: string,
   customProgressMap?: ItemProgressMap
 ) {
-  const pId = partnerId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
-  const rId = racketId || localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-  const rawSId = shotId || localStorage.getItem("tacpadel_power_shot") || "smash";
+  // Wenn keine explizite Vorschau-ID übergeben wurde, nutzt die Engine bei laufendem Spiel das eingefrorene Loadout!
+  const locked = !partnerId && !racketId && !shotId ? getActiveMatchLockedLoadout() : null;
+
+  const pId =
+    partnerId ||
+    locked?.partnerId ||
+    localStorage.getItem("tacpadel_partner_id") ||
+    "partner_rookie";
+  const rId =
+    racketId ||
+    locked?.racketId ||
+    localStorage.getItem("tacpadel_racket_id") ||
+    "racket_starter";
+  const rawSId =
+    shotId ||
+    locked?.shotId ||
+    localStorage.getItem("tacpadel_power_shot") ||
+    "smash";
   const sId = normalizeShotId(rawSId);
 
   const basePartner = SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0];

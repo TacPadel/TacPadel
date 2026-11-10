@@ -4,13 +4,15 @@ import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three'; 
 
-// --- Imports für Loadout-Shop, RPG-Upgrades, Admin, 3D & i18n ---
+// --- Imports für Loadout-Shop, RPG-Upgrades, Match-Lock, Admin, 3D & i18n ---
 import {
   SHOP_PARTNERS,
   SHOP_RACKETS,
   SHOP_SHOTS,
   ShopItem,
   ItemProgressMap,
+  normalizeShotId,
+  isLoadoutLockedByActiveMatch,
   getSavedItemProgress,
   saveItemProgress,
   getUpgradedItemDetails,
@@ -277,7 +279,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   // --- AKTUELL AUSGEWÄHLTE VORSCHAU-IDS IM DROPDOWN ---
   const [partnerId, setPartnerId] = useState(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id"))); 
   const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
-  const [shotId, setShotId] = useState(() => localStorage.getItem("tacpadel_power_shot") || "smash");
+  const [shotId, setShotId] = useState(() => normalizeShotId(localStorage.getItem("tacpadel_power_shot")));
 
   // --- FEST AUSGERÜSTETE IDS, FREIGESCHALTETE SHOP-ITEMS & RPG-UPGRADE-PROGRESS ---
   const [tacPoints, setTacPoints] = useState<number>(() => {
@@ -292,7 +294,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
-      return saved ? JSON.parse(saved) : ["partner_rookie", "racket_starter", "smash"];
+      if (!saved) return ["partner_rookie", "racket_starter", "smash"];
+      const parsed = JSON.parse(saved).map((id: string) =>
+        id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+      );
+      return Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...parsed]));
     } catch {
       return ["partner_rookie", "racket_starter", "smash"];
     }
@@ -301,7 +307,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   const [equippedPartner, setEquippedPartner] = useState<string>(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id")));
   const [equippedRacket, setEquippedRacket] = useState<string>(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
-  const [equippedShot, setEquippedShot] = useState<string>(() => localStorage.getItem("tacpadel_power_shot") || "smash");
+  const [equippedShot, setEquippedShot] = useState<string>(() => normalizeShotId(localStorage.getItem("tacpadel_power_shot")));
+
+  // --- MATCH-LOCK PRÜFUNG (Sperrt Loadout-Wechsel bei aktivem Spielstand) ---
+  const [isMatchLocked, setIsMatchLocked] = useState<boolean>(() => isLoadoutLockedByActiveMatch(user?.id));
 
   // --- State für das InGameShopModal ---
   const [isShopModalOpen, setIsShopModalOpen] = useState(false);
@@ -311,8 +320,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     try {
       const savedUnlocked = localStorage.getItem("tacpadel_unlocked_items");
       if (savedUnlocked) {
+        const normalized = JSON.parse(savedUnlocked).map((id: string) =>
+          id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+        );
         setUnlockedItems(
-          Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...JSON.parse(savedUnlocked)]))
+          Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...normalized]))
         );
       }
     } catch {}
@@ -321,10 +333,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     if (savedTp) setTacPoints(parseInt(savedTp, 10));
 
     setItemProgressMap(getSavedItemProgress());
+    setIsMatchLocked(isLoadoutLockedByActiveMatch(user?.id));
 
     const nextPartner = normalizePartnerId(localStorage.getItem("tacpadel_partner_id"));
     const nextRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-    const nextShot = localStorage.getItem("tacpadel_power_shot") || "smash";
+    const nextShot = normalizeShotId(localStorage.getItem("tacpadel_power_shot"));
 
     setEquippedPartner(nextPartner);
     setPartnerId(nextPartner);
@@ -332,7 +345,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setRacketId(nextRacket);
     setEquippedShot(nextShot);
     setShotId(nextShot);
-  }, []);
+  }, [user?.id]);
 
   // --- GEFILTERTE INVENTAR-LISTEN (Nur gekaufte/freigeschaltete Items!) ---
   const ownedPartners = useMemo(
@@ -433,6 +446,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
   useEffect(() => {
     const loadUserData = async () => {
+      setIsMatchLocked(isLoadoutLockedByActiveMatch(user.id));
+
       const { data: profileData } = await supabase
         .from('user_stats')
         .select('*') 
@@ -441,7 +456,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       let trueScore = currentScore; 
 
-      // Lade ggf. in user_metadata gespeicherten RPG-Fortschritt und führe ihn mit localStorage zusammen
       if (user?.user_metadata?.item_progress) {
         const localProg = getSavedItemProgress();
         const remoteProg = user.user_metadata.item_progress as ItemProgressMap;
@@ -470,11 +484,15 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           localStorage.setItem("tacpadel_tac_points", String(profileData.tac_points));
         }
 
-        const mergedUnlocked = Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0
-          ? Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...profileData.unlocked_items]))
+        const rawUnlocked = Array.isArray(profileData.unlocked_items) ? profileData.unlocked_items : [];
+        const normalizedUnlocked = rawUnlocked.map((id: string) =>
+          id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+        );
+        const mergedUnlocked = normalizedUnlocked.length > 0
+          ? Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...normalizedUnlocked]))
           : unlockedItems;
 
-        if (Array.isArray(profileData.unlocked_items) && profileData.unlocked_items.length > 0) {
+        if (normalizedUnlocked.length > 0) {
           setUnlockedItems(mergedUnlocked);
           localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(mergedUnlocked));
         }
@@ -497,8 +515,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
 
         if (profileData.equipped_shot) {
-          const safeShot = mergedUnlocked.includes(profileData.equipped_shot)
-            ? profileData.equipped_shot
+          const normalizedShot = normalizeShotId(profileData.equipped_shot);
+          const safeShot = mergedUnlocked.includes(normalizedShot)
+            ? normalizedShot
             : "smash";
           setEquippedShot(safeShot);
           setShotId(safeShot);
@@ -642,8 +661,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     );
   };
 
-  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR ---
+  // --- AUSRÜSTUNGS-LOGIK FÜR DAS INVENTAR (MIT MATCH-SPERRE) ---
   const handleEquipItem = async (item: ShopItem, category: 'partner' | 'racket' | 'shot') => {
+    if (isLoadoutLockedByActiveMatch(user?.id)) {
+      setMessage({ type: 'error', text: t("lock_match_err") });
+      setTimeout(() => setMessage(null), 2500);
+      return;
+    }
+
     if (category === 'partner') {
       setEquippedPartner(item.id);
       setPartnerId(item.id);
@@ -682,9 +707,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
 
     if (tacPoints < details.upgradeCostTp) {
+      const missingTp = details.upgradeCostTp - tacPoints;
       setMessage({
         type: 'error',
-        text: `${t("prof_msg_need_tp_1")} ${details.upgradeCostTp - tacPoints} ${t("prof_msg_need_tp_2")}`,
+        text: `${t("prof_msg_need_tp_1")} ${missingTp} ${t("prof_msg_need_tp_2")}`,
       });
       setTimeout(() => setMessage(null), 2500);
       return;
@@ -726,7 +752,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
     return (
       <div className="mt-1.5 pt-2 border-t border-slate-800/80 flex flex-col gap-2">
-        {/* Aktuelle effektive Attribut-Pills (inkl. +X Upgrade-Bonus) */}
         <div className="flex flex-wrap items-center gap-1 text-[8px] font-black">
           {mods.smash !== 0 && (
             <span className={`px-1.5 py-0.5 rounded ${mods.smash > 0 ? "bg-orange-950/60 text-orange-400 border border-orange-500/30" : "bg-red-950/40 text-red-400"}`}>
@@ -750,7 +775,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           )}
         </div>
 
-        {/* XP-Balken */}
         <div className="flex flex-col gap-1">
           <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
             <span className={details.canUpgrade ? "text-amber-400 animate-pulse" : "text-slate-400"}>
@@ -780,7 +804,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </div>
         </div>
 
-        {/* "+1 Upgrade"-Button sobald XP voll sind (oder ausgegraute Vorschau) */}
         {!details.isMaxLevel && (
           <button
             onClick={() => handleUpgradeItem(item)}
@@ -1190,7 +1213,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       <div className="w-full h-px bg-slate-800/60 my-2" />
       
       {/* ========================================================= */}
-      {/* 2. STATS & GEAR INVENTAR (INKL. RPG +1 UPGRADES)          */}
+      {/* 2. STATS & GEAR INVENTAR (INKL. RPG +1 UPGRADES & LOCK)   */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
         
@@ -1213,10 +1236,16 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </button>
           </div>
 
+          {isMatchLocked && (
+            <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider flex items-center gap-2">
+              <span>{t("lock_match_banner")}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <div className="flex flex-col gap-3">
-              {/* 1. PARTNER-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
+              {/* 1. PARTNER-INVENTAR */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1227,15 +1256,21 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </span>
                 </div>
                 <select 
+                  disabled={isMatchLocked}
                   value={partnerId} 
                   onChange={(e) => {
+                    if (isLoadoutLockedByActiveMatch(user?.id)) {
+                      setMessage({ type: 'error', text: t("lock_match_err") });
+                      setTimeout(() => setMessage(null), 2500);
+                      return;
+                    }
                     const nextPartner = e.target.value;
                     setPartnerId(nextPartner);
                     setEquippedPartner(nextPartner);
                     localStorage.setItem("tacpadel_partner_id", nextPartner);
                     supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
                   }} 
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                  className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   {ownedPartners.map(p => {
                     const d = getUpgradedItemDetails(p, itemProgressMap);
@@ -1256,15 +1291,16 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
                 {equippedPartner !== partnerId && (
                   <button
+                    disabled={isMatchLocked}
                     onClick={() => handleEquipItem(selectedPartnerObj, 'partner')}
-                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                   >
-                    {t("prof_status_owned")}
+                    {isMatchLocked ? t("lock_match_btn") : t("prof_status_owned")}
                   </button>
                 )}
               </div>
 
-              {/* 2. SCHLÄGER-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
+              {/* 2. SCHLÄGER-INVENTAR */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1275,15 +1311,21 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </span>
                 </div>
                 <select 
+                  disabled={isMatchLocked}
                   value={racketId} 
                   onChange={(e) => {
+                    if (isLoadoutLockedByActiveMatch(user?.id)) {
+                      setMessage({ type: 'error', text: t("lock_match_err") });
+                      setTimeout(() => setMessage(null), 2500);
+                      return;
+                    }
                     const nextId = e.target.value;
                     setRacketId(nextId);
                     setEquippedRacket(nextId);
                     localStorage.setItem("tacpadel_racket_id", nextId);
                     supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
                   }} 
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                  className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   {ownedRackets.map(r => {
                     const d = getUpgradedItemDetails(r, itemProgressMap);
@@ -1299,15 +1341,16 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
                 {equippedRacket !== racketId && (
                   <button
+                    disabled={isMatchLocked}
                     onClick={() => handleEquipItem(selectedRacketObj, 'racket')}
-                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                   >
-                    {t("prof_status_owned")}
+                    {isMatchLocked ? t("lock_match_btn") : t("prof_status_owned")}
                   </button>
                 )}
               </div>
 
-              {/* 3. SPEZIAL-SCHLAG-INVENTAR (INKL. XP-BALKEN & +1 UPGRADE) */}
+              {/* 3. SPEZIAL-SCHLAG-INVENTAR */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                 <div className="flex justify-between items-center">
                   <label className="text-[9px] font-bold tracking-widest text-slate-500 uppercase">
@@ -1318,15 +1361,21 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </span>
                 </div>
                 <select 
+                  disabled={isMatchLocked}
                   value={shotId}
                   onChange={(e) => {
+                    if (isLoadoutLockedByActiveMatch(user?.id)) {
+                      setMessage({ type: 'error', text: t("lock_match_err") });
+                      setTimeout(() => setMessage(null), 2500);
+                      return;
+                    }
                     const nextShot = e.target.value;
                     setShotId(nextShot);
                     setEquippedShot(nextShot);
                     localStorage.setItem("tacpadel_power_shot", nextShot);
                     supabase.from('user_stats').update({ equipped_shot: nextShot }).eq('id', user.id).then(() => {});
                   }}
-                  className="px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none cursor-pointer"
+                  className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   {ownedShots.map(s => {
                     const d = getUpgradedItemDetails(s, itemProgressMap);
@@ -1342,10 +1391,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
                 {equippedShot !== shotId && (
                   <button
+                    disabled={isMatchLocked}
                     onClick={() => handleEquipItem(selectedShotObj, 'shot')}
-                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                    className="w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-500 text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                   >
-                    {t("prof_status_owned")}
+                    {isMatchLocked ? t("lock_match_btn") : t("prof_status_owned")}
                   </button>
                 )}
               </div>

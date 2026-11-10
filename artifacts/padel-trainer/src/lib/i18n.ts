@@ -1095,6 +1095,10 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". Abfangen ist beim Return verboten!",
     game_exhausted_net_title: "❌ KRAFTLOS IM NETZ",
     game_agility_save_badge: "👟 AGILITY SAVE",
+    // --- IN DEN BLOCK "de:" EINFÜGEN ---
+    lock_match_banner: "🔒 Laufendes Match aktiv: Ausrüstungswechsel ist bis zum Spielende gesperrt.",
+    lock_match_btn: "🔒 Im Match gesperrt",
+    lock_match_err: "Während eines laufenden Matches kann das Loadout nicht gewechselt werden!",
   },
 
   en: {
@@ -2022,6 +2026,10 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". Poaching on the return is not allowed!",
     game_exhausted_net_title: "❌ NO STAMINA - NET ERROR",
     game_agility_save_badge: "👟 AGILITY SAVE",
+    // --- IN DEN BLOCK "en:" EINFÜGEN ---
+    lock_match_banner: "🔒 Active match in progress: Changing equipment is locked until the match ends.",
+    lock_match_btn: "🔒 Locked in Match",
+    lock_match_err: "You cannot change your equipped loadout while a match is in progress!",
   },
 
   es: {
@@ -2949,6 +2957,10 @@ export const TRANSLATIONS = {
     game_err_wrong_returner_partner_2: ". ¡No vale interceptar el resto!",
     game_exhausted_net_title: "❌ SIN ENERGÍA EN LA RED",
     game_agility_save_badge: "👟 AHORRO AGILIDAD",
+    // --- IN DEN BLOCK "es:" EINFÜGEN ---
+    lock_match_banner: "🔒 Partido en curso: El cambio de equipamiento está bloqueado hasta terminar.",
+    lock_match_btn: "🔒 Bloqueado en partido",
+    lock_match_err: "¡No puedes cambiar tu equipamiento mientras hay un partido en curso!",
   },
 } as const;
 

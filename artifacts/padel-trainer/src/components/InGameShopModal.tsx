@@ -9,6 +9,8 @@ import {
   SHOP_SHOTS,
   ShopItem,
   ItemProgressMap,
+  normalizeShotId,
+  isLoadoutLockedByActiveMatch,
   getSavedItemProgress,
   getUpgradedItemDetails,
   performItemUpgrade,
@@ -70,7 +72,7 @@ export default function InGameShopModal({
     () => localStorage.getItem("tacpadel_racket_id") || "racket_starter"
   );
   const [equippedShot, setEquippedShot] = useState<string>(
-    () => localStorage.getItem("tacpadel_power_shot") || "smash"
+    () => normalizeShotId(localStorage.getItem("tacpadel_power_shot"))
   );
 
   const [previewPartner, setPreviewPartner] = useState<string>(equippedPartner);
@@ -80,12 +82,14 @@ export default function InGameShopModal({
   const [isBuying, setIsBuying] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const isMatchLocked = isOpen && isLoadoutLockedByActiveMatch(userId);
+
   useEffect(() => {
     if (!isOpen) return;
 
     const localPartner = normalizePartnerId(localStorage.getItem("tacpadel_partner_id"));
     const localRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
-    const localShot = localStorage.getItem("tacpadel_power_shot") || "smash";
+    const localShot = normalizeShotId(localStorage.getItem("tacpadel_power_shot"));
     const localTp = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
     const localScore = parseInt(localStorage.getItem("tacpadel_score") || "0", 10);
 
@@ -118,8 +122,11 @@ export default function InGameShopModal({
           localStorage.setItem("tacpadel_tac_points", String(data.tac_points));
         }
         if (Array.isArray(data.unlocked_items) && data.unlocked_items.length > 0) {
+          const normalizedUnlocked = data.unlocked_items.map((id: string) =>
+            id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+          );
           const merged = Array.from(
-            new Set(["partner_rookie", "racket_starter", "smash", ...data.unlocked_items])
+            new Set(["partner_rookie", "racket_starter", "smash", ...normalizedUnlocked])
           );
           setUnlockedItems(merged);
           localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(merged));
@@ -136,9 +143,10 @@ export default function InGameShopModal({
           localStorage.setItem("tacpadel_racket_id", data.equipped_racket);
         }
         if (data.equipped_shot) {
-          setEquippedShot(data.equipped_shot);
-          setPreviewShot(data.equipped_shot);
-          localStorage.setItem("tacpadel_power_shot", data.equipped_shot);
+          const validS = normalizeShotId(data.equipped_shot);
+          setEquippedShot(validS);
+          setPreviewShot(validS);
+          localStorage.setItem("tacpadel_power_shot", validS);
         }
       }
     })();
@@ -201,6 +209,7 @@ export default function InGameShopModal({
   const handleEquipOrBuy = async (item: ShopItem, category: "partner" | "racket" | "shot") => {
     const isUnlocked = unlockedItems.includes(item.id) || item.price === 0;
     const meetsScoreReq = checkItemRequirement(item, currentScore);
+    const lockedNow = isLoadoutLockedByActiveMatch(userId);
 
     if (!meetsScoreReq) {
       setFeedback({
@@ -212,6 +221,12 @@ export default function InGameShopModal({
     }
 
     if (isUnlocked) {
+      if (lockedNow) {
+        setFeedback({ type: "error", text: t("lock_match_err") });
+        setTimeout(() => setFeedback(null), 2500);
+        return;
+      }
+
       if (category === "partner") {
         setEquippedPartner(item.id);
         setPreviewPartner(item.id);
@@ -253,11 +268,13 @@ export default function InGameShopModal({
       const payload: any = {
         tac_points: nextTp,
         unlocked_items: nextUnlocked,
-        ...(category === "partner"
-          ? { partner_id: item.id }
-          : category === "racket"
-            ? { equipped_racket: item.id }
-            : { equipped_shot: item.id }),
+        ...(!lockedNow
+          ? category === "partner"
+            ? { partner_id: item.id }
+            : category === "racket"
+              ? { equipped_racket: item.id }
+              : { equipped_shot: item.id }
+          : {}),
       };
 
       const { error } = await supabase.from("user_stats").update(payload).eq("id", userId);
@@ -272,18 +289,21 @@ export default function InGameShopModal({
     localStorage.setItem("tacpadel_tac_points", String(nextTp));
     localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(nextUnlocked));
 
-    if (category === "partner") {
-      setEquippedPartner(item.id);
-      setPreviewPartner(item.id);
-      localStorage.setItem("tacpadel_partner_id", item.id);
-    } else if (category === "racket") {
-      setEquippedRacket(item.id);
-      setPreviewRacket(item.id);
-      localStorage.setItem("tacpadel_racket_id", item.id);
-    } else {
-      setEquippedShot(item.id);
-      setPreviewShot(item.id);
-      localStorage.setItem("tacpadel_power_shot", item.id);
+    // Nur automatisch ausrüsten, wenn gerade KEIN Match pausiert ist!
+    if (!lockedNow) {
+      if (category === "partner") {
+        setEquippedPartner(item.id);
+        setPreviewPartner(item.id);
+        localStorage.setItem("tacpadel_partner_id", item.id);
+      } else if (category === "racket") {
+        setEquippedRacket(item.id);
+        setPreviewRacket(item.id);
+        localStorage.setItem("tacpadel_racket_id", item.id);
+      } else {
+        setEquippedShot(item.id);
+        setPreviewShot(item.id);
+        localStorage.setItem("tacpadel_power_shot", item.id);
+      }
     }
 
     onLoadoutChanged();
@@ -374,6 +394,13 @@ export default function InGameShopModal({
                 </button>
               </div>
             </div>
+
+            {/* MATCH-LOCK HINWEISBANNER */}
+            {isMatchLocked && (
+              <div className="px-4 py-2 bg-amber-950/60 border-b border-amber-500/40 text-amber-300 text-[9px] font-black uppercase tracking-wider text-center shrink-0">
+                {t("lock_match_banner")}
+              </div>
+            )}
 
             {/* LIVE ATTRIBUTE BAR */}
             <div className="px-4 py-2.5 bg-[#040914] border-b border-slate-800/80 flex flex-col gap-1.5 shrink-0">
@@ -649,6 +676,16 @@ export default function InGameShopModal({
                           className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-900 text-red-400/90 border border-red-900/40 cursor-not-allowed"
                         >
                           {`${t("shop_locked_by_score")} ${item.reqScore} TacScore`}
+                        </button>
+                      ) : isUnlocked && isMatchLocked ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEquipOrBuy(item, activeCategory);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-900 text-amber-400/90 border border-amber-500/40 cursor-not-allowed"
+                        >
+                          {t("lock_match_btn")}
                         </button>
                       ) : (
                         <button

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTranslation } from '../lib/i18n';
 
 // --- AKTUELL: SAISON-Turniere (Später für Season 1 einfach auf '../engine/TournamentsSeason1' ändern!) ---
-import { Tournament, TourType, TOURNAMENTS } from '../engine/Tournaments';
+import { Tournament, TourType, TOURNAMENTS } from '../engine/TournamentsSeason1';
 
 type ExtendedTournament = Tournament & {
   week?: 1 | 2 | 3 | 4;
