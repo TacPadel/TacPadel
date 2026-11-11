@@ -21,9 +21,23 @@ import { TOURNAMENTS } from "../engine/Tournaments";
 import {
   calculateLoadoutStats,
   SHOP_PARTNERS,
+  normalizeShotId,
   addMatchXpToEquippedLoadout,
 } from "../lib/loadout";
 import { useTranslation, formatShotName } from "../lib/i18n";
+
+// --- HILFSFUNKTION: Erkennt ausschließlich iPads / große Tablets (niemals Smartphones) ---
+const detectIPadViewport = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isTouchMac = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const isIPadUA = /iPad/i.test(ua) || isTouchMac;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const isIPadPortraitSize = w >= 740 && w <= 1100 && h >= 900;
+  const isIPadLandscapeSize = isIPadUA && w >= 900 && h >= 700;
+  return isIPadPortraitSize || isIPadLandscapeSize;
+};
 
 // --- HILFSFUNKTION: Partnernamen aus Shop (oder altem KI-Profil) sauber auflösen ---
 const resolvePartnerDisplayName = (rawPartnerId?: string | null): string => {
@@ -42,12 +56,12 @@ const resolvePartnerDisplayName = (rawPartnerId?: string | null): string => {
 
 // Ordnet die Shop-ID des Spezial-Fokus dem echten Schlag-Typ im Spiel zu
 const getFocusShotType = (shotId?: string | null): string => {
-  const s = (shotId || localStorage.getItem("tacpadel_power_shot") || "smash").toLowerCase();
+  const s = normalizeShotId(shotId || localStorage.getItem("tacpadel_power_shot")).toLowerCase();
   if (s.includes("volley") || s === "kick_x3") return "VOLLEY";
   if (s.includes("chiquita") || s === "vibora") return "CHIQUITA";
   if (s.includes("bandeja")) return "BANDEJA";
   if (s.includes("defense") || s.includes("block")) return "BLOCK";
-  return ""; // Klassik-Technik hat keinen Fokus-Boost
+  return ""; // Klassik-Technik (shot_classic) hat keinen Fokus-Boost
 };
 
 // --- HAPTICS: Kräftiger, synchroner Impuls bei Punktgewinn ---
@@ -126,6 +140,15 @@ const getContinueFee = (tourId: string, currentRound: number) => {
 
 export default function GameScreen() {
   const { lang, t } = useTranslation();
+
+  // --- IPAD SPEZIAL-SKALIERUNG (Greift ausschließlich auf iPads) ---
+  const [isIpadScreen, setIsIpadScreen] = useState<boolean>(() => detectIPadViewport());
+
+  useEffect(() => {
+    const handleResize = () => setIsIpadScreen(detectIPadViewport());
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const [playerScore, setPlayerScore] = useState<number>(0);
   const [aiScore, setAiScore] = useState<number>(0);
@@ -328,7 +351,7 @@ export default function GameScreen() {
               localStorage.setItem("tacpadel_racket_id", data.equipped_racket);
             }
             if (data.equipped_shot) {
-              localStorage.setItem("tacpadel_power_shot", data.equipped_shot);
+              localStorage.setItem("tacpadel_power_shot", normalizeShotId(data.equipped_shot));
             }
             refreshLoadoutAndPartner(data.partner_id);
             return; 
@@ -1222,7 +1245,7 @@ export default function GameScreen() {
 
     const chosenShot = commands[hitterId].shot!;
     const focusShotType = getFocusShotType(currentLoadout.shot.id);
-    const isUsingFocusShot = chosenShot.toUpperCase() === focusShotType;
+    const isUsingFocusShot = Boolean(focusShotType && chosenShot.toUpperCase() === focusShotType);
 
     const handleTurnResult = (result: TurnResult, shotType: string) => {
       if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(shotType) || result === "perfect") playSfx("hit_smash"); 
@@ -1781,7 +1804,7 @@ export default function GameScreen() {
       let matchLockedLoadout = {
         partnerId: localStorage.getItem("tacpadel_partner_id") || "partner_rookie",
         racketId: localStorage.getItem("tacpadel_racket_id") || "racket_starter",
-        shotId: localStorage.getItem("tacpadel_power_shot") || "smash",
+        shotId: normalizeShotId(localStorage.getItem("tacpadel_power_shot")),
       };
       if (totalPointsForServe > 0 || isSecondServe) {
         try {
@@ -1803,7 +1826,7 @@ export default function GameScreen() {
         tournamentDifficulty: activeTournamentDifficulty,
         activeAiProfile,
         matchSeconds: matchSecondsRef.current,
-        lockedLoadout: matchLockedLoadout, // <-- NEU: Friert das Loadout für dieses Match ein!
+        lockedLoadout: matchLockedLoadout,
       };
       localStorage.setItem("tacpadel_savegame", JSON.stringify(gameStateToSave));
     } else {
@@ -1881,7 +1904,10 @@ export default function GameScreen() {
   return (
     <div 
       className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
-      style={{ height: "calc(100dvh - 120px)", minHeight: "650px" }}
+      style={{
+        height: isIpadScreen ? "calc(100dvh - 150px)" : "calc(100dvh - 120px)",
+        minHeight: isIpadScreen ? "calc(100dvh - 150px)" : "650px",
+      }}
     >
       {/* --- SEPARATES IN-GAME SHOP MODAL --- */}
       <InGameShopModal
@@ -1951,14 +1977,14 @@ export default function GameScreen() {
               <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/35 to-transparent"></div>
             </div>
 
-            <div className="relative z-10 h-full flex flex-col items-center justify-end pb-3 sm:pb-5 px-4 gap-2 sm:gap-2.5 w-full">
+            <div className={`relative z-10 h-full flex flex-col items-center justify-end px-4 gap-2 sm:gap-2.5 w-full ${isIpadScreen ? "pb-10" : "pb-3 sm:pb-5"}`}>
               
               {/* KLICKBARE LOADOUT-BOX -> ÖFFNET DIREKT DEN IN-GAME SHOP */}
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setIsShopOpen(true)}
-                className="w-full max-w-sm bg-[#030611]/90 hover:bg-[#060d20]/95 border border-cyan-500/40 hover:border-cyan-400 rounded-xl px-3 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer transition-all flex flex-col gap-1.5 group"
+                className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} bg-[#030611]/90 hover:bg-[#060d20]/95 border border-cyan-500/40 hover:border-cyan-400 rounded-xl px-3 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer transition-all flex flex-col gap-1.5 group`}
               >
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider">
                   <span className="text-cyan-400 truncate max-w-[48%]">
@@ -1977,7 +2003,7 @@ export default function GameScreen() {
               </motion.div>
 
               {!userId && (
-                <div className="w-full max-w-sm bg-amber-950/70 border border-amber-500/40 rounded-xl px-3 py-2 text-center backdrop-blur-md shadow-lg">
+                <div className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} bg-amber-950/70 border border-amber-500/40 rounded-xl px-3 py-2 text-center backdrop-blur-md shadow-lg`}>
                   <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-0.5">
                     {t("game_guest_title")}
                   </p>
@@ -1990,7 +2016,7 @@ export default function GameScreen() {
               {tacScore < 1500 ? (
                 <button 
                   disabled
-                  className="w-full max-w-sm py-2.5 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-0.5"
+                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-2.5 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-0.5`}
                 >
                   <span className="text-xs sm:text-sm">{t("game_single_locked")}</span>
                   <span className="text-[9px] text-slate-500 normal-case tracking-normal">
@@ -2000,7 +2026,7 @@ export default function GameScreen() {
               ) : (
                 <button 
                   onClick={attemptStartNewGame}
-                  className="w-full max-w-sm py-3 sm:py-3.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_25px_rgba(255,119,0,0.4)] hover:scale-[1.02] active:scale-95 transition-all"
+                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-3 sm:py-3.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_25px_rgba(255,119,0,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
                 >
                   {t("game_new_single")}
                 </button>
@@ -2009,7 +2035,7 @@ export default function GameScreen() {
               {hasValidSave && (
                 <button 
                   onClick={() => { if (loadGame()) setIsMenuOpen(false); }}
-                  className="w-full max-w-sm py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
+                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center gap-1`}
                 >
                   <span className="font-black tracking-widest uppercase text-sm">{t("game_continue_match")}</span>
                   <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-widest bg-black/25 px-2 py-0.5 rounded border border-emerald-400/30 text-center">
@@ -2020,7 +2046,7 @@ export default function GameScreen() {
               
               <button 
                 onClick={() => setIsTourOpen(true)}
-                className="w-full max-w-sm py-3 sm:py-3.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-[1.02] active:scale-95 transition-all"
+                className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-3 sm:py-3.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
               >
                 {t("game_tour_events")}
               </button>
@@ -2311,7 +2337,7 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* --- COURT BEREICH --- */}
-      <div className="relative w-full flex-1 min-h-[400px] sm:min-h-[500px] overflow-hidden pointer-events-auto">
+      <div className={`relative w-full flex-1 ${isIpadScreen ? "min-h-[760px]" : "min-h-[400px] sm:min-h-[500px]"} overflow-hidden pointer-events-auto`}>
         
         {/* --- AUSDAUER HUD OVERLAY --- */}
         <AnimatePresence>
@@ -2466,7 +2492,7 @@ export default function GameScreen() {
                 </span>
                 {/* KOMPAKTER LOADOUT-INDIKATOR IM HUD */}
                 <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
-                  🎾 {activeLoadout.racket.name} • ⚡ {formatShotName(focusShotType, lang)}
+                  🎾 {activeLoadout.racket.name} • ⚡ {focusShotType ? formatShotName(focusShotType, lang) : activeLoadout.shot.badge}
                 </span>
               </div>
               <div className="w-2/5 sm:w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800 shrink-0">
@@ -2536,15 +2562,15 @@ export default function GameScreen() {
         {isShotModalOpen && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsShotModalOpen(false)} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm pointer-events-auto" />
-            <motion.div drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.2} onDragEnd={(_, info) => { if (info.offset.y > 100) setIsShotModalOpen(false); }} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed bottom-20 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none pointer-events-auto">
-              <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
+            <motion.div drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.2} onDragEnd={(_, info) => { if (info.offset.y > 100) setIsShotModalOpen(false); }} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed bottom-20 left-3 right-3 lg:bottom-6 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none pointer-events-auto">
+              <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">{t("game_which_shot_modal")}</h3>
                 <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
                   ⚡ {t("game_focus_label")} {activeLoadout.shot.name}
                 </span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-10">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-2">
                 {SHOT_TYPES.map((shot) => {
                   const isSelected = commands[activeChar].shot === shot;
                   const isFocusShot = shot === focusShotType;
@@ -2575,7 +2601,7 @@ export default function GameScreen() {
 
       <AnimatePresence>
         {phase === "player_animating" && showResultOverlay && !gameOver && (
-          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} transition={{ type: "spring", stiffness: 200, damping: 25 }} className="fixed bottom-24 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-6 sm:p-8 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)] pointer-events-auto">
+          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} transition={{ type: "spring", stiffness: 200, damping: 25 }} className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)] pointer-events-auto">
             
             <div className={`flex flex-col md:flex-row gap-6 items-center ${showExplanations ? 'justify-between' : 'justify-center'}`}>
               
