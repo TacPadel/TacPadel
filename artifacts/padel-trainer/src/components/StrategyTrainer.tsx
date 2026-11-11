@@ -410,7 +410,7 @@ export default function StrategyTrainer({ onBack, onStrategyComplete }: Strategy
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="fixed bottom-0 left-0 right-0 z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl h-[60vh] flex flex-col"
+              className="fixed bottom-20 left-0 right-0 z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl h-[60vh] flex flex-col"
             >
               <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5" onClick={() => setIsShotModalOpen(false)} />
               <div className="grid grid-cols-3 gap-2 overflow-y-auto pb-10">

@@ -21,9 +21,11 @@ export interface ShopItem {
 }
 
 // =========================================================
-// RPG UPGRADE & XP SYSTEM (TYPEN & KONSTANTEN)
+// RPG UPGRADE & XP SYSTEM (KLASSIK BIS +5 | SPEZIAL BIS +10)
 // =========================================================
-export const MAX_ITEM_UPGRADE_LEVEL = 5; // +0 bis +5
+export const MAX_CLASSIC_UPGRADE_LEVEL = 5;  // Klassik-Items: Schluss bei +5
+export const MAX_SPECIAL_UPGRADE_LEVEL = 10; // Spezial-Items: Levelbar bis +10
+export const MAX_ITEM_UPGRADE_LEVEL = 10;    // Technisches Gesamt-Maximum
 
 export interface ItemProgress {
   level: number;
@@ -35,6 +37,7 @@ export type ItemProgressMap = Record<string, ItemProgress>;
 export interface UpgradedItemDetails {
   item: ShopItem;
   level: number;
+  maxLevel: number;
   displayName: string;
   xp: number;
   reqXp: number;
@@ -49,12 +52,33 @@ export interface UpgradedItemDetails {
   };
 }
 
-// Migriert alte Schlag-IDs (kick_x3 / vibora) nahtlos auf die neuen Basis-Schläge (volley / chiquita)
+// Migriert alte Schlag-IDs (smash / kick_x3 / vibora) nahtlos auf das neue System (shot_classic / volley / chiquita)
 export function normalizeShotId(rawId?: string | null): string {
-  if (!rawId) return "smash";
+  if (!rawId || rawId === "smash" || rawId === "shot_classic") return "shot_classic";
   if (rawId === "kick_x3") return "volley";
   if (rawId === "vibora") return "chiquita";
   return rawId;
+}
+
+// Ermittelt das Maximal-Level (+5 für Klassik, +10 für alle Spezial-Items)
+export function getItemMaxLevel(itemOrId?: ShopItem | string | null): number {
+  if (!itemOrId) return MAX_CLASSIC_UPGRADE_LEVEL;
+  if (typeof itemOrId !== "string") {
+    return itemOrId.focus === "classic" ? MAX_CLASSIC_UPGRADE_LEVEL : MAX_SPECIAL_UPGRADE_LEVEL;
+  }
+  const normalized = itemOrId === "smash" ? "shot_classic" : itemOrId;
+  if (
+    normalized === "partner_rookie" ||
+    normalized === "racket_starter" ||
+    normalized === "shot_classic"
+  ) {
+    return MAX_CLASSIC_UPGRADE_LEVEL;
+  }
+  const found = [...SHOP_PARTNERS, ...SHOP_RACKETS, ...SHOP_SHOTS].find((i) => i.id === normalized);
+  if (found) {
+    return found.focus === "classic" ? MAX_CLASSIC_UPGRADE_LEVEL : MAX_SPECIAL_UPGRADE_LEVEL;
+  }
+  return MAX_SPECIAL_UPGRADE_LEVEL;
 }
 
 // =========================================================
@@ -95,20 +119,35 @@ export function isLoadoutLockedByActiveMatch(userId?: string | null): boolean {
   }
 }
 
-export function getRequiredXpForNextLevel(currentLevel: number): number {
-  if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
+export function getRequiredXpForNextLevel(
+  currentLevel: number,
+  maxLevel: number = MAX_SPECIAL_UPGRADE_LEVEL
+): number {
+  if (currentLevel >= maxLevel) return 0;
   return (currentLevel + 1) * 15;
 }
 
-export function getUpgradeTpCost(currentLevel: number): number {
-  if (currentLevel >= MAX_ITEM_UPGRADE_LEVEL) return 0;
+export function getUpgradeTpCost(
+  currentLevel: number,
+  maxLevel: number = MAX_SPECIAL_UPGRADE_LEVEL
+): number {
+  if (currentLevel >= maxLevel) return 0;
   return 100 + currentLevel * 75;
 }
 
 export function getSavedItemProgress(): ItemProgressMap {
   try {
     const raw = localStorage.getItem("tacpadel_item_progress");
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migriert eventuell unter "smash" gespeicherte Klassik-XP automatisch auf "shot_classic"
+      if (parsed.smash && !parsed.shot_classic) {
+        parsed.shot_classic = parsed.smash;
+        delete parsed.smash;
+        localStorage.setItem("tacpadel_item_progress", JSON.stringify(parsed));
+      }
+      return parsed;
+    }
   } catch (e) {}
   return {};
 }
@@ -120,31 +159,41 @@ export function saveItemProgress(map: ItemProgressMap): void {
 }
 
 export function getEffectiveItemModifiers(item: ShopItem, level: number) {
-  const lvl = Math.max(0, Math.min(MAX_ITEM_UPGRADE_LEVEL, level));
+  const maxLvl = getItemMaxLevel(item);
+  const lvl = Math.max(0, Math.min(maxLvl, level));
   const mods = { ...item.modifiers };
 
   if (lvl === 0) return mods;
 
-  const penaltyRelief = (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
+  // Meisterungs-Boni für Spezial-Items:
+  // +3 & +5 reduzieren den -2 Hauptmalus; +7 gleicht den -1 Nebenmalus aus; +9 & +10 geben je +1 Neben-Bonus
+  const mainPenaltyRelief = (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
+  const subPenaltyRelief = lvl >= 7 ? 1 : 0;
+  const masteryExtraBonus = (lvl >= 9 ? 1 : 0) + (lvl >= 10 ? 1 : 0);
 
   switch (item.focus) {
     case "power":
       mods.smash += lvl;
-      mods.defense = Math.min(0, mods.defense + penaltyRelief);
+      mods.defense = Math.min(0, mods.defense + mainPenaltyRelief);
+      mods.control = Math.min(0, mods.control + subPenaltyRelief) + masteryExtraBonus;
       break;
     case "control":
       mods.control += lvl;
-      mods.smash = Math.min(0, mods.smash + penaltyRelief);
+      mods.smash = Math.min(0, mods.smash + mainPenaltyRelief);
+      mods.agility = Math.min(0, mods.agility + subPenaltyRelief) + masteryExtraBonus;
       break;
     case "defense":
       mods.defense += lvl;
-      mods.smash = Math.min(0, mods.smash + penaltyRelief);
+      mods.smash = Math.min(0, mods.smash + mainPenaltyRelief);
+      mods.agility = Math.min(0, mods.agility + subPenaltyRelief) + masteryExtraBonus;
       break;
     case "agility":
       mods.agility += lvl;
-      mods.defense = Math.min(0, mods.defense + penaltyRelief);
+      mods.defense = Math.min(0, mods.defense + mainPenaltyRelief);
+      mods.control = Math.min(0, mods.control + subPenaltyRelief) + masteryExtraBonus;
       break;
     case "classic":
+      // Klassik-Items stoppen bei +5 als ausgewogener Allrounder ohne Mali
       if (lvl >= 1) mods.control += 1;
       if (lvl >= 2) mods.defense += 1;
       if (lvl >= 3) mods.agility += 1;
@@ -164,17 +213,19 @@ export function getUpgradedItemDetails(
   customProgressMap?: ItemProgressMap
 ): UpgradedItemDetails {
   const map = customProgressMap || getSavedItemProgress();
+  const maxLevel = getItemMaxLevel(item);
   const prog = map[item.id] || { level: 0, xp: 0 };
-  const level = Math.max(0, Math.min(MAX_ITEM_UPGRADE_LEVEL, prog.level));
-  const isMaxLevel = level >= MAX_ITEM_UPGRADE_LEVEL;
-  const reqXp = getRequiredXpForNextLevel(level);
+  const level = Math.max(0, Math.min(maxLevel, prog.level));
+  const isMaxLevel = level >= maxLevel;
+  const reqXp = getRequiredXpForNextLevel(level, maxLevel);
   const xp = isMaxLevel ? reqXp : prog.xp;
-  const upgradeCostTp = getUpgradeTpCost(level);
+  const upgradeCostTp = getUpgradeTpCost(level, maxLevel);
   const canUpgrade = !isMaxLevel && xp >= reqXp;
 
   return {
     item,
     level,
+    maxLevel,
     displayName: level > 0 ? `${item.name} +${level}` : item.name,
     xp,
     reqXp,
@@ -202,10 +253,11 @@ export function addMatchXpToEquippedLoadout(pointsWonByPlayer: number) {
   const newlyReadyToUpgrade: string[] = [];
 
   equippedIds.forEach((id) => {
+    const maxLvl = getItemMaxLevel(id);
     const current = progressMap[id] || { level: 0, xp: 0 };
-    if (current.level >= MAX_ITEM_UPGRADE_LEVEL) return;
+    if (current.level >= maxLvl) return;
 
-    const reqXp = getRequiredXpForNextLevel(current.level);
+    const reqXp = getRequiredXpForNextLevel(current.level, maxLvl);
     const wasReady = current.xp >= reqXp;
     const nextXp = current.xp + xpGained;
 
@@ -243,9 +295,11 @@ export function performItemUpgrade(
   errorReason?: "max_level" | "not_enough_xp" | "not_enough_tp";
 } {
   const progressMap = getSavedItemProgress();
-  const current = progressMap[itemId] || { level: 0, xp: 0 };
+  const normalizedId = itemId === "smash" ? "shot_classic" : itemId;
+  const maxLvl = getItemMaxLevel(normalizedId);
+  const current = progressMap[normalizedId] || { level: 0, xp: 0 };
 
-  if (current.level >= MAX_ITEM_UPGRADE_LEVEL) {
+  if (current.level >= maxLvl) {
     return {
       success: false,
       newLevel: current.level,
@@ -256,7 +310,7 @@ export function performItemUpgrade(
     };
   }
 
-  const reqXp = getRequiredXpForNextLevel(current.level);
+  const reqXp = getRequiredXpForNextLevel(current.level, maxLvl);
   if (current.xp < reqXp) {
     return {
       success: false,
@@ -268,7 +322,7 @@ export function performItemUpgrade(
     };
   }
 
-  const cost = getUpgradeTpCost(current.level);
+  const cost = getUpgradeTpCost(current.level, maxLvl);
   if (currentTacPoints < cost) {
     return {
       success: false,
@@ -284,7 +338,7 @@ export function performItemUpgrade(
   const newLevel = current.level + 1;
   const newTacPoints = currentTacPoints - cost;
 
-  progressMap[itemId] = {
+  progressMap[normalizedId] = {
     level: newLevel,
     xp: carryOverXp,
   };
@@ -478,11 +532,11 @@ export const SHOP_RACKETS: ShopItem[] = [
 ];
 
 // =========================================================
-// 3. SCHLÄGE / SHOTS (1x Klassik + Volley, Bandeja, Block, Chiquita)
+// 3. SCHLÄGE / SHOTS (1x shot_classic + Volley, Bandeja, Block, Chiquita)
 // =========================================================
 export const SHOP_SHOTS: ShopItem[] = [
   {
-    id: "smash",
+    id: "shot_classic",
     get name() {
       const l = getAppLanguage();
       return l === "es"
@@ -593,7 +647,7 @@ export function checkItemRequirement(item: ShopItem, userTacScore: number): bool
 }
 
 // =========================================================
-// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (INKL. MATCH-LOCK)
+// 5. BERECHNUNG FÜR UI & MATCH-ENGINE (INKL. MATCH-LOCK & +10 SKALIERUNG)
 // =========================================================
 const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
 
@@ -620,7 +674,7 @@ export function calculateLoadoutStats(
     shotId ||
     locked?.shotId ||
     localStorage.getItem("tacpadel_power_shot") ||
-    "smash";
+    "shot_classic";
   const sId = normalizeShotId(rawSId);
 
   const basePartner = SHOP_PARTNERS.find((p) => p.id === pId) || SHOP_PARTNERS[0];
@@ -650,10 +704,10 @@ export function calculateLoadoutStats(
   };
 
   const matchModifiers = {
-    winnerChanceBonus: clamp((stats.smash - 50) * 0.006, -0.05, 0.14),
-    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.009, 0.80, 1.08),
-    defenseSaveBonus: clamp((stats.defense - 50) * 0.008, -0.05, 0.15),
-    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.009, 0.80, 1.08),
+    winnerChanceBonus: clamp((stats.smash - 50) * 0.006, -0.05, 0.22),
+    errorReductionFactor: clamp(1 - (stats.control - 50) * 0.008, 0.72, 1.08),
+    defenseSaveBonus: clamp((stats.defense - 50) * 0.007, -0.05, 0.25),
+    staminaDrainMultiplier: clamp(1 - (stats.agility - 50) * 0.008, 0.72, 1.08),
   };
 
   return {

@@ -32,6 +32,14 @@ const normalizePartnerId = (rawId?: string | null): string => {
   return "partner_rookie";
 };
 
+// Bereinigt gespeicherte Item-Listen auf die neuen IDs (shot_classic, volley, chiquita)
+const normalizeUnlockedList = (list: string[]): string[] => {
+  const mapped = list.map((id) =>
+    id === "smash" ? "shot_classic" : id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+  );
+  return Array.from(new Set(["partner_rookie", "racket_starter", "shot_classic", ...mapped]));
+};
+
 export default function InGameShopModal({
   isOpen,
   onClose,
@@ -57,9 +65,10 @@ export default function InGameShopModal({
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
-      return saved ? JSON.parse(saved) : ["partner_rookie", "racket_starter", "smash"];
+      if (!saved) return ["partner_rookie", "racket_starter", "shot_classic"];
+      return normalizeUnlockedList(JSON.parse(saved));
     } catch {
-      return ["partner_rookie", "racket_starter", "smash"];
+      return ["partner_rookie", "racket_starter", "shot_classic"];
     }
   });
 
@@ -93,6 +102,15 @@ export default function InGameShopModal({
     const localTp = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
     const localScore = parseInt(localStorage.getItem("tacpadel_score") || "0", 10);
 
+    try {
+      const savedUnlocked = localStorage.getItem("tacpadel_unlocked_items");
+      if (savedUnlocked) {
+        const cleaned = normalizeUnlockedList(JSON.parse(savedUnlocked));
+        setUnlockedItems(cleaned);
+        localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(cleaned));
+      }
+    } catch {}
+
     setEquippedPartner(localPartner);
     setEquippedRacket(localRacket);
     setEquippedShot(localShot);
@@ -122,12 +140,7 @@ export default function InGameShopModal({
           localStorage.setItem("tacpadel_tac_points", String(data.tac_points));
         }
         if (Array.isArray(data.unlocked_items) && data.unlocked_items.length > 0) {
-          const normalizedUnlocked = data.unlocked_items.map((id: string) =>
-            id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
-          );
-          const merged = Array.from(
-            new Set(["partner_rookie", "racket_starter", "smash", ...normalizedUnlocked])
-          );
+          const merged = normalizeUnlockedList(data.unlocked_items);
           setUnlockedItems(merged);
           localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(merged));
         }
@@ -245,7 +258,8 @@ export default function InGameShopModal({
       }
 
       onLoadoutChanged();
-      setFeedback({ type: "success", text: `✓ ${item.name} ${t("prof_msg_equipped")}` });
+      const details = getUpgradedItemDetails(item, itemProgressMap);
+      setFeedback({ type: "success", text: `✓ ${details.displayName} ${t("prof_msg_equipped")}` });
       setTimeout(() => setFeedback(null), 2000);
       return;
     }
@@ -262,7 +276,7 @@ export default function InGameShopModal({
 
     setIsBuying(true);
     const nextTp = tacPoints - item.price;
-    const nextUnlocked = Array.from(new Set([...unlockedItems, item.id]));
+    const nextUnlocked = normalizeUnlockedList([...unlockedItems, item.id]);
 
     if (userId) {
       const payload: any = {
@@ -529,6 +543,10 @@ export default function InGameShopModal({
                 const xpPct = details.isMaxLevel ? 100 : details.reqXp > 0 ? Math.min(100, Math.round((details.xp / details.reqXp) * 100)) : 0;
                 const canAffordUpgrade = tacPoints >= details.upgradeCostTp;
 
+                const maxLevelLabel = t("rpg_max_level").includes("+")
+                  ? t("rpg_max_level").replace("+5", `+${details.maxLevel}`)
+                  : `${t("rpg_max_level")} (+${details.maxLevel})`;
+
                 return (
                   <div
                     key={item.id}
@@ -605,7 +623,11 @@ export default function InGameShopModal({
                       <div className="mt-1 pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
                         <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
                           <span className={details.canUpgrade ? "text-amber-400 animate-pulse" : "text-slate-400"}>
-                            {details.isMaxLevel ? t("rpg_max_level") : details.canUpgrade ? t("rpg_ready_upgrade") : `${t("rpg_xp_label")} (+${details.level} ➔ +${details.level + 1})`}
+                            {details.isMaxLevel
+                              ? maxLevelLabel
+                              : details.canUpgrade
+                              ? t("rpg_ready_upgrade")
+                              : `${t("rpg_xp_label")} (+${details.level} ➔ +${details.level + 1})`}
                           </span>
                           {!details.isMaxLevel && (
                             <span className="text-cyan-300">{details.xp} / {details.reqXp} {t("rpg_xp_pts")}</span>

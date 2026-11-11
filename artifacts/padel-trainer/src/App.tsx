@@ -1495,7 +1495,7 @@ export default function App(): React.JSX.Element {
 
                 {/* ACTION BAR */}
                 {!gameOver && !hasSubmitted && (
-                  <div className="fixed bottom-20 lg:sticky lg:bottom-4 left-4 right-4 lg:left-auto lg:right-auto z-40 w-auto lg:w-full bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-3 lg:p-4 rounded-xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)] mt-2">
+                  <div className="fixed bottom-24 lg:sticky lg:bottom-4 left-4 right-4 lg:left-auto lg:right-auto z-40 w-auto lg:w-full bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-3 lg:p-4 rounded-xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)] mt-2">
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center">
                       <div className="grid grid-cols-3 gap-2 lg:gap-4 flex-1 w-full">
                         
@@ -1546,7 +1546,7 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                      className="fixed bottom-0 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none"
+                      className="fixed bottom-20 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none"
                     >
                       <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
                       
@@ -1590,7 +1590,7 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                      className="fixed bottom-10 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-6 sm:p-8 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.8)]"
+                      className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-6 sm:p-8 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.8)]"
                     >
                       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                         <div className="flex-1 text-center md:text-left flex flex-col gap-2">

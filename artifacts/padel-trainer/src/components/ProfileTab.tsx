@@ -266,6 +266,14 @@ const normalizePartnerId = (rawId?: string | null): string => {
   return "partner_rookie";
 };
 
+// Hilfsfunktion: Bereinigt gespeicherte Item-Listen auf die neuen IDs (shot_classic, volley, chiquita)
+const normalizeUnlockedList = (list: string[]): string[] => {
+  const mapped = list.map((id) =>
+    id === "smash" ? "shot_classic" : id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
+  );
+  return Array.from(new Set(["partner_rookie", "racket_starter", "shot_classic", ...mapped]));
+};
+
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const { lang, setLang, t } = useTranslation();
 
@@ -294,13 +302,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("tacpadel_unlocked_items");
-      if (!saved) return ["partner_rookie", "racket_starter", "smash"];
-      const parsed = JSON.parse(saved).map((id: string) =>
-        id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
-      );
-      return Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...parsed]));
+      if (!saved) return ["partner_rookie", "racket_starter", "shot_classic"];
+      return normalizeUnlockedList(JSON.parse(saved));
     } catch {
-      return ["partner_rookie", "racket_starter", "smash"];
+      return ["partner_rookie", "racket_starter", "shot_classic"];
     }
   });
   const [itemProgressMap, setItemProgressMap] = useState<ItemProgressMap>(() => getSavedItemProgress());
@@ -320,12 +325,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     try {
       const savedUnlocked = localStorage.getItem("tacpadel_unlocked_items");
       if (savedUnlocked) {
-        const normalized = JSON.parse(savedUnlocked).map((id: string) =>
-          id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
-        );
-        setUnlockedItems(
-          Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...normalized]))
-        );
+        setUnlockedItems(normalizeUnlockedList(JSON.parse(savedUnlocked)));
       }
     } catch {}
 
@@ -458,10 +458,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       if (user?.user_metadata?.item_progress) {
         const localProg = getSavedItemProgress();
-        const remoteProg = user.user_metadata.item_progress as ItemProgressMap;
-        const mergedProg: ItemProgressMap = { ...remoteProg, ...localProg };
-        Object.keys(remoteProg).forEach((k) => {
-          const r = remoteProg[k];
+        const rawRemote = { ...(user.user_metadata.item_progress as ItemProgressMap) };
+        if (rawRemote.smash && !rawRemote.shot_classic) {
+          rawRemote.shot_classic = rawRemote.smash;
+          delete rawRemote.smash;
+        }
+        const mergedProg: ItemProgressMap = { ...rawRemote, ...localProg };
+        Object.keys(rawRemote).forEach((k) => {
+          const r = rawRemote[k];
           const l = localProg[k];
           if (!l || r.level > l.level || (r.level === l.level && r.xp > l.xp)) {
             mergedProg[k] = r;
@@ -485,14 +489,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         }
 
         const rawUnlocked = Array.isArray(profileData.unlocked_items) ? profileData.unlocked_items : [];
-        const normalizedUnlocked = rawUnlocked.map((id: string) =>
-          id === "kick_x3" ? "volley" : id === "vibora" ? "chiquita" : id
-        );
-        const mergedUnlocked = normalizedUnlocked.length > 0
-          ? Array.from(new Set(["partner_rookie", "racket_starter", "smash", ...normalizedUnlocked]))
+        const mergedUnlocked = rawUnlocked.length > 0
+          ? normalizeUnlockedList(rawUnlocked)
           : unlockedItems;
 
-        if (normalizedUnlocked.length > 0) {
+        if (rawUnlocked.length > 0) {
           setUnlockedItems(mergedUnlocked);
           localStorage.setItem("tacpadel_unlocked_items", JSON.stringify(mergedUnlocked));
         }
@@ -518,7 +519,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           const normalizedShot = normalizeShotId(profileData.equipped_shot);
           const safeShot = mergedUnlocked.includes(normalizedShot)
             ? normalizedShot
-            : "smash";
+            : "shot_classic";
           setEquippedShot(safeShot);
           setShotId(safeShot);
           localStorage.setItem("tacpadel_power_shot", safeShot);
@@ -646,7 +647,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   }, [allHistory, statsMode, currentScore]);
 
-  // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE (INKL. +1 BIS +5 UPGRADES) ---
+  // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE (KLASSIK BIS +5 | SPEZIAL BIS +10) ---
   const loadoutStats = useMemo(
     () => calculateLoadoutStats(partnerId, racketId, shotId, itemProgressMap),
     [partnerId, racketId, shotId, itemProgressMap]
@@ -750,6 +751,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     const canAffordTp = tacPoints >= details.upgradeCostTp;
     const mods = details.effectiveModifiers;
 
+    const maxLevelLabel = t("rpg_max_level").includes("+")
+      ? t("rpg_max_level").replace("+5", `+${details.maxLevel}`)
+      : `${t("rpg_max_level")} (+${details.maxLevel})`;
+
     return (
       <div className="mt-1.5 pt-2 border-t border-slate-800/80 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1 text-[8px] font-black">
@@ -779,7 +784,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
             <span className={details.canUpgrade ? "text-amber-400 animate-pulse" : "text-slate-400"}>
               {details.isMaxLevel
-                ? t("rpg_max_level")
+                ? maxLevelLabel
                 : details.canUpgrade
                 ? t("rpg_ready_upgrade")
                 : `${t("rpg_xp_label")} (Lvl +${details.level} ➔ +${details.level + 1})`}
