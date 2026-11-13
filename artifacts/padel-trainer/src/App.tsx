@@ -29,6 +29,52 @@ const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "
 
 type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
 
+// Rotierende Aufgaben-Typen für den interaktiven Simulations-Modus
+type SimTaskType = "shot" | "target" | "run" | "shot_target" | "shot_run" | "target_run" | "full";
+const SIM_TASK_TYPES: SimTaskType[] = [
+  "shot",
+  "target",
+  "run",
+  "shot_target",
+  "shot_run",
+  "target_run",
+  "full",
+];
+
+// Prüft, ob ein Szenario die nötigen Felder für den jeweiligen Simulations-Aufgabentyp besitzt
+function scenarioSupportsSimTask(s: Scenario, task: SimTaskType): boolean {
+  const hasTarget = Array.isArray(s.bestZones) && s.bestZones.length > 0;
+  const hasRun = Boolean(s.laufZone);
+  if (task === "target" || task === "shot_target") return hasTarget;
+  if (task === "run" || task === "shot_run") return hasRun;
+  if (task === "target_run" || task === "full") return hasTarget && hasRun;
+  return true;
+}
+
+// Wählt für die Simulation abwechslungsreich den nächsten Aufgabentyp + ein passendes Szenario
+function rollNextSimulationRound(prevTask?: SimTaskType, prevScenarioId?: number): {
+  globalIndex: number;
+  taskType: SimTaskType;
+  prefilledShot: string | null;
+} {
+  const availableTasks = prevTask
+    ? SIM_TASK_TYPES.filter((t) => t !== prevTask)
+    : SIM_TASK_TYPES;
+  const nextTask = availableTasks[Math.floor(Math.random() * availableTasks.length)];
+
+  const matchingScenarios = SCENARIOS.filter(
+    (s) => scenarioSupportsSimTask(s, nextTask) && s.id !== prevScenarioId
+  );
+  const pool = matchingScenarios.length > 0 ? matchingScenarios : SCENARIOS;
+  const chosenScenario = pool[Math.floor(Math.random() * pool.length)];
+  const globalIndex = Math.max(0, SCENARIOS.findIndex((s) => s.id === chosenScenario.id));
+
+  const shotIsGiven = nextTask === "target" || nextTask === "run" || nextTask === "target_run";
+  const prefilledShot = shotIsGiven ? (chosenScenario.validShots[0] || "DRIVE") : null;
+
+  return { globalIndex, taskType: nextTask, prefilledShot };
+}
+
 const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number = 0): THREE.Vector3 => {
   if (!zoneId || typeof zoneId !== "string" || zoneId.length < 2) {
     return new THREE.Vector3(0, yHeight, 0);
@@ -48,7 +94,7 @@ const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number =
 };
 
 const getTargetProgressionLevel = (scores: Record<string, number>, locked: Level[]): Level => {
-  if ((scores["Spielzug"] || 0) >= 50) return "Simulation";
+  if ((scores["Spielzug"] || 0) >= 10) return "Simulation";
 
   for (const lvl of TRAINER_SEQUENCE) {
     const progUnlocked =
@@ -357,9 +403,10 @@ export default function App(): React.JSX.Element {
 
   const [isShotModalOpen, setIsShotModalOpen] = useState(false);
   const [level, setLevel] = useState<Level>("Schlag");
+  const [simTaskType, setSimTaskType] = useState<SimTaskType>("full");
   
   const isSimulation = (level as string) === "Simulation";
-  const maxScore = level === "Spielzug" ? 50 : 10;
+  const maxScore = 10;
 
   const [[currentScenarioIndex, rotationPool], setRotation] = useState<[number, number[]]>(() => {
     const initialCount = SCENARIOS.filter(s => s.id <= 10).length; 
@@ -381,16 +428,76 @@ export default function App(): React.JSX.Element {
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const [masteredShots, setMasteredShots] = useState<Set<string>>(new Set());
 
-  const [easyMode, setEasyMode] = useState(true);
-  const [correctionMode, setCorrectionMode] = useState(true);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const [hasRestored, setHasRestored] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
 
-  const activeEasyMode = level === "Schlag" ? false : easyMode;
-  const activeCorrectionMode = level === "Schlag" ? false : correctionMode;
+  // Easy-Mode ist überall (auch in der Simulation) fest aktiv;
+  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi aktiv und in der Simulation deaktiviert.
+  const activeEasyMode = true;
+  const activeCorrectionMode = !isSimulation;
+
+  // Dynamische Anforderungen je nach Level bzw. ausgewürfelter Simulations-Aufgabe
+  const needsRun = isSimulation
+    ? ["run", "shot_run", "target_run", "full"].includes(simTaskType)
+    : level === "Laufrichtung" || level === "Spielzug";
+
+  const needsTarget = isSimulation
+    ? ["target", "shot_target", "target_run", "full"].includes(simTaskType)
+    : level === "Schlagrichtung" || level === "Spielzug";
+
+  const needsShot = isSimulation
+    ? ["shot", "shot_target", "shot_run", "full"].includes(simTaskType)
+    : true;
+
+  // Übersetzt den aktuellen Aufgabentyp in das passende Court-Layout für ScenarioCourt25
+  const effectiveCourtLevel: Level = isSimulation
+    ? needsRun && needsTarget
+      ? "Spielzug"
+      : needsTarget
+      ? "Schlagrichtung"
+      : needsRun
+      ? "Laufrichtung"
+      : "Schlag"
+    : level;
+
+  // Kurzes Badge + Erklärungstext für die aktuelle Simulations-Aufgabe
+  const simTaskBadgeText = useMemo(() => {
+    if (!isSimulation) return "";
+    if ( lang === "en" ) {
+      switch (simTaskType) {
+        case "shot": return "⚡ TASK: SHOT ONLY";
+        case "target": return "🎯 TASK: TARGET ONLY";
+        case "run": return "🏃 TASK: RUN ZONE ONLY";
+        case "shot_target": return "🔥 COMBO: TARGET & SHOT";
+        case "shot_run": return "🔥 COMBO: RUN & SHOT";
+        case "target_run": return "🔥 COMBO: RUN & TARGET";
+        default: return "👑 FULL MOVE (ALL 3)";
+      }
+    }
+    if ( lang === "es" ) {
+      switch (simTaskType) {
+        case "shot": return "⚡ TAREA: SOLO GOLPE";
+        case "target": return "🎯 TAREA: SOLO DESTINO";
+        case "run": return "🏃 TAREA: SOLO CARRERA";
+        case "shot_target": return "🔥 COMBO: DESTINO Y GOLPE";
+        case "shot_run": return "🔥 COMBO: CARRERA Y GOLPE";
+        case "target_run": return "🔥 COMBO: CARRERA Y DESTINO";
+        default: return "👑 JUGADA COMPLETA (LOS 3)";
+      }
+    }
+    switch (simTaskType) {
+      case "shot": return "⚡ AUFGABE: NUR SCHLAG WÄHLEN";
+      case "target": return "🎯 AUFGABE: NUR SCHLAGZIEL";
+      case "run": return "🏃 AUFGABE: NUR LAUFWEG";
+      case "shot_target": return "🔥 KOMBI: SCHLAGZIEL & SCHLAG";
+      case "shot_run": return "🔥 KOMBI: LAUFWEG & SCHLAG";
+      case "target_run": return "🔥 KOMBI: LAUFWEG & SCHLAGZIEL";
+      default: return "👑 KOMPLETTER SPIELZUG (ALLE 3)";
+    }
+  }, [isSimulation, simTaskType, lang]);
 
   const isProgressionUnlocked = (l: string) => {
     if (l === "Schlag") return true;
@@ -455,14 +562,16 @@ export default function App(): React.JSX.Element {
     });
 
     if (isNewSim) {
-      const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
-      const globalIndex = SCENARIOS.findIndex(s => s.id === randomScenario.id);
-      setRotation([globalIndex, []]);
+      const nextSim = rollNextSimulationRound();
+      setSimTaskType(nextSim.taskType);
+      setRotation([nextSim.globalIndex, []]);
+      setSelectedShot(nextSim.prefilledShot);
     } else {
       const allIndices = shuffleIndices(filteredPool.length);
-      const maxQ = targetLevel === "Spielzug" ? 50 : 10; 
+      const maxQ = 10;
       const limitedIndices = allIndices.slice(0, maxQ);
       setRotation([limitedIndices[0], limitedIndices.slice(1)]);
+      setSelectedShot(null);
     }
   };
 
@@ -470,7 +579,7 @@ export default function App(): React.JSX.Element {
     if (isProgressLoaded && !hasRestored) {
       const syncedLocks = new Set<Level>(lockedLevels);
 
-      if ((highestScores["Spielzug"] || 0) < 50) {
+      if ((highestScores["Spielzug"] || 0) < 10) {
         syncedLocks.add("Simulation");
       } else {
         syncedLocks.delete("Simulation");
@@ -510,13 +619,21 @@ export default function App(): React.JSX.Element {
 
       if (hasValidActiveSession) {
         setLevel(activeSession.level);
-        setScore(activeSession.score);
-        setRotation([activeSession.currentScenarioIndex, activeSession.rotationPool]);
+        if ((activeSession.level as string) === "Simulation") {
+          const nextSim = rollNextSimulationRound();
+          setSimTaskType(nextSim.taskType);
+          setRotation([nextSim.globalIndex, []]);
+          setSelectedShot(nextSim.prefilledShot);
+          setScore(activeSession.score || 0);
+        } else {
+          setScore(Math.min(activeSession.score, 10));
+          setRotation([activeSession.currentScenarioIndex, (activeSession.rotationPool || []).slice(0, 10)]);
+          setSelectedShot(activeSession.selectedShot || null);
+        }
         setWrongPool(activeSession.wrongPool || []);
         setIsRetryPhase(activeSession.isRetryPhase || false);
         setRoundsPlayed(activeSession.roundsPlayed || 0);
         setHasSubmitted(activeSession.hasSubmitted || false);
-        setSelectedShot(activeSession.selectedShot || null);
         setSelectedZone(activeSession.selectedZone || null);
         setSelectedLaufZone(activeSession.selectedLaufZone || null);
         setAttempts(activeSession.attempts || 0);
@@ -764,16 +881,17 @@ export default function App(): React.JSX.Element {
     (lang === "es" && (scenario as any)?.explanation_es) ||
     scenario.explanation;
 
+  // Easy-Mode (3er-Auswahl) gilt für alle Trainings-Modi und die Simulation
   const visibleShots = useMemo(() => {
-    if (level === "Schlag") {
+    if (activeEasyMode && scenario) {
       const correctShot = scenario.validShots[0];
-      const otherShots = SHOTS.filter(s => s !== correctShot);
-      const shuffledOthers = otherShots.sort(() => Math.random() - 0.5);
+      const otherShots = SHOTS.filter(s => !scenario.validShots.includes(s));
+      const shuffledOthers = [...otherShots].sort(() => Math.random() - 0.5);
       const reducedShots = [correctShot, ...shuffledOthers.slice(0, 2)].sort(() => Math.random() - 0.5);
       return reducedShots;
     }
     return SHOTS;
-  }, [level, scenario]);
+  }, [activeEasyMode, scenario]);
 
   const acceptableZones = useMemo(() => {
     if (!scenario || !activeEasyMode || !scenario.bestZones) return [];
@@ -791,25 +909,24 @@ export default function App(): React.JSX.Element {
   }, [scenario, activeEasyMode]);
 
   const handleShotClick = (shot: string) => {
-    if (hasSubmitted) return;
+    if (hasSubmitted || !needsShot) return;
     setSelectedShot((prev) => (prev === shot ? null : shot));
     setFeedbackMsg(null);
   };
 
   const handleZoneClick = (zoneId: string) => {
-    if (hasSubmitted) return;
+    if (hasSubmitted || !needsTarget) return;
     setSelectedZone((prev) => (prev === zoneId ? null : zoneId));
     setFeedbackMsg(null);
   };
 
   const handleLaufZoneClick = (zoneId: string) => {
-    if (hasSubmitted) return;
-    if (level === "Schlag" || level === "Schlagrichtung") return;
+    if (hasSubmitted || !needsRun) return;
     setSelectedLaufZone((prev) => (prev === zoneId ? null : zoneId));
     setFeedbackMsg(null);
   };
 
-  const isShotCorrect = !!(
+  const isShotCorrect = !needsShot || !!(
     selectedShot &&
     scenario.validShots.some(
       (valid) =>
@@ -819,27 +936,24 @@ export default function App(): React.JSX.Element {
     )
   );
   
-  const isZoneCorrect = !!(selectedZone && ((scenario.bestZones || []).includes(selectedZone) || acceptableZones.includes(selectedZone)));
-  const isLaufZoneCorrect = !!(selectedLaufZone && (scenario.laufZone === selectedLaufZone || acceptableLaufZones.includes(selectedLaufZone)));
+  const isZoneCorrect = !needsTarget || !!(selectedZone && ((scenario.bestZones || []).includes(selectedZone) || acceptableZones.includes(selectedZone)));
+  const isLaufZoneCorrect = !needsRun || !!(selectedLaufZone && (scenario.laufZone === selectedLaufZone || acceptableLaufZones.includes(selectedLaufZone)));
 
   const canSubmit = (() => {
     if (hasSubmitted) return false;
-    if (!selectedShot) return false;
-    if (level === "Schlagrichtung" && !selectedZone) return false;
-    if (level === "Laufrichtung" && !selectedLaufZone) return false; 
-    if ((level === "Spielzug" || isSimulation) && (!selectedZone || !selectedLaufZone)) return false;
+    if (needsShot && !selectedShot) return false;
+    if (needsTarget && !selectedZone) return false;
+    if (needsRun && !selectedLaufZone) return false;
     return true;
   })();
 
-  const isFullyCorrect = (() => {
-    if (level === "Schlag") return isShotCorrect;
-    if (level === "Schlagrichtung") return isShotCorrect && isZoneCorrect;
-    if (level === "Laufrichtung") return isShotCorrect && isLaufZoneCorrect; 
-    if (level === "Spielzug" || isSimulation) return isShotCorrect && isZoneCorrect && isLaufZoneCorrect;
-    return false;
-  })();
+  const isFullyCorrect = isShotCorrect && isZoneCorrect && isLaufZoneCorrect;
 
-  const isPartiallyCorrect = !isFullyCorrect && (isShotCorrect || isZoneCorrect || isLaufZoneCorrect);
+  const isPartiallyCorrect = !isFullyCorrect && (
+    (needsShot && isShotCorrect) ||
+    (needsTarget && isZoneCorrect) ||
+    (needsRun && isLaufZoneCorrect)
+  );
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -857,23 +971,17 @@ export default function App(): React.JSX.Element {
       setRoundsPlayed((r) => r + 1);
       setFeedbackMsg(null);
 
+      // Punkte-Ausbeute:
+      // - Simulation: +20 Punkte
+      // - Schlag: 100 Pkt. (1. Versuch) / 50 Pkt. (ab 2. Versuch)
+      // - Ab Schlagrichtung (Schlagrichtung, Laufrichtung, Spielzug): 50 Pkt. (1. Versuch) / 25 Pkt. (ab 2. Versuch)
       let pointsEarned = 0;
-      if (level === "Schlag") {
-        pointsEarned = 100;
-      } else if (level !== "Spielzug" && !isSimulation) {
-        if (activeEasyMode && activeCorrectionMode) pointsEarned = 25;
-        else if (activeEasyMode || activeCorrectionMode) pointsEarned = 50;
-        else pointsEarned = 100;
+      if (isSimulation) {
+        pointsEarned = 20;
+      } else if (level === "Schlag") {
+        pointsEarned = currentAttempt === 1 ? 100 : 50;
       } else {
-        if (activeEasyMode && activeCorrectionMode) {
-          pointsEarned = 25;
-        } else if (activeCorrectionMode) {
-          pointsEarned = 50; 
-        } else if (activeEasyMode) {
-          pointsEarned = 75;
-        } else {
-          pointsEarned = 100; 
-        }
+        pointsEarned = currentAttempt === 1 ? 50 : 25;
       }
       
       if (user) {
@@ -886,22 +994,23 @@ export default function App(): React.JSX.Element {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
     } else {
-      if ((level === "Spielzug" || isSimulation) && !activeCorrectionMode && user) {
-        const newTotal = totalPoints - 100;
-        addPoints(-100); 
+      // Minuspunkte (-20) erst ab Simulation
+      if (isSimulation && user) {
+        const newTotal = Math.max(0, totalPoints - 20);
+        addPoints(-20); 
         updateSupabaseScore(newTotal); 
         
         const unlockable = lockedLevels.filter(l => l !== "Simulation");
-        if (newTotal < 2500 && unlockable.length > 0) {
+        if (newTotal < 1500 && unlockable.length > 0) {
           setShowUnlockModal(true);
         }
       }
         
       if (activeCorrectionMode) {
         let errors = [];
-        if (!isShotCorrect) errors.push(t("trainer_err_shot"));
-        if ((level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && !isZoneCorrect) errors.push(t("trainer_err_target"));
-        if ((level === "Laufrichtung" || level === "Spielzug" || isSimulation) && !isLaufZoneCorrect) errors.push(t("trainer_err_run"));
+        if (needsShot && !isShotCorrect) errors.push(t("trainer_err_shot"));
+        if (needsTarget && !isZoneCorrect) errors.push(t("trainer_err_target"));
+        if (needsRun && !isLaufZoneCorrect) errors.push(t("trainer_err_run"));
         
         setFeedbackMsg(`${t("trainer_feedback_prefix")}${errors.join(t("trainer_err_and"))}.`);
       } else {
@@ -914,17 +1023,16 @@ export default function App(): React.JSX.Element {
 
   const nextRound = () => {
     if (isSimulation) {
-      const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
-      const globalIndex = SCENARIOS.findIndex(s => s.id === randomScenario.id);
-
-      setSelectedShot(null);
+      const nextSim = rollNextSimulationRound(simTaskType, scenario?.id);
+      setSimTaskType(nextSim.taskType);
+      setSelectedShot(nextSim.prefilledShot);
       setSelectedZone(null);
       setSelectedLaufZone(null);
       setHasSubmitted(false);
       setFeedbackMsg(null);
       setAttempts(0);
 
-      setRotation([globalIndex, []]);
+      setRotation([nextSim.globalIndex, []]);
       return;
     }
 
@@ -935,7 +1043,7 @@ export default function App(): React.JSX.Element {
     setFeedbackMsg(null);
     setAttempts(0);
 
-    const targetScore = level === "Spielzug" ? 50 : 10;
+    const targetScore = 10;
 
     if (score < targetScore && rotationPool.length > 0) {
       setRotation([rotationPool[0], rotationPool.slice(1)]);
@@ -974,9 +1082,7 @@ export default function App(): React.JSX.Element {
     if (newLevel === level && !force && !gameOver) return;
     clearActiveSession();
     setLevel(newLevel);
-    initPoolForLevel(newLevel);
     
-    setSelectedShot(null);
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
@@ -987,7 +1093,9 @@ export default function App(): React.JSX.Element {
     setGameOver(false);
     setShowRetryBanner(false);
     setFeedbackMsg(null);
-    setAttempts(0); 
+    setAttempts(0);
+
+    initPoolForLevel(newLevel);
   };
 
   const handleLogout = async () => {
@@ -1016,7 +1124,7 @@ export default function App(): React.JSX.Element {
   return (
   <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
     
-    {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS (Kompakt auf 24px für Android, ohne z-50 Blockade) */}
+    {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS */}
     {isNative && (
       <div 
         className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-10"
@@ -1178,7 +1286,7 @@ export default function App(): React.JSX.Element {
                     setSelectedPublicUserTab(listType === "season" ? "tournament" : "single");
                   }}
                   onQuickStart={(specificIndex?: number) => {
-                    if ((highestScores["Spielzug"] || 0) >= 50) {
+                    if ((highestScores["Spielzug"] || 0) >= 10) {
                       handleLevelChange("Simulation" as Level, true);
                       setActiveTab("trainer");
                       return;
@@ -1207,7 +1315,7 @@ export default function App(): React.JSX.Element {
                       if (localIndex !== -1) {
                         const allIndices = shuffleIndices(filteredPool.length);
                         const poolWithoutTarget = allIndices.filter(i => i !== localIndex);
-                        const maxQuestions = targetLevel === "Spielzug" ? 50 : 10; 
+                        const maxQuestions = 10; 
                         const limitedIndices = [localIndex, ...poolWithoutTarget].slice(0, maxQuestions);
                         
                         setRotation([limitedIndices[0], limitedIndices.slice(1)]);
@@ -1303,7 +1411,7 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 w-full lg:w-auto pt-3 lg:pt-0 border-t border-slate-800 lg:border-none">
                       <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto flex-wrap lg:flex-nowrap">
                         
-                        {(highestScores["Spielzug"] || 0) < 50 ? (
+                        {(highestScores["Spielzug"] || 0) < 10 ? (
                           (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
                             const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
                             const isProgLocked = !isProgressionUnlocked(lvl);
@@ -1348,61 +1456,42 @@ export default function App(): React.JSX.Element {
                         </button>
                       </div>
                     </div>
-
-                      {!gameOver && level !== "Schlag" && (
-                        <div className="flex gap-2 w-full lg:w-auto pt-3 lg:pt-0 lg:pl-4 lg:border-l border-slate-700/50">
-                          <button
-                            onClick={() => setEasyMode(!easyMode)}
-                            className={`flex-1 lg:px-4 py-2.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all ${
-                              easyMode ? 'bg-amber-500/90 text-black shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-slate-900/50 border border-slate-800 text-slate-500 hover:text-slate-300'
-                            }`}
-                          >
-                            Easy {easyMode ? 'ON' : 'OFF'}
-                          </button>
-                          <button
-                            onClick={() => { setCorrectionMode(!correctionMode); setFeedbackMsg(null); }}
-                            className={`flex-1 lg:px-4 py-2.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all ${
-                              correctionMode ? 'bg-blue-600/90 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]' : 'bg-slate-900/50 border border-slate-800 text-slate-500 hover:text-slate-300'
-                            }`}
-                          >
-                            Trainer {correctionMode ? 'ON' : 'OFF'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                  </div>
 
                   <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-start gap-3">
-                    <div className="flex flex-col w-full">
-                      <p className="text-xs text-slate-400 leading-relaxed mb-1.5">
-                        {isSimulation ? t("trainer_hint_sim") : 
-                         level === "Spielzug" ? t("trainer_hint_spielzug") : 
-                         level === "Laufrichtung" ? t("trainer_hint_lauf") : 
-                         level === "Schlag" ? t("trainer_hint_schlag") :
-                         t("trainer_hint_default")}
-                      </p>
+                    <div className="flex flex-col w-full gap-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          {isSimulation ? t("trainer_hint_sim") : 
+                           level === "Spielzug" ? t("trainer_hint_spielzug") : 
+                           level === "Laufrichtung" ? t("trainer_hint_lauf") : 
+                           level === "Schlag" ? t("trainer_hint_schlag") :
+                           t("trainer_hint_default")}
+                        </p>
 
-                      <div className="flex flex-col items-start">
-                        {feedbackMsg && !hasSubmitted ? (
-                          <div className="text-[10px] font-bold text-red-400 px-2 py-1 bg-red-950/30 border border-red-900/50 rounded animate-pulse">
-                            ⚠️ {feedbackMsg}
-                          </div>
-                        ) : (activeEasyMode || activeCorrectionMode) && level !== "Schlag" ? (
-                          <div className="text-[10px] text-cyan-300 font-semibold flex flex-wrap gap-1.5 items-center bg-cyan-950/20 px-2 py-1 rounded border border-cyan-900/30">
-                            {activeEasyMode && <span>{t("trainer_easy_info")}</span>}
-                            {activeEasyMode && activeCorrectionMode && <span className="text-slate-600 font-normal">|</span>}
-                            {activeCorrectionMode && <span>{t("trainer_corr_info")}</span>}
-                          </div>
-                        ) : null}
+                        {isSimulation && (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-purple-950/60 border border-purple-500/50 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.25)]">
+                            {simTaskBadgeText}
+                          </span>
+                        )}
                       </div>
+
+                      {feedbackMsg && !hasSubmitted && (
+                        <div className="mt-1 text-[10px] font-bold text-red-400 px-2 py-1 bg-red-950/30 border border-red-900/50 rounded animate-pulse self-start">
+                          ⚠️ {feedbackMsg}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* MOBILE BRIEFING */}
                 <div className="lg:hidden w-full bg-[#050b18]/80 border border-slate-800 rounded-xl p-4 shadow-lg mt-1">
-                  <div className="flex justify-between items-center mb-1.5">
+                  <div className="flex justify-between items-center mb-1.5 gap-2">
                     <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">{t("trainer_scenario_label")} {scenario.id}</h3>
-                    <span className="text-[10px] font-bold text-slate-500">{formatLevelName(level, lang)}</span>
+                    <span className="text-[10px] font-bold text-purple-400 truncate">
+                      {isSimulation ? simTaskBadgeText : formatLevelName(level, lang)}
+                    </span>
                   </div>
                   <p className="text-sm font-semibold text-slate-200 leading-snug mb-4">{scenarioDescription}</p>
                   
@@ -1412,7 +1501,7 @@ export default function App(): React.JSX.Element {
                         {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                       </span>
                       <span className="text-xs font-black text-white">
-                        {isSimulation ? `Score: ${score}` : `${score} / ${maxScore}`}
+                        {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
                       </span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -1432,10 +1521,15 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col bg-[#050b18]/80 border border-slate-800 rounded-xl p-5 shadow-lg relative h-full">
                       <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500 rounded-l-xl shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
                       <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-1">{t("trainer_briefing")}</h3>
-                      <div className="flex items-end gap-3 mb-4">
+                      <div className="flex items-end gap-3 mb-3">
                         <span className="text-5xl font-black text-white leading-none">{scenario.id}</span>
                         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider pb-1">{formatLevelName(level, lang)}</span>
                       </div>
+                      {isSimulation && (
+                        <div className="mb-3 px-2.5 py-1 rounded bg-purple-950/50 border border-purple-500/40 text-[10px] font-black text-purple-300 uppercase tracking-wider self-start">
+                          {simTaskBadgeText}
+                        </div>
+                      )}
                       <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-8 flex-1">{scenarioDescription}</p>
                       
                       <div className="mt-auto">
@@ -1444,7 +1538,7 @@ export default function App(): React.JSX.Element {
                             {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                           </span>
                           <span className="text-xs font-black text-white">
-                            {isSimulation ? `Score: ${score}` : `${score} / ${maxScore}`}
+                            {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
                           </span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -1463,7 +1557,7 @@ export default function App(): React.JSX.Element {
                     
                     <div className="absolute inset-0 w-full h-full pb-1 lg:pb-2">
                       <ScenarioCourt25
-                        level={level as any}
+                        level={effectiveCourtLevel as any}
                         positions={{
                           you: scenario.positions.you,
                           partner: scenario.positions.partner,
@@ -1475,15 +1569,15 @@ export default function App(): React.JSX.Element {
                             type: selectedShot || "Schlag"
                           }
                         }}
-                        selectedZone={selectedZone}
+                        selectedZone={needsTarget ? selectedZone : null}
                         hasSubmitted={hasSubmitted}
-                        bestZones={level === "Schlag" || level === "Laufrichtung" ? [] : (scenario.bestZones || [])}
-                        acceptableZones={level === "Schlag" || level === "Laufrichtung" ? [] : acceptableZones}
-                        onZoneClick={(zoneId: string) => { if (level !== "Schlag" && level !== "Laufrichtung") handleZoneClick(zoneId); }}
-                        profiMode={level === "Spielzug" || level === "Laufrichtung" || isSimulation} 
-                        selectedLaufZone={level === "Schlag" || level === "Schlagrichtung" ? null : selectedLaufZone}
-                        perfectLaufZone={hasSubmitted ? (scenario.laufZone || null) : null}
-                        acceptableLaufZones={level === "Schlag" || level === "Schlagrichtung" ? [] : acceptableLaufZones}
+                        bestZones={needsTarget ? (scenario.bestZones || []) : []}
+                        acceptableZones={needsTarget ? acceptableZones : []}
+                        onZoneClick={(zoneId: string) => { if (needsTarget) handleZoneClick(zoneId); }}
+                        profiMode={effectiveCourtLevel === "Spielzug" || effectiveCourtLevel === "Laufrichtung" || isSimulation} 
+                        selectedLaufZone={needsRun ? selectedLaufZone : null}
+                        perfectLaufZone={hasSubmitted && needsRun ? (scenario.laufZone || null) : null}
+                        acceptableLaufZones={needsRun ? acceptableLaufZones : []}
                         onLaufZoneClick={handleLaufZoneClick}
                         activeChar="you"
                         hitterId="you"
@@ -1499,22 +1593,37 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center">
                       <div className="grid grid-cols-3 gap-2 lg:gap-4 flex-1 w-full">
                         
-                        <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${level === "Spielzug" || level === "Laufrichtung" || isSimulation ? (selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/30 bg-purple-950/10 shadow-[inset_0_0_15px_rgba(168,85,247,0.1)]') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
+                        {/* 1. LAUFZONE */}
+                        <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${needsRun ? (selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/40 bg-purple-950/20 shadow-[inset_0_0_15px_rgba(168,85,247,0.15)] animate-pulse') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
                           <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-purple-400 uppercase">{t("trainer_step1_run")}</span>
-                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{level !== "Spielzug" && level !== "Laufrichtung" && !isSimulation ? "-" : selectedLaufZone ? selectedLaufZone : "-"}</span>
+                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{!needsRun ? "-" : selectedLaufZone ? selectedLaufZone : t("trainer_choose")}</span>
                         </div>         
                         
-                        <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${level !== "Schlag" && level !== "Laufrichtung" ? (selectedZone ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-emerald-500/30 bg-emerald-950/10 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
+                        {/* 2. SCHLAGZIEL */}
+                        <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${needsTarget ? (selectedZone ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-emerald-500/40 bg-emerald-950/20 shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] animate-pulse') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
                           <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-emerald-400 uppercase">{t("trainer_step2_target")}</span>
-                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{level === "Schlag" || level === "Laufrichtung" ? "-" : selectedZone ? selectedZone : "-"}</span>
+                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{!needsTarget ? "-" : selectedZone ? selectedZone : t("trainer_choose")}</span>
                         </div>
                         
+                        {/* 3. SCHLAG (Klickbar wenn gesucht, oder mit 🔒 vorgegeben bei reinen Richtungs-Aufgaben) */}
                         <div 
-                          onClick={() => setIsShotModalOpen(true)}
-                          className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-all cursor-pointer hover:scale-[1.02] active:scale-95 ${selectedShot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/50 bg-orange-950/30 shadow-[0_0_15px_rgba(255,119,0,0.2)] animate-pulse'}`}
+                          onClick={() => { if (needsShot) setIsShotModalOpen(true); }}
+                          className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-all ${
+                            needsShot
+                              ? selectedShot
+                                ? 'border-orange-500/50 bg-orange-950/20 cursor-pointer hover:scale-[1.02] active:scale-95'
+                                : 'border-orange-500/50 bg-orange-950/30 shadow-[0_0_15px_rgba(255,119,0,0.2)] animate-pulse cursor-pointer hover:scale-[1.02] active:scale-95'
+                              : 'border-amber-500/30 bg-amber-950/15 opacity-90 cursor-default'
+                          }`}
                         >
                           <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-orange-400 uppercase">{t("trainer_step3_shot")}</span>
-                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">{selectedShot ? formatShotName(selectedShot, lang) : t("trainer_choose")}</span>
+                          <span className="text-[10px] lg:text-xs font-bold text-white truncate">
+                            {!needsShot && selectedShot
+                              ? `🔒 ${formatShotName(selectedShot, lang)}`
+                              : selectedShot
+                              ? formatShotName(selectedShot, lang)
+                              : t("trainer_choose")}
+                          </span>
                         </div>
                       
                       </div>
@@ -1546,17 +1655,17 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                      className="fixed bottom-20 left-0 right-0 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border-t border-orange-900/50 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] touch-none"
+                      className="fixed bottom-20 left-3 right-3 lg:bottom-6 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none"
                     >
-                      <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
+                      <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
                       
-                      <div className="flex justify-between items-center mb-2">
+                      <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">
-                          {level === "Schlag" ? t("trainer_shot_modal_q1") : t("trainer_shot_modal_q2")}
+                          {t("trainer_shot_modal_q1")}
                         </h3>
                       </div>
                       
-                      <div className={`grid gap-2 overflow-y-auto custom-scrollbar pb-10 ${level === "Schlag" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`}>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 overflow-y-auto custom-scrollbar pb-2">
                         {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
                           let btnStyle = isSelected 
@@ -1590,7 +1699,7 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                      className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-6 sm:p-8 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.8)]"
+                      className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)]"
                     >
                       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                         <div className="flex-1 text-center md:text-left flex flex-col gap-2">
@@ -1598,8 +1707,15 @@ export default function App(): React.JSX.Element {
                             isFullyCorrect ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" : 
                             isPartiallyCorrect ? "text-amber-400" : "text-red-500"
                           }`}>
-                            {isFullyCorrect ? (level === "Spielzug" || isSimulation ? t("trainer_res_perfect_play") : t("trainer_res_success")) : 
-                             isPartiallyCorrect ? t("trainer_res_partial") : t("trainer_res_wrong")}
+                            {isFullyCorrect
+                              ? isSimulation
+                                ? `${t("trainer_res_perfect_play")} (+20)`
+                                : level === "Spielzug"
+                                ? t("trainer_res_perfect_play")
+                                : t("trainer_res_success")
+                              : isPartiallyCorrect
+                              ? `${t("trainer_res_partial")}${isSimulation ? " (-20)" : ""}`
+                              : `${t("trainer_res_wrong")}${isSimulation ? " (-20)" : ""}`}
                           </h3>
                           <p className="text-slate-300 text-sm leading-relaxed max-w-3xl">
                             {scenarioExplanation}
@@ -1609,12 +1725,12 @@ export default function App(): React.JSX.Element {
                             <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                               {t("trainer_badge_shot")} <span className="text-white">{scenario.validShots.map(s => formatShotName(s, lang)).join(" / ")}</span>
                             </span>
-                            {(level === "Schlagrichtung" || level === "Spielzug" || isSimulation) && scenario.bestZones && (
+                            {needsTarget && scenario.bestZones && (
                               <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                 {t("trainer_badge_target")} <span className="text-white">{scenario.bestZones.join(", ")}</span>
                               </span>
                             )}
-                            {(level === "Laufrichtung" || level === "Spielzug" || isSimulation) && scenario.laufZone && (
+                            {needsRun && scenario.laufZone && (
                               <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                 {t("trainer_badge_run")} <span className="text-white">{scenario.laufZone}</span>
                               </span>
@@ -1808,7 +1924,7 @@ export default function App(): React.JSX.Element {
               <ProfileTab key="profile-page" user={user} setActiveTab={(t) => setActiveTab(t as Tab)} />
             )}
 
-            {/* GAME SCREEN (Ohne y-Transform, damit fixed-Modals und Banner nicht verschoben werden) */}
+            {/* GAME SCREEN */}
             {activeTab === "game" && (
               <motion.div
                 key="game"
