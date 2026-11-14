@@ -33,6 +33,8 @@ workflows:
       - name: Increment build number
         script: |
           cd artifacts/padel-trainer/ios/App
+          sed -i '' 's/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = 1.0.5;/g' App.xcodeproj/project.pbxproj
+          agvtool new-marketing-version 1.0.5
           agvtool new-version -all $(($BUILD_NUMBER + 1))
       - name: Build IPA for TestFlight
         script: |
