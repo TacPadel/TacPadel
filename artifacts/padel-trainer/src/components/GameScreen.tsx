@@ -404,14 +404,19 @@ export default function GameScreen() {
   const isRookie = !isProfi && tacScore < 2000;
 
   const [showProfiBanner, setShowProfiBanner] = useState<boolean>(false);
+  const [showRookieBanner, setShowRookieBanner] = useState<boolean>(false);
 
   const triggerProfiBanner = () => {
     const isProfiMatch =
       activeTournamentId !== null ? activeTournamentDifficulty >= 4000 : tacScore >= 4000;
+    const isRookieMatch = !isProfiMatch && tacScore < 2000;
 
     if (isProfiMatch) {
       setShowProfiBanner(true);
       setTimeout(() => setShowProfiBanner(false), 4000);
+    } else if (isRookieMatch) {
+      setShowRookieBanner(true);
+      setTimeout(() => setShowRookieBanner(false), 4000);
     }
   };
 
@@ -1574,24 +1579,23 @@ export default function GameScreen() {
     const targetPos = commands[hitterId].target!;
     const chosenShot = commands[hitterId].shot!;
 
-    // 🟢 ROOKIE-HILFE 4: Aufschlag-Leitplanke verhindert versehentliche Aufschlag-Regelfehler (< 2000 TacScore)
+    // 🟢 ROOKIE-HILFE 4: Aufschlag-Leitplanke auf die 3. Linie (A3 / B3 bzw. D3 / E3)
     if (isRookie && isPlayerServingTurn) {
       const hCol = hitFromPos.charAt(0).toUpperCase();
       const tCol = targetPos.charAt(0).toUpperCase();
-      const tRow = parseInt(targetPos.charAt(1), 10);
       const isHitRight = hCol === "D" || hCol === "E";
       const isHitLeft = hCol === "A" || hCol === "B";
       const isTargetRight = tCol === "D" || tCol === "E";
       const isTargetLeft = tCol === "A" || tCol === "B";
-      const isWrongDiagonal = (isHitRight && isTargetRight) || (isHitLeft && isTargetLeft);
-      const isTooShort = tRow >= 3;
+      const isWrongDiagonal =
+        (isHitRight && isTargetRight) || (isHitLeft && isTargetLeft) || tCol === "C";
 
-      if (isWrongDiagonal || isTooShort || chosenShot !== "AUFSCHLAG") {
-        const suggestedTarget = isHitRight ? "A2 / B2" : "D2 / E2";
-        const suggestedRun = isHitRight ? "D3" : "B3";
+      if (isWrongDiagonal || chosenShot !== "AUFSCHLAG") {
+        const suggestedTarget = isHitRight ? "A3 / B3" : "D3 / E3";
+        const suggestedRun = isHitRight ? "D4" : "B4";
         const coachHint =
           lang === "en"
-            ? `💡 Coach: Serve diagonally into ${suggestedTarget} & run to ${suggestedRun}!`
+            ? `💡 Coach: Serve diagonally into ${suggestedTarget} & move to ${suggestedRun}!`
             : lang === "es"
             ? `💡 Coach: ¡Saca en diagonal a ${suggestedTarget} y sube a ${suggestedRun}!`
             : `💡 Coach-Tipp: Serviere diagonal nach ${suggestedTarget} & rücke auf ${suggestedRun} vor!`;
@@ -2762,6 +2766,59 @@ export default function GameScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ROOKIE BANNER (Erscheint einmalig zu Matchbeginn wie das Profi-Banner) */}
+      <AnimatePresence>
+        {showRookieBanner && (
+          <motion.div
+            initial={{ x: -800, skewX: 20, opacity: 0 }}
+            animate={{ x: 0, skewX: 0, opacity: 1 }}
+            exit={{ x: -800, skewX: 20, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }}
+            className="absolute top-24 left-0 right-0 z-[140] pointer-events-none flex justify-center px-4"
+          >
+            <div
+              className="p-[2px] bg-gradient-to-r from-emerald-500 via-[#050b14] to-cyan-500 shadow-[0_10px_30px_rgba(16,185,129,0.35)]"
+              style={{
+                clipPath:
+                  "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)",
+              }}
+            >
+              <div
+                className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden"
+                style={{
+                  clipPath:
+                    "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)",
+                }}
+              >
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
+                <div className="relative flex items-center justify-center shrink-0">
+                  <div className="absolute w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-dashed border-white/30 animate-[spin_4s_linear_infinite]"></div>
+                  <div className="absolute w-12 h-12 sm:w-14 sm:h-14 rounded-full border-y-2 border-emerald-400 opacity-70"></div>
+                  <span className="text-xl sm:text-2xl z-10 font-black text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]">
+                    💡
+                  </span>
+                </div>
+                <div className="flex flex-col justify-center z-10 leading-tight">
+                  <span className="text-base sm:text-xl font-black uppercase tracking-widest text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+                    {lang === "en"
+                      ? "ROOKIE COACH ACTIVE"
+                      : lang === "es"
+                      ? "COACH ROOKIE ACTIVO"
+                      : "ROOKIE-COACH AKTIV"}
+                  </span>
+                  <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]">
+                    {lang === "en"
+                      ? "AUTO-PARTNER & SHOT GUIDE (< 2000 TS)"
+                      : lang === "es"
+                      ? "AUTO-COMPAÑERO Y GUÍA (< 2000 TS)"
+                      : "PARTNER-AUTOMATIK & ZIELHILFE (< 2000 TS)"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* TRON FLASH BANNER */}
       <AnimatePresence>
@@ -3474,11 +3531,7 @@ export default function GameScreen() {
                       : `(${t("game_hitter_role")})`
                     : `(${t("game_cover_role")})`}
                 </span>
-                {isRookie && (
-                  <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-300">
-                    🟢 Rookie-Coach
-                  </span>
-                )}
+              
                 <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
                   🎾 {activeLoadout.racket.name} • ⚡{" "}
                   {focusShotType ? formatShotName(focusShotType, lang) : activeLoadout.shot.badge}
