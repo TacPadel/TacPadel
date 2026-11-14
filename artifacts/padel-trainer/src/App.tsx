@@ -1655,7 +1655,14 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                      className="fixed bottom-20 left-3 right-3 lg:bottom-6 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none"
+                      className={`fixed ${
+                        typeof window !== "undefined" &&
+                        window.innerWidth >= 740 &&
+                        window.innerWidth <= 1100 &&
+                        window.innerHeight >= 900
+                          ? "bottom-28"
+                          : "bottom-20 lg:bottom-6"
+                      } left-3 right-3 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none`}
                     >
                       <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
                       
@@ -1699,7 +1706,14 @@ export default function App(): React.JSX.Element {
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                      className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)]"
+                      className={`fixed ${
+                        typeof window !== "undefined" &&
+                        window.innerWidth >= 740 &&
+                        window.innerWidth <= 1100 &&
+                        window.innerHeight >= 900
+                          ? "bottom-28"
+                          : "bottom-24 lg:bottom-6"
+                      } left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)]`}
                     >
                       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                         <div className="flex-1 text-center md:text-left flex flex-col gap-2">
