@@ -875,16 +875,16 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 66,
-    description: "Aggressive Positionierung: Beide Gegner stehen extrem aggressiv am Netz und beim Return. Du willst sie direkt bei der Spieleröffnung einklemmen.",
-    description_en: "Jamming the Receiver: The receiver is standing aggressively inside the baseline. Jam them with a body serve.",
-    description_es: "Saque al Cuerpo: El restador espera muy metido en pista. Bloquéalo con un saque directo al cuerpo.",
+    description: "Aggressive Positionierung: Beide Gegner rennen extrem aggressiv am Netz und beim Return. Du willst sie direkt bei der Spieleröffnung einklemmen.",
+    description_en: "Jamming the Receiver: The receiver is running aggressively inside the baseline. Jam them with a body serve.",
+    description_es: "Saque al Cuerpo: El restador corre muy metido en pista. Bloquéalo con un saque directo al cuerpo.",
     positions: { you: "D1", partner: "B4", opp1: "A1", opp2: "D2", ball: { side: "left", zone: "D1" } },
     validShots: ["AUFSCHLAG"],
-    bestZones: ["D3"],
+    bestZones: ["B3"],
     laufZone: "D4",
-    explanation: "Ein harter, schneller Aufschlag direkt auf den Körper (D3) lässt dem Gegner keinen Platz zum Ausholen. Laufziel bleibt zwingend das Netz (D4).",
-    explanation_en: "A firm serve straight at the body (D3) takes away their swing space while you advance to the net (D4).",
-    explanation_es: "Un saque firme al cuerpo (D3) le impide armar el brazo mientras subes a la red (D4)."
+    explanation: "Ein harter, schneller Aufschlag direkt auf den Körper (B3) lässt dem Gegner keinen Platz zum Ausholen. Laufziel bleibt zwingend das Netz (D4).",
+    explanation_en: "A firm serve straight at the body (B3) takes away their swing space while you advance to the net (D4).",
+    explanation_es: "Un saque firme al cuerpo (B3) le impide armar el brazo mientras subes a la red (D4)."
   },
   {
     id: 67,

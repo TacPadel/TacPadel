@@ -2,16 +2,22 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Haptics } from "@capacitor/haptics";
-import { supabase } from '../lib/supabase';
+import { supabase } from "../lib/supabase";
 
-import { 
-  SHOT_TYPES, TurnResult, GamePhase, Command, Scenario,
-  getServerInfo, evaluatePlayerShot, calculateSmartAITurn 
+import {
+  SHOT_TYPES,
+  TurnResult,
+  GamePhase,
+  Command,
+  Scenario,
+  getServerInfo,
+  evaluatePlayerShot,
+  calculateSmartAITurn,
 } from "../engine/GameLogic";
-import { soundManager } from '../lib/SoundManager';
+import { soundManager } from "../lib/SoundManager";
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
-import TourScreen from "./TourScreen"; 
+import TourScreen from "./TourScreen";
 import GameTutorial from "./GameTutorial";
 import InGameShopModal from "./InGameShopModal";
 
@@ -64,6 +70,85 @@ const getFocusShotType = (shotId?: string | null): string => {
   return ""; // Klassik-Technik (shot_classic) hat keinen Fokus-Boost
 };
 
+// --- ROOKIE-HILFE 1: Berechnet automatisch die passende Partner-Abdeckung (< 2000 TacScore) ---
+const computeAutoPartnerRunZone = (
+  hitter: "you" | "partner",
+  hitterFromZone: string,
+  hitterRunZone: string | null,
+  chosenShot: string | null,
+  currentPartnerZone: string,
+  oppsAtNet: boolean,
+  isServeTurn: boolean
+): string => {
+  if (isServeTurn && currentPartnerZone) {
+    return currentPartnerZone;
+  }
+
+  const effectiveHitterZone = hitterRunZone || hitterFromZone || "B1";
+  const hCol = effectiveHitterZone[0].toUpperCase();
+  const hRow = parseInt(effectiveHitterZone[1], 10) || 1;
+
+  let targetCol = "D";
+  if (hCol === "D" || hCol === "E") targetCol = "B";
+  else if (hCol === "A" || hCol === "B") targetCol = "D";
+  else targetCol = hitter === "you" ? "D" : "B";
+
+  const s = (chosenShot || "").toUpperCase();
+  let targetRow = hRow >= 3 ? 3 : 1;
+
+  if (["LOB", "CHIQUITA", "AUFSCHLAG", "VOLLEY", "BANDEJA", "VIBORA", "SMASH", "BLOCK"].includes(s)) {
+    targetRow = 3;
+  } else if (s === "BAJADA") {
+    targetRow = oppsAtNet ? 1 : 3;
+  } else if (s === "DRIVE") {
+    targetRow = hRow >= 3 ? 3 : 1;
+  }
+
+  return `${targetCol}${targetRow}`;
+};
+
+// --- ROOKIE-HILFE 2: Geführte Schlag-Auswahl & Coach-Empfehlung (< 2000 TacScore) ---
+const getRookieShotOptions = (
+  hitFromZone: string,
+  ballType: string,
+  opp1Zone: string,
+  opp2Zone: string,
+  focusShot: string
+): { shots: string[]; recommended: string[] } => {
+  if (ballType === "PREPARE_SERVE") {
+    return { shots: ["AUFSCHLAG"], recommended: ["AUFSCHLAG"] };
+  }
+
+  const row = parseInt(hitFromZone?.[1] || "1", 10);
+  const o1Row = parseInt(opp1Zone?.[1] || "1", 10);
+  const o2Row = parseInt(opp2Zone?.[1] || "1", 10);
+  const oppsAtNet = o1Row >= 3 || o2Row >= 3;
+  const incomingUpper = (ballType || "").toUpperCase();
+  const isIncomingFast = ["SMASH", "VIBORA", "BAJADA"].includes(incomingUpper);
+
+  let baseShots: string[] = [];
+  let recommended: string[] = [];
+
+  if (row <= 2) {
+    if (isIncomingFast) {
+      baseShots = ["LOB", "BLOCK", "DRIVE", "CHIQUITA"];
+      recommended = ["BLOCK", "LOB"];
+    } else {
+      baseShots = ["LOB", "DRIVE", "CHIQUITA", "BAJADA"];
+      recommended = oppsAtNet ? ["LOB", "CHIQUITA"] : ["DRIVE", "BAJADA"];
+    }
+  } else {
+    baseShots = ["VOLLEY", "BANDEJA", "VIBORA", "SMASH", "LOB"];
+    recommended = incomingUpper === "LOB" ? ["BANDEJA", "SMASH"] : ["VOLLEY", "VIBORA"];
+  }
+
+  if (focusShot && !baseShots.includes(focusShot)) {
+    baseShots.push(focusShot);
+  }
+
+  return { shots: baseShots, recommended };
+};
+
 // --- HAPTICS: Kräftiger, synchroner Impuls bei Punktgewinn ---
 const triggerPointWinHaptic = () => {
   if (localStorage.getItem("tacpadel_haptics") === "false") return;
@@ -77,9 +162,9 @@ const triggerPointWinHaptic = () => {
   } catch (e) {}
 };
 
-type Stats = { 
-  winners: number; 
-  aces: number; 
+type Stats = {
+  winners: number;
+  aces: number;
   unforcedErrors: number;
   totalShots: number;
   shotsPerfect: number;
@@ -88,21 +173,39 @@ type Stats = {
   shotsError: number;
 };
 
-const initialStatsData: { player: Stats, ai: Stats } = {
-  player: { winners: 0, aces: 0, unforcedErrors: 0, totalShots: 0, shotsPerfect: 0, shotsSuccess: 0, shotsRecovery: 0, shotsError: 0 },
-  ai: { winners: 0, aces: 0, unforcedErrors: 0, totalShots: 0, shotsPerfect: 0, shotsSuccess: 0, shotsRecovery: 0, shotsError: 0 }
+const initialStatsData: { player: Stats; ai: Stats } = {
+  player: {
+    winners: 0,
+    aces: 0,
+    unforcedErrors: 0,
+    totalShots: 0,
+    shotsPerfect: 0,
+    shotsSuccess: 0,
+    shotsRecovery: 0,
+    shotsError: 0,
+  },
+  ai: {
+    winners: 0,
+    aces: 0,
+    unforcedErrors: 0,
+    totalShots: 0,
+    shotsPerfect: 0,
+    shotsSuccess: 0,
+    shotsRecovery: 0,
+    shotsError: 0,
+  },
 };
 
-const MAX_PLAYER_STAMINA = 50; 
+const MAX_PLAYER_STAMINA = 50;
 const STAMINA_REGEN_BETWEEN_ROUNDS = 20;
 
-const getAiMaxStamina = (score: number) => score >= 4000 ? 60 : (score < 2000 ? 35 : 50);
+const getAiMaxStamina = (score: number) => (score >= 4000 ? 60 : score < 2000 ? 35 : 50);
 
 const getZoneDist = (z1: string, z2: string) => {
   if (!z1 || !z2) return 0;
-  const c1 = ["A","B","C","D","E"].indexOf(z1[0]);
+  const c1 = ["A", "B", "C", "D", "E"].indexOf(z1[0]);
   const r1 = parseInt(z1[1]);
-  const c2 = ["A","B","C","D","E"].indexOf(z2[0]);
+  const c2 = ["A", "B", "C", "D", "E"].indexOf(z2[0]);
   const r2 = parseInt(z2[1]);
   return Math.abs(c1 - c2) + Math.abs(r1 - r2);
 };
@@ -111,30 +214,30 @@ const evalRunTactics = (shot: string, runZone: string, oppsAtNet: boolean = fals
   if (!shot || !runZone) return 0;
   const r = parseInt(runZone[1]);
   const s = shot.toUpperCase();
-  
+
   if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(s)) {
-    return r >= 3 ? 3 : 0; 
+    return r >= 3 ? 3 : 0;
   }
-  
+
   if (s === "BAJADA") {
     return oppsAtNet ? (r <= 2 ? 3 : 0) : (r >= 3 ? 3 : 0);
   }
 
   if (["DRIVE"].includes(s)) {
-    return r <= 2 ? 3 : 0; 
+    return r <= 2 ? 3 : 0;
   }
   return 0;
 };
 
 const getContinueFee = (tourId: string, currentRound: number) => {
-  const tour = TOURNAMENTS.find(t => t.id === tourId);
+  const tour = TOURNAMENTS.find((t) => t.id === tourId);
   if (!tour || currentRound > 2) return null;
 
   const baseFee = tour.entryFee === 0 ? 50 : tour.entryFee;
-  
-  if (currentRound === 1) return baseFee; 
-  if (currentRound === 2) return baseFee * 2; 
-  
+
+  if (currentRound === 1) return baseFee;
+  if (currentRound === 2) return baseFee * 2;
+
   return null;
 };
 
@@ -153,12 +256,12 @@ export default function GameScreen() {
   const [playerScore, setPlayerScore] = useState<number>(0);
   const [aiScore, setAiScore] = useState<number>(0);
   const [gameOver, setGameOver] = useState<boolean>(false);
-  const [showGameOverUI, setShowGameOverUI] = useState<boolean>(false); 
+  const [showGameOverUI, setShowGameOverUI] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
-  
+
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
-  
+
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
@@ -211,27 +314,37 @@ export default function GameScreen() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
-  useEffect(() => { userIdRef.current = userId; }, [userId]);
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
-  const [introTrigger, setIntroTrigger] = useState(0); 
+  const [introTrigger, setIntroTrigger] = useState(0);
   const [playIntro, setPlayIntro] = useState<boolean>(false);
-  
+
   const [isIntroPlaying, setIsIntroPlaying] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState(!document.hidden);
 
   const [tacScore, setTacScore] = useState<number>(3000);
   const [lastScoreChange, setLastScoreChange] = useState<number>(0);
-  const [matchStats, setMatchStats] = useState<{player: Stats, ai: Stats}>(initialStatsData);
+  const [matchStats, setMatchStats] = useState<{ player: Stats; ai: Stats }>(initialStatsData);
   const [shotHistory, setShotHistory] = useState<string[]>([]);
   const [aiShotHistory, setAiShotHistory] = useState<string[]>([]);
   const [serveNumber, setServeNumber] = useState<1 | 2>(1);
 
   const currentTargetScore = activeTournamentId
-    ? (activeTournamentRound === 1 ? 6 : activeTournamentRound === 2 ? 8 : 10)
+    ? activeTournamentRound === 1
+      ? 6
+      : activeTournamentRound === 2
+      ? 8
+      : 10
     : 7;
 
   const currentMatchTitle = activeTournamentId
-    ? (activeTournamentRound === 3 ? t("game_round_f") : activeTournamentRound === 2 ? t("game_round_sf") : t("game_round_qf"))
+    ? activeTournamentRound === 3
+      ? t("game_round_f")
+      : activeTournamentRound === 2
+      ? t("game_round_sf")
+      : t("game_round_qf")
     : t("game_tiebreak");
 
   const [matchSeconds, setMatchSeconds] = useState<number>(0);
@@ -240,7 +353,7 @@ export default function GameScreen() {
   const formatMatchTime = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
   useEffect(() => {
@@ -249,23 +362,33 @@ export default function GameScreen() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (!gameOver && !isMenuOpen && !isTourOpen && !isShopOpen && isVisible && !showTutorial && !abandonWarning) { 
+    if (
+      !gameOver &&
+      !isMenuOpen &&
+      !isTourOpen &&
+      !isShopOpen &&
+      isVisible &&
+      !showTutorial &&
+      !abandonWarning
+    ) {
       interval = setInterval(() => {
-        setMatchSeconds(prev => prev + 1);
+        setMatchSeconds((prev) => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [gameOver, isMenuOpen, isTourOpen, isShopOpen, isVisible, showTutorial, abandonWarning]);
 
   const [staminaModeEnabled, setStaminaModeEnabled] = useState<boolean>(true);
-  const [stamina, setStamina] = useState({ 
-    you: MAX_PLAYER_STAMINA, 
-    partner: MAX_PLAYER_STAMINA, 
-    opp1: getAiMaxStamina(3000), 
-    opp2: getAiMaxStamina(3000) 
+  const [stamina, setStamina] = useState({
+    you: MAX_PLAYER_STAMINA,
+    partner: MAX_PLAYER_STAMINA,
+    opp1: getAiMaxStamina(3000),
+    opp2: getAiMaxStamina(3000),
   });
   const staminaRef = useRef(stamina);
-  useEffect(() => { staminaRef.current = stamina; }, [stamina]);
+  useEffect(() => {
+    staminaRef.current = stamina;
+  }, [stamina]);
 
   useEffect(() => {
     const savedStaminaSetting = localStorage.getItem("tacpadel_stamina");
@@ -274,16 +397,17 @@ export default function GameScreen() {
     }
   }, []);
 
-  const isProfi = activeTournamentId !== null 
-    ? activeTournamentDifficulty >= 4000 
-    : tacScore >= 4000;
-    
+  const isProfi =
+    activeTournamentId !== null ? activeTournamentDifficulty >= 4000 : tacScore >= 4000;
+
+  // --- ROOKIE-MODUS: Aktiv bis 1.999 TacScore (ab 2.000 TacScore alles wie gehabt) ---
+  const isRookie = !isProfi && tacScore < 2000;
+
   const [showProfiBanner, setShowProfiBanner] = useState<boolean>(false);
 
   const triggerProfiBanner = () => {
-    const isProfiMatch = activeTournamentId !== null 
-      ? activeTournamentDifficulty >= 4000 
-      : tacScore >= 4000;
+    const isProfiMatch =
+      activeTournamentId !== null ? activeTournamentDifficulty >= 4000 : tacScore >= 4000;
 
     if (isProfiMatch) {
       setShowProfiBanner(true);
@@ -306,7 +430,9 @@ export default function GameScreen() {
   useEffect(() => {
     const fetchUserScore = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (session?.user) {
           setUserId(session.user.id);
           userIdRef.current = session.user.id;
@@ -325,11 +451,17 @@ export default function GameScreen() {
 
           const { data, error } = await supabase
             .from("user_stats")
-            .select("points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name") 
+            .select(
+              "points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name"
+            )
             .eq("id", session.user.id)
             .single();
 
-          let defaultName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || t("player_fallback");
+          const defaultName =
+            session.user.user_metadata?.display_name ||
+            session.user.user_metadata?.full_name ||
+            session.user.email?.split("@")[0] ||
+            t("player_fallback");
 
           if (data && !error) {
             setTacScore(data.points);
@@ -339,7 +471,7 @@ export default function GameScreen() {
               setCurrentTacPoints(data.tac_points);
               localStorage.setItem("tacpadel_tac_points", data.tac_points.toString());
             }
-            
+
             if (data.display_name) setPlayerName(data.display_name);
             else setPlayerName(defaultName);
 
@@ -354,7 +486,7 @@ export default function GameScreen() {
               localStorage.setItem("tacpadel_power_shot", normalizeShotId(data.equipped_shot));
             }
             refreshLoadoutAndPartner(data.partner_id);
-            return; 
+            return;
           }
         } else {
           setUserId(null);
@@ -371,7 +503,7 @@ export default function GameScreen() {
       } catch (err) {
         console.log("Konnte Daten nicht von Supabase laden, nutze lokalen Speicher.");
       }
-      
+
       const saved = localStorage.getItem("tacpadel_score");
       if (saved) setTacScore(parseInt(saved, 10));
       refreshLoadoutAndPartner();
@@ -401,11 +533,14 @@ export default function GameScreen() {
   }, []);
 
   useEffect(() => {
-    bgmRef.current = new Audio("/sounds/background.mp3"); 
+    bgmRef.current = new Audio("/sounds/background.mp3");
     bgmRef.current.loop = true;
-    bgmRef.current.volume = 0.2; 
+    bgmRef.current.volume = 0.2;
     return () => {
-      if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current = null; }
+      if (bgmRef.current) {
+        bgmRef.current.pause();
+        bgmRef.current = null;
+      }
     };
   }, []);
 
@@ -413,10 +548,10 @@ export default function GameScreen() {
     if (bgmRef.current) {
       const isMusicEnabled = localStorage.getItem("tacpadel_music") !== "false";
       if (!isMenuOpen && !gameOver && isMusicEnabled && isVisible && !showTutorial) {
-        bgmRef.current.play().catch(e => console.log("Browser blockiert Autoplay:", e));
+        bgmRef.current.play().catch((e) => console.log("Browser blockiert Autoplay:", e));
       } else {
         bgmRef.current.pause();
-        if (gameOver) bgmRef.current.currentTime = 0; 
+        if (gameOver) bgmRef.current.currentTime = 0;
       }
     }
   }, [isMenuOpen, gameOver, isVisible, showTutorial]);
@@ -428,48 +563,70 @@ export default function GameScreen() {
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
 
   const [courtState, setCourtState] = useState({
-    you: "B1", partner: "D4", opp1: "B1", opp2: "D1", 
-    ball: { side: "left" as "left"|"right", zone: "B1", type: "PREPARE_SERVE" }
+    you: "B1",
+    partner: "D4",
+    opp1: "B1",
+    opp2: "D1",
+    ball: { side: "left" as "left" | "right", zone: "B1", type: "PREPARE_SERVE" },
   });
   const courtStateRef = useRef(courtState);
-  useEffect(() => { courtStateRef.current = courtState; }, [courtState]);
-  
+  useEffect(() => {
+    courtStateRef.current = courtState;
+  }, [courtState]);
+
   const [phase, setPhase] = useState<GamePhase>("player_planning");
-  
-  const [aiTarget, setAiTarget] = useState<string>("B3"); 
+
+  const [aiTarget, setAiTarget] = useState<string>("B3");
   const aiTargetRef = useRef(aiTarget);
-  useEffect(() => { aiTargetRef.current = aiTarget; }, [aiTarget]);
+  useEffect(() => {
+    aiTargetRef.current = aiTarget;
+  }, [aiTarget]);
 
   const [aiHitterId, setAiHitterId] = useState<"opp1" | "opp2">("opp1");
   const [validInterceptZones, setValidInterceptZones] = useState<string[]>([]);
   const validInterceptZonesRef = useRef<string[]>([]);
-  useEffect(() => { validInterceptZonesRef.current = validInterceptZones; }, [validInterceptZones]);
-  
-  const [aiTrajectory, setAiTrajectory] = useState({ impactZone: "B3", reboundZone: null as string | null, isWallHit: false });
-  const aiTrajectoryRef = useRef(aiTrajectory);
-  useEffect(() => { aiTrajectoryRef.current = aiTrajectory; }, [aiTrajectory]);
+  useEffect(() => {
+    validInterceptZonesRef.current = validInterceptZones;
+  }, [validInterceptZones]);
 
-  const [catchStatus, setCatchStatus] = useState<"ok" | "missed_time" | "wrong_zone" | "smash_over_head">("ok");
-  const [timerDuration, setTimerDuration] = useState<number>(5000); 
+  const [aiTrajectory, setAiTrajectory] = useState({
+    impactZone: "B3",
+    reboundZone: null as string | null,
+    isWallHit: false,
+  });
+  const aiTrajectoryRef = useRef(aiTrajectory);
+  useEffect(() => {
+    aiTrajectoryRef.current = aiTrajectory;
+  }, [aiTrajectory]);
+
+  const [catchStatus, setCatchStatus] = useState<
+    "ok" | "missed_time" | "wrong_zone" | "smash_over_head"
+  >("ok");
+  const [timerDuration, setTimerDuration] = useState<number>(5000);
   const progressBarRef = useRef<HTMLDivElement>(null);
 
   const [activeChar, setActiveChar] = useState<"you" | "partner">("you");
   const [hitterId, setHitterId] = useState<"you" | "partner">("you");
-  
-  const [commands, setCommands] = useState<{ you: Command, partner: Command }>({
+
+  const [commands, setCommands] = useState<{ you: Command; partner: Command }>({
     you: { run: null, shot: null, target: null },
-    partner: { run: null, shot: null, target: null }
+    partner: { run: null, shot: null, target: null },
   });
   const commandsRef = useRef(commands);
-  useEffect(() => { commandsRef.current = commands; }, [commands]);
+  useEffect(() => {
+    commandsRef.current = commands;
+  }, [commands]);
 
   const [turnResult, setTurnResult] = useState<TurnResult>(null);
-  const [turnTitle, setTurnTitle] = useState<string>(""); 
+  const [turnTitle, setTurnTitle] = useState<string>("");
   const [turnMessage, setTurnMessage] = useState<string>("");
-  
+
   const turnResultRef = useRef(turnResult);
-  const turnTitleRef = useRef(turnTitle); 
-  useEffect(() => { turnResultRef.current = turnResult; turnTitleRef.current = turnTitle; }, [turnResult, turnTitle]); 
+  const turnTitleRef = useRef(turnTitle);
+  useEffect(() => {
+    turnResultRef.current = turnResult;
+    turnTitleRef.current = turnTitle;
+  }, [turnResult, turnTitle]);
 
   const [showResultOverlay, setShowResultOverlay] = useState<boolean>(false);
   const [isShotModalOpen, setIsShotModalOpen] = useState<boolean>(false);
@@ -482,14 +639,14 @@ export default function GameScreen() {
     if (saved === "false") setShowExplanations(false);
   }, []);
 
-  const [flashMsg, setFlashMsg] = useState<{text: string, color: string} | null>(null);
+  const [flashMsg, setFlashMsg] = useState<{ text: string; color: string } | null>(null);
   const flashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showFlash = (text: string, color: string = "text-white", duration: number = 2000) => {
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
-    
+
     setFlashMsg({ text, color });
-    
+
     flashTimeoutRef.current = setTimeout(() => {
       setFlashMsg(null);
       flashTimeoutRef.current = null;
@@ -499,45 +656,53 @@ export default function GameScreen() {
   const abortMatchAndPenalize = async () => {
     const savedData = localStorage.getItem("tacpadel_savegame");
     if (!savedData) return;
-    
+
     const parsed = JSON.parse(savedData);
     const tId = parsed.tournamentId;
-    const scoreChange = -50; 
+    const scoreChange = -50;
     const finalScore = Math.max(0, tacScore + scoreChange);
-    
+
     setTacScore(finalScore);
     if (userIdRef.current) {
       localStorage.setItem("tacpadel_score", finalScore.toString());
     }
     setLastScoreChange(scoreChange);
-    
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session?.user) {
         await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
-        
-        await supabase.from("match_history").insert({ 
-          user_id: session.user.id, 
-          points: finalScore, 
-          result: "loss", 
+
+        await supabase.from("match_history").insert({
+          user_id: session.user.id,
+          points: finalScore,
+          result: "loss",
           match_type: tId ? "tournament" : "single",
-          duration_seconds: parsed.matchSeconds || 0
+          duration_seconds: parsed.matchSeconds || 0,
         });
-        
+
         if (tId) {
-           await supabase.from("tour_progress").update({ status: "eliminated" }).eq("user_id", session.user.id).eq("tournament_id", tId);
-           
-           const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
-           if (savedTourStamina[tId]) {
-             delete savedTourStamina[tId];
-             localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
-           }
+          await supabase
+            .from("tour_progress")
+            .update({ status: "eliminated" })
+            .eq("user_id", session.user.id)
+            .eq("tournament_id", tId);
+
+          const savedTourStamina = JSON.parse(
+            localStorage.getItem("tacpadel_tour_stamina") || "{}"
+          );
+          if (savedTourStamina[tId]) {
+            delete savedTourStamina[tId];
+            localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+          }
         }
       }
     } catch (err) {
       console.error("Fehler beim Abbrechen des Matches:", err);
     }
-    
+
     localStorage.removeItem("tacpadel_savegame");
   };
 
@@ -574,7 +739,7 @@ export default function GameScreen() {
 
   const confirmAbandon = async () => {
     await abortMatchAndPenalize();
-    
+
     if (abandonWarning?.action === "single") {
       setIsMenuOpen(false);
       startNewGame();
@@ -594,7 +759,7 @@ export default function GameScreen() {
     const savedData = localStorage.getItem("tacpadel_savegame");
     if (savedData) {
       const parsed = JSON.parse(savedData);
-      
+
       if (parsed.userId !== userIdRef.current) {
         localStorage.removeItem("tacpadel_savegame");
         return false;
@@ -612,11 +777,11 @@ export default function GameScreen() {
       setAiScore(parsed.aiScore);
       setCourtState(parsed.courtState);
       setPhase(parsed.phase || "player_planning");
-      
+
       if (parsed.matchStats) {
         setMatchStats({
           player: { ...initialStatsData.player, ...parsed.matchStats.player },
-          ai: { ...initialStatsData.ai, ...parsed.matchStats.ai }
+          ai: { ...initialStatsData.ai, ...parsed.matchStats.ai },
         });
       }
 
@@ -628,24 +793,32 @@ export default function GameScreen() {
 
       if (staminaModeEnabled) {
         if (parsed.stamina) setStamina(parsed.stamina);
-        else setStamina({ you: MAX_PLAYER_STAMINA, partner: MAX_PLAYER_STAMINA, opp1: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000), opp2: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000) });
+        else
+          setStamina({
+            you: MAX_PLAYER_STAMINA,
+            partner: MAX_PLAYER_STAMINA,
+            opp1: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000),
+            opp2: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000),
+          });
       }
-      
+
       const total = parsed.playerScore + parsed.aiScore;
       const { serverId, isRightCourt } = getServerInfo(total);
-      let receiverId = "you"; 
+      let receiverId = "you";
       if (serverId === "opp1" || serverId === "opp2") {
         receiverId = isRightCourt ? "partner" : "you";
       }
-      
-      const initialHitter = (serverId === "you" || serverId === "partner") ? serverId : receiverId;
-      const isOurServe = parsed.courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
+
+      const initialHitter = serverId === "you" || serverId === "partner" ? serverId : receiverId;
+      const isOurServe =
+        parsed.courtState.ball.type === "PREPARE_SERVE" &&
+        (serverId === "you" || serverId === "partner");
       resetSelections(initialHitter as "you" | "partner", isOurServe);
 
       setGameOver(false);
       setShowGameOverUI(false);
       setShowResultOverlay(false);
-      
+
       setPlayIntro(false);
       setIsIntroPlaying(false);
       triggerProfiBanner();
@@ -655,23 +828,28 @@ export default function GameScreen() {
     return false;
   };
 
-  const handleStartTournamentMatch = (tourId: string, round: number, difficulty: number = 0, isRematch: boolean = false) => {
+  const handleStartTournamentMatch = (
+    tourId: string,
+    round: number,
+    difficulty: number = 0,
+    isRematch: boolean = false
+  ) => {
     refreshLoadoutAndPartner();
     setIsTourOpen(false);
     setIsMenuOpen(false);
-    
+
     setActiveTournamentId(tourId);
     setActiveTournamentRound(round);
     setActiveTournamentDifficulty(difficulty);
 
-    const selectedProfile = isRematch 
-      ? activeAiProfile 
+    const selectedProfile = isRematch
+      ? activeAiProfile
       : AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
     setActiveAiProfile(selectedProfile);
 
     setPlayerScore(0);
     setAiScore(0);
-    setMatchSeconds(0); 
+    setMatchSeconds(0);
     setGameOver(false);
     setShowGameOverUI(false);
     setMatchStats(initialStatsData);
@@ -684,7 +862,9 @@ export default function GameScreen() {
     } else {
       (async () => {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
           if (session?.user && tourId) {
             const { data } = await supabase
               .from("tour_progress")
@@ -707,9 +887,9 @@ export default function GameScreen() {
     }
 
     const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
-    const roundDifficultyBonus = (round - 1) * 100; 
+    const roundDifficultyBonus = (round - 1) * 100;
     const aiTargetScore = baseDifficulty + roundDifficultyBonus;
-    
+
     if (staminaModeEnabled) {
       let startYou = MAX_PLAYER_STAMINA;
       let startPartner = MAX_PLAYER_STAMINA;
@@ -717,10 +897,13 @@ export default function GameScreen() {
       if (round > 1) {
         const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
         const prevStamina = savedTourStamina[tourId];
-        
+
         if (prevStamina) {
           startYou = Math.min(MAX_PLAYER_STAMINA, prevStamina.you + STAMINA_REGEN_BETWEEN_ROUNDS);
-          startPartner = Math.min(MAX_PLAYER_STAMINA, prevStamina.partner + STAMINA_REGEN_BETWEEN_ROUNDS);
+          startPartner = Math.min(
+            MAX_PLAYER_STAMINA,
+            prevStamina.partner + STAMINA_REGEN_BETWEEN_ROUNDS
+          );
         }
       } else {
         const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
@@ -728,33 +911,46 @@ export default function GameScreen() {
         localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
       }
 
-      setStamina({ 
-        you: startYou, 
-        partner: startPartner, 
-        opp1: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult), 
-        opp2: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult) 
+      setStamina({
+        you: startYou,
+        partner: startPartner,
+        opp1: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult),
+        opp2: Math.floor(getAiMaxStamina(aiTargetScore) * selectedProfile.staminaMult),
       });
     }
 
-    resetForNextPoint(0, 0, 0, initialStatsData, true); 
-    
-    setIntroTrigger(prev => prev + 1); 
+    resetForNextPoint(0, 0, 0, initialStatsData, true);
+
+    setIntroTrigger((prev) => prev + 1);
     setPlayIntro(true);
-    setIsIntroPlaying(true); 
+    setIsIntroPlaying(true);
 
     let roundName = t("game_round_qf");
     if (round === 2) roundName = t("game_round_sf");
     if (round === 3) roundName = t("game_round_f");
-    
+
     if (round > 1 && staminaModeEnabled) {
-        showFlash(`🏆 ${roundName} ${t("game_round_started")} ${t("game_stamina_regen_info")}`, "text-amber-400", 3500);
+      showFlash(
+        `🏆 ${roundName} ${t("game_round_started")} ${t("game_stamina_regen_info")}`,
+        "text-amber-400",
+        3500
+      );
     } else {
-        showFlash(`🏆 ${roundName} ${t("game_round_started")}`, "text-orange-400", 3500);
+      showFlash(`🏆 ${roundName} ${t("game_round_started")}`, "text-orange-400", 3500);
     }
 
     setTimeout(() => {
-        const styleText = selectedProfile.style === "aggressive" ? t("game_style_aggressive") : selectedProfile.style === "defensive" ? t("game_style_defensive") : t("game_style_balanced");
-        showFlash(`${t("game_opponent")}: ${selectedProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
+      const styleText =
+        selectedProfile.style === "aggressive"
+          ? t("game_style_aggressive")
+          : selectedProfile.style === "defensive"
+          ? t("game_style_defensive")
+          : t("game_style_balanced");
+      showFlash(
+        `${t("game_opponent")}: ${selectedProfile.teamName} (${styleText})`,
+        "text-cyan-400",
+        4000
+      );
     }, 3600);
   };
 
@@ -763,92 +959,107 @@ export default function GameScreen() {
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
-    
+
     const randomProfile = AI_PROFILES[Math.floor(Math.random() * AI_PROFILES.length)];
     setActiveAiProfile(randomProfile);
 
     setPlayerScore(0);
     setAiScore(0);
-    setMatchSeconds(0); 
+    setMatchSeconds(0);
     setGameOver(false);
     setShowGameOverUI(false);
     setEarnedTP(0);
     setEarnedItemXp(0);
-    
+
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
-    
+
     if (staminaModeEnabled) {
-      setStamina({ 
-        you: MAX_PLAYER_STAMINA, 
-        partner: MAX_PLAYER_STAMINA, 
-        opp1: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult), 
-        opp2: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult) 
+      setStamina({
+        you: MAX_PLAYER_STAMINA,
+        partner: MAX_PLAYER_STAMINA,
+        opp1: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult),
+        opp2: Math.floor(getAiMaxStamina(tacScore) * randomProfile.staminaMult),
       });
     }
-    
-    resetForNextPoint(0, 0, 0, initialStatsData, true); 
-    
-    setIntroTrigger(prev => prev + 1); 
+
+    resetForNextPoint(0, 0, 0, initialStatsData, true);
+
+    setIntroTrigger((prev) => prev + 1);
     setPlayIntro(true);
-    setIsIntroPlaying(true); 
+    setIsIntroPlaying(true);
 
     setTimeout(() => {
-        const styleText = randomProfile.style === "aggressive" ? t("game_style_aggressive") : randomProfile.style === "defensive" ? t("game_style_defensive") : t("game_style_balanced");
-        showFlash(`${t("game_opponent")}: ${randomProfile.teamName} (${styleText})`, "text-cyan-400", 4000);
+      const styleText =
+        randomProfile.style === "aggressive"
+          ? t("game_style_aggressive")
+          : randomProfile.style === "defensive"
+          ? t("game_style_defensive")
+          : t("game_style_balanced");
+      showFlash(
+        `${t("game_opponent")}: ${randomProfile.teamName} (${styleText})`,
+        "text-cyan-400",
+        4000
+      );
     }, 3500);
   };
 
   useEffect(() => {
     let tTimer: ReturnType<typeof setTimeout>;
-    
+
     if (phase === "ai_prepare" && !isIntroPlaying) {
       const isAiServing = courtState.ball.type === "PREPARE_SERVE";
       const delay = isAiServing ? 2800 : 1500;
-      
+
       tTimer = setTimeout(() => {
         const currentLoadout = calculateLoadoutStats();
         setActiveLoadout(currentLoadout);
 
         let currentAiHitter: "opp1" | "opp2" = "opp1";
-        const { isRightCourt } = getServerInfo(totalPoints); 
+        const { isRightCourt } = getServerInfo(totalPoints);
         const ballLandedAt = courtState.ball.zone;
 
         if (isAiServing) {
           currentAiHitter = serverId as "opp1" | "opp2";
-        } 
-        else if (courtState.ball.type === "AUFSCHLAG") {
+        } else if (courtState.ball.type === "AUFSCHLAG") {
           currentAiHitter = isRightCourt ? "opp1" : "opp2";
-        } 
-        else {
+        } else {
           const bCol = ballLandedAt[0];
-          if (bCol === "A" || bCol === "B") currentAiHitter = "opp1"; 
-          else if (bCol === "D" || bCol === "E") currentAiHitter = "opp2"; 
+          if (bCol === "A" || bCol === "B") currentAiHitter = "opp1";
+          else if (bCol === "D" || bCol === "E") currentAiHitter = "opp2";
           else {
             const getRowIdx = (pos: string) => parseInt(pos[1]);
             const dist1 = Math.abs(getRowIdx(courtState.opp1) - getRowIdx(ballLandedAt));
             const dist2 = Math.abs(getRowIdx(courtState.opp2) - getRowIdx(ballLandedAt));
             if (dist1 < dist2) currentAiHitter = "opp1";
             else if (dist2 < dist1) currentAiHitter = "opp2";
-            else currentAiHitter = "opp1"; 
+            else currentAiHitter = "opp1";
           }
         }
 
         let currentAiDifficulty = tacScore;
         if (activeTournamentId) {
-          currentAiDifficulty = activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore;
-          currentAiDifficulty += ((activeTournamentRound - 1) * 100);
+          currentAiDifficulty =
+            activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore;
+          currentAiDifficulty += (activeTournamentRound - 1) * 100;
         }
 
         const brain = calculateSmartAITurn(
-          ballLandedAt, courtState.you, courtState.partner, 
-          isAiServing, lastShotQuality, currentAiDifficulty, 
-          courtState.ball.type, aiShotHistory, serveNumber,
-          staminaRef.current.you, staminaRef.current.partner,
-          activeAiProfile.style 
+          ballLandedAt,
+          courtState.you,
+          courtState.partner,
+          isAiServing,
+          lastShotQuality,
+          currentAiDifficulty,
+          courtState.ball.type,
+          aiShotHistory,
+          serveNumber,
+          staminaRef.current.you,
+          staminaRef.current.partner,
+          activeAiProfile.style
         );
-        
-        setAiShotHistory(prev => [brain.shot, ...prev].slice(0, 3));
+
+        setAiShotHistory((prev) => [brain.shot, ...prev].slice(0, 3));
 
         let finalAiResult = brain.aiResult as TurnResult;
         let finalAiTitle = brain.aiTitle;
@@ -857,16 +1068,19 @@ export default function GameScreen() {
         if (staminaModeEnabled) {
           const currentAiStamina = staminaRef.current[currentAiHitter];
           if (currentAiStamina <= 0) {
-             const aiName = currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2;
-             if (finalAiResult === "perfect") {
-                 finalAiResult = "success";
-             } else if (finalAiResult === "success") {
-                 finalAiResult = "recovery";
-             } else if (finalAiResult === "recovery" || (finalAiResult && !finalAiResult.startsWith("error"))) {
-                 finalAiResult = "error_net";
-                 finalAiTitle = `🤖 ${aiName} ${t("game_ai_exhausted_title")}`;
-                 finalAiMessage = `${aiName} ${t("game_ai_exhausted_msg")}`;
-             }
+            const aiName = currentAiHitter === "opp1" ? activeAiProfile.p1 : activeAiProfile.p2;
+            if (finalAiResult === "perfect") {
+              finalAiResult = "success";
+            } else if (finalAiResult === "success") {
+              finalAiResult = "recovery";
+            } else if (
+              finalAiResult === "recovery" ||
+              (finalAiResult && !finalAiResult.startsWith("error"))
+            ) {
+              finalAiResult = "error_net";
+              finalAiTitle = `🤖 ${aiName} ${t("game_ai_exhausted_title")}`;
+              finalAiMessage = `${aiName} ${t("game_ai_exhausted_msg")}`;
+            }
           }
         }
 
@@ -882,7 +1096,10 @@ export default function GameScreen() {
         }
 
         const aiShotUpper = (brain.shot || "").toUpperCase();
-        if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(aiShotUpper) || finalAiResult === "perfect") {
+        if (
+          ["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(aiShotUpper) ||
+          finalAiResult === "perfect"
+        ) {
           playSfx("hit_smash");
         } else if (["LOB", "BLOCK", "CHIQUITA"].includes(aiShotUpper)) {
           playSfx("hit_soft");
@@ -905,7 +1122,7 @@ export default function GameScreen() {
           }
         }, 450);
 
-        setMatchStats(prev => {
+        setMatchStats((prev) => {
           const newAiStats = { ...prev.ai };
           newAiStats.totalShots += 1;
           if (finalAiResult === "perfect") newAiStats.shotsPerfect += 1;
@@ -915,99 +1132,138 @@ export default function GameScreen() {
           return { ...prev, ai: newAiStats };
         });
 
-        setAiHitterId(currentAiHitter); 
+        setAiHitterId(currentAiHitter);
         setValidInterceptZones(brain.interceptZones);
         setAiTarget(brain.target);
 
-        const GLOBAL_SPEED_FACTOR = 0.75; 
+        const GLOBAL_SPEED_FACTOR = 0.75;
         let calcDuration = brain.flightTimeMs * GLOBAL_SPEED_FACTOR;
-        
-        if (activeAiProfile.style === "aggressive" && finalAiResult !== "error_net" && finalAiResult !== "error_out") {
-            calcDuration *= 0.85; 
+
+        if (
+          activeAiProfile.style === "aggressive" &&
+          finalAiResult !== "error_net" &&
+          finalAiResult !== "error_out"
+        ) {
+          calcDuration *= 0.85;
         }
-        if (activeAiProfile.style === "defensive" && finalAiResult !== "error_net" && finalAiResult !== "error_out") {
-            calcDuration *= 1.15;
+        if (
+          activeAiProfile.style === "defensive" &&
+          finalAiResult !== "error_net" &&
+          finalAiResult !== "error_out"
+        ) {
+          calcDuration *= 1.15;
         }
 
-        if (finalAiResult === "error_net" || finalAiResult === "error_wall_direct" || finalAiResult === "error_out") {
-          calcDuration = 3600; 
+        if (
+          finalAiResult === "error_net" ||
+          finalAiResult === "error_wall_direct" ||
+          finalAiResult === "error_out"
+        ) {
+          calcDuration = 3600;
         } else if (finalAiResult === "perfect") {
-          calcDuration = 3000; 
+          calcDuration = 3000;
         } else {
           calcDuration = Math.max(calcDuration, 3600);
         }
 
         // ⚡ AGILITY-MODIFIKATOR: Gibt dir bis zu +12% mehr Reaktionszeit beim Timer
-        const agilityTimeBonus = 1 + Math.max(-0.04, Math.min(0.12, (currentLoadout.stats.agility - 50) * 0.008));
+        const agilityTimeBonus =
+          1 + Math.max(-0.04, Math.min(0.12, (currentLoadout.stats.agility - 50) * 0.008));
         if (finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
           calcDuration = Math.round(calcDuration * agilityTimeBonus);
         }
 
-        if (staminaModeEnabled && (staminaRef.current.you <= 0 || staminaRef.current.partner <= 0)) {
-            if (finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
-                calcDuration *= 0.65;
+        // 🟢 ROOKIE-HILFE 3: +25% Reaktionszeit & automatische Vorauswahl des passenden Verteidigers (< 2000 TacScore)
+        if (isRookie && finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
+          calcDuration = Math.round(calcDuration * 1.25);
+
+          let suggestedDefender: "you" | "partner" = "you";
+          if (isAiServing) {
+            suggestedDefender = isRightCourt ? "partner" : "you";
+          } else {
+            const targetZ = brain.reboundZone || brain.target || "B1";
+            const tCol = targetZ[0].toUpperCase();
+            if (tCol === "D" || tCol === "E") suggestedDefender = "partner";
+            else if (tCol === "A" || tCol === "B") suggestedDefender = "you";
+            else {
+              const dYou = getZoneDist(courtState.you, targetZ);
+              const dPartner = getZoneDist(courtState.partner, targetZ);
+              suggestedDefender = dPartner < dYou ? "partner" : "you";
             }
+          }
+          setActiveChar(suggestedDefender);
+        }
+
+        if (staminaModeEnabled && (staminaRef.current.you <= 0 || staminaRef.current.partner <= 0)) {
+          if (finalAiResult !== "perfect" && !finalAiResult?.startsWith("error")) {
+            calcDuration *= 0.65;
+          }
         }
 
         setTimerDuration(calcDuration);
-        
-        setAiTrajectory({ impactZone: brain.target, reboundZone: brain.reboundZone, isWallHit: brain.isWallHit });
+
+        setAiTrajectory({
+          impactZone: brain.target,
+          reboundZone: brain.reboundZone,
+          isWallHit: brain.isWallHit,
+        });
 
         let fColor = "text-red-400";
         if (finalAiResult?.startsWith("error")) fColor = "text-emerald-400";
         else if (finalAiResult === "recovery") fColor = "text-amber-400";
         else if (finalAiResult === "perfect") fColor = "text-red-600";
-        else if (finalAiTitle.includes("REFLEX") || finalAiTitle.includes("SALVADA")) fColor = "text-cyan-400";
-        
+        else if (finalAiTitle.includes("REFLEX") || finalAiTitle.includes("SALVADA"))
+          fColor = "text-cyan-400";
+
         showFlash(finalAiTitle, fColor, calcDuration + 800);
 
-        setCourtState(prev => {
+        setCourtState((prev) => {
           const nextState = {
             ...prev,
-            ball: { side: "right" as const, zone: ballLandedAt, type: brain.shot }
+            ball: { side: "right" as const, zone: ballLandedAt, type: brain.shot },
           };
-          
+
           if (isAiServing) {
             nextState[currentAiHitter] = currentAiHitter === "opp1" ? "B4" : "D4";
           } else {
             nextState[currentAiHitter] = ballLandedAt;
             const pId = currentAiHitter === "opp1" ? "opp2" : "opp1";
-            let pTarget = brain.opp2Target || "C2"; 
-            const targetRow = pTarget[1]; 
-            const hitterCol = ballLandedAt[0]; 
+            let pTarget = brain.opp2Target || "C2";
+            const targetRow = pTarget[1];
+            const hitterCol = ballLandedAt[0];
 
-            if (hitterCol === "A" || hitterCol === "B") pTarget = "D" + targetRow; 
-            else if (hitterCol === "D" || hitterCol === "E") pTarget = "B" + targetRow; 
-            else pTarget = pId === "opp1" ? "B" + targetRow : "D" + targetRow; 
-            
+            if (hitterCol === "A" || hitterCol === "B") pTarget = "D" + targetRow;
+            else if (hitterCol === "D" || hitterCol === "E") pTarget = "B" + targetRow;
+            else pTarget = pId === "opp1" ? "B" + targetRow : "D" + targetRow;
+
             nextState[pId] = pTarget;
 
             if (staminaModeEnabled) {
               const opp1Dist = getZoneDist(prev.opp1, nextState.opp1);
               const opp2Dist = getZoneDist(prev.opp2, nextState.opp2);
-              setStamina(s => ({
+              setStamina((s) => ({
                 ...s,
-                opp1: Math.max(0, s.opp1 - opp1Dist + (opp1Dist > 0 ? 1 : 0)), 
-                opp2: Math.max(0, s.opp2 - opp2Dist + (opp2Dist > 0 ? 1 : 0))
+                opp1: Math.max(0, s.opp1 - opp1Dist + (opp1Dist > 0 ? 1 : 0)),
+                opp2: Math.max(0, s.opp2 - opp2Dist + (opp2Dist > 0 ? 1 : 0)),
               }));
             }
           }
           return nextState;
         });
 
-        const isAiWinnerOrError = finalAiResult === "perfect" || (finalAiResult && finalAiResult.startsWith("error"));
+        const isAiWinnerOrError =
+          finalAiResult === "perfect" || (finalAiResult && finalAiResult.startsWith("error"));
         if (isAiWinnerOrError) {
           setTurnResult(finalAiResult as TurnResult);
-          setTurnTitle(finalAiTitle); 
+          setTurnTitle(finalAiTitle);
           setTurnMessage(finalAiMessage);
 
           setPhase("player_animating");
           setTimeout(() => {
-              setShowResultOverlay(true);
+            setShowResultOverlay(true);
           }, calcDuration + 400);
-          
         } else {
-          setTurnResult(null); 
+          setTurnResult(null);
           setLastShotQuality(finalAiResult as TurnResult);
         }
 
@@ -1018,10 +1274,28 @@ export default function GameScreen() {
 
         setCatchStatus("ok");
         setPhase("timer_running");
-      }, delay); 
+      }, delay);
     }
     return () => clearTimeout(tTimer);
-  }, [phase, courtState.ball.zone, courtState.you, courtState.partner, courtState.opp1, courtState.opp2, serverId, lastShotQuality, totalPoints, isIntroPlaying, staminaModeEnabled, activeTournamentId, activeTournamentRound, activeTournamentDifficulty, activeAiProfile, partnerName]);
+  }, [
+    phase,
+    courtState.ball.zone,
+    courtState.you,
+    courtState.partner,
+    courtState.opp1,
+    courtState.opp2,
+    serverId,
+    lastShotQuality,
+    totalPoints,
+    isIntroPlaying,
+    staminaModeEnabled,
+    activeTournamentId,
+    activeTournamentRound,
+    activeTournamentDifficulty,
+    activeAiProfile,
+    partnerName,
+    isRookie,
+  ]);
 
   useEffect(() => {
     if (phase !== "timer_running") return;
@@ -1030,7 +1304,7 @@ export default function GameScreen() {
 
     const tick = () => {
       const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, timerDuration - elapsed); 
+      const remaining = Math.max(0, timerDuration - elapsed);
 
       if (progressBarRef.current) {
         const percentage = (remaining / timerDuration) * 100;
@@ -1044,7 +1318,10 @@ export default function GameScreen() {
       if (remaining > 0) {
         frameId = requestAnimationFrame(tick);
       } else {
-        if (turnResultRef.current === "perfect" || (turnResultRef.current && turnResultRef.current.startsWith("error"))) {
+        if (
+          turnResultRef.current === "perfect" ||
+          (turnResultRef.current && turnResultRef.current.startsWith("error"))
+        ) {
           setPhase("player_animating");
           setTimeout(() => setShowResultOverlay(true), 1200);
         } else {
@@ -1053,24 +1330,29 @@ export default function GameScreen() {
 
           const interceptYouRun = commandsRef.current.you.run || currentYouPos;
           const interceptPartnerRun = commandsRef.current.partner.run || currentPartnerPos;
-          
+
           let isYouInZone = validInterceptZonesRef.current.includes(interceptYouRun);
           let isPartnerInZone = validInterceptZonesRef.current.includes(interceptPartnerRun);
 
-          const { serverId: currentServer, isRightCourt: currentIsRight } = getServerInfo(totalPoints);
-          if (courtStateRef.current.ball.type === "AUFSCHLAG" && (currentServer === "opp1" || currentServer === "opp2")) {
-              const expectedReturner = currentIsRight ? "partner" : "you";
-              if (expectedReturner === "you") {
-                  isPartnerInZone = false; 
-              } else {
-                  isYouInZone = false;     
-              }
+          const { serverId: currentServer, isRightCourt: currentIsRight } =
+            getServerInfo(totalPoints);
+          if (
+            courtStateRef.current.ball.type === "AUFSCHLAG" &&
+            (currentServer === "opp1" || currentServer === "opp2")
+          ) {
+            const expectedReturner = currentIsRight ? "partner" : "you";
+            if (expectedReturner === "you") {
+              isPartnerInZone = false;
+            } else {
+              isYouInZone = false;
+            }
           }
 
           let status: "ok" | "missed_time" | "wrong_zone" | "smash_over_head" = "ok";
-          
-          if (isYouInZone || isPartnerInZone) status = "ok"; 
-          else if (!commandsRef.current.you.run && !commandsRef.current.partner.run) status = "missed_time"; 
+
+          if (isYouInZone || isPartnerInZone) status = "ok";
+          else if (!commandsRef.current.you.run && !commandsRef.current.partner.run)
+            status = "missed_time";
           else status = courtStateRef.current.ball.type === "SMASH" ? "smash_over_head" : "wrong_zone";
 
           if (status === "ok") {
@@ -1078,24 +1360,30 @@ export default function GameScreen() {
             if (isYouInZone && !isPartnerInZone) bestHitter = "you";
             else if (isPartnerInZone && !isYouInZone) bestHitter = "partner";
             else {
-                const actualBallPos = aiTrajectoryRef.current.reboundZone || aiTargetRef.current;
-                const getColIdx = (col: string) => ["A", "B", "C", "D", "E"].indexOf(col[0]);
-                const getRowIdx = (pos: string) => parseInt(pos[1]);
-                const tCol = getColIdx(actualBallPos);
-                const tRow = getRowIdx(actualBallPos);
-                
-                const distYou = Math.abs(getColIdx(interceptYouRun) - tCol) + Math.abs(getRowIdx(interceptYouRun) - tRow);
-                const distPartner = Math.abs(getColIdx(interceptPartnerRun) - tCol) + Math.abs(getRowIdx(interceptPartnerRun) - tRow);
-                
-                if (distPartner < distYou) bestHitter = "partner";
-                else if (distYou < distPartner) bestHitter = "you";
-                else {
-                    if (commandsRef.current.partner.run && !commandsRef.current.you.run) bestHitter = "partner";
-                    else if (commandsRef.current.you.run && !commandsRef.current.partner.run) bestHitter = "you";
-                    else bestHitter = hitterId; 
-                }
+              const actualBallPos = aiTrajectoryRef.current.reboundZone || aiTargetRef.current;
+              const getColIdx = (col: string) => ["A", "B", "C", "D", "E"].indexOf(col[0]);
+              const getRowIdx = (pos: string) => parseInt(pos[1]);
+              const tCol = getColIdx(actualBallPos);
+              const tRow = getRowIdx(actualBallPos);
+
+              const distYou =
+                Math.abs(getColIdx(interceptYouRun) - tCol) +
+                Math.abs(getRowIdx(interceptYouRun) - tRow);
+              const distPartner =
+                Math.abs(getColIdx(interceptPartnerRun) - tCol) +
+                Math.abs(getRowIdx(interceptPartnerRun) - tRow);
+
+              if (distPartner < distYou) bestHitter = "partner";
+              else if (distYou < distPartner) bestHitter = "you";
+              else {
+                if (commandsRef.current.partner.run && !commandsRef.current.you.run)
+                  bestHitter = "partner";
+                else if (commandsRef.current.you.run && !commandsRef.current.partner.run)
+                  bestHitter = "you";
+                else bestHitter = hitterId;
+              }
             }
-            
+
             // ⚡ AGILITY-MODIFIKATOR BEIM ANLAUFEN DES BALLS
             if (staminaModeEnabled) {
               const currentLoadout = calculateLoadoutStats();
@@ -1105,49 +1393,55 @@ export default function GameScreen() {
               const youDist = Number((rawYouDist * drainMult).toFixed(1));
               const partnerDist = Number((rawPartnerDist * drainMult).toFixed(1));
 
-              setStamina(s => ({
+              setStamina((s) => ({
                 ...s,
                 you: Math.max(0, Number((s.you - youDist).toFixed(1))),
-                partner: Math.max(0, Number((s.partner - partnerDist).toFixed(1)))
+                partner: Math.max(0, Number((s.partner - partnerDist).toFixed(1))),
               }));
 
               if (drainMult < 0.95 && (rawYouDist >= 3 || rawPartnerDist >= 3)) {
-                setActiveGearBoostMsg(`${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`);
+                setActiveGearBoostMsg(
+                  `${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`
+                );
               }
             }
 
             setHitterId(bestHitter);
             setActiveChar(bestHitter);
             setCatchStatus(status);
-            
+
             const catcherZone = bestHitter === "you" ? interceptYouRun : interceptPartnerRun;
-            
-            setCourtState(prev => ({
-              ...prev, you: interceptYouRun, partner: interceptPartnerRun,
-              ball: { side: "left", zone: catcherZone, type: prev.ball.type } 
+
+            setCourtState((prev) => ({
+              ...prev,
+              you: interceptYouRun,
+              partner: interceptPartnerRun,
+              ball: { side: "left", zone: catcherZone, type: prev.ball.type },
             }));
 
             playSfx("hit_soft");
 
-            setCommands(prev => ({ you: { ...prev.you, run: null }, partner: { ...prev.partner, run: null } }));
-            setPhase("player_planning"); 
-            
+            setCommands((prev) => ({
+              you: { ...prev.you, run: null },
+              partner: { ...prev.partner, run: null },
+            }));
+            setPhase("player_planning");
           } else {
             let errorResult: TurnResult = "error_net";
             let tTitle = "";
             let message = "";
-            
+
             if (status === "smash_over_head") {
-              errorResult = "error_smash_over_head"; 
-              tTitle = t("game_err_lobbed_title"); 
+              errorResult = "error_smash_over_head";
+              tTitle = t("game_err_lobbed_title");
               message = t("game_err_lobbed_msg");
             } else if (status === "missed_time") {
-              errorResult = "error_net"; 
-              tTitle = t("game_err_too_late_title"); 
+              errorResult = "error_net";
+              tTitle = t("game_err_too_late_title");
               message = t("game_err_too_late_msg");
             } else {
-              errorResult = "error_wrong_zone"; 
-              tTitle = t("game_err_wrong_dir_title"); 
+              errorResult = "error_wrong_zone";
+              tTitle = t("game_err_wrong_dir_title");
               message = t("game_err_wrong_dir_msg");
             }
 
@@ -1159,25 +1453,29 @@ export default function GameScreen() {
             setTurnMessage(message);
             setLastShotQuality(errorResult);
 
-            setMatchStats(prev => ({
+            setMatchStats((prev) => ({
               ...prev,
               player: {
                 ...prev.player,
                 totalShots: prev.player.totalShots + 1,
-                shotsError: prev.player.shotsError + 1
-              }
+                shotsError: prev.player.shotsError + 1,
+              },
             }));
 
             showFlash(tTitle, "text-red-500", 2500);
 
             const finalBallZone = aiTrajectoryRef.current.reboundZone || aiTargetRef.current;
-            setCourtState(prev => ({
-              ...prev, you: interceptYouRun, partner: interceptPartnerRun,
-              ball: { side: "left", zone: finalBallZone, type: prev.ball.type } 
+            setCourtState((prev) => ({
+              ...prev,
+              you: interceptYouRun,
+              partner: interceptPartnerRun,
+              ball: { side: "left", zone: finalBallZone, type: prev.ball.type },
             }));
 
-            setPhase("player_animating"); 
-            setTimeout(() => { setShowResultOverlay(true); }, 1500);
+            setPhase("player_animating");
+            setTimeout(() => {
+              setShowResultOverlay(true);
+            }, 1500);
           }
         }
       }
@@ -1187,38 +1485,65 @@ export default function GameScreen() {
   }, [phase, timerDuration, staminaModeEnabled]);
 
   const updateCommand = (char: "you" | "partner", updates: Partial<Command>) => {
-    setCommands(prev => ({ ...prev, [char]: { ...prev[char], ...updates } }));
+    setCommands((prev) => {
+      const nextCharCmd = { ...prev[char], ...updates };
+      const next = { ...prev, [char]: nextCharCmd };
+
+      // 🟢 ROOKIE-HILFE 1: Partner-Position automatisch intelligent mitziehen (< 2000 TacScore)
+      if (isRookie && phase === "player_planning" && char === hitterId) {
+        const supp: "you" | "partner" = hitterId === "you" ? "partner" : "you";
+        const isServeTurn = courtState.ball.type === "PREPARE_SERVE";
+        const o1Row = parseInt(courtState.opp1[1] || "1", 10);
+        const o2Row = parseInt(courtState.opp2[1] || "1", 10);
+        const oppsAtNet = o1Row >= 3 || o2Row >= 3;
+
+        const autoSuppZone = computeAutoPartnerRunZone(
+          hitterId,
+          courtState[hitterId],
+          nextCharCmd.run,
+          nextCharCmd.shot,
+          courtState[supp],
+          oppsAtNet,
+          isServeTurn
+        );
+        next[supp] = { ...prev[supp], run: autoSuppZone };
+      }
+
+      return next;
+    });
   };
 
   const handleBuySecondChance = async () => {
     if (!activeTournamentId || isProcessingRetry) return;
-    
+
     setIsProcessingRetry(true);
     const fee = getContinueFee(activeTournamentId, activeTournamentRound);
-    
+
     if (fee === null) {
-       setIsProcessingRetry(false);
-       return;
+      setIsProcessingRetry(false);
+      return;
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Kein User gefunden");
 
       const newTacPoints = currentTacPoints - fee;
 
       const { error: pointsError } = await supabase
-        .from('user_stats')
+        .from("user_stats")
         .update({ tac_points: newTacPoints })
-        .eq('id', session.user.id);
+        .eq("id", session.user.id);
 
       if (pointsError) throw pointsError;
 
       const { error: progressError } = await supabase
-        .from('tour_progress')
-        .update({ retry_used: true, status: 'active', current_round: activeTournamentRound })
-        .eq('user_id', session.user.id)
-        .eq('tournament_id', activeTournamentId);
+        .from("tour_progress")
+        .update({ retry_used: true, status: "active", current_round: activeTournamentRound })
+        .eq("user_id", session.user.id)
+        .eq("tournament_id", activeTournamentId);
 
       if (progressError) throw progressError;
 
@@ -1226,29 +1551,67 @@ export default function GameScreen() {
       setCurrentTacPoints(newTacPoints);
       setRetryUsed(true);
       setIsProcessingRetry(false);
-      
-      handleStartTournamentMatch(activeTournamentId, activeTournamentRound, activeTournamentDifficulty, true);
 
+      handleStartTournamentMatch(
+        activeTournamentId,
+        activeTournamentRound,
+        activeTournamentDifficulty,
+        true
+      );
     } catch (error) {
       console.error("Fehler beim Kauf der zweiten Chance:", error);
       setIsProcessingRetry(false);
     }
   };
 
-
   const handleSubmit = () => {
-    setPhase("player_animating"); 
+    const isPlayerServingTurn =
+      courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
+    const isPlayerReturningTurn =
+      courtState.ball.type === "AUFSCHLAG" && (serverId === "opp1" || serverId === "opp2");
+
+    const hitFromPos = hitterId === "you" ? courtState.you : courtState.partner;
+    const targetPos = commands[hitterId].target!;
+    const chosenShot = commands[hitterId].shot!;
+
+    // 🟢 ROOKIE-HILFE 4: Aufschlag-Leitplanke verhindert versehentliche Aufschlag-Regelfehler (< 2000 TacScore)
+    if (isRookie && isPlayerServingTurn) {
+      const hCol = hitFromPos.charAt(0).toUpperCase();
+      const tCol = targetPos.charAt(0).toUpperCase();
+      const tRow = parseInt(targetPos.charAt(1), 10);
+      const isHitRight = hCol === "D" || hCol === "E";
+      const isHitLeft = hCol === "A" || hCol === "B";
+      const isTargetRight = tCol === "D" || tCol === "E";
+      const isTargetLeft = tCol === "A" || tCol === "B";
+      const isWrongDiagonal = (isHitRight && isTargetRight) || (isHitLeft && isTargetLeft);
+      const isTooShort = tRow >= 3;
+
+      if (isWrongDiagonal || isTooShort || chosenShot !== "AUFSCHLAG") {
+        const suggestedTarget = isHitRight ? "A2 / B2" : "D2 / E2";
+        const suggestedRun = isHitRight ? "D3" : "B3";
+        const coachHint =
+          lang === "en"
+            ? `💡 Coach: Serve diagonally into ${suggestedTarget} & run to ${suggestedRun}!`
+            : lang === "es"
+            ? `💡 Coach: ¡Saca en diagonal a ${suggestedTarget} y sube a ${suggestedRun}!`
+            : `💡 Coach-Tipp: Serviere diagonal nach ${suggestedTarget} & rücke auf ${suggestedRun} vor!`;
+        showFlash(coachHint, "text-amber-400", 3500);
+        return;
+      }
+    }
+
+    setPhase("player_animating");
     setActiveGearBoostMsg(null);
 
     const currentLoadout = calculateLoadoutStats();
     setActiveLoadout(currentLoadout);
 
-    const chosenShot = commands[hitterId].shot!;
     const focusShotType = getFocusShotType(currentLoadout.shot.id);
     const isUsingFocusShot = Boolean(focusShotType && chosenShot.toUpperCase() === focusShotType);
 
     const handleTurnResult = (result: TurnResult, shotType: string) => {
-      if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(shotType) || result === "perfect") playSfx("hit_smash"); 
+      if (["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(shotType) || result === "perfect")
+        playSfx("hit_smash");
       else if (["LOB", "BLOCK", "CHIQUITA"].includes(shotType)) playSfx("hit_soft");
       else playSfx("hit_hard");
 
@@ -1257,21 +1620,22 @@ export default function GameScreen() {
       }
 
       setTimeout(() => {
-          if (result === "perfect") { 
-            playSfx("hit_smash"); 
-            playSfx("crowd_cheer"); 
-          } 
-          else if (result === "error_net") { playSfx("error_net"); playSfx("crowd_gasp"); } 
-          else if (result === "error_wall_direct") { playSfx("bounce_glass"); playSfx("crowd_gasp"); }
-      }, 350); 
+        if (result === "perfect") {
+          playSfx("hit_smash");
+          playSfx("crowd_cheer");
+        } else if (result === "error_net") {
+          playSfx("error_net");
+          playSfx("crowd_gasp");
+        } else if (result === "error_wall_direct") {
+          playSfx("bounce_glass");
+          playSfx("crowd_gasp");
+        }
+      }, 350);
     };
 
-    const hitFromPos = hitterId === "you" ? courtState.you : courtState.partner; 
-    const targetPos = commands[hitterId].target!;
-    
     const recoveryYouRun = commands.you.run || courtState.you;
     const recoveryPartnerRun = commands.partner.run || courtState.partner;
-    
+
     // ⚡ AGILITY-MODIFIKATOR BEIM SCHLAGEN & VERSCHIEBEN
     if (staminaModeEnabled) {
       const drainMult = currentLoadout.matchModifiers.staminaDrainMultiplier;
@@ -1287,89 +1651,124 @@ export default function GameScreen() {
       const youRegen = evalRunTactics(chosenShot, recoveryYouRun, oppsAtNet);
       const partnerRegen = evalRunTactics(chosenShot, recoveryPartnerRun, oppsAtNet);
 
-      setStamina(s => ({
+      setStamina((s) => ({
         ...s,
-        you: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.you - youDist + youRegen - (hitterId === "you" ? staminaCostPerShot : 0)).toFixed(1)))),
-        partner: Math.max(0, Math.min(MAX_PLAYER_STAMINA, Number((s.partner - partnerDist + partnerRegen - (hitterId === "partner" ? staminaCostPerShot : 0)).toFixed(1))))
+        you: Math.max(
+          0,
+          Math.min(
+            MAX_PLAYER_STAMINA,
+            Number(
+              (
+                s.you -
+                youDist +
+                youRegen -
+                (hitterId === "you" ? staminaCostPerShot : 0)
+              ).toFixed(1)
+            )
+          )
+        ),
+        partner: Math.max(
+          0,
+          Math.min(
+            MAX_PLAYER_STAMINA,
+            Number(
+              (
+                s.partner -
+                partnerDist +
+                partnerRegen -
+                (hitterId === "partner" ? staminaCostPerShot : 0)
+              ).toFixed(1)
+            )
+          )
+        ),
       }));
 
       if (drainMult < 0.95 && (rawYouDist >= 3 || rawPartnerDist >= 3)) {
-        setActiveGearBoostMsg(`${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`);
+        setActiveGearBoostMsg(
+          `${t("game_agility_save_badge")} (${currentLoadout.stats.agility} AGI)`
+        );
       }
     }
 
-    setCourtState(prev => ({ 
-      ...prev, 
-      you: recoveryYouRun, 
-      partner: recoveryPartnerRun, 
-      ball: { ...prev.ball, type: chosenShot, zone: hitFromPos } 
+    setCourtState((prev) => ({
+      ...prev,
+      you: recoveryYouRun,
+      partner: recoveryPartnerRun,
+      ball: { ...prev.ball, type: chosenShot, zone: hitFromPos },
     }));
 
-    const isPlayerServingTurn = courtState.ball.type === "PREPARE_SERVE" && (serverId === "you" || serverId === "partner");
-    const isPlayerReturningTurn = courtState.ball.type === "AUFSCHLAG" && (serverId === "opp1" || serverId === "opp2");
-    
     const isDugOut = Boolean(
       !isPlayerReturningTurn &&
-      aiTrajectoryRef.current.isWallHit && 
-      aiTrajectoryRef.current.impactZone[1] === "1" &&
-      aiTrajectoryRef.current.reboundZone && 
-      aiTrajectoryRef.current.reboundZone !== aiTrajectoryRef.current.impactZone && 
-      hitFromPos === aiTrajectoryRef.current.impactZone &&
-      chosenShot !== "BAJADA"
+        aiTrajectoryRef.current.isWallHit &&
+        aiTrajectoryRef.current.impactZone[1] === "1" &&
+        aiTrajectoryRef.current.reboundZone &&
+        aiTrajectoryRef.current.reboundZone !== aiTrajectoryRef.current.impactZone &&
+        hitFromPos === aiTrajectoryRef.current.impactZone &&
+        chosenShot !== "BAJADA"
     );
 
     let currentTurnResult: TurnResult = "success";
     let message = "";
-    let tTitle = ""; 
+    let tTitle = "";
     let isRuleError = false;
 
     if (isPlayerServingTurn && hitterId !== serverId) {
       currentTurnResult = "error_wrong_zone";
       tTitle = t("game_err_wrong_server_title");
-      message = serverId === "you"
-        ? t("game_err_wrong_server_you")
-        : `${t("game_err_wrong_server_partner_1")} ${partnerName} ${t("game_err_wrong_server_partner_2")}`;
+      message =
+        serverId === "you"
+          ? t("game_err_wrong_server_you")
+          : `${t("game_err_wrong_server_partner_1")} ${partnerName} ${t("game_err_wrong_server_partner_2")}`;
       isRuleError = true;
-    } 
-    else if (isPlayerServingTurn) {
+    } else if (isPlayerServingTurn) {
       const hCol = hitFromPos.charAt(0).toUpperCase();
       const tCol = targetPos.charAt(0).toUpperCase();
-      
+
       const isHitRight = hCol === "D" || hCol === "E";
       const isHitLeft = hCol === "A" || hCol === "B";
       const isTargetRight = tCol === "D" || tCol === "E";
       const isTargetLeft = tCol === "A" || tCol === "B";
-      
+
       if ((isHitRight && isTargetRight) || (isHitLeft && isTargetLeft)) {
-         currentTurnResult = "error_out"; 
-         tTitle = t("game_err_serve_diag_title");
-         message = t("game_err_serve_diag_msg");
-         isRuleError = true;
+        currentTurnResult = "error_out";
+        tTitle = t("game_err_serve_diag_title");
+        message = t("game_err_serve_diag_msg");
+        isRuleError = true;
       }
-    }
-    else if (isPlayerReturningTurn) {
+    } else if (isPlayerReturningTurn) {
       const { isRightCourt: currentIsRightCourt } = getServerInfo(totalPoints);
       const expectedReturner = currentIsRightCourt ? "partner" : "you";
 
       if (hitterId !== expectedReturner) {
-         currentTurnResult = "error_wrong_zone";
-         tTitle = t("game_err_wrong_returner_title");
-         message = expectedReturner === "you"
-           ? t("game_err_wrong_returner_you")
-           : `${t("game_err_wrong_returner_partner_1")} ${partnerName}${t("game_err_wrong_returner_partner_2")}`;
-         isRuleError = true;
+        currentTurnResult = "error_wrong_zone";
+        tTitle = t("game_err_wrong_returner_title");
+        message =
+          expectedReturner === "you"
+            ? t("game_err_wrong_returner_you")
+            : `${t("game_err_wrong_returner_partner_1")} ${partnerName}${t("game_err_wrong_returner_partner_2")}`;
+        isRuleError = true;
       }
     }
 
     if (!isRuleError) {
       const evalResult = evaluatePlayerShot(
-        chosenShot, hitFromPos, targetPos, 
-        courtState.opp1, courtState.opp2, isPlayerServingTurn, isPlayerReturningTurn, isDugOut, 
-        activeScenario, lastShotQuality, tacScore, courtState.ball.type, 
-        shotHistory, serveNumber 
+        chosenShot,
+        hitFromPos,
+        targetPos,
+        courtState.opp1,
+        courtState.opp2,
+        isPlayerServingTurn,
+        isPlayerReturningTurn,
+        isDugOut,
+        activeScenario,
+        lastShotQuality,
+        tacScore,
+        courtState.ball.type,
+        shotHistory,
+        serveNumber
       );
       currentTurnResult = evalResult.result;
-      tTitle = evalResult.title; 
+      tTitle = evalResult.title;
       message = evalResult.message;
 
       // =======================================================================
@@ -1379,20 +1778,25 @@ export default function GameScreen() {
       const isExhausted = staminaModeEnabled && hitterStamina <= 0;
 
       if (!isExhausted) {
-        const controlBonusChance = Math.max(0, (1 - currentLoadout.matchModifiers.errorReductionFactor) * 0.5);
+        const controlBonusChance = Math.max(
+          0,
+          (1 - currentLoadout.matchModifiers.errorReductionFactor) * 0.5
+        );
         const smashBonusChance = Math.max(
           0,
           (currentLoadout.matchModifiers.winnerChanceBonus + (isUsingFocusShot ? 0.04 : 0)) * 0.5
         );
 
-        if (currentTurnResult === "perfect" && (isUsingFocusShot || currentLoadout.stats.smash > 50)) {
+        if (
+          currentTurnResult === "perfect" &&
+          (isUsingFocusShot || currentLoadout.stats.smash > 50)
+        ) {
           setActiveGearBoostMsg(
             isUsingFocusShot
               ? `⚡ ${currentLoadout.shot.name}`
               : `💥 SMASH POWER (${currentLoadout.stats.smash} PWR)`
           );
-        }
-        else if (
+        } else if (
           (currentTurnResult === "error_out" || currentTurnResult === "error_net") &&
           controlBonusChance > 0 &&
           Math.random() < controlBonusChance
@@ -1400,8 +1804,7 @@ export default function GameScreen() {
           currentTurnResult = "recovery";
           tTitle = `🎯 CONTROL SAVE (${currentLoadout.stats.control} CTRL)!`;
           setActiveGearBoostMsg(`🎯 CONTROL SAVE (${currentLoadout.racket.name})`);
-        }
-        else if (
+        } else if (
           currentTurnResult === "recovery" &&
           controlBonusChance > 0 &&
           Math.random() < controlBonusChance * 1.15
@@ -1409,8 +1812,7 @@ export default function GameScreen() {
           currentTurnResult = "success";
           tTitle = `🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)!`;
           setActiveGearBoostMsg(`🎯 CONTROL BOOST (${currentLoadout.stats.control} CTRL)`);
-        }
-        else if (
+        } else if (
           currentTurnResult === "success" &&
           ["SMASH", "VIBORA", "BAJADA", "VOLLEY"].includes(chosenShot) &&
           smashBonusChance > 0 &&
@@ -1432,21 +1834,21 @@ export default function GameScreen() {
         const currentStamina = staminaRef.current[hitterId];
         if (currentStamina <= 0) {
           if (currentTurnResult === "success") {
-            currentTurnResult = "recovery"; 
+            currentTurnResult = "recovery";
           } else if (currentTurnResult === "recovery") {
-            currentTurnResult = "error_net"; 
+            currentTurnResult = "error_net";
             tTitle = t("game_exhausted_net_title");
           }
         }
       }
     }
 
-    setShotHistory(prev => {
+    setShotHistory((prev) => {
       const newHistory = [chosenShot, ...prev];
-      return newHistory.slice(0, 2); 
+      return newHistory.slice(0, 2);
     });
 
-    setMatchStats(prev => {
+    setMatchStats((prev) => {
       const pStats = { ...prev.player };
       pStats.totalShots += 1;
       if (currentTurnResult === "perfect") pStats.shotsPerfect += 1;
@@ -1456,81 +1858,96 @@ export default function GameScreen() {
       return { ...prev, player: pStats };
     });
 
-    setLastShotQuality(currentTurnResult); 
+    setLastShotQuality(currentTurnResult);
     setTurnResult(currentTurnResult);
-    setTurnTitle(tTitle); 
+    setTurnTitle(tTitle);
     setTurnMessage(message);
     handleTurnResult(currentTurnResult, chosenShot);
 
     let pFlightTime = 3200;
     if (["SMASH", "VIBORA", "BAJADA"].includes(chosenShot)) pFlightTime = 2800;
-    else if (["AUFSCHLAG"].includes(chosenShot)) pFlightTime = 3200; 
-    else if (["LOB", "CHIQUITA"].includes(chosenShot)) pFlightTime = 3600; 
-    
-    if (currentTurnResult?.startsWith("error")) pFlightTime = 3200; 
-    
+    else if (["AUFSCHLAG"].includes(chosenShot)) pFlightTime = 3200;
+    else if (["LOB", "CHIQUITA"].includes(chosenShot)) pFlightTime = 3600;
+
+    if (currentTurnResult?.startsWith("error")) pFlightTime = 3200;
+
     setTimerDuration(pFlightTime);
 
     let fColor = "text-emerald-400";
     if (currentTurnResult?.startsWith("error")) fColor = "text-red-500";
     else if (currentTurnResult === "recovery") fColor = "text-amber-400";
     else if (currentTurnResult === "perfect") fColor = "text-cyan-400";
-    
+
     showFlash(tTitle, fColor, 2500);
-    setTimeout(() => { setShowResultOverlay(true); }, pFlightTime + 300); 
+    setTimeout(() => {
+      setShowResultOverlay(true);
+    }, pFlightTime + 300);
   };
 
   const handleNextTurn = () => {
-    if (!showResultOverlay) return; 
-    
+    if (!showResultOverlay) return;
+
     setShowResultOverlay(false);
     setActiveGearBoostMsg(null);
-    
+
     let newPlayerScore = playerScore;
     let newAiScore = aiScore;
-    
-    const isTimeout = turnMessage.includes("Time-Out") || turnMessage.includes("Tiempo agotado");
-    const wasAiTurn = !commands[hitterId].shot && !isTimeout; 
+
+    const isTimeout =
+      turnMessage.includes("Time-Out") || turnMessage.includes("Tiempo agotado");
+    const wasAiTurn = !commands[hitterId].shot && !isTimeout;
 
     const newStats = { ...matchStats };
-    const lastShotHit = (wasAiTurn || isTimeout) ? courtState.ball.type : commands[hitterId].shot;
+    const lastShotHit =
+      wasAiTurn || isTimeout ? courtState.ball.type : commands[hitterId].shot;
     const isAce = lastShotHit === "AUFSCHLAG";
-    
+
     const isServeError = isAce && turnResult && turnResult.startsWith("error") && !isTimeout;
 
     if (turnResult && turnResult.startsWith("error")) {
       if (isServeError && serveNumber === 1) {
-         resetForNextPoint(newPlayerScore + newAiScore, newPlayerScore, newAiScore, newStats, false, true); 
-         return; 
+        resetForNextPoint(
+          newPlayerScore + newAiScore,
+          newPlayerScore,
+          newAiScore,
+          newStats,
+          false,
+          true
+        );
+        return;
       }
 
       if (wasAiTurn) {
-        newPlayerScore += 1; 
-        newStats.ai.unforcedErrors += 1; 
+        newPlayerScore += 1;
+        newStats.ai.unforcedErrors += 1;
       } else {
-        newAiScore += 1;                
-        newStats.player.unforcedErrors += 1; 
+        newAiScore += 1;
+        newStats.player.unforcedErrors += 1;
       }
-      setActiveScenario(null); 
-    } 
-    else if (turnMessage.includes("PUNKT GEWONNEN") || turnResult === "perfect") {
-      if (wasAiTurn) {
-        newAiScore += 1;    
-        if (isAce) newStats.ai.aces += 1; else newStats.ai.winners += 1;
-      } else {
-        newPlayerScore += 1;            
-        if (isAce) newStats.player.aces += 1; else newStats.player.winners += 1;
-      }
-      setActiveScenario(null); 
-    } 
-    else {
       setActiveScenario(null);
-      setCourtState(prev => ({
+    } else if (turnMessage.includes("PUNKT GEWONNEN") || turnResult === "perfect") {
+      if (wasAiTurn) {
+        newAiScore += 1;
+        if (isAce) newStats.ai.aces += 1;
+        else newStats.ai.winners += 1;
+      } else {
+        newPlayerScore += 1;
+        if (isAce) newStats.player.aces += 1;
+        else newStats.player.winners += 1;
+      }
+      setActiveScenario(null);
+    } else {
+      setActiveScenario(null);
+      setCourtState((prev) => ({
         ...prev,
-        ball: { side: "right", zone: commands[hitterId].target || "C4", type: commands[hitterId].shot || "DRIVE" }
+        ball: {
+          side: "right",
+          zone: commands[hitterId].target || "C4",
+          type: commands[hitterId].shot || "DRIVE",
+        },
       }));
       resetSelections(hitterId, false);
-      setPhase("ai_prepare"); 
+      setPhase("ai_prepare");
       return;
     }
 
@@ -1540,15 +1957,17 @@ export default function GameScreen() {
 
     setPlayerScore(newPlayerScore);
     setAiScore(newAiScore);
-    setMatchStats(newStats); 
+    setMatchStats(newStats);
 
     const targetScore = currentTargetScore;
 
-    if ((newPlayerScore >= targetScore && newPlayerScore - newAiScore >= 2) || (newAiScore >= targetScore && newAiScore - newPlayerScore >= 2)) {
-      
-      setGameOver(true); 
-      setPhase("player_planning"); 
-      
+    if (
+      (newPlayerScore >= targetScore && newPlayerScore - newAiScore >= 2) ||
+      (newAiScore >= targetScore && newAiScore - newPlayerScore >= 2)
+    ) {
+      setGameOver(true);
+      setPhase("player_planning");
+
       // =========================================================================
       // ⚡ RPG ITEM-XP VERGABE: Gewonnene Punkte = XP für ausgerüstete Items!
       // =========================================================================
@@ -1560,10 +1979,10 @@ export default function GameScreen() {
       }
 
       setTimeout(() => {
-        setShowGameOverUI(true); 
+        setShowGameOverUI(true);
       }, 4000);
 
-      localStorage.removeItem("tacpadel_savegame"); 
+      localStorage.removeItem("tacpadel_savegame");
 
       const playerWon = newPlayerScore > newAiScore;
       const diff = Math.abs(newPlayerScore - newAiScore);
@@ -1571,15 +1990,22 @@ export default function GameScreen() {
       if (activeTournamentId) {
         let scoreChange = 0;
         let tpReward = 0;
-        const tour = TOURNAMENTS.find(t => t.id === activeTournamentId);
+        const tour = TOURNAMENTS.find((t) => t.id === activeTournamentId);
         const totalReward = tour ? tour.tacPointsReward : 0;
 
         if (playerWon) {
-           if (activeTournamentRound === 1) { scoreChange = 50; tpReward = Math.round(totalReward * 0.2); }
-           else if (activeTournamentRound === 2) { scoreChange = 75; tpReward = Math.round(totalReward * 0.3); }
-           else if (activeTournamentRound === 3) { scoreChange = 100; tpReward = Math.round(totalReward * 0.5); }
+          if (activeTournamentRound === 1) {
+            scoreChange = 50;
+            tpReward = Math.round(totalReward * 0.2);
+          } else if (activeTournamentRound === 2) {
+            scoreChange = 75;
+            tpReward = Math.round(totalReward * 0.3);
+          } else if (activeTournamentRound === 3) {
+            scoreChange = 100;
+            tpReward = Math.round(totalReward * 0.5);
+          }
         } else {
-           scoreChange = -50;
+          scoreChange = -50;
         }
 
         setLastScoreChange(scoreChange);
@@ -1592,37 +2018,58 @@ export default function GameScreen() {
 
         (async () => {
           try {
-            const { data: { session } } = await supabase.auth.getSession();
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
             if (session?.user) {
-              await supabase.auth.updateUser({ data: { item_progress: xpResult.progressMap } }).catch(() => {});
+              await supabase.auth
+                .updateUser({ data: { item_progress: xpResult.progressMap } })
+                .catch(() => {});
 
-              const { data: statsData } = await supabase.from("user_stats").select("tac_points").eq("id", session.user.id).single();
-              let updatedTp = statsData?.tac_points || parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
-              
+              const { data: statsData } = await supabase
+                .from("user_stats")
+                .select("tac_points")
+                .eq("id", session.user.id)
+                .single();
+              let updatedTp =
+                statsData?.tac_points ||
+                parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+
               updatedTp += tpReward;
               localStorage.setItem("tacpadel_tac_points", updatedTp.toString());
               setCurrentTacPoints(updatedTp);
-              
+
               const matchResult = playerWon ? "win" : "loss";
-              
+
               if (playerWon) {
                 if (activeTournamentRound < 3 && staminaModeEnabled) {
                   const currentStamina = staminaRef.current;
-                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  const savedTourStamina = JSON.parse(
+                    localStorage.getItem("tacpadel_tour_stamina") || "{}"
+                  );
                   savedTourStamina[activeTournamentId] = {
                     you: currentStamina.you,
-                    partner: currentStamina.partner
+                    partner: currentStamina.partner,
                   };
                   localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
                 }
 
                 if (activeTournamentRound === 3) {
-                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  const savedTourStamina = JSON.parse(
+                    localStorage.getItem("tacpadel_tour_stamina") || "{}"
+                  );
                   if (savedTourStamina[activeTournamentId]) {
                     delete savedTourStamina[activeTournamentId];
-                    localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                    localStorage.setItem(
+                      "tacpadel_tour_stamina",
+                      JSON.stringify(savedTourStamina)
+                    );
                   }
-                  await supabase.from("tour_progress").update({ status: "won" }).eq("user_id", session.user.id).eq("tournament_id", activeTournamentId);
+                  await supabase
+                    .from("tour_progress")
+                    .update({ status: "won" })
+                    .eq("user_id", session.user.id)
+                    .eq("tournament_id", activeTournamentId);
                 } else {
                   await supabase
                     .from("tour_progress")
@@ -1632,19 +2079,27 @@ export default function GameScreen() {
                 }
               } else {
                 if (activeTournamentRound === 3 || retryUsed) {
-                  const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
+                  const savedTourStamina = JSON.parse(
+                    localStorage.getItem("tacpadel_tour_stamina") || "{}"
+                  );
                   if (savedTourStamina[activeTournamentId]) {
                     delete savedTourStamina[activeTournamentId];
-                    localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
+                    localStorage.setItem(
+                      "tacpadel_tour_stamina",
+                      JSON.stringify(savedTourStamina)
+                    );
                   }
                 }
               }
 
-              await supabase.from("user_stats").update({ points: finalScore, tac_points: updatedTp }).eq("id", session.user.id);
-              
-              await supabase.from("match_history").insert({ 
-                user_id: session.user.id, 
-                points: finalScore, 
+              await supabase
+                .from("user_stats")
+                .update({ points: finalScore, tac_points: updatedTp })
+                .eq("id", session.user.id);
+
+              await supabase.from("match_history").insert({
+                user_id: session.user.id,
+                points: finalScore,
                 result: matchResult,
                 aces: newStats.player.aces,
                 winners: newStats.player.winners,
@@ -1653,22 +2108,20 @@ export default function GameScreen() {
                 shots_perfect: newStats.player.shotsPerfect,
                 duration_seconds: matchSecondsRef.current,
                 match_type: "tournament",
-                tac_points: updatedTp 
+                tac_points: updatedTp,
               });
-
             }
           } catch (err) {
             console.error("Fehler beim Speichern des Turnier-Ergebnisses:", err);
           }
         })();
-      } 
-      else {
+      } else {
         let scoreChange = 0;
-        if (playerWon) scoreChange = 100 + (diff * 15);
-        else scoreChange = -50 - (diff * 10);
+        if (playerWon) scoreChange = 100 + diff * 15;
+        else scoreChange = -50 - diff * 10;
 
         setLastScoreChange(scoreChange);
-        
+
         const finalScore = Math.max(0, tacScore + scoreChange);
         setTacScore(finalScore);
         if (userIdRef.current) {
@@ -1678,15 +2131,22 @@ export default function GameScreen() {
 
         (async () => {
           try {
-            const { data: { session } } = await supabase.auth.getSession();
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
             if (session?.user) {
-              await supabase.auth.updateUser({ data: { item_progress: xpResult.progressMap } }).catch(() => {});
-              await supabase.from("user_stats").update({ points: finalScore }).eq("id", session.user.id);
+              await supabase.auth
+                .updateUser({ data: { item_progress: xpResult.progressMap } })
+                .catch(() => {});
+              await supabase
+                .from("user_stats")
+                .update({ points: finalScore })
+                .eq("id", session.user.id);
               const matchResult = playerWon ? "win" : "loss";
-              
-              await supabase.from("match_history").insert({ 
-                user_id: session.user.id, 
-                points: finalScore, 
+
+              await supabase.from("match_history").insert({
+                user_id: session.user.id,
+                points: finalScore,
                 result: matchResult,
                 aces: newStats.player.aces,
                 winners: newStats.player.winners,
@@ -1694,7 +2154,7 @@ export default function GameScreen() {
                 total_shots: newStats.player.totalShots,
                 shots_perfect: newStats.player.shotsPerfect,
                 duration_seconds: matchSecondsRef.current,
-                match_type: "single"
+                match_type: "single",
               });
             }
           } catch (err) {
@@ -1707,20 +2167,38 @@ export default function GameScreen() {
     }
   };
 
-  const resetSelections = (defaultHitter: "you" | "partner" = "you", isServeTurn: boolean = false) => {
-    setCommands({ 
-      you: { run: null, shot: (isServeTurn && defaultHitter === "you") ? "AUFSCHLAG" : null, target: null }, 
-      partner: { run: null, shot: (isServeTurn && defaultHitter === "partner") ? "AUFSCHLAG" : null, target: null } 
+  const resetSelections = (
+    defaultHitter: "you" | "partner" = "you",
+    isServeTurn: boolean = false
+  ) => {
+    setCommands({
+      you: {
+        run: null,
+        shot: isServeTurn && defaultHitter === "you" ? "AUFSCHLAG" : null,
+        target: null,
+      },
+      partner: {
+        run: null,
+        shot: isServeTurn && defaultHitter === "partner" ? "AUFSCHLAG" : null,
+        target: null,
+      },
     });
     setTurnResult(null);
-    setTurnTitle(""); 
+    setTurnTitle("");
     setTurnMessage("");
     setActiveChar(defaultHitter);
     setHitterId(defaultHitter);
     setCatchStatus("ok");
   };
 
-  const resetForNextPoint = (total: number, newPScore?: number, newAScore?: number, newStats?: any, suppressFlash: boolean = false, isSecondServe: boolean = false) => {
+  const resetForNextPoint = (
+    total: number,
+    newPScore?: number,
+    newAScore?: number,
+    newStats?: any,
+    suppressFlash: boolean = false,
+    isSecondServe: boolean = false
+  ) => {
     const pScore = newPScore ?? playerScore;
     const aScore = newAScore ?? aiScore;
     const stats = newStats ?? matchStats;
@@ -1729,78 +2207,172 @@ export default function GameScreen() {
     const { serverId, isRightCourt } = getServerInfo(totalPointsForServe);
     const currentPartnerDisplay = resolvePartnerDisplayName();
     setPartnerName(currentPartnerDisplay);
-    
-    let pYou = "B1", pPartner = "D4", pOpp1 = "B1", pOpp2 = "D1";
-    let ballZone = "B1", ballSide: "left" | "right" = "left";
+
+    let pYou = "B1",
+      pPartner = "D4",
+      pOpp1 = "B1",
+      pOpp2 = "D1";
+    let ballZone = "B1",
+      ballSide: "left" | "right" = "left";
     let nextPhase: GamePhase = "player_planning";
-    let receiverId = "you"; 
+    let receiverId = "you";
 
     if (serverId === "you") {
-      if (isRightCourt) { pYou = "D1"; pPartner = "D4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
-      else { pYou = "B1"; pPartner = "D4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
-      ballSide = "left"; nextPhase = "player_planning"; receiverId = "you"; 
-      if (!suppressFlash) showFlash(isSecondServe ? t("game_2nd_serve_flash") : `${playerName.toUpperCase()} ${t("game_serves_flash")}`, isSecondServe ? "text-amber-400" : "text-purple-400", 3000); 
-    } 
-    else if (serverId === "partner") {
-      if (isRightCourt) { pPartner = "D1"; pYou = "B4"; pOpp1 = "B1"; pOpp2 = "D2"; ballZone = "D1"; } 
-      else { pPartner = "B1"; pYou = "B4"; pOpp1 = "B2"; pOpp2 = "D1"; ballZone = "B1"; }
-      ballSide = "left"; nextPhase = "player_planning"; receiverId = "partner"; 
-      if (!suppressFlash) showFlash(isSecondServe ? `${t("game_2nd_serve_flash")} (${currentPartnerDisplay.toUpperCase()})` : `${currentPartnerDisplay.toUpperCase()} ${t("game_serves_flash")}`, isSecondServe ? "text-amber-400" : "text-cyan-400", 3000); 
-    } 
-    else if (serverId === "opp1") {
-      if (isRightCourt) { pOpp1 = "B1"; pOpp2 = "D4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
-      else { pOpp1 = "D1"; pOpp2 = "D4"; pYou = "B1"; pPartner = "D2"; ballZone = "D1"; receiverId = "you"; }
-      ballSide = "right"; nextPhase = "ai_prepare";
-      if (!suppressFlash) showFlash(isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"), isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
-    } 
-    else if (serverId === "opp2") {
-      if (isRightCourt) { pOpp2 = "B1"; pOpp1 = "B4"; pPartner = "D1"; pYou = "B2"; ballZone = "B1"; receiverId = "partner"; } 
-      else { pOpp2 = "D1"; pOpp1 = "B4"; pYou = "B1"; pPartner = "D2"; ballZone = "D1"; receiverId = "you"; }
-      ballSide = "right"; nextPhase = "ai_prepare";
-      if (!suppressFlash) showFlash(isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"), isSecondServe ? "text-amber-400" : "text-red-400", 3000); 
+      if (isRightCourt) {
+        pYou = "D1";
+        pPartner = "D4";
+        pOpp1 = "B1";
+        pOpp2 = "D2";
+        ballZone = "D1";
+      } else {
+        pYou = "B1";
+        pPartner = "D4";
+        pOpp1 = "B2";
+        pOpp2 = "D1";
+        ballZone = "B1";
+      }
+      ballSide = "left";
+      nextPhase = "player_planning";
+      receiverId = "you";
+      if (!suppressFlash)
+        showFlash(
+          isSecondServe
+            ? t("game_2nd_serve_flash")
+            : `${playerName.toUpperCase()} ${t("game_serves_flash")}`,
+          isSecondServe ? "text-amber-400" : "text-purple-400",
+          3000
+        );
+    } else if (serverId === "partner") {
+      if (isRightCourt) {
+        pPartner = "D1";
+        pYou = "B4";
+        pOpp1 = "B1";
+        pOpp2 = "D2";
+        ballZone = "D1";
+      } else {
+        pPartner = "B1";
+        pYou = "B4";
+        pOpp1 = "B2";
+        pOpp2 = "D1";
+        ballZone = "B1";
+      }
+      ballSide = "left";
+      nextPhase = "player_planning";
+      receiverId = "partner";
+      if (!suppressFlash)
+        showFlash(
+          isSecondServe
+            ? `${t("game_2nd_serve_flash")} (${currentPartnerDisplay.toUpperCase()})`
+            : `${currentPartnerDisplay.toUpperCase()} ${t("game_serves_flash")}`,
+          isSecondServe ? "text-amber-400" : "text-cyan-400",
+          3000
+        );
+    } else if (serverId === "opp1") {
+      if (isRightCourt) {
+        pOpp1 = "B1";
+        pOpp2 = "D4";
+        pPartner = "D1";
+        pYou = "B2";
+        ballZone = "B1";
+        receiverId = "partner";
+      } else {
+        pOpp1 = "D1";
+        pOpp2 = "D4";
+        pYou = "B1";
+        pPartner = "D2";
+        ballZone = "D1";
+        receiverId = "you";
+      }
+      ballSide = "right";
+      nextPhase = "ai_prepare";
+      if (!suppressFlash)
+        showFlash(
+          isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"),
+          isSecondServe ? "text-amber-400" : "text-red-400",
+          3000
+        );
+    } else if (serverId === "opp2") {
+      if (isRightCourt) {
+        pOpp2 = "B1";
+        pOpp1 = "B4";
+        pPartner = "D1";
+        pYou = "B2";
+        ballZone = "B1";
+        receiverId = "partner";
+      } else {
+        pOpp2 = "D1";
+        pOpp1 = "B4";
+        pYou = "B1";
+        pPartner = "D2";
+        ballZone = "D1";
+        receiverId = "you";
+      }
+      ballSide = "right";
+      nextPhase = "ai_prepare";
+      if (!suppressFlash)
+        showFlash(
+          isSecondServe ? t("game_ai_2nd_serve_flash") : t("game_opp_serves_flash"),
+          isSecondServe ? "text-amber-400" : "text-red-400",
+          3000
+        );
     }
 
-    const initialHitter = (serverId === "you" || serverId === "partner") ? serverId : receiverId;
+    const initialHitter = serverId === "you" || serverId === "partner" ? serverId : receiverId;
     const isOurServe = serverId === "you" || serverId === "partner";
-    
-    resetSelections(initialHitter as "you" | "partner", isOurServe);
-    setActiveScenario(null); 
-    setLastShotQuality(null);
-    setShotHistory([]); 
-    setAiShotHistory([]);
-    setServeNumber(isSecondServe ? 2 : 1); 
 
-    const nextCourt = { 
-      you: pYou, partner: pPartner, opp1: pOpp1, opp2: pOpp2, 
-      ball: { side: ballSide, zone: ballZone, type: "PREPARE_SERVE" as const } 
+    resetSelections(initialHitter as "you" | "partner", isOurServe);
+    setActiveScenario(null);
+    setLastShotQuality(null);
+    setShotHistory([]);
+    setAiShotHistory([]);
+    setServeNumber(isSecondServe ? 2 : 1);
+
+    const nextCourt = {
+      you: pYou,
+      partner: pPartner,
+      opp1: pOpp1,
+      opp2: pOpp2,
+      ball: { side: ballSide, zone: ballZone, type: "PREPARE_SERVE" as const },
     };
-    
+
     setCourtState(nextCourt);
-    setPhase(nextPhase); 
+    setPhase(nextPhase);
 
     let newStamina = staminaRef.current;
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (!isNewMatch) {
-         const aiTargetScore = activeTournamentId 
-             ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) + ((activeTournamentRound - 1) * 100) 
-             : tacScore;
-         const currentLoadout = calculateLoadoutStats();
-         const playerRegenPerPoint = Number(
-           (1 / currentLoadout.matchModifiers.staminaDrainMultiplier).toFixed(1)
-         );
-         newStamina = {
-           you: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.you + playerRegenPerPoint).toFixed(1))),
-           partner: Math.min(MAX_PLAYER_STAMINA, Number((staminaRef.current.partner + playerRegenPerPoint).toFixed(1))),
-           opp1: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp1 + 1),
-           opp2: Math.min(Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult), staminaRef.current.opp2 + 1)
-         };
-         setStamina(newStamina);
+        const aiTargetScore = activeTournamentId
+          ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) +
+            (activeTournamentRound - 1) * 100
+          : tacScore;
+        const currentLoadout = calculateLoadoutStats();
+        const playerRegenPerPoint = Number(
+          (1 / currentLoadout.matchModifiers.staminaDrainMultiplier).toFixed(1)
+        );
+        newStamina = {
+          you: Math.min(
+            MAX_PLAYER_STAMINA,
+            Number((staminaRef.current.you + playerRegenPerPoint).toFixed(1))
+          ),
+          partner: Math.min(
+            MAX_PLAYER_STAMINA,
+            Number((staminaRef.current.partner + playerRegenPerPoint).toFixed(1))
+          ),
+          opp1: Math.min(
+            Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult),
+            staminaRef.current.opp1 + 1
+          ),
+          opp2: Math.min(
+            Math.floor(getAiMaxStamina(aiTargetScore) * activeAiProfile.staminaMult),
+            staminaRef.current.opp2 + 1
+          ),
+        };
+        setStamina(newStamina);
       }
     }
 
     if (userIdRef.current) {
-      // Bestehendes eingefrorenes Loadout aus laufendem Spiel übernehmen oder beim 1. Punkt neu einfrieren:
       let matchLockedLoadout = {
         partnerId: localStorage.getItem("tacpadel_partner_id") || "partner_rookie",
         racketId: localStorage.getItem("tacpadel_racket_id") || "racket_starter",
@@ -1835,21 +2407,28 @@ export default function GameScreen() {
   };
 
   const suppId = hitterId === "you" ? "partner" : "you";
-  const isHitterReady = commands[hitterId].run && commands[hitterId].shot && commands[hitterId].target;
-  const isSupporterReady = commands[suppId].run; 
-  
-  const needsSupporterConfirm = isHitterReady && !isSupporterReady && phase === "player_planning";
+  const isHitterReady = Boolean(
+    commands[hitterId].run && commands[hitterId].shot && commands[hitterId].target
+  );
+  // Unter 2000 TacScore (isRookie) wird der Partner automatisch mitgezogen
+  const isSupporterReady = Boolean(commands[suppId].run) || isRookie;
+
+  const needsSupporterConfirm =
+    !isRookie && isHitterReady && !commands[suppId].run && phase === "player_planning";
   const canSubmit = isHitterReady && isSupporterReady && phase === "player_planning";
-  
+
   const isTimerPhase = phase === "timer_running";
-  const isAiActive = phase === "ai_prepare" || phase === "timer_running" || (phase === "player_animating" && courtState.ball.side === "right");
+  const isAiActive =
+    phase === "ai_prepare" ||
+    phase === "timer_running" ||
+    (phase === "player_animating" && courtState.ball.side === "right");
   const isAnimPhase = phase === "player_animating" || phase === "timer_running";
 
   let submitText = t("game_submit_move");
   if (!commands[hitterId].run) submitText = t("game_missing_run");
   else if (!commands[hitterId].shot) submitText = t("game_missing_shot");
   else if (!commands[hitterId].target) submitText = t("game_missing_target");
-  else if (needsSupporterConfirm) submitText = t("game_confirm_partner_pos"); 
+  else if (needsSupporterConfirm) submitText = t("game_confirm_partner_pos");
 
   const onMainButtonClick = () => {
     if (isTimerPhase) return;
@@ -1857,19 +2436,48 @@ export default function GameScreen() {
     else if (canSubmit) handleSubmit();
   };
 
-  const StatCell = ({ val, total, noBorderTop }: { val: number, total: number, noBorderTop?: boolean }) => {
+  const StatCell = ({
+    val,
+    total,
+    noBorderTop,
+  }: {
+    val: number;
+    total: number;
+    noBorderTop?: boolean;
+  }) => {
     const pct = total > 0 ? Math.round((val / total) * 100) : 0;
     return (
-      <div className={`py-2 text-white text-sm sm:text-base font-black flex flex-col items-center justify-center gap-0.5 ${noBorderTop ? '' : 'border-t border-slate-700/50'}`}>
+      <div
+        className={`py-2 text-white text-sm sm:text-base font-black flex flex-col items-center justify-center gap-0.5 ${
+          noBorderTop ? "" : "border-t border-slate-700/50"
+        }`}
+      >
         <span>{val}</span>
-        {total > 0 && <span className="text-[8px] sm:text-[9px] text-slate-500 font-bold leading-none">({pct}%)</span>}
+        {total > 0 && (
+          <span className="text-[8px] sm:text-[9px] text-slate-500 font-bold leading-none">
+            ({pct}%)
+          </span>
+        )}
       </div>
     );
   };
 
-  const currentTour = activeTournamentId ? TOURNAMENTS.find(t => t.id === activeTournamentId) : null;
+  const currentTour = activeTournamentId
+    ? TOURNAMENTS.find((t) => t.id === activeTournamentId)
+    : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
   const focusShotType = getFocusShotType(activeLoadout.shot.id);
+
+  // Geführte Schlag-Optionen für Rookies (< 2000 TacScore) vs. alle Schläge ab 2000 TacScore
+  const hitterCurrentZone = hitterId === "you" ? courtState.you : courtState.partner;
+  const rookieShotGuide = getRookieShotOptions(
+    hitterCurrentZone,
+    courtState.ball.type,
+    courtState.opp1,
+    courtState.opp2,
+    focusShotType
+  );
+  const displayedShots = isRookie ? rookieShotGuide.shots : SHOT_TYPES;
 
   let savedMatchSubtext = "";
   let hasValidSave = false;
@@ -1880,11 +2488,16 @@ export default function GameScreen() {
       if (parsed.userId === userId) {
         hasValidSave = true;
         if (parsed.tournamentId) {
-          const tour = TOURNAMENTS.find(tr => tr.id === parsed.tournamentId);
-          const rName = parsed.tournamentRound === 3 ? t("game_round_f") : parsed.tournamentRound === 2 ? t("game_round_sf") : t("game_round_qf");
+          const tour = TOURNAMENTS.find((tr) => tr.id === parsed.tournamentId);
+          const rName =
+            parsed.tournamentRound === 3
+              ? t("game_round_f")
+              : parsed.tournamentRound === 2
+              ? t("game_round_sf")
+              : t("game_round_qf");
           savedMatchSubtext = `🏆 ${tour?.name || t("game_tournament_word")} (${rName})`;
         } else {
-          savedMatchSubtext = `🎾 ${t("game_single_vs")} ${parsed.activeAiProfile?.teamName || 'AI'}`;
+          savedMatchSubtext = `🎾 ${t("game_single_vs")} ${parsed.activeAiProfile?.teamName || "AI"}`;
         }
         savedMatchSubtext += ` | Score: ${parsed.playerScore}:${parsed.aiScore}`;
       } else {
@@ -1896,14 +2509,12 @@ export default function GameScreen() {
   }
 
   if (showTutorial) {
-    return (
-      <GameTutorial onComplete={handleTutorialComplete} />
-    );
+    return <GameTutorial onComplete={handleTutorialComplete} />;
   }
 
   return (
-    <div 
-      className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden" 
+    <div
+      className="w-full flex-1 flex flex-col bg-[#050b18] rounded-2xl border border-slate-900 shadow-2xl select-none text-slate-200 relative overflow-hidden"
       style={{
         height: isIpadScreen ? "calc(100dvh - 150px)" : "calc(100dvh - 120px)",
         minHeight: isIpadScreen ? "calc(100dvh - 150px)" : "650px",
@@ -1929,11 +2540,15 @@ export default function GameScreen() {
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-red-600" />
               <span className="text-5xl mb-4 block">⚠️</span>
-              <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">{t("game_abandon_title")}</h2>
+              <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">
+                {t("game_abandon_title")}
+              </h2>
               <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-                {t("game_abandon_desc_1")} <b className="text-red-400">{t("game_abandon_desc_bold")}</b> {t("game_abandon_desc_2")}
+                {t("game_abandon_desc_1")}{" "}
+                <b className="text-red-400">{t("game_abandon_desc_bold")}</b>{" "}
+                {t("game_abandon_desc_2")}
               </p>
-              
+
               <div className="flex flex-col gap-3">
                 <button
                   onClick={confirmAbandon}
@@ -1954,12 +2569,11 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* =================================================== */}
-      {/* HAUPTMENÜ OVERLAY (Schriftzug frei & Shop-Klick)    */}
+      {/* HAUPTMENÜ OVERLAY                                   */}
       {/* =================================================== */}
       <AnimatePresence>
         {isMenuOpen && !isTourOpen && (
           <div className="absolute inset-0 z-[200] bg-[#050b18] rounded-2xl overflow-hidden pointer-events-auto">
-            
             <button
               onClick={() => setShowTutorial(true)}
               title={t("game_tutorial_tooltip")}
@@ -1977,14 +2591,19 @@ export default function GameScreen() {
               <div className="absolute inset-0 bg-gradient-to-t from-[#050b18] via-[#050b18]/35 to-transparent"></div>
             </div>
 
-            <div className={`relative z-10 h-full flex flex-col items-center justify-end px-4 gap-2 sm:gap-2.5 w-full ${isIpadScreen ? "pb-10" : "pb-3 sm:pb-5"}`}>
-              
+            <div
+              className={`relative z-10 h-full flex flex-col items-center justify-end px-4 gap-2 sm:gap-2.5 w-full ${
+                isIpadScreen ? "pb-10" : "pb-3 sm:pb-5"
+              }`}
+            >
               {/* KLICKBARE LOADOUT-BOX -> ÖFFNET DIREKT DEN IN-GAME SHOP */}
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setIsShopOpen(true)}
-                className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} bg-[#030611]/90 hover:bg-[#060d20]/95 border border-cyan-500/40 hover:border-cyan-400 rounded-xl px-3 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer transition-all flex flex-col gap-1.5 group`}
+                className={`w-full ${
+                  isIpadScreen ? "max-w-md" : "max-w-sm"
+                } bg-[#030611]/90 hover:bg-[#060d20]/95 border border-cyan-500/40 hover:border-cyan-400 rounded-xl px-3 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer transition-all flex flex-col gap-1.5 group`}
               >
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider">
                   <span className="text-cyan-400 truncate max-w-[48%]">
@@ -1995,28 +2614,40 @@ export default function GameScreen() {
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-800/90 text-center text-[9px] font-black">
-                  <div className="bg-slate-900/90 rounded py-0.5 text-orange-400">PWR {activeLoadout.stats.smash}</div>
-                  <div className="bg-slate-900/90 rounded py-0.5 text-cyan-400">CTRL {activeLoadout.stats.control}</div>
-                  <div className="bg-slate-900/90 rounded py-0.5 text-emerald-400">DEF {activeLoadout.stats.defense}</div>
-                  <div className="bg-slate-900/90 rounded py-0.5 text-purple-400">AGI {activeLoadout.stats.agility}</div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-orange-400">
+                    PWR {activeLoadout.stats.smash}
+                  </div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-cyan-400">
+                    CTRL {activeLoadout.stats.control}
+                  </div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-emerald-400">
+                    DEF {activeLoadout.stats.defense}
+                  </div>
+                  <div className="bg-slate-900/90 rounded py-0.5 text-purple-400">
+                    AGI {activeLoadout.stats.agility}
+                  </div>
                 </div>
               </motion.div>
 
               {!userId && (
-                <div className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} bg-amber-950/70 border border-amber-500/40 rounded-xl px-3 py-2 text-center backdrop-blur-md shadow-lg`}>
+                <div
+                  className={`w-full ${
+                    isIpadScreen ? "max-w-md" : "max-w-sm"
+                  } bg-amber-950/70 border border-amber-500/40 rounded-xl px-3 py-2 text-center backdrop-blur-md shadow-lg`}
+                >
                   <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-0.5">
                     {t("game_guest_title")}
                   </p>
-                  <p className="text-[9px] text-slate-300 leading-snug">
-                    {t("game_guest_desc")}
-                  </p>
+                  <p className="text-[9px] text-slate-300 leading-snug">{t("game_guest_desc")}</p>
                 </div>
               )}
-              
+
               {tacScore < 1500 ? (
-                <button 
+                <button
                   disabled
-                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-2.5 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-0.5`}
+                  className={`w-full ${
+                    isIpadScreen ? "max-w-md" : "max-w-sm"
+                  } py-2.5 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-0.5`}
                 >
                   <span className="text-xs sm:text-sm">{t("game_single_locked")}</span>
                   <span className="text-[9px] text-slate-500 normal-case tracking-normal">
@@ -2024,29 +2655,39 @@ export default function GameScreen() {
                   </span>
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={attemptStartNewGame}
-                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-3 sm:py-3.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_25px_rgba(255,119,0,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
+                  className={`w-full ${
+                    isIpadScreen ? "max-w-md" : "max-w-sm"
+                  } py-3 sm:py-3.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_25px_rgba(255,119,0,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
                 >
                   {t("game_new_single")}
                 </button>
               )}
 
               {hasValidSave && (
-                <button 
-                  onClick={() => { if (loadGame()) setIsMenuOpen(false); }}
-                  className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center gap-1`}
+                <button
+                  onClick={() => {
+                    if (loadGame()) setIsMenuOpen(false);
+                  }}
+                  className={`w-full ${
+                    isIpadScreen ? "max-w-md" : "max-w-sm"
+                  } py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center justify-center gap-1`}
                 >
-                  <span className="font-black tracking-widest uppercase text-sm">{t("game_continue_match")}</span>
+                  <span className="font-black tracking-widest uppercase text-sm">
+                    {t("game_continue_match")}
+                  </span>
                   <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-widest bg-black/25 px-2 py-0.5 rounded border border-emerald-400/30 text-center">
                     {savedMatchSubtext}
                   </span>
                 </button>
               )}
-              
-              <button 
+
+              <button
                 onClick={() => setIsTourOpen(true)}
-                className={`w-full ${isIpadScreen ? "max-w-md" : "max-w-sm"} py-3 sm:py-3.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
+                className={`w-full ${
+                  isIpadScreen ? "max-w-md" : "max-w-sm"
+                } py-3 sm:py-3.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm tracking-widest uppercase rounded-xl shadow-[0_0_20px_rgba(217,70,239,0.4)] hover:scale-[1.02] active:scale-95 transition-all`}
               >
                 {t("game_tour_events")}
               </button>
@@ -2063,40 +2704,58 @@ export default function GameScreen() {
             exit={{ opacity: 0, y: 50 }}
             className="absolute inset-0 z-[250] bg-[#02050a] rounded-2xl overflow-hidden pointer-events-auto"
           >
-            <TourScreen 
-              onClose={() => setIsTourOpen(false)} 
-              onStartMatch={attemptStartTournamentMatch} 
+            <TourScreen
+              onClose={() => setIsTourOpen(false)}
+              onStartMatch={attemptStartTournamentMatch}
             />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* PROFI BANNER (Sitzt per absolute top-24 immer sauber im Spielfeld-Fenster) */}
+      {/* PROFI BANNER */}
       <AnimatePresence>
         {showProfiBanner && (
           <motion.div
-            initial={{ x: -800, skewX: 20, opacity: 0 }} 
+            initial={{ x: -800, skewX: 20, opacity: 0 }}
             animate={{ x: 0, skewX: 0, opacity: 1 }}
             exit={{ x: -800, skewX: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }}
             className="absolute top-24 left-0 right-0 z-[140] pointer-events-none flex justify-center px-4"
           >
-            <div className="p-[2px] bg-gradient-to-r from-purple-500 via-[#050b14] to-fuchsia-500 shadow-[0_10px_30px_rgba(168,85,247,0.4)]" style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
-              <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
+            <div
+              className="p-[2px] bg-gradient-to-r from-purple-500 via-[#050b14] to-fuchsia-500 shadow-[0_10px_30px_rgba(168,85,247,0.4)]"
+              style={{
+                clipPath:
+                  "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)",
+              }}
+            >
+              <div
+                className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden"
+                style={{
+                  clipPath:
+                    "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)",
+                }}
+              >
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
                 <div className="relative flex items-center justify-center shrink-0">
                   <div className="absolute w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-dashed border-white/30 animate-[spin_4s_linear_infinite]"></div>
                   <div className="absolute w-12 h-12 sm:w-14 sm:h-14 rounded-full border-y-2 border-purple-500 opacity-70"></div>
-                  <span className="text-xl sm:text-2xl z-10 font-black text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">🔥</span>
+                  <span className="text-xl sm:text-2xl z-10 font-black text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">
+                    🔥
+                  </span>
                 </div>
                 <div className="flex flex-col justify-center z-10 leading-tight">
-                  <span className="text-lg sm:text-2xl font-black uppercase tracking-widest text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]">{t("game_pro_league_active")}</span>
-                  <span className="text-sm sm:text-lg font-black uppercase tracking-widest text-fuchsia-400 drop-shadow-[0_0_8px_rgba(217,70,239,0.5)]">{t("game_no_tactic_lines")}</span>
+                  <span className="text-lg sm:text-2xl font-black uppercase tracking-widest text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]">
+                    {t("game_pro_league_active")}
+                  </span>
+                  <span className="text-sm sm:text-lg font-black uppercase tracking-widest text-fuchsia-400 drop-shadow-[0_0_8px_rgba(217,70,239,0.5)]">
+                    {t("game_no_tactic_lines")}
+                  </span>
                 </div>
                 <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 opacity-60">
-                   <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
-                   <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
-                   <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
+                  <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
+                  <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
+                  <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-fuchsia-500 rounded-full shadow-[0_0_5px_rgba(217,70,239,1)]"></div>
                 </div>
               </div>
             </div>
@@ -2104,79 +2763,157 @@ export default function GameScreen() {
         )}
       </AnimatePresence>
 
-      {/* TRON FLASH BANNER (Sitzt per absolute top-6 immer exakt über dem Scoreboard) */}
+      {/* TRON FLASH BANNER */}
       <AnimatePresence>
-        {flashMsg && !isMenuOpen && (() => {
-          let rawText = flashMsg.text;
-          let icon = "✓"; 
-          
-          const firstChar = rawText.charAt(0);
-          if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡"].includes(firstChar)) { icon = firstChar; rawText = rawText.slice(1).trim(); } 
-          else if (rawText.includes("KI ") || rawText.includes("Gegner:") || rawText.includes("Opponent:") || rawText.includes("Rival:")) { icon = "🤖"; }
+        {flashMsg &&
+          !isMenuOpen &&
+          (() => {
+            let rawText = flashMsg.text;
+            let icon = "✓";
 
-          const words = rawText.split(" ");
-          const mid = Math.ceil(words.length / 2);
-          const line1 = words.slice(0, mid).join(" ");
-          const line2 = words.slice(mid).join(" ");
+            const firstChar = rawText.charAt(0);
+            if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡", "💡"].includes(firstChar)) {
+              icon = firstChar;
+              rawText = rawText.slice(1).trim();
+            } else if (
+              rawText.includes("KI ") ||
+              rawText.includes("Gegner:") ||
+              rawText.includes("Opponent:") ||
+              rawText.includes("Rival:")
+            ) {
+              icon = "🤖";
+            }
 
-          const isError = flashMsg.color.includes("red");
-          const isWarning = flashMsg.color.includes("amber");
+            const words = rawText.split(" ");
+            const mid = Math.ceil(words.length / 2);
+            const line1 = words.slice(0, mid).join(" ");
+            const line2 = words.slice(mid).join(" ");
 
-          let leftGlow = "from-[#00f0ff]"; let iconColor = "text-[#00f0ff] drop-shadow-[0_0_10px_rgba(0,240,255,0.8)]"; let line1Color = "text-[#00f0ff] drop-shadow-[0_0_8px_rgba(0,240,255,0.5)]";
-          let rightGlow = "to-[#ff7700]"; let line2Color = "text-[#ff7700] drop-shadow-[0_0_8px_rgba(255,119,0,0.5)]";
+            const isError = flashMsg.color.includes("red");
+            const isWarning = flashMsg.color.includes("amber");
 
-          if (isError) { leftGlow = "from-red-500"; iconColor = "text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"; line1Color = "text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"; } 
-          else if (isWarning) { leftGlow = "from-amber-400"; iconColor = "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]"; line1Color = "text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]"; }
+            let leftGlow = "from-[#00f0ff]";
+            let iconColor = "text-[#00f0ff] drop-shadow-[0_0_10px_rgba(0,240,255,0.8)]";
+            let line1Color = "text-[#00f0ff] drop-shadow-[0_0_8px_rgba(0,240,255,0.5)]";
+            const rightGlow = "to-[#ff7700]";
+            const line2Color = "text-[#ff7700] drop-shadow-[0_0_8px_rgba(255,119,0,0.5)]";
 
-          return (
-            <motion.div initial={{ x: 800, skewX: -20, opacity: 0 }} animate={{ x: 0, skewX: 0, opacity: 1 }} exit={{ x: -800, skewX: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }} className="absolute top-6 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4">
-              <div className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`} style={{ clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)" }}>
-                <div className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden" style={{ clipPath: "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)" }}>
-                  <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <div className="absolute w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-dashed border-white/30 animate-[spin_4s_linear_infinite]"></div>
-                    <div className={`absolute w-12 h-12 sm:w-14 sm:h-14 rounded-full border-y-2 ${isError ? 'border-red-500' : isWarning ? 'border-amber-400' : 'border-[#00f0ff]'} opacity-70`}></div>
-                    <span className={`text-xl sm:text-2xl z-10 font-black ${iconColor}`}>{icon}</span>
-                  </div>
-                  <div className="flex flex-col justify-center z-10 leading-tight">
-                    <span className={`text-lg sm:text-2xl font-black uppercase tracking-widest ${line1Color}`}>{line1}</span>
-                    {line2 && <span className={`text-lg sm:text-2xl font-black uppercase tracking-widest ${line2Color}`}>{line2}</span>}
-                  </div>
-                  <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 opacity-60">
-                     <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
-                     <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
-                     <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
+            if (isError) {
+              leftGlow = "from-red-500";
+              iconColor = "text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]";
+              line1Color = "text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]";
+            } else if (isWarning) {
+              leftGlow = "from-amber-400";
+              iconColor = "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]";
+              line1Color = "text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]";
+            }
+
+            return (
+              <motion.div
+                initial={{ x: 800, skewX: -20, opacity: 0 }}
+                animate={{ x: 0, skewX: 0, opacity: 1 }}
+                exit={{ x: -800, skewX: 20, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.8 }}
+                className="absolute top-6 left-0 right-0 z-[150] pointer-events-none flex justify-center px-4"
+              >
+                <div
+                  className={`p-[2px] bg-gradient-to-r ${leftGlow} via-[#050b14] ${rightGlow} shadow-[0_10px_30px_rgba(0,0,0,0.8)]`}
+                  style={{
+                    clipPath:
+                      "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 14px), 0 16px)",
+                  }}
+                >
+                  <div
+                    className="bg-[#03060c] flex items-center px-6 py-3 sm:px-8 sm:py-4 gap-4 sm:gap-6 relative overflow-hidden"
+                    style={{
+                      clipPath:
+                        "polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px)",
+                    }}
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:8px_8px] opacity-30"></div>
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <div className="absolute w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-dashed border-white/30 animate-[spin_4s_linear_infinite]"></div>
+                      <div
+                        className={`absolute w-12 h-12 sm:w-14 sm:h-14 rounded-full border-y-2 ${
+                          isError
+                            ? "border-red-500"
+                            : isWarning
+                            ? "border-amber-400"
+                            : "border-[#00f0ff]"
+                        } opacity-70`}
+                      ></div>
+                      <span className={`text-xl sm:text-2xl z-10 font-black ${iconColor}`}>
+                        {icon}
+                      </span>
+                    </div>
+                    <div className="flex flex-col justify-center z-10 leading-tight">
+                      <span
+                        className={`text-lg sm:text-2xl font-black uppercase tracking-widest ${line1Color}`}
+                      >
+                        {line1}
+                      </span>
+                      {line2 && (
+                        <span
+                          className={`text-lg sm:text-2xl font-black uppercase tracking-widest ${line2Color}`}
+                        >
+                          {line2}
+                        </span>
+                      )}
+                    </div>
+                    <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 opacity-60">
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(255,119,0,1)]"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          );
-        })()}
+              </motion.div>
+            );
+          })()}
       </AnimatePresence>
 
       <AnimatePresence>
         {showGameOverUI && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[100] bg-black/95 backdrop-blur-md rounded-2xl border border-orange-500/50 pointer-events-auto overflow-y-auto custom-scrollbar">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] bg-black/95 backdrop-blur-md rounded-2xl border border-orange-500/50 pointer-events-auto overflow-y-auto custom-scrollbar"
+          >
             <div className="min-h-full flex flex-col p-4 sm:p-8">
               <div className="m-auto flex flex-col items-center w-full max-w-5xl space-y-6 sm:space-y-8 py-6">
-                
                 {activeTournamentId && (
-                   <div className="bg-purple-900/50 border border-purple-500 px-6 py-2 rounded-full mb-[-1rem]">
-                     <span className="text-purple-300 font-black uppercase tracking-widest text-xs">
-                       {t("game_tournament_word")} {activeTournamentRound === 3 ? t("game_round_f") : activeTournamentRound === 2 ? t("game_round_sf") : t("game_round_qf")}
-                     </span>
-                   </div>
+                  <div className="bg-purple-900/50 border border-purple-500 px-6 py-2 rounded-full mb-[-1rem]">
+                    <span className="text-purple-300 font-black uppercase tracking-widest text-xs">
+                      {t("game_tournament_word")}{" "}
+                      {activeTournamentRound === 3
+                        ? t("game_round_f")
+                        : activeTournamentRound === 2
+                        ? t("game_round_sf")
+                        : t("game_round_qf")}
+                    </span>
+                  </div>
                 )}
 
                 <div className="text-center">
                   <h2 className="text-4xl sm:text-5xl font-black mb-2 uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
-                    {playerScore > aiScore ? <span className="text-emerald-400">{t("game_you_win")}</span> : <span className="text-red-500">💀 {activeAiProfile.teamName} {t("game_ai_wins")}</span>}
+                    {playerScore > aiScore ? (
+                      <span className="text-emerald-400">{t("game_you_win")}</span>
+                    ) : (
+                      <span className="text-red-500">
+                        💀 {activeAiProfile.teamName} {t("game_ai_wins")}
+                      </span>
+                    )}
                   </h2>
-                  <p className="text-slate-300 text-lg font-bold">{t("game_final_score_tb")} {playerScore} : {aiScore}</p>
-                  
+                  <p className="text-slate-300 text-lg font-bold">
+                    {t("game_final_score_tb")} {playerScore} : {aiScore}
+                  </p>
+
                   <div className="mt-4 flex flex-wrap justify-center gap-3">
                     <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{t("game_match_duration")}</span>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
+                        {t("game_match_duration")}
+                      </span>
                       <span className="text-xl text-white font-black tracking-wider">
                         ⏱️ {formatMatchTime(matchSeconds)}
                       </span>
@@ -2184,7 +2921,9 @@ export default function GameScreen() {
 
                     {earnedItemXp > 0 && (
                       <div className="bg-cyan-950/40 border border-cyan-500/40 px-6 py-2 rounded-lg flex flex-col items-center shadow-lg">
-                        <span className="text-[10px] text-cyan-400 uppercase tracking-widest font-black">{t("rpg_xp_label")}</span>
+                        <span className="text-[10px] text-cyan-400 uppercase tracking-widest font-black">
+                          {t("rpg_xp_label")}
+                        </span>
                         <span className="text-xl text-white font-black tracking-wider">
                           ⚡ +{earnedItemXp} XP
                         </span>
@@ -2192,144 +2931,267 @@ export default function GameScreen() {
                     )}
                   </div>
 
-                  {activeTournamentId && playerScore < aiScore && getContinueFee(activeTournamentId, activeTournamentRound) !== null && !retryUsed && (
-                    <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
-                      <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
-                      <span className="text-amber-400 font-black uppercase tracking-widest text-sm mb-2 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">
-                        {t("game_second_chance_q")}
-                      </span>
-                      <p className="text-[10px] text-slate-400 text-center mb-4 leading-relaxed">
-                        {t("game_second_chance_desc")}
-                      </p>
-                      
-                      <button 
-                        disabled={currentTacPoints < getContinueFee(activeTournamentId, activeTournamentRound)! || isProcessingRetry}
-                        onClick={handleBuySecondChance} 
-                        className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${
-                          currentTacPoints >= getContinueFee(activeTournamentId, activeTournamentRound)! && !isProcessingRetry
-                            ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95' 
-                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {isProcessingRetry 
-                          ? t("game_buying") 
-                          : currentTacPoints < getContinueFee(activeTournamentId, activeTournamentRound)! 
-                            ? `${t("game_not_enough_tp")} (${getContinueFee(activeTournamentId, activeTournamentRound)} ${t("game_needed")})` 
-                            : `${t("game_replay_match")} (${getContinueFee(activeTournamentId, activeTournamentRound)} TP)`
-                        }
-                      </button>
-                    </div>
-                  )}
+                  {activeTournamentId &&
+                    playerScore < aiScore &&
+                    getContinueFee(activeTournamentId, activeTournamentRound) !== null &&
+                    !retryUsed && (
+                      <div className="mt-8 flex flex-col items-center w-full max-w-sm mx-auto">
+                        <div className="w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent mb-4"></div>
+                        <span className="text-amber-400 font-black uppercase tracking-widest text-sm mb-2 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">
+                          {t("game_second_chance_q")}
+                        </span>
+                        <p className="text-[10px] text-slate-400 text-center mb-4 leading-relaxed">
+                          {t("game_second_chance_desc")}
+                        </p>
+
+                        <button
+                          disabled={
+                            currentTacPoints <
+                              getContinueFee(activeTournamentId, activeTournamentRound)! ||
+                            isProcessingRetry
+                          }
+                          onClick={handleBuySecondChance}
+                          className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${
+                            currentTacPoints >=
+                              getContinueFee(activeTournamentId, activeTournamentRound)! &&
+                            !isProcessingRetry
+                              ? "bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95"
+                              : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                          }`}
+                        >
+                          {isProcessingRetry
+                            ? t("game_buying")
+                            : currentTacPoints <
+                              getContinueFee(activeTournamentId, activeTournamentRound)!
+                            ? `${t("game_not_enough_tp")} (${getContinueFee(
+                                activeTournamentId,
+                                activeTournamentRound
+                              )} ${t("game_needed")})`
+                            : `${t("game_replay_match")} (${getContinueFee(
+                                activeTournamentId,
+                                activeTournamentRound
+                              )} TP)`}
+                        </button>
+                      </div>
+                    )}
                 </div>
-                
+
                 <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-stretch justify-center w-full mt-6">
-                  
                   <div className="flex-1 flex flex-col gap-4 w-full">
                     <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-slate-700/50 p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] w-full">
-                      <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">{t("game_your_tacscore")}</span>
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-widest mb-4">
+                        {t("game_your_tacscore")}
+                      </span>
                       <div className="flex flex-col items-center gap-3">
-                        <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">{tacScore}</span>
-                        <div className={`px-5 py-1.5 rounded-full border ${lastScoreChange > 0 ? "bg-emerald-900/30 border-emerald-500/50 text-emerald-400" : "bg-red-900/30 border-red-500/50 text-red-500"}`}>
-                          <span className="text-lg font-black tracking-widest whitespace-nowrap">{lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange} {t("game_points_label")}</span>
+                        <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                          {tacScore}
+                        </span>
+                        <div
+                          className={`px-5 py-1.5 rounded-full border ${
+                            lastScoreChange > 0
+                              ? "bg-emerald-900/30 border-emerald-500/50 text-emerald-400"
+                              : "bg-red-900/30 border-red-500/50 text-red-500"
+                          }`}
+                        >
+                          <span className="text-lg font-black tracking-widest whitespace-nowrap">
+                            {lastScoreChange > 0 ? `+${lastScoreChange}` : lastScoreChange}{" "}
+                            {t("game_points_label")}
+                          </span>
                         </div>
                       </div>
                     </div>
 
                     {activeTournamentId && (
                       <div className="flex-1 flex flex-col items-center justify-center bg-[#050b14] border border-amber-900/50 p-4 rounded-2xl shadow-[inset_0_0_20px_rgba(245,158,11,0.1)] w-full">
-                        <span className="text-amber-500/70 text-[10px] font-black uppercase tracking-widest mb-2">{t("game_prize_money")} {activeTournamentRound})</span>
+                        <span className="text-amber-500/70 text-[10px] font-black uppercase tracking-widest mb-2">
+                          {t("game_prize_money")} {activeTournamentRound})
+                        </span>
                         <div className="flex flex-col items-center gap-1">
-                          <span className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(245,158,11,0.4)]">+{earnedTP}</span>
-                          <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">TacPoints</span>
+                          <span className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(245,158,11,0.4)]">
+                            +{earnedTP}
+                          </span>
+                          <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">
+                            TacPoints
+                          </span>
                         </div>
                       </div>
                     )}
                   </div>
 
                   <div className="flex-[1.5] w-full bg-[#050b14] border border-slate-700/50 rounded-2xl overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col">
-                    <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">{t("game_match_outcome")}</span></div>
-                    <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">{userTeamName}</span></div>
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/20"><span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{t("game_metric")}</span></div>
-                      <div className="py-2 flex flex-col justify-center bg-slate-900/40"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest">{activeAiProfile.teamName}</span></div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.aces}</div>
-                      <div className="py-2.5 text-orange-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_aces")}</div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.aces}</div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.winners}</div>
-                      <div className="py-2.5 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_winners")}</div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.winners}</div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.player.unforcedErrors}</div>
-                      <div className="py-2.5 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">{t("game_errors")}</div>
-                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">{matchStats.ai.unforcedErrors}</div>
+                    <div className="bg-slate-800/50 py-2.5 text-center border-b border-slate-700/50 shrink-0">
+                      <span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">
+                        {t("game_match_outcome")}
+                      </span>
                     </div>
-                    <div className="bg-slate-800/80 py-2.5 text-center border-y border-slate-700/50 shrink-0 mt-2"><span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">{t("game_all_shots")}</span></div>
+                    <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50">
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/40">
+                        <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">
+                          {userTeamName}
+                        </span>
+                      </div>
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/20">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                          {t("game_metric")}
+                        </span>
+                      </div>
+                      <div className="py-2 flex flex-col justify-center bg-slate-900/40">
+                        <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">
+                          {activeAiProfile.teamName}
+                        </span>
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.player.aces}
+                      </div>
+                      <div className="py-2.5 text-orange-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">
+                        {t("game_aces")}
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.ai.aces}
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.player.winners}
+                      </div>
+                      <div className="py-2.5 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">
+                        {t("game_winners")}
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.ai.winners}
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.player.unforcedErrors}
+                      </div>
+                      <div className="py-2.5 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center border-t border-slate-700/50">
+                        {t("game_errors")}
+                      </div>
+                      <div className="py-2.5 text-white text-base sm:text-lg font-black border-t border-slate-700/50 flex items-center justify-center">
+                        {matchStats.ai.unforcedErrors}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/80 py-2.5 text-center border-y border-slate-700/50 shrink-0 mt-2">
+                      <span className="text-slate-300 text-[10px] font-black uppercase tracking-widest">
+                        {t("game_all_shots")}
+                      </span>
+                    </div>
                     <div className="grid grid-cols-3 text-center divide-x divide-slate-700/50 mb-2">
-                      <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">{matchStats.player.totalShots}</div>
-                      <div className="py-2 text-slate-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center">{t("game_total")}</div>
-                      <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">{matchStats.ai.totalShots}</div>
-                      <StatCell val={matchStats.player.shotsPerfect} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-cyan-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_perfect")}</span><span className="text-[7px] opacity-60">⭐</span></div>
+                      <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">
+                        {matchStats.player.totalShots}
+                      </div>
+                      <div className="py-2 text-slate-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex items-center justify-center">
+                        {t("game_total")}
+                      </div>
+                      <div className="py-2 text-slate-300 text-sm font-black flex items-center justify-center">
+                        {matchStats.ai.totalShots}
+                      </div>
+                      <StatCell
+                        val={matchStats.player.shotsPerfect}
+                        total={matchStats.player.totalShots}
+                      />
+                      <div className="py-2 text-cyan-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50">
+                        <span>{t("game_perfect")}</span>
+                        <span className="text-[7px] opacity-60">⭐</span>
+                      </div>
                       <StatCell val={matchStats.ai.shotsPerfect} total={matchStats.ai.totalShots} />
-                      <StatCell val={matchStats.player.shotsSuccess} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_solid")}</span><span className="text-[7px] opacity-60">✓</span></div>
+                      <StatCell
+                        val={matchStats.player.shotsSuccess}
+                        total={matchStats.player.totalShots}
+                      />
+                      <div className="py-2 text-emerald-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50">
+                        <span>{t("game_solid")}</span>
+                        <span className="text-[7px] opacity-60">✓</span>
+                      </div>
                       <StatCell val={matchStats.ai.shotsSuccess} total={matchStats.ai.totalShots} />
-                      <StatCell val={matchStats.player.shotsRecovery} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-amber-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_shaky")}</span><span className="text-[7px] opacity-60">⚠️</span></div>
-                      <StatCell val={matchStats.ai.shotsRecovery} total={matchStats.ai.totalShots} />
-                      <StatCell val={matchStats.player.shotsError} total={matchStats.player.totalShots} />
-                      <div className="py-2 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50"><span>{t("game_miss")}</span><span className="text-[7px] opacity-60">❌</span></div>
+                      <StatCell
+                        val={matchStats.player.shotsRecovery}
+                        total={matchStats.player.totalShots}
+                      />
+                      <div className="py-2 text-amber-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50">
+                        <span>{t("game_shaky")}</span>
+                        <span className="text-[7px] opacity-60">⚠️</span>
+                      </div>
+                      <StatCell
+                        val={matchStats.ai.shotsRecovery}
+                        total={matchStats.ai.totalShots}
+                      />
+                      <StatCell
+                        val={matchStats.player.shotsError}
+                        total={matchStats.player.totalShots}
+                      />
+                      <div className="py-2 text-red-400 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest bg-slate-900/20 flex flex-col items-center justify-center border-t border-slate-700/50">
+                        <span>{t("game_miss")}</span>
+                        <span className="text-[7px] opacity-60">❌</span>
+                      </div>
                       <StatCell val={matchStats.ai.shotsError} total={matchStats.ai.totalShots} />
                     </div>
                   </div>
                 </div>
-                
+
                 {activeTournamentId ? (
-                   <button onClick={() => { 
-                     const tourIdToClean = activeTournamentId;
-                     setIsTourOpen(true); 
-                     setShowGameOverUI(false); 
-                     setActiveTournamentId(null); 
-                     
-                     if (playerScore < aiScore) {
-                       const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
-                       if (tourIdToClean && savedTourStamina[tourIdToClean]) {
-                         delete savedTourStamina[tourIdToClean];
-                         localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
-                       }
+                  <button
+                    onClick={() => {
+                      const tourIdToClean = activeTournamentId;
+                      setIsTourOpen(true);
+                      setShowGameOverUI(false);
+                      setActiveTournamentId(null);
 
-                       supabase.auth.getSession().then(({ data: { session } }) => {
-                         if (session?.user) {
-                           supabase.from("tour_progress")
-                             .update({ status: "eliminated" })
-                             .eq("user_id", session.user.id)
-                             .eq("tournament_id", tourIdToClean);
-                         }
-                       });
-                     }
-                   }} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                     {playerScore < aiScore ? t("game_give_up_back_tour") : t("game_back_tour")}
-                   </button>
+                      if (playerScore < aiScore) {
+                        const savedTourStamina = JSON.parse(
+                          localStorage.getItem("tacpadel_tour_stamina") || "{}"
+                        );
+                        if (tourIdToClean && savedTourStamina[tourIdToClean]) {
+                          delete savedTourStamina[tourIdToClean];
+                          localStorage.setItem(
+                            "tacpadel_tour_stamina",
+                            JSON.stringify(savedTourStamina)
+                          );
+                        }
+
+                        supabase.auth.getSession().then(({ data: { session } }) => {
+                          if (session?.user) {
+                            supabase
+                              .from("tour_progress")
+                              .update({ status: "eliminated" })
+                              .eq("user_id", session.user.id)
+                              .eq("tournament_id", tourIdToClean);
+                          }
+                        });
+                      }
+                    }}
+                    className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(217,70,239,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0"
+                  >
+                    {playerScore < aiScore ? t("game_give_up_back_tour") : t("game_back_tour")}
+                  </button>
                 ) : (
-                   <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
-                     {tacScore < 1500 ? (
-                       <button disabled className="w-full sm:w-auto px-8 sm:px-10 py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1 shrink-0">
-                         <span className="text-sm">{t("game_match_locked_1500")}</span>
-                         <span className="text-[8px] text-slate-500 normal-case tracking-normal">{t("game_single_locked_sub")}</span>
-                       </button>
-                     ) : (
-                       <button onClick={startNewGame} className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0">
-                         {t("game_new_match")}
-                       </button>
-                     )}
-                     <button 
-                       onClick={() => { setShowGameOverUI(false); setIsMenuOpen(true); }} 
-                       className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-white font-black tracking-widest uppercase rounded-xl border border-slate-700 shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
-                     >
-                       {t("game_to_menu")}
-                     </button>
-                   </div>
+                  <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
+                    {tacScore < 1500 ? (
+                      <button
+                        disabled
+                        className="w-full sm:w-auto px-8 sm:px-10 py-3 bg-slate-800/80 border border-slate-700 text-slate-500 font-black tracking-widest uppercase rounded-xl shadow-lg cursor-not-allowed flex flex-col items-center justify-center gap-1 shrink-0"
+                      >
+                        <span className="text-sm">{t("game_match_locked_1500")}</span>
+                        <span className="text-[8px] text-slate-500 normal-case tracking-normal">
+                          {t("game_single_locked_sub")}
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={startNewGame}
+                        className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black tracking-widest uppercase rounded-xl shadow-[0_0_30px_rgba(255,119,0,0.4)] hover:scale-105 active:scale-95 transition-all shrink-0"
+                      >
+                        {t("game_new_match")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowGameOverUI(false);
+                        setIsMenuOpen(true);
+                      }}
+                      className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-white font-black tracking-widest uppercase rounded-xl border border-slate-700 shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
+                    >
+                      {t("game_to_menu")}
+                    </button>
+                  </div>
                 )}
-
               </div>
             </div>
           </motion.div>
@@ -2337,124 +3199,228 @@ export default function GameScreen() {
       </AnimatePresence>
 
       {/* --- COURT BEREICH --- */}
-      <div className={`relative w-full flex-1 ${isIpadScreen ? "min-h-[760px]" : "min-h-[400px] sm:min-h-[500px]"} overflow-hidden pointer-events-auto`}>
-        
+      <div
+        className={`relative w-full flex-1 ${
+          isIpadScreen ? "min-h-[760px]" : "min-h-[400px] sm:min-h-[500px]"
+        } overflow-hidden pointer-events-auto`}
+      >
         {/* --- AUSDAUER HUD OVERLAY --- */}
         <AnimatePresence>
           {staminaModeEnabled && !isMenuOpen && !isIntroPlaying && !gameOver && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-30 pointer-events-none"
             >
               <div className="absolute top-4 left-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80">
-                 <div className="flex justify-between items-end">
-                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
-                     {activeAiProfile.p1}
-                   </span>
-                   {stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
-                 </div>
-                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
-                   <div 
-                     className={`h-full transition-[width] duration-500 ease-out ${stamina.opp1 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-r from-red-600 to-red-400'}`} 
-                     style={{ width: `${(stamina.opp1 / (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) * 100}%` }} 
-                   />
-                 </div>
+                <div className="flex justify-between items-end">
+                  <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
+                    {activeAiProfile.p1}
+                  </span>
+                  {stamina.opp1 <=
+                    getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3 && (
+                    <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">
+                      ⚠️ LOW
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${
+                    stamina.opp1 <= getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3
+                      ? "border-red-500/80"
+                      : "border-slate-700"
+                  }`}
+                >
+                  <div
+                    className={`h-full transition-[width] duration-500 ease-out ${
+                      stamina.opp1 <= getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3
+                        ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+                        : "bg-gradient-to-r from-red-600 to-red-400"
+                    }`}
+                    style={{
+                      width: `${
+                        (stamina.opp1 /
+                          (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="absolute top-4 right-4 flex flex-col gap-1 w-24 sm:w-32 opacity-80 items-end">
-                 <div className="flex justify-between items-end w-full flex-row-reverse">
-                   <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
-                     {activeAiProfile.p2}
-                   </span>
-                   {stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 && <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
-                 </div>
-                 <div className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
-                   <div 
-                     className={`h-full transition-[width] duration-500 ease-out ml-auto ${stamina.opp2 <= (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult) * 0.3 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-gradient-to-l from-red-600 to-red-400'}`} 
-                     style={{ width: `${(stamina.opp2 / (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) * 100}%` }} 
-                   />
-                 </div>
+                <div className="flex justify-between items-end w-full flex-row-reverse">
+                  <span className="text-[9px] font-black text-red-400 uppercase tracking-widest drop-shadow-[0_0_5px_rgba(248,113,113,0.8)]">
+                    {activeAiProfile.p2}
+                  </span>
+                  {stamina.opp2 <=
+                    getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3 && (
+                    <span className="text-[8px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">
+                      ⚠️ LOW
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={`h-1.5 w-full bg-slate-900/80 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.5)] ${
+                    stamina.opp2 <= getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3
+                      ? "border-red-500/80"
+                      : "border-slate-700"
+                  }`}
+                >
+                  <div
+                    className={`h-full transition-[width] duration-500 ease-out ml-auto ${
+                      stamina.opp2 <= getAiMaxStamina(tacScore) * activeAiProfile.staminaMult * 0.3
+                        ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+                        : "bg-gradient-to-l from-red-600 to-red-400"
+                    }`}
+                    style={{
+                      width: `${
+                        (stamina.opp2 /
+                          (getAiMaxStamina(tacScore) * activeAiProfile.staminaMult)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="absolute bottom-4 left-4 flex flex-col gap-1 w-28 sm:w-36">
-                 <div className="flex justify-between items-end">
-                   <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] truncate max-w-[80px]">{playerName}</span>
-                   {stamina.you <= MAX_PLAYER_STAMINA * 0.3 && <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
-                 </div>
-                 <div className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${stamina.you <= MAX_PLAYER_STAMINA * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
-                   <div 
-                     className={`h-full transition-[width] duration-500 ease-out ${stamina.you <= MAX_PLAYER_STAMINA * 0.3 ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse' : 'bg-gradient-to-r from-purple-600 to-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.5)]'}`} 
-                     style={{ width: `${(stamina.you / MAX_PLAYER_STAMINA) * 100}%` }} 
-                   />
-                 </div>
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] truncate max-w-[80px]">
+                    {playerName}
+                  </span>
+                  {stamina.you <= MAX_PLAYER_STAMINA * 0.3 && (
+                    <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">
+                      ⚠️ LOW
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${
+                    stamina.you <= MAX_PLAYER_STAMINA * 0.3
+                      ? "border-red-500/80"
+                      : "border-slate-700"
+                  }`}
+                >
+                  <div
+                    className={`h-full transition-[width] duration-500 ease-out ${
+                      stamina.you <= MAX_PLAYER_STAMINA * 0.3
+                        ? "bg-red-500 shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse"
+                        : "bg-gradient-to-r from-purple-600 to-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                    }`}
+                    style={{ width: `${(stamina.you / MAX_PLAYER_STAMINA) * 100}%` }}
+                  />
+                </div>
               </div>
 
               <div className="absolute bottom-4 right-4 flex flex-col gap-1 w-28 sm:w-36 items-end">
-                 <div className="flex justify-between items-end w-full flex-row-reverse">
-                   <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)] truncate max-w-[110px]">{partnerName}</span>
-                   {stamina.partner <= MAX_PLAYER_STAMINA * 0.3 && <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">⚠️ LOW</span>}
-                 </div>
-                 <div className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${stamina.partner <= MAX_PLAYER_STAMINA * 0.3 ? 'border-red-500/80' : 'border-slate-700'}`}>
-                   <div 
-                     className={`h-full transition-[width] duration-500 ease-out ml-auto ${stamina.partner <= MAX_PLAYER_STAMINA * 0.3 ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse' : 'bg-gradient-to-l from-cyan-600 to-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.5)]'}`} 
-                     style={{ width: `${(stamina.partner / MAX_PLAYER_STAMINA) * 100}%` }} 
-                   />
-                 </div>
+                <div className="flex justify-between items-end w-full flex-row-reverse">
+                  <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(6,182,212,0.8)] truncate max-w-[110px]">
+                    {partnerName}
+                  </span>
+                  {stamina.partner <= MAX_PLAYER_STAMINA * 0.3 && (
+                    <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">
+                      ⚠️ LOW
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={`h-2 w-full bg-slate-900/90 rounded-full border overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.8)] ${
+                    stamina.partner <= MAX_PLAYER_STAMINA * 0.3
+                      ? "border-red-500/80"
+                      : "border-slate-700"
+                  }`}
+                >
+                  <div
+                    className={`h-full transition-[width] duration-500 ease-out ml-auto ${
+                      stamina.partner <= MAX_PLAYER_STAMINA * 0.3
+                        ? "bg-red-500 shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse"
+                        : "bg-gradient-to-l from-cyan-600 to-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.5)]"
+                    }`}
+                    style={{ width: `${(stamina.partner / MAX_PLAYER_STAMINA) * 100}%` }}
+                  />
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         <div className="absolute inset-0 z-10 w-full h-full">
-          <ScenarioCourt3D 
+          <ScenarioCourt3D
             key={`court-${introTrigger}-${partnerName}`}
-            arenaModel={currentArenaModel} 
-            playIntro={playIntro}  
-            gameOver={gameOver} 
-            
+            arenaModel={currentArenaModel}
+            playIntro={playIntro}
+            gameOver={gameOver}
             onIntroFinished={() => {
               setPlayIntro(false);
               setIsIntroPlaying(false);
-              if (!isMenuOpen && !gameOver) { 
-                triggerProfiBanner(); 
-                
+              if (!isMenuOpen && !gameOver) {
+                triggerProfiBanner();
+
                 const info = getServerInfo(playerScore + aiScore);
                 if (info.serverId === "you") {
-                   showFlash(`${playerName.toUpperCase()} ${t("game_serves_flash")}`, "text-purple-400", 3000);
+                  showFlash(
+                    `${playerName.toUpperCase()} ${t("game_serves_flash")}`,
+                    "text-purple-400",
+                    3000
+                  );
                 } else if (info.serverId === "partner") {
-                   showFlash(`${partnerName.toUpperCase()} ${t("game_serves_flash")}`, "text-cyan-400", 3000);
+                  showFlash(
+                    `${partnerName.toUpperCase()} ${t("game_serves_flash")}`,
+                    "text-cyan-400",
+                    3000
+                  );
                 } else {
-                   showFlash(`${activeAiProfile.teamName.toUpperCase()} ${t("game_serves_flash")}`, "text-red-400", 3000);
+                  showFlash(
+                    `${activeAiProfile.teamName.toUpperCase()} ${t("game_serves_flash")}`,
+                    "text-red-400",
+                    3000
+                  );
                 }
               }
-            }} 
-            
-            level="Spielzug" 
-            positions={courtState} 
+            }}
+            level="Spielzug"
+            positions={courtState}
             hasSubmitted={isAnimPhase}
-            bestZones={activeScenario ? activeScenario.bestZones : []} 
-            acceptableZones={activeScenario ? [activeScenario.laufZone] : []}
-            
+            bestZones={activeScenario ? activeScenario.bestZones : []}
+            acceptableZones={
+              isRookie && isTimerPhase
+                ? validInterceptZones
+                : activeScenario
+                ? [activeScenario.laufZone]
+                : []
+            }
             profiMode={isProfi}
-            
-            selectedZone={phase === "ai_prepare" ? null : (isAiActive ? aiTarget : commands[hitterId].target)}
-            selectedLaufZone={commands.you.run} selectedPartnerZone={commands.partner.run}
-            activeChar={isAiActive ? aiHitterId : activeChar} hitterId={isAiActive ? aiHitterId : hitterId}
-            isTimerActive={isTimerPhase} turnResult={turnResult}
+            selectedZone={
+              phase === "ai_prepare" ? null : isAiActive ? aiTarget : commands[hitterId].target
+            }
+            selectedLaufZone={commands.you.run}
+            selectedPartnerZone={commands.partner.run}
+            activeChar={isAiActive ? aiHitterId : activeChar}
+            hitterId={isAiActive ? aiHitterId : hitterId}
+            isTimerActive={isTimerPhase}
+            turnResult={turnResult}
             previewShot={phase === "player_planning" ? commands[hitterId].shot : null}
             timerDuration={timerDuration}
-            
-            onZoneClick={(id) => { if (phase === "player_planning" && activeChar === hitterId) updateCommand(activeChar, { target: id }); }}
-            
-            onLaufZoneClick={(id) => { if (phase === "player_planning" || isTimerPhase) updateCommand(activeChar, { run: id }); }}
-            onPlayerClick={(char) => { if (phase === "player_planning" || isTimerPhase) setActiveChar(char as "you" | "partner"); }}
-            
-            playerScore={playerScore} aiScore={aiScore}
-            isAiActive={isAiActive} phase={phase} isTimerPhase={isTimerPhase}
+            onZoneClick={(id) => {
+              if (phase === "player_planning" && activeChar === hitterId)
+                updateCommand(activeChar, { target: id });
+            }}
+            onLaufZoneClick={(id) => {
+              if (phase === "player_planning" || isTimerPhase)
+                updateCommand(activeChar, { run: id });
+            }}
+            onPlayerClick={(char) => {
+              if (phase === "player_planning" || isTimerPhase)
+                setActiveChar(char as "you" | "partner");
+            }}
+            playerScore={playerScore}
+            aiScore={aiScore}
+            isAiActive={isAiActive}
+            phase={phase}
+            isTimerPhase={isTimerPhase}
             isPlayerTeamServe={isPlayerTeamServe}
-
             hidePlayerLabels={!showNameTags}
             userTeamName={userTeamName}
             activeAiProfile={activeAiProfile}
@@ -2464,13 +3430,22 @@ export default function GameScreen() {
         </div>
       </div>
 
-      <div className={`w-full z-40 bg-[#050b18] border-t border-slate-700 p-2 sm:p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2 shrink-0 transition-opacity duration-700 ${(isIntroPlaying || (gameOver && !showGameOverUI)) ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        
+      <div
+        className={`w-full z-40 bg-[#050b18] border-t border-slate-700 p-2 sm:p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col gap-2 shrink-0 transition-opacity duration-700 ${
+          isIntroPlaying || (gameOver && !showGameOverUI)
+            ? "opacity-0 pointer-events-none"
+            : "opacity-100"
+        }`}
+      >
         {phase === "ai_prepare" && (
           <div className="flex items-center justify-center gap-2 py-2">
             <div className="w-4 h-4 rounded-full border-t-2 border-red-500 animate-spin" />
             <h3 className="text-red-400 font-black tracking-widest uppercase text-[10px]">
-              🤖 {activeAiProfile.teamName} {courtState.ball.type === "PREPARE_SERVE" ? t("game_ai_serving") : t("game_ai_checking_gaps")}...
+              🤖 {activeAiProfile.teamName}{" "}
+              {courtState.ball.type === "PREPARE_SERVE"
+                ? t("game_ai_serving")
+                : t("game_ai_checking_gaps")}
+              ...
             </h3>
           </div>
         )}
@@ -2485,75 +3460,163 @@ export default function GameScreen() {
 
         {(phase === "player_planning" || phase === "timer_running") && !gameOver && (
           <>
-            <div className="flex items-center justify-between px-1 mb-2 mt-1 gap-2">
+            <div className="flex items-center justify-between px-1 mb-1 mt-0.5 gap-2">
               <div className="flex items-center gap-2 truncate">
-                <span className={`text-[9px] font-black tracking-widest uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>
-                  {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()} {hitterId === activeChar ? (courtState.ball.type === "PREPARE_SERVE" ? `(${serveNumber}. ${t("game_serve_num")})` : `(${t("game_hitter_role")})`) : `(${t("game_cover_role")})`}
+                <span
+                  className={`text-[9px] font-black tracking-widest uppercase ${
+                    activeChar === "you" ? "text-purple-400" : "text-cyan-400"
+                  }`}
+                >
+                  {activeChar === "you" ? playerName.toUpperCase() : partnerName.toUpperCase()}{" "}
+                  {hitterId === activeChar
+                    ? courtState.ball.type === "PREPARE_SERVE"
+                      ? `(${serveNumber}. ${t("game_serve_num")})`
+                      : `(${t("game_hitter_role")})`
+                    : `(${t("game_cover_role")})`}
                 </span>
-                {/* KOMPAKTER LOADOUT-INDIKATOR IM HUD */}
+                {isRookie && (
+                  <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-300">
+                    🟢 Rookie-Coach
+                  </span>
+                )}
                 <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
-                  🎾 {activeLoadout.racket.name} • ⚡ {focusShotType ? formatShotName(focusShotType, lang) : activeLoadout.shot.badge}
+                  🎾 {activeLoadout.racket.name} • ⚡{" "}
+                  {focusShotType ? formatShotName(focusShotType, lang) : activeLoadout.shot.badge}
                 </span>
               </div>
               <div className="w-2/5 sm:w-1/2 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800 shrink-0">
-                <div ref={progressBarRef} className={`h-full ${isTimerPhase ? 'bg-emerald-500 w-full' : 'w-0 opacity-0'}`} />
+                <div
+                  ref={progressBarRef}
+                  className={`h-full ${isTimerPhase ? "bg-emerald-500 w-full" : "w-0 opacity-0"}`}
+                />
               </div>
             </div>
 
+            {/* 🟢 ROOKIE-HILFE 3: Abfang-Radar-Tipp während der Ball fliegt */}
+            {isRookie && isTimerPhase && validInterceptZones.length > 0 && (
+              <div className="px-2.5 py-1 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 text-[9px] font-black uppercase tracking-wider text-center animate-pulse">
+                {lang === "en"
+                  ? `🎯 Coach Radar: Move ${activeChar === "you" ? playerName : partnerName} to zone ${validInterceptZones.slice(0, 2).join(" or ")}!`
+                  : lang === "es"
+                  ? `🎯 Radar Coach: ¡Mueve a ${activeChar === "you" ? playerName : partnerName} a la zona ${validInterceptZones.slice(0, 2).join(" o ")}!`
+                  : `🎯 Coach-Radar: Lauf mit ${activeChar === "you" ? playerName : partnerName} in Zone ${validInterceptZones.slice(0, 2).join(" oder ")}!`}
+              </div>
+            )}
+
             {isTimerPhase ? (
               <div className="flex gap-3 w-full mb-2 h-14">
-                <button onClick={() => setActiveChar("you")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "you" ? 'bg-purple-900/40 border-purple-500 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm truncate w-full text-center px-1">{playerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
+                <button
+                  onClick={() => setActiveChar("you")}
+                  className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${
+                    activeChar === "you"
+                      ? "bg-purple-900/40 border-purple-500 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-105 z-10"
+                      : "bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800"
+                  }`}
+                >
+                  <span className="text-sm truncate w-full text-center px-1">
+                    {playerName.toUpperCase()}
+                  </span>
+                  <span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
                 </button>
-                <button onClick={() => setActiveChar("partner")} className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${activeChar === "partner" ? 'bg-cyan-900/40 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] scale-105 z-10' : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800'}`}>
-                  <span className="text-sm truncate w-full text-center px-1">{partnerName.toUpperCase()}</span><span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
+                <button
+                  onClick={() => setActiveChar("partner")}
+                  className={`flex-1 rounded-xl border-2 font-black tracking-widest uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${
+                    activeChar === "partner"
+                      ? "bg-cyan-900/40 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] scale-105 z-10"
+                      : "bg-slate-900/60 border-slate-800 text-slate-500 opacity-80 hover:bg-slate-800"
+                  }`}
+                >
+                  <span className="text-sm truncate w-full text-center px-1">
+                    {partnerName.toUpperCase()}
+                  </span>
+                  <span className="text-[8px] font-bold opacity-70">{t("game_set_run_path")}</span>
                 </button>
               </div>
             ) : (
-            <div className="grid grid-cols-3 gap-1.5 mb-2">
-              <div className={`p-1.5 rounded border text-center ${commands[activeChar].run ? (activeChar === "you" ? 'border-purple-500/50 bg-purple-950/20' : 'border-cyan-500/50 bg-cyan-950/20') : 'border-slate-800 bg-slate-900/40'}`}>
-                <div className={`text-[7px] font-black uppercase ${activeChar === "you" ? "text-purple-400" : "text-cyan-400"}`}>{t("game_run_zone")}</div>
-                <div className="text-[9px] font-bold text-white truncate">{commands[activeChar].run || "-"}</div>
-              </div>
-              {hitterId === activeChar ? (
-                <>
-                  <div className={`p-1.5 rounded border text-center ${commands[activeChar].target ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40'}`}>
-                    <div className="text-[7px] font-black text-emerald-400 uppercase">{t("game_shot_target")}</div>
-                    <div className="text-[9px] font-bold text-white truncate">{commands[activeChar].target || "-"}</div>
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                <div
+                  className={`p-1.5 rounded border text-center ${
+                    commands[activeChar].run
+                      ? activeChar === "you"
+                        ? "border-purple-500/50 bg-purple-950/20"
+                        : "border-cyan-500/50 bg-cyan-950/20"
+                      : "border-slate-800 bg-slate-900/40"
+                  }`}
+                >
+                  <div
+                    className={`text-[7px] font-black uppercase ${
+                      activeChar === "you" ? "text-purple-400" : "text-cyan-400"
+                    }`}
+                  >
+                    {t("game_run_zone")}
                   </div>
-                  <div onClick={() => !isTimerPhase && setIsShotModalOpen(true)} className={`p-1.5 rounded border text-center cursor-pointer ${commands[activeChar].shot ? 'border-orange-500/50 bg-orange-950/20' : 'border-orange-500/40 bg-orange-950/30 animate-pulse'}`}>
-                    <div className="text-[7px] font-black text-orange-400 uppercase">{t("game_shot_label")}</div>
-                    <div className="text-[9px] font-bold text-white truncate">
-                      {commands[activeChar].shot
-                        ? commands[activeChar].shot === focusShotType
-                          ? `⚡ ${formatShotName(commands[activeChar].shot!, lang)}`
-                          : formatShotName(commands[activeChar].shot!, lang)
-                        : t("game_choose_caps")}
-                    </div>
+                  <div className="text-[9px] font-bold text-white truncate">
+                    {commands[activeChar].run || "-"}
                   </div>
-                </>
-              ) : (
-                <div className="col-span-2 flex flex-col items-center justify-center border border-dashed border-slate-700/50 bg-slate-800/20 rounded p-1.5 pointer-events-none opacity-60">
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{t("game_court_coverage")}</span>
-                  <span className="text-[7px] font-bold text-slate-600">
-                    {hitterId === "you" ? playerName : partnerName} {t("game_has_ball")}
-                  </span>
                 </div>
-              )}
-            </div>
+                {hitterId === activeChar ? (
+                  <>
+                    <div
+                      className={`p-1.5 rounded border text-center ${
+                        commands[activeChar].target
+                          ? "border-emerald-500/50 bg-emerald-950/20"
+                          : "border-slate-800 bg-slate-900/40"
+                      }`}
+                    >
+                      <div className="text-[7px] font-black text-emerald-400 uppercase">
+                        {t("game_shot_target")}
+                      </div>
+                      <div className="text-[9px] font-bold text-white truncate">
+                        {commands[activeChar].target || "-"}
+                      </div>
+                    </div>
+                    <div
+                      onClick={() => !isTimerPhase && setIsShotModalOpen(true)}
+                      className={`p-1.5 rounded border text-center cursor-pointer ${
+                        commands[activeChar].shot
+                          ? "border-orange-500/50 bg-orange-950/20"
+                          : "border-orange-500/40 bg-orange-950/30 animate-pulse"
+                      }`}
+                    >
+                      <div className="text-[7px] font-black text-orange-400 uppercase">
+                        {t("game_shot_label")}
+                      </div>
+                      <div className="text-[9px] font-bold text-white truncate">
+                        {commands[activeChar].shot
+                          ? commands[activeChar].shot === focusShotType
+                            ? `⚡ ${formatShotName(commands[activeChar].shot!, lang)}`
+                            : formatShotName(commands[activeChar].shot!, lang)
+                          : t("game_choose_caps")}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-2 flex flex-col items-center justify-center border border-dashed border-slate-700/50 bg-slate-800/20 rounded p-1.5 pointer-events-none opacity-60">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">
+                      {t("game_court_coverage")}
+                    </span>
+                    <span className="text-[7px] font-bold text-slate-600">
+                      {hitterId === "you" ? playerName : partnerName} {t("game_has_ball")}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
-            <button 
-                onClick={onMainButtonClick} 
-                disabled={(!canSubmit && !needsSupporterConfirm) || isTimerPhase} 
-                className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
-                  isTimerPhase ? "bg-slate-900 text-slate-700 border-slate-800 cursor-not-allowed" 
-                    : canSubmit ? "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]" 
-                      : needsSupporterConfirm ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse"
-                        : "bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed"
-                }`}
-              >
-                {isTimerPhase ? t("game_time_running") : submitText}
-              </button>
+            <button
+              onClick={onMainButtonClick}
+              disabled={(!canSubmit && !needsSupporterConfirm) || isTimerPhase}
+              className={`w-full py-2.5 font-black text-[10px] tracking-widest uppercase rounded-lg border transition-all ${
+                isTimerPhase
+                  ? "bg-slate-900 text-slate-700 border-slate-800 cursor-not-allowed"
+                  : canSubmit
+                  ? "bg-gradient-to-r from-emerald-600 to-green-600 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                  : needsSupporterConfirm
+                  ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse"
+                  : "bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed"
+              }`}
+            >
+              {isTimerPhase ? t("game_time_running") : submitText}
+            </button>
           </>
         )}
       </div>
@@ -2561,34 +3624,71 @@ export default function GameScreen() {
       <AnimatePresence>
         {isShotModalOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsShotModalOpen(false)} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm pointer-events-auto" />
-            <motion.div drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.2} onDragEnd={(_, info) => { if (info.offset.y > 100) setIsShotModalOpen(false); }} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed bottom-20 left-3 right-3 lg:bottom-6 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none pointer-events-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsShotModalOpen(false)}
+              className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm pointer-events-auto"
+            />
+            <motion.div
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100) setIsShotModalOpen(false);
+              }}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-20 left-3 right-3 lg:bottom-6 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none pointer-events-auto"
+            >
               <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">{t("game_which_shot_modal")}</h3>
+              <div className="flex justify-between items-center mb-3 gap-2">
+                <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">
+                  {t("game_which_shot_modal")}
+                </h3>
                 <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
                   ⚡ {t("game_focus_label")} {activeLoadout.shot.name}
                 </span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto custom-scrollbar pb-2">
-                {SHOT_TYPES.map((shot) => {
+              <div
+                className={`grid ${
+                  isRookie ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-4"
+                } gap-2 overflow-y-auto custom-scrollbar pb-2`}
+              >
+                {displayedShots.map((shot) => {
                   const isSelected = commands[activeChar].shot === shot;
                   const isFocusShot = shot === focusShotType;
-                  let btnStyle = isSelected
+                  const isCoachRecommended = isRookie && rookieShotGuide.recommended.includes(shot);
+                  const btnStyle = isSelected
                     ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]"
+                    : isCoachRecommended
+                    ? "bg-emerald-950/40 border-emerald-500/60 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
                     : isFocusShot
-                      ? "bg-amber-950/30 border-amber-500/50 text-amber-300 hover:bg-amber-900/40"
-                      : "bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/60";
+                    ? "bg-amber-950/30 border-amber-500/50 text-amber-300 hover:bg-amber-900/40"
+                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/60";
                   return (
                     <button
                       key={shot}
                       disabled={isAnimPhase}
-                      onClick={() => { updateCommand(activeChar, { shot }); setIsShotModalOpen(false); }}
+                      onClick={() => {
+                        updateCommand(activeChar, { shot });
+                        setIsShotModalOpen(false);
+                      }}
                       className={`w-full flex flex-col items-center justify-center py-3 px-1 rounded-lg border text-[9px] font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
                     >
                       <span>{formatShotName(shot, lang)}</span>
+                      {isCoachRecommended && (
+                        <span className="text-[7px] text-emerald-400 font-black mt-0.5">
+                          💡 COACH
+                        </span>
+                      )}
                       {isFocusShot && (
-                        <span className="text-[7px] text-amber-400 font-black mt-0.5">{t("game_focus_boost")}</span>
+                        <span className="text-[7px] text-amber-400 font-black mt-0.5">
+                          {t("game_focus_boost")}
+                        </span>
                       )}
                     </button>
                   );
@@ -2601,27 +3701,44 @@ export default function GameScreen() {
 
       <AnimatePresence>
         {phase === "player_animating" && showResultOverlay && !gameOver && (
-          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} transition={{ type: "spring", stiffness: 200, damping: 25 }} className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)] pointer-events-auto">
-            
-            <div className={`flex flex-col md:flex-row gap-6 items-center ${showExplanations ? 'justify-between' : 'justify-center'}`}>
-              
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
+            className="fixed bottom-24 lg:bottom-6 left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)] pointer-events-auto"
+          >
+            <div
+              className={`flex flex-col md:flex-row gap-6 items-center ${
+                showExplanations ? "justify-between" : "justify-center"
+              }`}
+            >
               {showExplanations && (
                 <div className="flex-1 text-center md:text-left flex flex-col justify-center gap-2">
-                  {/* VISUELLES LOADOUT-FEEDBACK WENN EIN ATTRIBUT GEGRIFFEN HAT */}
                   {activeGearBoostMsg && (
                     <div className="inline-flex items-center self-center md:self-start gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-cyan-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.25)]">
                       <span>{activeGearBoostMsg}</span>
                     </div>
                   )}
-                  <p className="text-slate-200 text-sm sm:text-base leading-relaxed max-w-3xl font-medium">{turnMessage}</p>
+                  <p className="text-slate-200 text-sm sm:text-base leading-relaxed max-w-3xl font-medium">
+                    {turnMessage}
+                  </p>
                 </div>
               )}
 
-              <button onClick={handleNextTurn} className={`w-full ${showExplanations ? 'md:w-auto' : 'max-w-md'} px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}>
-                {turnResult && turnResult.startsWith("error") ? t("game_next_point_btn") : (turnResult === "perfect" ? t("game_point_won_btn") : t("game_next_action_ai_btn"))}
+              <button
+                onClick={handleNextTurn}
+                className={`w-full ${
+                  showExplanations ? "md:w-auto" : "max-w-md"
+                } px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}
+              >
+                {turnResult && turnResult.startsWith("error")
+                  ? t("game_next_point_btn")
+                  : turnResult === "perfect"
+                  ? t("game_point_won_btn")
+                  : t("game_next_action_ai_btn")}
               </button>
             </div>
-            
           </motion.div>
         )}
       </AnimatePresence>
