@@ -623,7 +623,7 @@ export default function GameScreen() {
   }, [commands]);
 
   // 🟢 ROOKIE-HILFE: Stellt sicher, dass in der Planungsphase im Rookie-Modus
-  // immer provisorisch das Schlagziel "A3" gesetzt ist, damit man den Flugbogen sofort sieht
+  // immer provisorisch das Schlagziel "C3" gesetzt ist, damit man den Flugbogen sofort sieht
   useEffect(() => {
     if (isRookie && phase === "player_planning") {
       setCommands((prev) => {
@@ -632,7 +632,7 @@ export default function GameScreen() {
           ...prev,
           [hitterId]: {
             ...prev[hitterId],
-            target: "A3",
+            target: "C3",
           },
         };
       });
@@ -1448,12 +1448,12 @@ export default function GameScreen() {
               you: {
                 ...prev.you,
                 run: null,
-                target: isRookie && bestHitter === "you" ? "A3" : prev.you.target,
+                target: isRookie && bestHitter === "you" ? "C3" : prev.you.target,
               },
               partner: {
                 ...prev.partner,
                 run: null,
-                target: isRookie && bestHitter === "partner" ? "A3" : prev.partner.target,
+                target: isRookie && bestHitter === "partner" ? "C3" : prev.partner.target,
               },
             }));
             setPhase("player_planning");
@@ -2202,7 +2202,7 @@ export default function GameScreen() {
     isServeTurn: boolean = false
   ) => {
     // 🟢 Im Rookie-Modus (< 2000 TacScore) ist "A3" standardmäßig als Ziel gesetzt
-    const defaultTarget = isRookie ? "A3" : null;
+    const defaultTarget = isRookie ? "C3" : null;
     setCommands({
       you: {
         run: null,
@@ -3483,7 +3483,7 @@ export default function GameScreen() {
                 ? null
                 : isAiActive
                 ? aiTarget
-                : commands[hitterId].target || (isRookie ? "A3" : null)
+                : commands[hitterId].target || (isRookie ? "C3" : null)
             }
             selectedLaufZone={commands.you.run}
             selectedPartnerZone={commands.partner.run}

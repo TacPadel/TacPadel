@@ -52,14 +52,14 @@ function StaticCourtMarkings() {
 
   return (
     <group>
-      {/* Gegnerseite (oben / hinten) – etwas kräftiger für gute Lesbarkeit in der Tiefe */}
+      {/* Gegnerseite (oben / hinten) */}
       {zones.map((zone) => (
         <Text
           key={`opp-mark-${zone}`}
           position={getMarkingPosition(zone, "right")}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.42}
-          color="#38bdf8"
+          color="#ffffff"
           fillOpacity={0.55}
           anchorX="center"
           anchorY="middle"
@@ -76,7 +76,7 @@ function StaticCourtMarkings() {
           position={getMarkingPosition(zone, "left")}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.38}
-          color="#a855f7"
+          color="#ffffff"
           fillOpacity={0.45}
           anchorX="center"
           anchorY="middle"
