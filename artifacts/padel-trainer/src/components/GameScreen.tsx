@@ -622,6 +622,23 @@ export default function GameScreen() {
     commandsRef.current = commands;
   }, [commands]);
 
+  // 🟢 ROOKIE-HILFE: Stellt sicher, dass in der Planungsphase im Rookie-Modus
+  // immer provisorisch das Schlagziel "A3" gesetzt ist, damit man den Flugbogen sofort sieht
+  useEffect(() => {
+    if (isRookie && phase === "player_planning") {
+      setCommands((prev) => {
+        if (prev[hitterId].target) return prev;
+        return {
+          ...prev,
+          [hitterId]: {
+            ...prev[hitterId],
+            target: "A3",
+          },
+        };
+      });
+    }
+  }, [isRookie, phase, hitterId]);
+
   const [turnResult, setTurnResult] = useState<TurnResult>(null);
   const [turnTitle, setTurnTitle] = useState<string>("");
   const [turnMessage, setTurnMessage] = useState<string>("");
@@ -1426,9 +1443,18 @@ export default function GameScreen() {
 
             playSfx("hit_soft");
 
+            // 🟢 ROOKIE-HILFE: Setzt beim Übergang in die Planungsphase automatisch "A3" als provisorisches Schlagziel
             setCommands((prev) => ({
-              you: { ...prev.you, run: null },
-              partner: { ...prev.partner, run: null },
+              you: {
+                ...prev.you,
+                run: null,
+                target: isRookie && bestHitter === "you" ? "A3" : prev.you.target,
+              },
+              partner: {
+                ...prev.partner,
+                run: null,
+                target: isRookie && bestHitter === "partner" ? "A3" : prev.partner.target,
+              },
             }));
             setPhase("player_planning");
           } else {
@@ -1487,7 +1513,7 @@ export default function GameScreen() {
     };
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [phase, timerDuration, staminaModeEnabled]);
+  }, [phase, timerDuration, staminaModeEnabled, isRookie]);
 
   const updateCommand = (char: "you" | "partner", updates: Partial<Command>) => {
     setCommands((prev) => {
@@ -2175,16 +2201,18 @@ export default function GameScreen() {
     defaultHitter: "you" | "partner" = "you",
     isServeTurn: boolean = false
   ) => {
+    // 🟢 Im Rookie-Modus (< 2000 TacScore) ist "A3" standardmäßig als Ziel gesetzt
+    const defaultTarget = isRookie ? "A3" : null;
     setCommands({
       you: {
         run: null,
         shot: isServeTurn && defaultHitter === "you" ? "AUFSCHLAG" : null,
-        target: null,
+        target: defaultHitter === "you" ? defaultTarget : null,
       },
       partner: {
         run: null,
         shot: isServeTurn && defaultHitter === "partner" ? "AUFSCHLAG" : null,
-        target: null,
+        target: defaultHitter === "partner" ? defaultTarget : null,
       },
     });
     setTurnResult(null);
@@ -2766,6 +2794,7 @@ export default function GameScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
       {/* ROOKIE BANNER (Erscheint einmalig zu Matchbeginn wie das Profi-Banner) */}
       <AnimatePresence>
         {showRookieBanner && (
@@ -3450,7 +3479,11 @@ export default function GameScreen() {
             }
             profiMode={isProfi}
             selectedZone={
-              phase === "ai_prepare" ? null : isAiActive ? aiTarget : commands[hitterId].target
+              phase === "ai_prepare"
+                ? null
+                : isAiActive
+                ? aiTarget
+                : commands[hitterId].target || (isRookie ? "A3" : null)
             }
             selectedLaufZone={commands.you.run}
             selectedPartnerZone={commands.partner.run}
@@ -3458,7 +3491,11 @@ export default function GameScreen() {
             hitterId={isAiActive ? aiHitterId : hitterId}
             isTimerActive={isTimerPhase}
             turnResult={turnResult}
-            previewShot={phase === "player_planning" ? commands[hitterId].shot : null}
+            previewShot={
+              phase === "player_planning"
+                ? commands[hitterId].shot || (isRookie ? "DRIVE" : null)
+                : null
+            }
             timerDuration={timerDuration}
             onZoneClick={(id) => {
               if (phase === "player_planning" && activeChar === hitterId)
@@ -3483,6 +3520,7 @@ export default function GameScreen() {
             activeAiProfile={activeAiProfile}
             targetScore={currentTargetScore}
             matchTitle={currentMatchTitle}
+            {...({ showZoneLabels: isRookie, showCourtMarkings: isRookie } as any)}
           />
         </div>
       </div>
@@ -3531,7 +3569,7 @@ export default function GameScreen() {
                       : `(${t("game_hitter_role")})`
                     : `(${t("game_cover_role")})`}
                 </span>
-              
+
                 <span className="hidden sm:inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
                   🎾 {activeLoadout.racket.name} • ⚡{" "}
                   {focusShotType ? formatShotName(focusShotType, lang) : activeLoadout.shot.badge}

@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Environment } from "@react-three/drei";
+import { OrbitControls, Html, Environment, Text } from "@react-three/drei";
 import * as THREE from "three"; 
 
 import { supabase } from "../../lib/supabase";
@@ -17,6 +17,77 @@ import { useTranslation } from "../../lib/i18n";
 // =========================================================
 const DEFAULT_CAM_POS = new THREE.Vector3(0, 15.0, 27.5);
 const DEFAULT_LOOK_AT = new THREE.Vector3(0, -0.5, -2);
+
+// =========================================================
+// FELDKENNZEICHNUNGEN (Nur im Rookie-Modus < 2000 TS sichtbar)
+// =========================================================
+const MARKING_LETTERS = ["A", "B", "C", "D", "E"];
+const MARKING_ROWS = [1, 2, 3, 4, 5];
+
+const getMarkingPosition = (zoneId: string, side: "left" | "right"): [number, number, number] => {
+  const letter = zoneId[0].toUpperCase();
+  const num = parseInt(zoneId[1], 10);
+  const letterIdx = MARKING_LETTERS.indexOf(letter);
+
+  const baseX = -5 + letterIdx * 2 + 1;
+  const baseZ = side === "left" ? 10 - num * 2 + 1 : -10 + num * 2 - 1;
+
+  // Dezenter Versatz in die Kästchen-Ecke, damit Spielerfiguren die Schrift nicht verdecken
+  const offsetX = -0.55;
+  const offsetZ = side === "left" ? 0.55 : -0.55;
+
+  return [baseX + offsetX, 0.03, baseZ + offsetZ];
+};
+
+function StaticCourtMarkings() {
+  const zones = useMemo(() => {
+    const list: string[] = [];
+    for (const l of MARKING_LETTERS) {
+      for (const r of MARKING_ROWS) {
+        list.push(`${l}${r}`);
+      }
+    }
+    return list;
+  }, []);
+
+  return (
+    <group>
+      {/* Gegnerseite (oben / hinten) – etwas kräftiger für gute Lesbarkeit in der Tiefe */}
+      {zones.map((zone) => (
+        <Text
+          key={`opp-mark-${zone}`}
+          position={getMarkingPosition(zone, "right")}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.42}
+          color="#38bdf8"
+          fillOpacity={0.55}
+          anchorX="center"
+          anchorY="middle"
+          material-toneMapped={false}
+        >
+          {zone}
+        </Text>
+      ))}
+
+      {/* Eigene Seite (unten / vorne) */}
+      {zones.map((zone) => (
+        <Text
+          key={`own-mark-${zone}`}
+          position={getMarkingPosition(zone, "left")}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.38}
+          color="#a855f7"
+          fillOpacity={0.45}
+          anchorX="center"
+          anchorY="middle"
+          material-toneMapped={false}
+        >
+          {zone}
+        </Text>
+      ))}
+    </group>
+  );
+}
 
 // =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
@@ -320,7 +391,9 @@ export interface Props {
   targetScore?: number;
   matchTitle?: string;
 
-  arenaModel?: string; 
+  arenaModel?: string;
+  showZoneLabels?: boolean;
+  showCourtMarkings?: boolean;
 }
 
 export default function ScenarioCourt3D(props: Props) {
@@ -474,6 +547,11 @@ export default function ScenarioCourt3D(props: Props) {
               matchTitle={props.matchTitle}
               arenaModel={props.arenaModel}
             /> 
+
+            {/* 🟢 FELDKENNZEICHNUNGEN (A1-E5): Nur im Rookie-Modus (< 2000 TacScore) sichtbar */}
+            {(props.showZoneLabels || props.showCourtMarkings) && introFinished && !props.gameOver && (
+              <StaticCourtMarkings />
+            )}
             
             <TacticalData 
               {...props} 
