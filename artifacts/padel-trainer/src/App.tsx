@@ -22,6 +22,8 @@ import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
 import PublicProfileModal from "./components/PublicProfileModal";
 import StrategyTrainer from "./components/StrategyTrainer";
+import ShareCardModal, { ShareCardPayload } from "./components/ShareCardModal";
+import RatingPromptModal, { shouldShowRatingPrompt } from "./components/RatingPromptModal";
 import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
@@ -434,6 +436,73 @@ export default function App(): React.JSX.Element {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
 
+  // Share-Card & Store-Rating Modals
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+
+  // Öffnet ein per Link geteiltes Szenario direkt im Taktik-Trainer (?scenario=ID)
+  const openSharedScenarioById = (targetId: number): boolean => {
+    const foundScenario = SCENARIOS.find((s) => s.id === targetId);
+    if (!foundScenario) return false;
+
+    let targetLevel: Level = "Schlag";
+    if (foundScenario.id >= 62) targetLevel = "Spielzug";
+    else if (foundScenario.id >= 31) targetLevel = "Laufrichtung";
+    else if (foundScenario.id >= 11) targetLevel = "Schlagrichtung";
+
+    const pool = SCENARIOS.filter((s) => {
+      if (targetLevel === "Schlag") return s.id <= 10;
+      if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30;
+      if (targetLevel === "Laufrichtung") return s.id >= 31 && s.id <= 61;
+      return s.id >= 62;
+    });
+
+    const localIdx = Math.max(0, pool.findIndex((s) => s.id === foundScenario.id));
+    const rest = shuffleIndices(pool.length)
+      .filter((i) => i !== localIdx)
+      .slice(0, 9);
+
+    setLevel(targetLevel);
+    setRotation([localIdx, rest]);
+    setSelectedShot(null);
+    setSelectedZone(null);
+    setSelectedLaufZone(null);
+    setHasSubmitted(false);
+    setScore(0);
+    setRoundsPlayed(0);
+    setWrongPool([]);
+    setIsRetryPhase(false);
+    setGameOver(false);
+    setShowRetryBanner(false);
+    setFeedbackMsg(null);
+    setAttempts(0);
+    setActiveTab("trainer");
+    return true;
+  };
+
+  // Prüft beim App-Start sofort auf ?scenario=ID (funktioniert für Gäste & eingeloggte Spieler)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedScenarioParam = urlParams.get("scenario");
+    if (sharedScenarioParam) {
+      const targetId = parseInt(sharedScenarioParam, 10);
+      if (!isNaN(targetId) && openSharedScenarioById(targetId)) {
+        setHasRestored(true);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, []);
+
+  // Bewertungs-Moment nach einem erfolgreich abgeschlossenen Taktik-Level
+  useEffect(() => {
+    if (gameOver && shouldShowRatingPrompt()) {
+      const timer = setTimeout(() => {
+        setShowRatingModal(true);
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [gameOver]);
+
   // Easy-Mode ist überall (auch in der Simulation) fest aktiv;
   // Trainer-Korrektur-Modus ist in den 4 Lern-Modi aktiv und in der Simulation deaktiviert.
   const activeEasyMode = true;
@@ -705,6 +774,20 @@ export default function App(): React.JSX.Element {
     const isNativeApp = Capacitor.isNativePlatform();
 
     const handleDeepLink = async (url: string) => {
+      // Szenario-Challenge Deep-Link (z. B. ?scenario=42)
+      if (url.includes('scenario=')) {
+        const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+        const scenarioParam = new URLSearchParams(queryPart).get('scenario');
+        if (scenarioParam) {
+          const targetId = parseInt(scenarioParam, 10);
+          if (!isNaN(targetId)) {
+            openSharedScenarioById(targetId);
+            setHasRestored(true);
+            return;
+          }
+        }
+      }
+
       if (url.includes('access_token=') || url.includes('code=')) {
         if (isNativeApp) {
           try { await Browser.close(); } catch (e) {} 
@@ -1752,12 +1835,28 @@ export default function App(): React.JSX.Element {
                           </div>
                         </div>
                         
-                        <button
-                          onClick={nextRound}
-                          className="w-full md:w-auto px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
-                        >
-                          {t("trainer_next_task")}
-                        </button>
+                        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                          <button
+                            onClick={() =>
+                              setSharePayload({
+                                mode: "partner_challenge",
+                                scenario,
+                                description: scenarioDescription,
+                                userName: finalUserName,
+                              })
+                            }
+                            className="w-full sm:w-auto px-5 py-5 bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-500/50 font-black text-xs tracking-[0.15em] uppercase rounded-xl transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
+                          >
+                            {t("share_ask_partner_btn")}
+                          </button>
+
+                          <button
+                            onClick={nextRound}
+                            className="w-full md:w-auto px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
+                          >
+                            {t("trainer_next_task")}
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
@@ -1781,36 +1880,54 @@ export default function App(): React.JSX.Element {
                         </p>
                       </div>
                       
-                      <button 
-                        onClick={() => {
-                          if (level === "Spielzug") {
-                            setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
-                            handleLevelChange("Simulation" as Level, true);
-                          } else {
-                            const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
-                            setLockedLevels(updatedLocks);
-
-                            const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
-                            const currentIndex = TRAINER_SEQUENCE.indexOf(level);
-                            let nextLevel: Level = "Spielzug";
-
-                            for (let i = currentIndex + 1; i < TRAINER_SEQUENCE.length; i++) {
-                              const candidate = TRAINER_SEQUENCE[i];
-                              const isClosed = updatedLocks.includes(candidate) && candidate !== "Spielzug";
-                              if (!isClosed) {
-                                nextLevel = candidate;
-                                break;
-                              }
-                            }
-
-                            updateHighScore(level, updatedScores[level]);
-                            handleLevelChange(nextLevel, true);
+                      <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+                        <button
+                          onClick={() =>
+                            setSharePayload({
+                              mode: "trainer_result",
+                              levelName: formatLevelName(level, lang),
+                              score: maxScore,
+                              maxScore,
+                              totalPoints: user ? totalPoints : 0,
+                              userName: finalUserName,
+                            })
                           }
-                        }}
-                        className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
-                      >
-                        {level === "Spielzug" ? t("trainer_start_pro_rallye") : t("trainer_start_next_lvl")}
-                      </button>
+                          className="w-full sm:w-auto px-6 py-4 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/60 text-emerald-300 uppercase tracking-[0.15em] font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all"
+                        >
+                          {t("share_trainer_result_btn")}
+                        </button>
+
+                        <button 
+                          onClick={() => {
+                            if (level === "Spielzug") {
+                              setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
+                              handleLevelChange("Simulation" as Level, true);
+                            } else {
+                              const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
+                              setLockedLevels(updatedLocks);
+
+                              const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
+                              const currentIndex = TRAINER_SEQUENCE.indexOf(level);
+                              let nextLevel: Level = "Spielzug";
+
+                              for (let i = currentIndex + 1; i < TRAINER_SEQUENCE.length; i++) {
+                                const candidate = TRAINER_SEQUENCE[i];
+                                const isClosed = updatedLocks.includes(candidate) && candidate !== "Spielzug";
+                                if (!isClosed) {
+                                  nextLevel = candidate;
+                                  break;
+                                }
+                              }
+
+                              updateHighScore(level, updatedScores[level]);
+                              handleLevelChange(nextLevel, true);
+                            }
+                          }}
+                          className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
+                        >
+                          {level === "Spielzug" ? t("trainer_start_pro_rallye") : t("trainer_start_next_lvl")}
+                        </button>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1978,6 +2095,10 @@ export default function App(): React.JSX.Element {
           </AnimatePresence>  
         </div>   
       </div>
+
+      {/* --- SHARE CARD & RATING MODALS --- */}
+      <ShareCardModal payload={sharePayload} onClose={() => setSharePayload(null)} />
+      <RatingPromptModal isOpen={showRatingModal} onClose={() => setShowRatingModal(false)} />
       
       <Navigation activeTab={activeTab as any} setActiveTab={setActiveTab as any} />
 

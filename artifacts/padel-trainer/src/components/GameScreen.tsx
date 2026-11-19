@@ -20,6 +20,8 @@ import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen";
 import GameTutorial from "./GameTutorial";
 import InGameShopModal from "./InGameShopModal";
+import ShareCardModal, { ShareCardPayload } from "./ShareCardModal";
+import RatingPromptModal, { shouldShowRatingPrompt } from "./RatingPromptModal";
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
@@ -261,6 +263,10 @@ export default function GameScreen() {
 
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
+
+  // Share-Card & Store-Rating Modals
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
 
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
@@ -1443,7 +1449,7 @@ export default function GameScreen() {
 
             playSfx("hit_soft");
 
-            // 🟢 ROOKIE-HILFE: Setzt beim Übergang in die Planungsphase automatisch "A3" als provisorisches Schlagziel
+            // 🟢 ROOKIE-HILFE: Setzt beim Übergang in die Planungsphase automatisch "C3" als provisorisches Schlagziel
             setCommands((prev) => ({
               you: {
                 ...prev.you,
@@ -1619,13 +1625,10 @@ export default function GameScreen() {
       if (isWrongDiagonal || chosenShot !== "AUFSCHLAG") {
         const suggestedTarget = isHitRight ? "A3 / B3" : "D3 / E3";
         const suggestedRun = isHitRight ? "D4" : "B4";
-        const coachHint =
-          lang === "en"
-            ? `💡 Coach: Serve diagonally into ${suggestedTarget} & move to ${suggestedRun}!`
-            : lang === "es"
-            ? `💡 Coach: ¡Saca en diagonal a ${suggestedTarget} y sube a ${suggestedRun}!`
-            : `💡 Coach-Tipp: Serviere diagonal nach ${suggestedTarget} & rücke auf ${suggestedRun} vor!`;
-        showFlash(coachHint, "text-amber-400", 3500);
+        const coachHint = t("game_rookie_serve_hint")
+  .replace("{target}", suggestedTarget)
+  .replace("{run}", suggestedRun);
+showFlash(coachHint, "text-amber-400", 3500);
         return;
       }
     }
@@ -2012,6 +2015,13 @@ export default function GameScreen() {
         setShowGameOverUI(true);
       }, 4000);
 
+      // Bewertungs-Moment nach einem gewonnenen Match
+      if (newPlayerScore > newAiScore && shouldShowRatingPrompt()) {
+        setTimeout(() => {
+          setShowRatingModal(true);
+        }, 5200);
+      }
+
       localStorage.removeItem("tacpadel_savegame");
 
       const playerWon = newPlayerScore > newAiScore;
@@ -2201,7 +2211,7 @@ export default function GameScreen() {
     defaultHitter: "you" | "partner" = "you",
     isServeTurn: boolean = false
   ) => {
-    // 🟢 Im Rookie-Modus (< 2000 TacScore) ist "A3" standardmäßig als Ziel gesetzt
+    // 🟢 Im Rookie-Modus (< 2000 TacScore) ist "C3" standardmäßig als Ziel gesetzt
     const defaultTarget = isRookie ? "C3" : null;
     setCommands({
       you: {
@@ -3212,6 +3222,28 @@ export default function GameScreen() {
                   </div>
                 </div>
 
+                {/* MATCH-KARTE TEILEN BUTTON */}
+                <button
+                  onClick={() =>
+                    setSharePayload({
+                      mode: "match_result",
+                      playerScore,
+                      aiScore,
+                      opponentTeam: activeAiProfile.teamName,
+                      tacScore,
+                      isWin: playerScore > aiScore,
+                      userName: playerName,
+                    })
+                  }
+                  className="w-full sm:w-auto px-8 py-4 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/60 text-cyan-300 font-black tracking-widest uppercase text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0"
+                >
+                  {lang === "en"
+                    ? "📤 Share Match Card"
+                    : lang === "es"
+                    ? "📤 Compartir Tarjeta"
+                    : "📤 Match-Karte teilen"}
+                </button>
+
                 {activeTournamentId ? (
                   <button
                     onClick={() => {
@@ -3837,6 +3869,10 @@ export default function GameScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* --- SHARE CARD & RATING MODALS --- */}
+      <ShareCardModal payload={sharePayload} onClose={() => setSharePayload(null)} />
+      <RatingPromptModal isOpen={showRatingModal} onClose={() => setShowRatingModal(false)} />
     </div>
   );
 }
