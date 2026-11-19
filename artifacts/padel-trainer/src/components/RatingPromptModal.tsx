@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { useTranslation } from "../lib/i18n";
 
-const ANDROID_STORE_URL = "https://play.google.com/store/apps/details?id=com.TacPadel.app";
-// Falls du deine numerische Apple App-ID ergänzen möchtest: "https://apps.apple.com/app/idDEINE_ID?action=write-review"
-const IOS_STORE_URL = "https://apps.apple.com/app/tacpadel";
+const ANDROID_PACKAGE_ID = "com.TacPadel.app";
+// 10-stellige Apple-ID aus App Store Connect -> App-Informationen -> Apple-ID (nur Ziffern eintragen)
+const IOS_APP_ID = "6829195076";
 
 const RATING_STORAGE_KEY = "tacpadel_rating_prompt_status";
 
@@ -19,6 +20,15 @@ export function shouldShowRatingPrompt(): boolean {
   }
 }
 
+function triggerNativeScheme(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 interface RatingPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,17 +39,53 @@ export default function RatingPromptModal({ isOpen, onClose }: RatingPromptModal
   const [selectedStars, setSelectedStars] = useState<number>(0);
   const [feedbackSent, setFeedbackSent] = useState(false);
 
-  const openStoreRating = () => {
+  const openStoreRating = async () => {
     try {
       localStorage.setItem(RATING_STORAGE_KEY, "rated");
     } catch {}
 
+    const isNative = Capacitor.isNativePlatform();
     const platform = Capacitor.getPlatform();
-    const isIOS = platform === "ios" || /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const targetUrl = isIOS ? IOS_STORE_URL : ANDROID_STORE_URL;
+    const isIOS =
+      platform === "ios" || (!isNative && /iPhone|iPad|iPod/i.test(navigator.userAgent));
 
-    window.open(targetUrl, "_blank", "noopener,noreferrer");
+    const hasValidIosId = /^\d+$/.test(IOS_APP_ID);
+
+    const nativeUrl = isIOS
+      ? hasValidIosId
+        ? `itms-apps://apps.apple.com/app/id${IOS_APP_ID}?action=write-review`
+        : null
+      : `market://details?id=${ANDROID_PACKAGE_ID}`;
+
+    const webFallbackUrl = isIOS
+      ? hasValidIosId
+        ? `https://apps.apple.com/app/id${IOS_APP_ID}?action=write-review`
+        : "https://apps.apple.com/search?term=TacPadel"
+      : `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE_ID}`;
+
     onClose();
+
+    if (isNative) {
+      if (nativeUrl) {
+        triggerNativeScheme(nativeUrl);
+
+        // Fallback für Emulatoren / Geräte ohne installierte Store-App:
+        // Wenn die App nach 700ms noch im Vordergrund ist, Store-Seite im Browser öffnen.
+        setTimeout(() => {
+          if (document.visibilityState === "visible") {
+            Browser.open({ url: webFallbackUrl }).catch(() => {});
+          }
+        }, 700);
+      } else {
+        try {
+          await Browser.open({ url: webFallbackUrl });
+        } catch {}
+      }
+      return;
+    }
+
+    // Fallback für Desktop-/Web-Tests
+    window.open(webFallbackUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleDismiss = () => {
@@ -67,7 +113,7 @@ export default function RatingPromptModal({ isOpen, onClose }: RatingPromptModal
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[230] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[230] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pointer-events-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

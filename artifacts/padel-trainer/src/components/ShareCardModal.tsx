@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { Share } from "@capacitor/share";
+import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Scenario } from "./Scenarios";
 import { useTranslation } from "../lib/i18n";
+
+// Optional: Falls du einen zentralen Smart-Link (für iOS + Android automatisch) nutzt, hier eintragen.
+// Leer lassen ("") -> dann werden automatisch beide offiziellen Store-Links mitgeschickt.
+const SMART_STORE_URL = "";
+const ANDROID_STORE_URL = "https://play.google.com/store/apps/details?id=com.TacPadel.app";
+const IOS_STORE_URL = "https://apps.apple.com/app/6829195076";
 
 export type ShareCardPayload =
   | {
@@ -162,7 +171,8 @@ function drawMiniCourt(
   const pPartner = getCoords(scenario.positions.partner, "left");
   const pOpp1 = getCoords(scenario.positions.opp1, "right");
   const pOpp2 = getCoords(scenario.positions.opp2, "right");
-  const pBall = getCoords(scenario.positions.ball.zone, scenario.positions.ball.side);
+  const ballSide: "left" | "right" = scenario.positions.ball?.side === "right" ? "right" : "left";
+  const pBall = getCoords(scenario.positions.ball?.zone || "B2", ballSide);
 
   drawMarker(pOpp1.x, pOpp1.y, "#ef4444", labels.opp1);
   drawMarker(pOpp2.x, pOpp2.y, "#ef4444", labels.opp2);
@@ -184,22 +194,24 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
 
-  const shareUrl =
-    payload?.mode === "partner_challenge"
-      ? `${window.location.origin}/?scenario=${payload.scenario.id}`
-      : window.location.origin;
+  const locale = lang === "en" ? "en-US" : lang === "es" ? "es-ES" : "de-DE";
+
+  const downloadBlock = SMART_STORE_URL
+    ? `📲 TacPadel:\n${SMART_STORE_URL}`
+    : `📱 iOS: ${IOS_STORE_URL}\n🤖 Android: ${ANDROID_STORE_URL}`;
 
   const shareMessage = (() => {
     if (!payload) return "";
     if (payload.mode === "trainer_result") {
-      return `${t("share_msg_trainer_1")} ${payload.score}/${payload.maxScore} ${t("share_msg_trainer_2")} "${payload.levelName}"! ${t("share_msg_trainer_3")} 👉 ${shareUrl}`;
+      return `${t("share_msg_trainer_1")} ${payload.score}/${payload.maxScore} ${t("share_msg_trainer_2")} "${payload.levelName}"! ${t("share_msg_trainer_3")}\n\n${downloadBlock}`;
     }
     if (payload.mode === "match_result") {
       const prefix = payload.isWin ? t("share_msg_match_win") : t("share_msg_match_battle");
-      return `${prefix} (${payload.playerScore}:${payload.aiScore}) • TacScore: ${payload.tacScore}! ${t("share_msg_match_cta")} 👉 ${shareUrl}`;
+      return `${prefix} (${payload.playerScore}:${payload.aiScore}) • TacScore: ${payload.tacScore}! ${t("share_msg_match_cta")}\n\n${downloadBlock}`;
     }
-    return `${t("share_msg_challenge_1")}${payload.scenario.id}): "${payload.description}" – ${t("share_msg_challenge_2")} 👉 ${shareUrl}`;
+    return `${t("share_msg_challenge_1")}${payload.scenario.id}): "${payload.description}"\n${t("share_msg_challenge_2")}\n\n${downloadBlock}`;
   })();
 
   useEffect(() => {
@@ -286,7 +298,7 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
 
       ctx.fillStyle = "#22d3ee";
       ctx.font = "900 56px sans-serif";
-      ctx.fillText(`${payload.totalPoints.toLocaleString()} TACSCORE`, W / 2, 815);
+      ctx.fillText(`${payload.totalPoints.toLocaleString(locale)} TACSCORE`, W / 2, 815);
 
       // Callout
       ctx.fillStyle = "#f8fafc";
@@ -328,7 +340,7 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
 
       ctx.fillStyle = "#22d3ee";
       ctx.font = "900 58px sans-serif";
-      ctx.fillText(`${payload.tacScore.toLocaleString()} TACSCORE`, W / 2, 810);
+      ctx.fillText(`${payload.tacScore.toLocaleString(locale)} TACSCORE`, W / 2, 810);
 
       ctx.fillStyle = "#f8fafc";
       ctx.font = "900 40px sans-serif";
@@ -343,11 +355,7 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
       ctx.fill();
       ctx.fillStyle = "#c084fc";
       ctx.font = "900 22px sans-serif";
-      ctx.fillText(
-        `${t("share_canvas_challenge_badge")} #${payload.scenario.id}`,
-        W / 2,
-        263
-      );
+      ctx.fillText(`${t("share_canvas_challenge_badge")} #${payload.scenario.id}`, W / 2, 263);
 
       // 2D Mini-Spielfeld zeichnen
       drawMiniCourt(ctx, payload.scenario, W / 2, 320, 340, 520, {
@@ -388,12 +396,38 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
     ctx.fillText(t("share_canvas_footer"), W / 2, H - 85);
 
     setPreviewUrl(canvas.toDataURL("image/png"));
-  }, [payload, lang, t]);
+  }, [payload, lang, locale, t]);
 
   const handleNativeShare = async () => {
-    if (!canvasRef.current || !payload) return;
+    if (!canvasRef.current || !payload || isSharing) return;
+    setIsSharing(true);
 
     try {
+      // 1. NATIV (iOS & Android über Capacitor)
+      if (Capacitor.isNativePlatform()) {
+        const dataUrl = canvasRef.current.toDataURL("image/png");
+        const base64Data = dataUrl.split(",")[1];
+        const fileName = `tacpadel-share-${Date.now()}.png`;
+
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache,
+        });
+
+        await Share.share({
+          title: "TacPadel",
+          text: shareMessage,
+          files: [savedFile.uri],
+          dialogTitle:
+            payload.mode === "partner_challenge"
+              ? t("share_modal_title_challenge")
+              : t("share_modal_title_result"),
+        });
+        return;
+      }
+
+      // 2. MOBILER BROWSER (Web Share API)
       const blob = await new Promise<Blob | null>((resolve) =>
         canvasRef.current?.toBlob((b) => resolve(b), "image/png")
       );
@@ -417,12 +451,12 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
         await navigator.share({
           title: "TacPadel",
           text: shareMessage,
-          url: shareUrl,
+          url: SMART_STORE_URL || ANDROID_STORE_URL,
         });
         return;
       }
 
-      // Fallback für Desktop: Bild herunterladen + Text kopieren
+      // 3. DESKTOP-FALLBACK (Download + Zwischenablage)
       if (previewUrl) {
         const a = document.createElement("a");
         a.href = previewUrl;
@@ -433,7 +467,9 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 3000);
     } catch (err) {
-      // Abbruch durch Nutzer im Teilen-Dialog ignorieren
+      // Abbruch durch den Nutzer im Teilen-Dialog ignorieren
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -474,7 +510,8 @@ export default function ShareCardModal({ payload, onClose }: ShareCardModalProps
             <div className="w-full flex flex-col gap-2">
               <button
                 onClick={handleNativeShare}
-                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-black text-xs uppercase tracking-[0.18em] rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
+                disabled={isSharing}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:opacity-60 text-black font-black text-xs uppercase tracking-[0.18em] rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
               >
                 {copiedText ? t("share_btn_copied") : t("share_btn_whatsapp")}
               </button>
