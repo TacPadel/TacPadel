@@ -462,13 +462,13 @@ const Real3DPlayer = memo(function Real3DPlayer({
       </mesh>
 
       {!hidePlayerLabels && (
-        <Html position={[0, 2.8, 0]} center style={{ pointerEvents: 'none' }}>
-          <div className={`px-2 py-0.5 rounded-md border flex items-center justify-center whitespace-nowrap shadow-lg backdrop-blur-md transition-all ${isGlowing ? 'scale-110' : 'scale-100'} ${
-            type === "DU" ? "bg-purple-900/80 border-purple-500 text-purple-200" :
-            type === "PTNER" ? "bg-cyan-900/80 border-cyan-500 text-cyan-200" :
-            "bg-red-900/80 border-red-500 text-red-200"
+        <Html position={[0, 2.55, 0]} center style={{ pointerEvents: 'none' }}>
+          <div className={`px-1.5 py-[1px] rounded border flex items-center justify-center whitespace-nowrap shadow-sm backdrop-blur-sm transition-all ${isGlowing ? 'scale-105 opacity-100' : 'scale-100 opacity-85'} ${
+            type === "DU" ? "bg-purple-950/65 border-purple-500/80 text-purple-100" :
+            type === "PTNER" ? "bg-cyan-950/65 border-cyan-500/80 text-cyan-100" :
+            "bg-red-950/65 border-red-500/80 text-red-100"
           }`}>
-            <span className="text-[10px] font-black tracking-widest uppercase drop-shadow-[0_0_5px_rgba(0,0,0,0.8)]">
+            <span className="text-[7.5px] sm:text-[8.5px] leading-tight font-extrabold tracking-wider uppercase max-w-[68px] truncate drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
               {label}
             </span>
           </div>
@@ -476,8 +476,8 @@ const Real3DPlayer = memo(function Real3DPlayer({
       )}
       
       {!hidePlayerLabels && isHitter && !disabled && (
-        <Html position={[0, 3.6, 0]} center style={{ pointerEvents: 'none' }}>
-          <div className="bg-orange-500 text-white font-black rounded-full w-5 h-5 flex items-center justify-center text-xs animate-bounce border border-white shadow-[0_0_15px_rgba(255,165,0,0.8)]">
+        <Html position={[0, 3.15, 0]} center style={{ pointerEvents: 'none' }}>
+          <div className="bg-orange-500 text-white font-black rounded-full w-4 h-4 flex items-center justify-center text-[9px] animate-bounce border border-white shadow-[0_0_10px_rgba(255,165,0,0.8)]">
             !
           </div>
         </Html>
