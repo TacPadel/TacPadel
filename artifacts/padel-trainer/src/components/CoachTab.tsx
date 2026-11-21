@@ -8,6 +8,9 @@ import {
   PolarRadiusAxis,
   Radar,
   Tooltip,
+  LineChart,
+  Line,
+  XAxis,
 } from "recharts";
 import { supabase } from "../lib/supabase";
 import { Scenario } from "./Scenarios";
@@ -31,20 +34,6 @@ interface CoachTabProps {
     focus: CoachSummary["recommendedTaskFocus"]
   ) => void;
   onNavigateTab: (tab: "trainer" | "game" | "board") => void;
-}
-
-interface MatchHistoryAggregate {
-  totalMatches: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  aces: number;
-  winners: number;
-  unforcedErrors: number;
-  totalShots: number;
-  perfectShots: number;
-  perfectPct: number;
-  recentResults: ("win" | "loss")[];
 }
 
 const getAxisLabel = (axis: RadarAxisKey, lang: string): string => {
@@ -226,10 +215,13 @@ export default function CoachTab({
   onStartWeaknessTraining,
   onNavigateTab,
 }: CoachTabProps) {
-  const { lang } = useTranslation();
+  const { lang, t } = useTranslation();
   const [coachStats, setCoachStats] = useState<TacticCoachStats | null>(null);
-  const [matchAgg, setMatchAgg] = useState<MatchHistoryAggregate | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // --- Übernommene Match-Statistiken & Chart-States (Einzel / Turnier) ---
+  const [statsMode, setStatsMode] = useState<"single" | "tournament">("single");
+  const [allHistory, setAllHistory] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -241,64 +233,22 @@ export default function CoachTab({
 
       if (userId) {
         try {
-          let { data, error } = await supabase
+          const { data: historyData } = await supabase
             .from("match_history")
             .select(
-              "result, aces, winners, unforced_errors, total_shots, shots_perfect, duration_seconds, match_type, created_at"
+              "points, tac_points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type"
             )
             .eq("user_id", userId)
-            .order("created_at", { ascending: false })
-            .limit(50);
+            .order("created_at", { ascending: true });
 
-          if (error) {
-            const fallback = await supabase
-              .from("match_history")
-              .select(
-                "result, aces, winners, unforced_errors, total_shots, shots_perfect, duration_seconds, match_type"
-              )
-              .eq("user_id", userId)
-              .limit(50);
-            data = fallback.data as any;
-          }
-
-          if (active && Array.isArray(data)) {
-            const totalMatches = data.length;
-            const wins = data.filter((m: any) => m.result === "win").length;
-            const losses = totalMatches - wins;
-            const aces = data.reduce((s: number, m: any) => s + (m.aces || 0), 0);
-            const winners = data.reduce((s: number, m: any) => s + (m.winners || 0), 0);
-            const unforcedErrors = data.reduce(
-              (s: number, m: any) => s + (m.unforced_errors || 0),
-              0
-            );
-            const totalShots = data.reduce((s: number, m: any) => s + (m.total_shots || 0), 0);
-            const perfectShots = data.reduce(
-              (s: number, m: any) => s + (m.shots_perfect || 0),
-              0
-            );
-            const recentResults = data
-              .slice(0, 5)
-              .map((m: any) => (m.result === "win" ? "win" : "loss")) as ("win" | "loss")[];
-
-            setMatchAgg({
-              totalMatches,
-              wins,
-              losses,
-              winRate: totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0,
-              aces,
-              winners,
-              unforcedErrors,
-              totalShots,
-              perfectShots,
-              perfectPct: totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0,
-              recentResults,
-            });
+          if (active) {
+            setAllHistory(Array.isArray(historyData) ? historyData : []);
           }
         } catch {
-          // Offline-Fallback: Match-History bleibt optional
+          if (active) setAllHistory([]);
         }
       } else if (active) {
-        setMatchAgg(null);
+        setAllHistory([]);
       }
 
       if (active) setLoading(false);
@@ -326,6 +276,87 @@ export default function CoachTab({
       hasMatch: c.matchPct !== null,
     }));
   }, [summary, lang]);
+
+  // --- Gefilterte Einzel-/Turnier-Auswertung (Bilanz, Tiefenanalyse, Form & Chart) ---
+  const filteredMatchStats = useMemo(() => {
+    const filtered = allHistory.filter((m) =>
+      statsMode === "tournament"
+        ? m.match_type === "tournament"
+        : m.match_type === "single" || !m.match_type
+    );
+
+    const wins = filtered.filter((m) => m.result === "win").length;
+    const losses = filtered.filter((m) => m.result === "loss").length;
+    const totalMatches = wins + losses;
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+
+    const recentForm = filtered
+      .slice(-5)
+      .reverse()
+      .map((m) => (m.result === "win" ? "win" : "loss")) as ("win" | "loss")[];
+
+    if (filtered.length === 0) {
+      return {
+        wins,
+        losses,
+        totalMatches,
+        winRate,
+        recentForm,
+        chartData: [{ name: "Start", Wert: totalPoints }],
+        matchesWithStats: 0,
+        aggStats: { avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 },
+      };
+    }
+
+    const recent20 = filtered.slice(-20);
+    const chartData = recent20.map((match) => {
+      const date = new Date(match.created_at);
+      return {
+        name: `${date.getDate()}.${date.getMonth() + 1}.`,
+        Wert: statsMode === "tournament" ? match.tac_points || 0 : match.points,
+        result: match.result,
+      };
+    });
+
+    let tAces = 0;
+    let tWinners = 0;
+    let tUfe = 0;
+    let tTotalShots = 0;
+    let tPerfect = 0;
+    let validMatchCount = 0;
+
+    recent20.forEach((match) => {
+      if (match.total_shots > 0 || match.winners > 0 || match.unforced_errors > 0) {
+        tAces += match.aces || 0;
+        tWinners += match.winners || 0;
+        tUfe += match.unforced_errors || 0;
+        tTotalShots += match.total_shots || 0;
+        tPerfect += match.shots_perfect || 0;
+        validMatchCount++;
+      }
+    });
+
+    const aggStats =
+      validMatchCount > 0
+        ? {
+            avgWinners: Math.round((tWinners / validMatchCount) * 10) / 10,
+            avgAces: Math.round((tAces / validMatchCount) * 10) / 10,
+            avgErrors: Math.round((tUfe / validMatchCount) * 10) / 10,
+            perfectRatio: tTotalShots > 0 ? Math.round((tPerfect / tTotalShots) * 100) : 0,
+          }
+        : { avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 };
+
+    return {
+      wins,
+      losses,
+      totalMatches,
+      winRate,
+      recentForm,
+      chartData,
+      matchesWithStats: validMatchCount,
+      aggStats,
+    };
+  }, [allHistory, statsMode, totalPoints]);
 
   const hasTrainerData = (coachStats?.trainer.totalTurns || 0) > 0;
   const hasMatchData = (coachStats?.match.totalTurns || 0) > 0;
@@ -382,7 +413,7 @@ export default function CoachTab({
           <div className="grid grid-cols-3 gap-2 sm:w-auto">
             <div className="bg-[#030611] border border-cyan-500/30 rounded-xl px-3 py-2 text-center">
               <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
-                {lang === "en" ? "Trainer" : "Trainer"}
+                Trainer
               </div>
               <div className="text-base font-black text-white">
                 {coachStats?.trainer.totalTurns || 0}
@@ -390,7 +421,7 @@ export default function CoachTab({
             </div>
             <div className="bg-[#030611] border border-orange-500/30 rounded-xl px-3 py-2 text-center">
               <div className="text-[9px] font-black uppercase tracking-wider text-orange-400">
-                {lang === "en" ? "Match" : "Match"}
+                Match
               </div>
               <div className="text-base font-black text-white">
                 {coachStats?.match.totalTurns || 0}
@@ -430,7 +461,7 @@ export default function CoachTab({
           <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-wider">
             <span className="flex items-center gap-1.5 text-cyan-300">
               <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shadow-[0_0_8px_#22d3ee]" />
-              {lang === "en" ? "Trainer" : "Trainer"}
+              Trainer
             </span>
             <span className="flex items-center gap-1.5 text-orange-300">
               <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block shadow-[0_0_8px_#f97316]" />
@@ -792,98 +823,207 @@ export default function CoachTab({
         </div>
       )}
 
-      {/* 6. MATCH-STATISTIKEN (AUS SUPABASE MATCH_HISTORY) */}
-      <div className="w-full bg-[#050b18]/90 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xs sm:text-sm font-black uppercase tracking-widest text-slate-300">
-            📊{" "}
-            {lang === "en"
-              ? "3D Match Statistics"
-              : lang === "es"
-              ? "Estadísticas de Partidos 3D"
-              : "3D-Match Bilanz & Statistiken"}
-          </h2>
-
-          {matchAgg && matchAgg.recentResults.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mr-1">
-                {lang === "en" ? "Form:" : "Form:"}
-              </span>
-              {matchAgg.recentResults.map((res, idx) => (
-                <span
-                  key={idx}
-                  className={`w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center border ${
-                    res === "win"
-                      ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
-                      : "bg-red-500/20 border-red-500/50 text-red-300"
-                  }`}
-                >
-                  {res === "win" ? "S" : "N"}
-                </span>
-              ))}
-            </div>
-          )}
+      {/* ========================================================= */}
+      {/* 6. MATCH-STATISTIKEN (AUS DEM PROFIL ÜBERNOMMEN)          */}
+      {/* ========================================================= */}
+      <div className="w-full flex flex-col gap-3">
+        {/* 6.1 STATISTIK-FILTER (EINZEL / TURNIER) */}
+        <div className="flex bg-[#030611]/90 border border-slate-800/80 rounded-xl p-1.5 w-full shadow-lg">
+          <button
+            onClick={() => setStatsMode("single")}
+            className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+              statsMode === "single"
+                ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {t("prof_filter_single")}
+          </button>
+          <button
+            onClick={() => setStatsMode("tournament")}
+            className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+              statsMode === "tournament"
+                ? "bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {t("prof_filter_tour")}
+          </button>
         </div>
 
         {!userId ? (
-          <p className="text-xs text-slate-400 bg-[#030611] border border-slate-800 rounded-xl p-4">
+          <div className="w-full bg-[#030611]/90 border border-slate-800/80 rounded-xl p-4 text-xs text-slate-400">
             {lang === "en"
-              ? "Sign in to save your long-term match history across devices. Your Weakness Radar above already tracks locally!"
+              ? "Sign in to save your long-term match history, balance & score curve across devices. Your Weakness Radar above already tracks locally!"
               : lang === "es"
-              ? "Inicia sesión para guardar tu historial de partidos. ¡Tu Radar de Debilidades ya funciona localmente!"
-              : "Melde dich an, um deine langfristige Match-Historie geräteübergreifend zu speichern. Dein Schwächen-Radar oben arbeitet bereits live!"}
-          </p>
-        ) : matchAgg && matchAgg.totalMatches > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-slate-400">
-                {lang === "en" ? "Matches" : "Spiele"}
-              </div>
-              <div className="text-xl font-black text-white mt-0.5">{matchAgg.totalMatches}</div>
-            </div>
-            <div className="bg-[#030611] border border-emerald-500/30 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-emerald-400">
-                {lang === "en" ? "Win Rate" : "Siegquote"}
-              </div>
-              <div className="text-xl font-black text-emerald-300 mt-0.5">{matchAgg.winRate}%</div>
-              <div className="text-[9px] text-slate-500 font-bold">
-                {matchAgg.wins}S / {matchAgg.losses}N
-              </div>
-            </div>
-            <div className="bg-[#030611] border border-cyan-500/30 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-cyan-400">
-                {lang === "en" ? "Perfect %" : "Perfekt %"}
-              </div>
-              <div className="text-xl font-black text-cyan-300 mt-0.5">{matchAgg.perfectPct}%</div>
-              <div className="text-[9px] text-slate-500 font-bold">
-                {matchAgg.perfectShots}/{matchAgg.totalShots}
-              </div>
-            </div>
-            <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-emerald-400">Winners</div>
-              <div className="text-xl font-black text-white mt-0.5">{matchAgg.winners}</div>
-            </div>
-            <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-orange-400">
-                {lang === "en" ? "Aces" : "Asse"}
-              </div>
-              <div className="text-xl font-black text-white mt-0.5">{matchAgg.aces}</div>
-            </div>
-            <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 text-center">
-              <div className="text-[9px] font-black uppercase text-red-400">
-                {lang === "en" ? "Errors" : "Fehler"}
-              </div>
-              <div className="text-xl font-black text-white mt-0.5">{matchAgg.unforcedErrors}</div>
-            </div>
+              ? "Inicia sesión para guardar tu historial, balance y curva de puntuación. ¡Tu Radar de Debilidades ya funciona localmente!"
+              : "Melde dich an, um deine langfristige Match-Bilanz, Tiefenanalyse und Verlaufskurve geräteübergreifend zu speichern. Dein Schwächen-Radar oben arbeitet bereits live!"}
           </div>
         ) : (
-          <p className="text-xs text-slate-400 bg-[#030611] border border-slate-800 rounded-xl p-4">
-            {lang === "en"
-              ? "No completed 3D matches yet. Finish your first match to see your full match breakdown here."
-              : lang === "es"
-              ? "Aún no hay partidos 3D completados. Termina tu primer partido para ver tus estadísticas aquí."
-              : "Noch keine abgeschlossenen 3D-Matches. Sobald dein erstes Match vorbei ist, erscheinen hier Bilanz, Formkurve & Schlagquoten."}
-          </p>
+          <>
+            {/* 6.2 MATCH BILANZ + FORM */}
+            <div className="w-full bg-[#030611]/90 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex flex-col text-center sm:text-left">
+                <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                  {t("prof_balance_title")} (
+                  {statsMode === "single" ? t("prof_mode_single") : t("prof_mode_tour")})
+                </h3>
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+                  {t("prof_balance_sub")}
+                </span>
+                {filteredMatchStats.recentForm.length > 0 && (
+                  <div className="flex items-center justify-center sm:justify-start gap-1.5 mt-2.5">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mr-1">
+                      Form:
+                    </span>
+                    {filteredMatchStats.recentForm.map((res, idx) => (
+                      <span
+                        key={idx}
+                        className={`w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center border ${
+                          res === "win"
+                            ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                            : "bg-red-500/20 border-red-500/50 text-red-300"
+                        }`}
+                      >
+                        {res === "win" ? "W" : "L"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-5 sm:gap-8">
+                <div className="flex gap-3 sm:gap-4 text-[10px] font-black tracking-widest uppercase items-center">
+                  <span className="text-emerald-400 text-xs sm:text-sm">
+                    {filteredMatchStats.wins} W
+                  </span>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-red-400 text-xs sm:text-sm">
+                    {filteredMatchStats.losses} L
+                  </span>
+                </div>
+                <div
+                  className="relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full border-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
+                  style={{
+                    borderColor:
+                      filteredMatchStats.winRate > 50
+                        ? "#10b981"
+                        : filteredMatchStats.winRate > 30
+                        ? "#f59e0b"
+                        : "#ef4444",
+                  }}
+                >
+                  <span className="text-xs sm:text-sm font-black text-white">
+                    {filteredMatchStats.winRate}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 6.3 TIEFENANALYSE (SCHLAG-STATS) */}
+            <div className="w-full bg-[#030611]/90 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                  {t("prof_shot_analysis")} (
+                  {statsMode === "single" ? t("prof_mode_single") : t("prof_mode_tour")})
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
+                  {t("prof_last_matches_1")} {filteredMatchStats.matchesWithStats}{" "}
+                  {t("prof_last_matches_2")}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                  <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">
+                    {filteredMatchStats.aggStats.avgWinners}
+                  </span>
+                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">
+                    {t("prof_stat_winners")}
+                  </span>
+                </div>
+                <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                  <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">
+                    {filteredMatchStats.aggStats.avgAces}
+                  </span>
+                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">
+                    {t("prof_stat_aces")}
+                  </span>
+                </div>
+                <div className="bg-[#050b18] py-4 rounded-lg border border-red-900/20 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
+                  <span className="text-2xl font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">
+                    {filteredMatchStats.aggStats.avgErrors}
+                  </span>
+                  <span className="text-[9px] text-red-900/80 uppercase tracking-widest font-bold mt-1">
+                    {t("prof_stat_errors")}
+                  </span>
+                </div>
+                <div className="bg-[#050b18] py-4 rounded-lg border border-emerald-500/30 flex flex-col items-center justify-center text-center shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+                  <span className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+                    {filteredMatchStats.aggStats.perfectRatio}%
+                  </span>
+                  <span className="text-[9px] text-emerald-700/80 uppercase tracking-widest font-bold mt-1">
+                    {t("prof_stat_perfect")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 6.4 TAC-SCORE / TAC-POINTS VERLAUFS-CHART */}
+            <div className="w-full bg-[#030611]/90 border border-slate-800/80 rounded-xl p-5 shadow-lg h-[280px] flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
+                  {t("prof_chart_title")} ({statsMode === "single" ? "TacScore" : "TacPoints"})
+                </h3>
+                <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">
+                  Max 20
+                </span>
+              </div>
+
+              <div className="flex-1 w-full min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={filteredMatchStats.chartData}>
+                    <XAxis
+                      dataKey="name"
+                      stroke="#475569"
+                      fontSize={10}
+                      tickMargin={10}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#0f172a",
+                        border: "1px solid #1e293b",
+                        borderRadius: "12px",
+                        fontWeight: "bold",
+                      }}
+                      itemStyle={{ color: "#22d3ee" }}
+                      labelStyle={{ color: "#94a3b8", fontSize: "12px", marginBottom: "4px" }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Wert"
+                      name={statsMode === "single" ? "TacScore" : "TacPoints"}
+                      stroke={statsMode === "single" ? "#06b6d4" : "#a855f7"}
+                      strokeWidth={4}
+                      dot={{
+                        r: 4,
+                        fill: statsMode === "single" ? "#06b6d4" : "#a855f7",
+                        stroke: "#0f172a",
+                        strokeWidth: 2,
+                      }}
+                      activeDot={{
+                        r: 6,
+                        fill: "#fff",
+                        stroke: statsMode === "single" ? "#06b6d4" : "#a855f7",
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
