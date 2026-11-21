@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { supabase } from '../lib/supabase';
-import * as THREE from 'three'; 
+import * as THREE from 'three';
 
 // --- Imports für Loadout-Shop, RPG-Upgrades, Match-Lock, Admin, 3D & i18n ---
 import {
@@ -22,7 +21,7 @@ import {
 import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
-import PlayerShow from "./PlayerShow"; 
+import PlayerShow from "./PlayerShow";
 import AdminDashboard from "./AdminDashboard";
 import InGameShopModal from "./InGameShopModal";
 
@@ -72,7 +71,7 @@ function CameraSwitcher({ mode, controlsRef }: { mode: 'locker' | 'trophies', co
 // ==========================================
 function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [number, number, number], tourId: string, onClick: (id: string) => void, lowQuality?: boolean }) {
   const ref = useRef<any>(null);
-  
+
   useFrame((_, delta) => {
     if (ref.current) ref.current.rotation.y += Math.min(delta, 0.1) * 0.4;
   });
@@ -80,7 +79,7 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
   const idLower = tourId.toLowerCase();
   const isMaster = idLower.includes('master');
   const isPro = idLower.includes('pro');
-  
+
   const color = isMaster ? "#fbbf24" : isPro ? "#bae6fd" : "#d97706";
   const intensity = isMaster ? 3 : isPro ? 2.5 : 2.5;
   const tubeSteps = lowQuality ? 32 : 64;
@@ -89,19 +88,19 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
     const spiralSegments = 60;
     const pts1 = [];
     const pts2 = [];
-    
+
     for (let i = 0; i <= spiralSegments; i++) {
       const t = i / spiralSegments;
-      const radius = 0.15 + (t * 0.4); 
+      const radius = 0.15 + (t * 0.4);
       const y = 0.3 + (t * 1.0);
-      
-      const angle1 = t * Math.PI * 4; 
+
+      const angle1 = t * Math.PI * 4;
       pts1.push(new THREE.Vector3(Math.cos(angle1) * radius, y, Math.sin(angle1) * radius));
-      
-      const angle2 = t * Math.PI * 4 + Math.PI; 
+
+      const angle2 = t * Math.PI * 4 + Math.PI;
       pts2.push(new THREE.Vector3(Math.cos(angle2) * radius, y, Math.sin(angle2) * radius));
     }
-    
+
     return {
       curve1: new THREE.CatmullRomCurve3(pts1),
       curve2: new THREE.CatmullRomCurve3(pts2)
@@ -151,7 +150,7 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
             <cylinderGeometry args={[0.065, 0.065, 0.6, 8]} />
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.3} wireframe />
           </mesh>
-          
+
           <group position={[0, 1.1, 0]}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.5, 0.5, 0.03, lowQuality ? 20 : 32]} />
@@ -165,10 +164,10 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
               <cylinderGeometry args={[0.45, 0.45, 0.035, 16, 4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 0.4} wireframe />
             </mesh>
-            <Text 
-              position={[0, 0, 0.02]} 
-              fontSize={0.25} 
-              color="#ffffff" 
+            <Text
+              position={[0, 0, 0.02]}
+              fontSize={0.25}
+              color="#ffffff"
               font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
               fontWeight="black"
             >
@@ -194,19 +193,19 @@ function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [numb
 
 // --- VITRINENSCHRANK ---
 function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string[], onTrophyClick: (id: string) => void, lowQuality?: boolean }) {
-  const cols = 3; 
-  const minShelves = 4; 
+  const cols = 3;
+  const minShelves = 4;
   const numShelves = Math.max(minShelves, Math.ceil(trophies.length / cols));
-  
-  const shelfHeight = 2.4; 
-  const width = 5.5; 
+
+  const shelfHeight = 2.4;
+  const width = 5.5;
   const depth = 1.8;
   const totalHeight = numShelves * shelfHeight;
 
   return (
-    <group position={[0, -2, 0]}> 
+    <group position={[0, -2, 0]}>
       <gridHelper args={[40, lowQuality ? 20 : 40, '#0ea5e9', '#020617']} position={[0, -0.01, 0]} />
-      
+
       <mesh position={[0, -0.1, 0]}>
         <boxGeometry args={[width + 0.2, 0.2, depth + 0.2]} />
         <meshStandardMaterial color="#020617" emissive="#0ea5e9" emissiveIntensity={0.5} />
@@ -244,11 +243,11 @@ function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string
         const col = idx % cols;
         const xPos = (col - 1) * 1.6;
         const yPos = row * shelfHeight;
-        
+
         return (
-          <TronTrophy 
-            key={`${tourId}-${idx}`} 
-            tourId={tourId} 
+          <TronTrophy
+            key={`${tourId}-${idx}`}
+            tourId={tourId}
             position={[xPos, yPos + 0.025, 0]}
             onClick={onTrophyClick}
             lowQuality={lowQuality}
@@ -280,13 +279,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
   const [teamName, setTeamName] = useState("TacPadel Rookies");
-  
+
   const [savedUsername, setSavedUsername] = useState(fallbackName);
   const [savedTeamName, setSavedTeamName] = useState("TacPadel Rookies");
 
   // --- AKTUELL AUSGEWÄHLTE VORSCHAU-IDS IM DROPDOWN ---
-  const [partnerId, setPartnerId] = useState(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id"))); 
-  const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter"); 
+  const [partnerId, setPartnerId] = useState(() => normalizePartnerId(localStorage.getItem("tacpadel_partner_id")));
+  const [racketId, setRacketId] = useState(() => localStorage.getItem("tacpadel_racket_id") || "racket_starter");
   const [shotId, setShotId] = useState(() => normalizeShotId(localStorage.getItem("tacpadel_power_shot")));
 
   // --- FEST AUSGERÜSTETE IDS, FREIGESCHALTETE SHOP-ITEMS & RPG-UPGRADE-PROGRESS ---
@@ -360,10 +359,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     () => SHOP_SHOTS.filter((s) => unlockedItems.includes(s.id) || s.price === 0),
     [unlockedItems]
   );
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
-  
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.user_metadata?.avatar_url || null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -393,11 +392,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     localStorage.setItem("tacpadel_show_explanations", newVal.toString());
   };
 
-  const [statsMode, setStatsMode] = useState<'single' | 'tournament'>('single');
-  const [allHistory, setAllHistory] = useState<any[]>([]);
   const [wonTrophies, setWonTrophies] = useState<string[]>([]);
   const [activeTrophyBanner, setActiveTrophyBanner] = useState<string | null>(null);
-  const [matchHistory, setMatchHistory] = useState<any[]>([]);
 
   const [showNameTags, setShowNameTags] = useState(() => localStorage.getItem("tacpadel_show_nametags") !== "false");
   const toggleNameTags = () => {
@@ -407,8 +403,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   };
 
   const [preferredPosition, setPreferredPosition] = useState<string>(() => localStorage.getItem("tacpadel_preferred_position") || "Rechts");
-  const [aggStats, setAggStats] = useState({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
-  const [matchesWithStats, setMatchesWithStats] = useState(0);
 
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("tacpadel_sound") !== "false");
   const [musicEnabled, setMusicEnabled] = useState(() => localStorage.getItem("tacpadel_music") !== "false");
@@ -450,11 +444,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       const { data: profileData } = await supabase
         .from('user_stats')
-        .select('*') 
+        .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
-      let trueScore = currentScore; 
+      let trueScore = currentScore;
 
       if (user?.user_metadata?.item_progress) {
         const localProg = getSavedItemProgress();
@@ -524,7 +518,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           setShotId(safeShot);
           localStorage.setItem("tacpadel_power_shot", safeShot);
         }
-        
+
         if (profileData.team_name) {
           setTeamName(profileData.team_name);
           setSavedTeamName(profileData.team_name);
@@ -541,7 +535,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
           }
         }
-        
+
         if (profileData.preferred_position) {
           setPreferredPosition(profileData.preferred_position);
           localStorage.setItem("tacpadel_preferred_position", profileData.preferred_position);
@@ -549,20 +543,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           const localPos = localStorage.getItem("tacpadel_preferred_position") || "Rechts";
           await supabase.from('user_stats').update({ preferred_position: localPos }).eq('id', user.id);
         }
-      }
-
-      const { data: historyData } = await supabase
-        .from('match_history')
-        .select('points, tac_points, result, created_at, aces, winners, unforced_errors, total_shots, shots_perfect, match_type')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true }); 
-
-      if (historyData && historyData.length > 0) {
-        setAllHistory(historyData);
-        const lastMatch = historyData[historyData.length - 1];
-        if (lastMatch.points != null) trueScore = lastMatch.points;
-      } else {
-        setAllHistory([]);
       }
 
       const { data: trophiesData } = await supabase
@@ -577,7 +557,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
       setCurrentScore(trueScore);
       localStorage.setItem("tacpadel_score", trueScore.toString());
-      
+
       if (!profileData) {
         await supabase.from('user_stats').upsert({
           id: user.id,
@@ -590,62 +570,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         await supabase.from('user_stats').update({ points: trueScore }).eq('id', user.id);
       }
     };
-    
+
     loadUserData();
   }, [user.id, isAdmin]);
-
-  useEffect(() => {
-    if (allHistory.length === 0) {
-      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
-      return;
-    }
-    const filtered = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
-
-    if (filtered.length === 0) {
-      setMatchHistory([{ name: 'Start', Wert: currentScore }]);
-      setMatchesWithStats(0);
-      setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
-      return;
-    }
-
-    const recent = filtered.slice(-20);
-    const formattedData = recent.map((match) => {
-      const date = new Date(match.created_at);
-      return {
-        name: `${date.getDate()}.${date.getMonth() + 1}.`,
-        Wert: statsMode === 'tournament' ? (match.tac_points || 0) : match.points,
-        result: match.result
-      };
-    });
-    setMatchHistory(formattedData);
-
-    let tAces = 0, tWinners = 0, tUfe = 0, tTotalShots = 0, tPerfect = 0;
-    let validMatchCount = 0;
-
-    recent.forEach((match) => {
-      if (match.total_shots > 0 || match.winners > 0 || match.unforced_errors > 0) {
-        tAces += match.aces || 0;
-        tWinners += match.winners || 0;
-        tUfe += match.unforced_errors || 0;
-        tTotalShots += match.total_shots || 0;
-        tPerfect += match.shots_perfect || 0;
-        validMatchCount++;
-      }
-    });
-
-    if (validMatchCount > 0) {
-       setMatchesWithStats(validMatchCount);
-       setAggStats({
-         avgWinners: Math.round((tWinners / validMatchCount) * 10) / 10,
-         avgAces: Math.round((tAces / validMatchCount) * 10) / 10,
-         avgErrors: Math.round((tUfe / validMatchCount) * 10) / 10,
-         perfectRatio: tTotalShots > 0 ? Math.round((tPerfect / tTotalShots) * 100) : 0
-       });
-    } else {
-       setMatchesWithStats(0);
-       setAggStats({ avgWinners: 0, avgAces: 0, avgErrors: 0, perfectRatio: 0 });
-    }
-  }, [allHistory, statsMode, currentScore]);
 
   // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE (KLASSIK BIS +5 | SPEZIAL BIS +10) ---
   const loadoutStats = useMemo(
@@ -832,29 +759,29 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const handleAutoSave = async () => {
     const newName = username.trim();
     const newTeam = teamName.trim();
-    
+
     if (newName === savedUsername && newTeam === savedTeamName) return;
     if (!newName || !newTeam) return;
-    
+
     setIsSaving(true);
     setMessage(null);
-    
+
     const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newName } });
-    
-    const { error: dbError } = await supabase.from('user_stats').update({ 
+
+    const { error: dbError } = await supabase.from('user_stats').update({
       display_name: newName,
-      team_name: newTeam 
+      team_name: newTeam
     }).eq('id', user.id);
-    
+
     setIsSaving(false);
     if (authError || dbError) {
       setMessage({ type: 'error', text: t("prof_msg_save_err") });
-      setTimeout(() => setMessage(null), 3000); 
+      setTimeout(() => setMessage(null), 3000);
     } else {
       setSavedUsername(newName);
       setSavedTeamName(newTeam);
       setMessage({ type: 'success', text: t("prof_msg_autosaved") });
-      setTimeout(() => setMessage(null), 2500); 
+      setTimeout(() => setMessage(null), 2500);
     }
   };
 
@@ -883,7 +810,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
-    const handleDeleteAccount = async () => {
+  const handleDeleteAccount = async () => {
     try {
       setIsDeleting(true);
       setMessage(null);
@@ -913,7 +840,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
-
   const toggleSound = () => {
     const newState = !soundEnabled;
     setSoundEnabled(newState);
@@ -934,12 +860,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setStaminaEnabled(newState);
     localStorage.setItem("tacpadel_stamina", String(newState));
   };
-
-  const filteredForWins = allHistory.filter(m => statsMode === 'tournament' ? m.match_type === 'tournament' : (m.match_type === 'single' || !m.match_type));
-  const wins = filteredForWins.filter(m => m.result === 'win').length;
-  const losses = filteredForWins.filter(m => m.result === 'loss').length;
-  const totalMatches = wins + losses;
-  const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
 
   const formatTourName = (id: string) => id.replace(/-/g, ' ').toUpperCase();
 
@@ -995,9 +915,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </span>
               )}
             </div>
-            
+
             {message && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
               >
@@ -1005,7 +925,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               </motion.div>
             )}
           </div>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
             <div className="flex flex-col gap-1.5 text-left">
               <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase ml-1">{t("prof_email")}</label>
@@ -1013,14 +933,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </div>
             <div className="flex flex-col gap-1.5 text-left relative group">
               <label className="text-[10px] font-bold tracking-widest text-cyan-500 uppercase ml-1">{t("prof_player_name")}</label>
-              <input 
-                type="text" 
-                value={username} 
-                onChange={(e) => setUsername(e.target.value)} 
-                onBlur={handleAutoSave} 
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onBlur={handleAutoSave}
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
-                placeholder={t("prof_name_placeholder")} 
-                className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
+                placeholder={t("prof_name_placeholder")}
+                className="px-4 py-3 bg-[#050b18] border border-cyan-900/50 focus:border-cyan-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
               />
             </div>
           </div>
@@ -1028,14 +948,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="grid grid-cols-1 w-full mt-1">
             <div className="flex flex-col gap-1.5 text-left relative group">
               <label className="text-[10px] font-bold tracking-widest text-purple-400 uppercase ml-1">{t("prof_team_name")}</label>
-              <input 
-                type="text" 
-                value={teamName} 
-                onChange={(e) => setTeamName(e.target.value)} 
-                onBlur={handleAutoSave} 
+              <input
+                type="text"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                onBlur={handleAutoSave}
                 onKeyDown={(e) => e.key === 'Enter' && handleAutoSave()}
-                placeholder={t("prof_team_placeholder")} 
-                className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" 
+                placeholder={t("prof_team_placeholder")}
+                className="px-4 py-3 bg-[#050b18] border border-purple-900/50 focus:border-purple-400 rounded-xl text-white text-sm font-bold outline-none transition-colors shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
               />
             </div>
           </div>
@@ -1043,13 +963,40 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
       </div>
 
-      <div className="w-full h-px bg-slate-800/60 my-2" />
+      {/* SCHNELLZUGRIFF ZUM TACPADEL COACH (STATISTIKEN & RADAR) */}
+      <button
+        onClick={() => setActiveTab("coach")}
+        className="w-full bg-gradient-to-r from-cyan-950/60 via-[#050b18] to-orange-950/50 hover:from-cyan-900/60 hover:to-orange-900/50 border border-cyan-500/40 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-[0_0_20px_rgba(6,182,212,0.12)] transition-all group text-left"
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-xl shrink-0">
+            🧠
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-black uppercase tracking-widest text-white group-hover:text-cyan-300 transition-colors">
+              TacPadel Coach
+            </span>
+            <span className="text-[10px] text-slate-400 font-semibold">
+              {lang === "en"
+                ? "Weakness Radar, Match Balance, Shot Analysis & Score Chart"
+                : lang === "es"
+                ? "Radar de Debilidades, Balance de Partidos, Análisis y Gráfica"
+                : "Schwächen-Radar, Match-Bilanz, Tiefenanalyse & Verlaufs-Chart"}
+            </span>
+          </div>
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 shrink-0 group-hover:translate-x-1 transition-transform">
+          {lang === "en" ? "Open ➔" : lang === "es" ? "Abrir ➔" : "Öffnen ➔"}
+        </span>
+      </button>
+
+      <div className="w-full h-px bg-slate-800/60 my-1" />
 
       {/* ======================================================== */}
       {/* 1.5 KOMBINIERTER 3D SHOWROOM (Spind & Trophäen-Vault)    */}
       {/* ======================================================== */}
       <div className="w-full bg-[#050b14] border border-slate-800 rounded-2xl p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col gap-4">
-        
+
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex bg-[#03060c] p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
             <button
@@ -1092,16 +1039,16 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="w-full h-2.5 bg-[#050b18] border border-slate-800 rounded-full overflow-hidden relative">
             <div className="absolute top-0 bottom-0 left-1/3 w-px bg-slate-700/80 z-10" />
             <div className="absolute top-0 bottom-0 left-2/3 w-px bg-slate-700/80 z-10" />
-            <div 
-              className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0" 
-              style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }} 
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-amber-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] transition-all duration-1000 ease-out relative z-0"
+              style={{ width: `${Math.min(100, Math.max(5, (currentScore / 6000) * 100))}%` }}
             />
           </div>
         </div>
 
         {/* GEMEINSAMER 3D CANVAS CONTAINER */}
         <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-64 sm:h-72 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
-          
+
           {active3DView === 'locker' && !lowPerfMode && (
             <>
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-cyan-500/40 blur-[40px] pointer-events-none" />
@@ -1121,7 +1068,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             </div>
           )}
 
-          <Canvas 
+          <Canvas
             dpr={dpr}
             camera={{ position: [0, 1.2, 4], fov: 45 }}
             gl={{
@@ -1170,14 +1117,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 <React.Suspense fallback={null}>
                   <PlayerShow />
                 </React.Suspense>
-                <OrbitControls 
+                <OrbitControls
                   ref={controlsRef}
-                  enableZoom={false} 
-                  enablePan={false} 
-                  autoRotate 
-                  autoRotateSpeed={0.5} 
-                  minPolarAngle={Math.PI / 2.5} 
-                  maxPolarAngle={Math.PI / 2} 
+                  enableZoom={false}
+                  enablePan={false}
+                  autoRotate
+                  autoRotateSpeed={0.5}
+                  minPolarAngle={Math.PI / 2.5}
+                  maxPolarAngle={Math.PI / 2}
                 />
               </>
             ) : (
@@ -1185,20 +1132,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 <ambientLight intensity={lowPerfMode ? 1.4 : 0.8} />
                 <pointLight position={[0, 4, 3]} intensity={2.5} color="#0ea5e9" />
                 <React.Suspense fallback={null}>
-                  <TronCabinet 
-                    trophies={wonTrophies} 
-                    onTrophyClick={(id) => setActiveTrophyBanner(id)} 
+                  <TronCabinet
+                    trophies={wonTrophies}
+                    onTrophyClick={(id) => setActiveTrophyBanner(id)}
                     lowQuality={lowPerfMode}
                   />
                 </React.Suspense>
-                <OrbitControls 
+                <OrbitControls
                   ref={controlsRef}
-                  target={[0, 2, 0]} 
-                  enableZoom={true} 
-                  maxDistance={14} 
-                  minDistance={3} 
-                  maxPolarAngle={Math.PI / 2 + 0.05} 
-                  minPolarAngle={Math.PI / 4} 
+                  target={[0, 2, 0]}
+                  enableZoom={true}
+                  maxDistance={14}
+                  minDistance={3}
+                  maxPolarAngle={Math.PI / 2 + 0.05}
+                  minPolarAngle={Math.PI / 4}
                 />
               </>
             )}
@@ -1207,9 +1154,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           {/* DYNAMISCHES BANNER OVERLAY */}
           <AnimatePresence>
             {active3DView === 'trophies' && activeTrophyBanner && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20, scale: 0.9 }} 
-                animate={{ opacity: 1, y: 0, scale: 1 }} 
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20, scale: 0.9 }}
                 onClick={() => setActiveTrophyBanner(null)}
                 className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-slate-900/95 border border-cyan-500/50 rounded-xl p-4 shadow-[0_0_20px_rgba(6,182,212,0.4)] cursor-pointer z-20 flex flex-col items-center text-center"
@@ -1224,12 +1171,12 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       <div className="w-full h-px bg-slate-800/60 my-2" />
-      
+
       {/* ========================================================= */}
       {/* 2. STATS & GEAR INVENTAR (INKL. RPG +1 UPGRADES & LOCK)   */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 gap-4 w-full">
-        
+
         {/* INVENTAR & AUSSTATTUNGS-BOX */}
         <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4 border-b border-slate-800/80 pb-3 gap-2">
@@ -1241,7 +1188,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 {t("prof_inventory_sub")}
               </span>
             </div>
-            <button 
+            <button
               onClick={() => setIsShopModalOpen(true)}
               className="text-[10px] font-black text-amber-300 bg-amber-950/40 border border-amber-500/40 px-3.5 py-2 rounded-xl hover:bg-amber-900/50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)] shrink-0 flex items-center gap-1.5"
             >
@@ -1256,7 +1203,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
+
             <div className="flex flex-col gap-3">
               {/* 1. PARTNER-INVENTAR */}
               <div className="bg-[#050b18] p-3 rounded-lg border border-slate-800/50 flex flex-col gap-2 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
@@ -1268,9 +1215,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     {equippedPartner === partnerId ? t("prof_status_equipped") : selectedPartnerObj.badge}
                   </span>
                 </div>
-                <select 
+                <select
                   disabled={isMatchLocked}
-                  value={partnerId} 
+                  value={partnerId}
                   onChange={(e) => {
                     if (isLoadoutLockedByActiveMatch(user?.id)) {
                       setMessage({ type: 'error', text: t("lock_match_err") });
@@ -1282,7 +1229,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     setEquippedPartner(nextPartner);
                     localStorage.setItem("tacpadel_partner_id", nextPartner);
                     supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
-                  }} 
+                  }}
                   className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   {ownedPartners.map(p => {
@@ -1323,9 +1270,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     {equippedRacket === racketId ? t("prof_status_equipped") : selectedRacketObj.badge}
                   </span>
                 </div>
-                <select 
+                <select
                   disabled={isMatchLocked}
-                  value={racketId} 
+                  value={racketId}
                   onChange={(e) => {
                     if (isLoadoutLockedByActiveMatch(user?.id)) {
                       setMessage({ type: 'error', text: t("lock_match_err") });
@@ -1337,7 +1284,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     setEquippedRacket(nextId);
                     localStorage.setItem("tacpadel_racket_id", nextId);
                     supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
-                  }} 
+                  }}
                   className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   {ownedRackets.map(r => {
@@ -1373,7 +1320,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     {equippedShot === shotId ? t("prof_status_equipped") : selectedShotObj.badge}
                   </span>
                 </div>
-                <select 
+                <select
                   disabled={isMatchLocked}
                   value={shotId}
                   onChange={(e) => {
@@ -1417,7 +1364,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             {/* SPIELER ATTRIBUTE & AKTIVER MATCH-EFFEKT */}
             <div className="bg-[#050b18] p-4 rounded-lg border border-slate-800/50 flex flex-col justify-between relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[50px] pointer-events-none" />
-              
+
               <div>
                 <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
                   <h4 className="text-[9px] text-slate-500 uppercase tracking-widest font-black">{t("prof_attr_title")}</h4>
@@ -1427,7 +1374,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     </span>
                   )}
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-y-6 gap-x-4 relative z-10">
                   <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold">Smash Power</span>
@@ -1439,7 +1386,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {t("prof_stat_winner_chance")} {loadoutStats.matchModifiers.winnerChanceBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.winnerChanceBonus * 100)}%
                     </span>
                   </div>
-                  
+
                   <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold">Control</span>
                     <div className="flex items-end gap-2 mt-1">
@@ -1450,7 +1397,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {t("prof_stat_unforced_errors")} {Math.round((loadoutStats.matchModifiers.errorReductionFactor - 1) * 100)}%
                     </span>
                   </div>
-                  
+
                   <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold">Defense</span>
                     <div className="flex items-end gap-2 mt-1">
@@ -1461,7 +1408,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       {t("prof_stat_block_save")} {loadoutStats.matchModifiers.defenseSaveBonus >= 0 ? "+" : ""}{Math.round(loadoutStats.matchModifiers.defenseSaveBonus * 100)}%
                     </span>
                   </div>
-                  
+
                   <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold">Agility</span>
                     <div className="flex items-end gap-2 mt-1">
@@ -1486,98 +1433,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 2.5 STATISTIK-FILTER (EINZEL / TURNIER)   */}
-      {/* ========================================= */}
-      <div className="flex bg-[#030611]/80 border border-slate-800/80 rounded-xl p-1.5 w-full mt-4 shadow-lg">
-        <button onClick={() => setStatsMode('single')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'single' ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>{t("prof_filter_single")}</button>
-        <button onClick={() => setStatsMode('tournament')} className={`flex-1 py-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${statsMode === 'tournament' ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'text-slate-500 hover:text-slate-300'}`}>{t("prof_filter_tour")}</button>
-      </div>
-
-      {/* ========================================= */}
-      {/* 3. MATCH BILANZ                           */}
-      {/* ========================================= */}
-      <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-row justify-between items-center">
-        <div className="flex flex-col">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">{t("prof_balance_title")} ({statsMode === 'single' ? t("prof_mode_single") : t("prof_mode_tour")})</h3>
-          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">{t("prof_balance_sub")}</span>
-        </div>
-        <div className="flex items-center gap-5 sm:gap-8">
-          <div className="flex gap-3 sm:gap-4 text-[10px] font-black tracking-widest uppercase items-center">
-            <span className="text-emerald-400 text-xs sm:text-sm">{wins} W</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-red-400 text-xs sm:text-sm">{losses} L</span>
-          </div>
-          <div className="relative w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full border-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]" style={{ borderColor: winRate > 50 ? '#10b981' : winRate > 30 ? '#f59e0b' : '#ef4444' }}>
-            <span className="text-xs sm:text-sm font-black text-white">{winRate}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================= */}
-      {/* 4. TIEFENANALYSE (SCHLAG-STATS)           */}
-      {/* ========================================= */}
-      <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">{t("prof_shot_analysis")} ({statsMode === 'single' ? t("prof_mode_single") : t("prof_mode_tour")})</h3>
-          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">{t("prof_last_matches_1")} {matchesWithStats} {t("prof_last_matches_2")}</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-            <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgWinners}</span>
-            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("prof_stat_winners")}</span>
-          </div>
-          <div className="bg-[#050b18] py-4 rounded-lg border border-slate-800/50 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-            <span className="text-2xl font-black text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{aggStats.avgAces}</span>
-            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mt-1">{t("prof_stat_aces")}</span>
-          </div>
-          <div className="bg-[#050b18] py-4 rounded-lg border border-red-900/20 flex flex-col items-center justify-center text-center shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
-            <span className="text-2xl font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">{aggStats.avgErrors}</span>
-            <span className="text-[9px] text-red-900/80 uppercase tracking-widest font-bold mt-1">{t("prof_stat_errors")}</span>
-          </div>
-          <div className="bg-[#050b18] py-4 rounded-lg border border-emerald-500/30 flex flex-col items-center justify-center text-center shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
-            <span className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]">{aggStats.perfectRatio}%</span>
-            <span className="text-[9px] text-emerald-700/80 uppercase tracking-widest font-bold mt-1">{t("prof_stat_perfect")}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================= */}
-      {/* 5. TAC-SCORE / TAC-POINTS CHART           */}
-      {/* ========================================= */}
-      <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 h-[280px] flex flex-col">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
-            {t("prof_chart_title")} ({statsMode === 'single' ? 'TacScore' : 'TacPoints'})
-          </h3>
-          <span className="text-[10px] font-bold text-cyan-300 bg-cyan-900/30 px-2 py-1 rounded border border-cyan-500/30">Max 20</span>
-        </div>
-        
-        <div className="flex-1 w-full min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={matchHistory}>
-              <XAxis dataKey="name" stroke="#475569" fontSize={10} tickMargin={10} axisLine={false} tickLine={false} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontWeight: 'bold' }} 
-                itemStyle={{ color: '#22d3ee' }}
-                labelStyle={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="Wert" 
-                name={statsMode === 'single' ? 'TacScore' : 'TacPoints'}
-                stroke={statsMode === 'single' ? '#06b6d4' : '#a855f7'}
-                strokeWidth={4} 
-                dot={{ r: 4, fill: statsMode === 'single' ? '#06b6d4' : '#a855f7', stroke: '#0f172a', strokeWidth: 2 }} 
-                activeDot={{ r: 6, fill: '#fff', stroke: statsMode === 'single' ? '#06b6d4' : '#a855f7' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* ========================================= */}
-      {/* 6. AUDIO, HAPTIK, SPRACHE & UI SETTINGS   */}
+      {/* 3. AUDIO, HAPTIK, SPRACHE & UI SETTINGS   */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -1647,7 +1503,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================= */}
-      {/* 7. SPIELMECHANIK & GRAFIK SETTINGS        */}
+      {/* 4. SPIELMECHANIK & GRAFIK SETTINGS        */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-slate-800/80 rounded-xl p-5 shadow-lg mt-2 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex flex-col text-center sm:text-left">
@@ -1671,7 +1527,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       </div>
 
       {/* ========================================================= */}
-      {/* 7.5 ADMIN DEVELOPER TOOLS                                 */}
+      {/* 5. ADMIN DEVELOPER TOOLS                                  */}
       {/* ========================================================= */}
       {isAdmin && (
         <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col gap-4">
@@ -1723,7 +1579,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       )}
 
       {/* ========================================= */}
-      {/* 8. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
+      {/* 6. KONTO & DATENSCHUTZ (INKL. LÖSCHUNG)   */}
       {/* ========================================= */}
       <div className="w-full bg-[#030611]/80 border border-red-950/50 rounded-xl p-5 shadow-lg mt-2 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
