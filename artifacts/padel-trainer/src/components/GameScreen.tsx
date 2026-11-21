@@ -15,6 +15,11 @@ import {
   calculateSmartAITurn,
 } from "../engine/GameLogic";
 import { soundManager } from "../lib/SoundManager";
+import {
+  recordMatchTurn,
+  recordMatchDefenseError,
+  QualityLevel,
+} from "../lib/tacticStats";
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen";
@@ -68,7 +73,7 @@ const getFocusShotType = (shotId?: string | null): string => {
   if (s.includes("volley") || s === "kick_x3") return "VOLLEY";
   if (s.includes("chiquita") || s === "vibora") return "CHIQUITA";
   if (s.includes("bandeja")) return "BANDEJA";
-  if (s.includes("defense") || s.includes("block")) return "BLOCK";
+  if (s.includes("defense") || s === "block") return "BLOCK";
   return ""; // Klassik-Technik (shot_classic) hat keinen Fokus-Boost
 };
 
@@ -229,6 +234,137 @@ const evalRunTactics = (shot: string, runZone: string, oppsAtNet: boolean = fals
     return r <= 2 ? 3 : 0;
   }
   return 0;
+};
+
+// --- COACH-BEWERTUNG: Sprachunabhängige Auswertung pro eigenem Match-Zug ---
+const evaluateMatchTurnForCoach = (params: {
+  chosenShot: string;
+  hitFromPos: string;
+  targetPos: string;
+  hitterRun: string;
+  suppRun: string;
+  oppsAtNet: boolean;
+  isRuleError: boolean;
+  isDugOut: boolean;
+  isRookie: boolean;
+  result: TurnResult;
+}): {
+  shotChoiceQuality: QualityLevel;
+  placementQuality: QualityLevel;
+  executionQuality: QualityLevel;
+  positioningQuality: QualityLevel;
+  isUnforcedError: boolean;
+} => {
+  const s = (params.chosenShot || "DRIVE").toUpperCase();
+  const hCol = (params.hitFromPos?.[0] || "B").toUpperCase();
+  const hRow = parseInt(params.hitFromPos?.[1] || "2", 10);
+  const tCol = (params.targetPos?.[0] || "C").toUpperCase();
+  const tRow = parseInt(params.targetPos?.[1] || "3", 10);
+
+  // 1. Ausführung (Perfekt / Solide / Wackler / Fehler)
+  const executionQuality: QualityLevel =
+    params.result === "perfect"
+      ? "perfect"
+      : params.result === "success"
+      ? "good"
+      : params.result === "recovery"
+      ? "wobble"
+      : "error";
+
+  // 2. Schlagwahl (Passt der Schlag zur eigenen Feldposition?)
+  let shotChoiceQuality: QualityLevel =
+    params.result === "perfect" ? "perfect" : "good";
+
+  if (params.isRuleError) {
+    shotChoiceQuality = "error";
+  } else if (["VOLLEY", "BLOCK", "SMASH"].includes(s) && hRow <= 2) {
+    shotChoiceQuality = "error";
+  } else if (["BANDEJA", "VIBORA"].includes(s) && (hRow <= 1 || hRow >= 4)) {
+    shotChoiceQuality = "error";
+  } else if (s === "BAJADA" && hRow >= 3) {
+    shotChoiceQuality = "error";
+  } else if (s === "DRIVE" && hRow >= 4) {
+    shotChoiceQuality = "error";
+  } else if (params.isDugOut) {
+    shotChoiceQuality = "wobble";
+  }
+
+  // 3. Platzierung / Zielzone
+  let placementQuality: QualityLevel =
+    params.result === "perfect" ? "perfect" : "good";
+
+  if (params.isRuleError) {
+    placementQuality = "error";
+  } else {
+    switch (s) {
+      case "AUFSCHLAG": {
+        const isCross =
+          (["A", "B"].includes(hCol) && ["C", "D", "E"].includes(tCol)) ||
+          (["D", "E"].includes(hCol) && ["A", "B", "C"].includes(tCol));
+        if (!isCross || (tRow !== 2 && tRow !== 3)) placementQuality = "error";
+        else if (tRow === 2 || ["A", "C", "E"].includes(tCol)) placementQuality = "good";
+        else placementQuality = "perfect";
+        break;
+      }
+      case "DRIVE":
+      case "VOLLEY":
+        if (tRow >= 4 && params.oppsAtNet) placementQuality = "error";
+        break;
+      case "BLOCK":
+        if (tRow <= 1) placementQuality = "error";
+        break;
+      case "LOB":
+        if (tRow >= 3) placementQuality = "error";
+        else placementQuality = params.oppsAtNet ? "perfect" : "wobble";
+        break;
+      case "CHIQUITA":
+        if (tRow <= 3 || (hRow >= 4 && params.oppsAtNet)) placementQuality = "error";
+        else placementQuality = params.oppsAtNet ? "perfect" : "wobble";
+        break;
+      case "BAJADA":
+        if (tRow >= 3) placementQuality = "error";
+        else placementQuality = params.oppsAtNet ? "wobble" : "perfect";
+        break;
+      case "BANDEJA":
+        if (tRow >= 4) placementQuality = "error";
+        else placementQuality = "perfect";
+        break;
+      case "VIBORA":
+        if (tRow >= 3) placementQuality = "error";
+        else placementQuality = tCol === "C" ? "good" : "perfect";
+        break;
+      case "SMASH":
+        if (tRow >= 4) placementQuality = "error";
+        else placementQuality = "perfect";
+        break;
+    }
+  }
+
+  // 4. Stellungsspiel / Laufweg nach dem Schlag (Schläger + Partner)
+  const hitterRunOk = evalRunTactics(s, params.hitterRun, params.oppsAtNet) > 0;
+  const suppRunOk = params.isRookie
+    ? true
+    : evalRunTactics(s, params.suppRun, params.oppsAtNet) > 0;
+
+  const positioningQuality: QualityLevel =
+    hitterRunOk && suppRunOk
+      ? "perfect"
+      : hitterRunOk || suppRunOk
+      ? "wobble"
+      : "error";
+
+  const isUnforcedError =
+    params.result === "error_net" ||
+    params.result === "error_out" ||
+    params.result === "error_wall_direct";
+
+  return {
+    shotChoiceQuality,
+    placementQuality,
+    executionQuality,
+    positioningQuality,
+    isUnforcedError,
+  };
 };
 
 const getContinueFee = (tourId: string, currentRound: number) => {
@@ -1499,6 +1635,13 @@ export default function GameScreen() {
               },
             }));
 
+            // 🎯 Coach-Tracking: Ball im Timer nicht erlaufen (Stellungs- / Reaktionsfehler)
+            recordMatchDefenseError({
+              userId: userIdRef.current,
+              incomingShot: courtStateRef.current.ball.type,
+              reason: status,
+            });
+
             showFlash(tTitle, "text-red-500", 2500);
 
             const finalBallZone = aiTrajectoryRef.current.reboundZone || aiTargetRef.current;
@@ -1626,9 +1769,9 @@ export default function GameScreen() {
         const suggestedTarget = isHitRight ? "A3 / B3" : "D3 / E3";
         const suggestedRun = isHitRight ? "D4" : "B4";
         const coachHint = t("game_rookie_serve_hint")
-  .replace("{target}", suggestedTarget)
-  .replace("{run}", suggestedRun);
-showFlash(coachHint, "text-amber-400", 3500);
+          .replace("{target}", suggestedTarget)
+          .replace("{run}", suggestedRun);
+        showFlash(coachHint, "text-amber-400", 3500);
         return;
       }
     }
@@ -1889,6 +2032,32 @@ showFlash(coachHint, "text-amber-400", 3500);
       else if (currentTurnResult?.startsWith("error")) pStats.shotsError += 1;
       else pStats.shotsSuccess += 1;
       return { ...prev, player: pStats };
+    });
+
+    // 🎯 Coach-Tracking: Schlagwahl, Ziel, Ausführung (inkl. Wackler) & Laufweg sichern
+    const coachOppsAtNet =
+      parseInt(courtState.opp1[1] || "1", 10) >= 3 ||
+      parseInt(courtState.opp2[1] || "1", 10) >= 3;
+    const hitterRunZone = hitterId === "you" ? recoveryYouRun : recoveryPartnerRun;
+    const suppRunZone = hitterId === "you" ? recoveryPartnerRun : recoveryYouRun;
+
+    const coachEval = evaluateMatchTurnForCoach({
+      chosenShot,
+      hitFromPos,
+      targetPos,
+      hitterRun: hitterRunZone,
+      suppRun: suppRunZone,
+      oppsAtNet: coachOppsAtNet,
+      isRuleError,
+      isDugOut,
+      isRookie,
+      result: currentTurnResult,
+    });
+
+    recordMatchTurn({
+      userId: userIdRef.current,
+      shotType: chosenShot,
+      ...coachEval,
     });
 
     setLastShotQuality(currentTurnResult);
