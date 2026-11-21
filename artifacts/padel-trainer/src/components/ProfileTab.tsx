@@ -883,28 +883,36 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     }
   };
 
-  const handleDeleteAccount = async () => {
+    const handleDeleteAccount = async () => {
     try {
       setIsDeleting(true);
       setMessage(null);
 
-      await supabase.from('match_history').delete().eq('user_id', user.id);
-      await supabase.from('tour_progress').delete().eq('user_id', user.id);
-      await supabase.from('user_stats').delete().eq('id', user.id);
-
-      const { error: rpcError } = await supabase.rpc('delete_user');
-      if (rpcError) {
-        console.warn("Hinweis bei RPC delete_user:", rpcError.message);
+      // Optional: Eigenes Avatar-Bild aus dem Storage entfernen (blockiert Löschung nicht bei Fehler)
+      if (avatarUrl && avatarUrl.includes('/avatars/')) {
+        const fileName = avatarUrl.split('/avatars/')[1]?.split('?')[0];
+        if (fileName) {
+          await supabase.storage.from('avatars').remove([fileName]).catch(() => {});
+        }
       }
 
+      // Alle Tabellen + Auth-User atomar über die SQL-Funktion löschen
+      const { error: rpcError } = await supabase.rpc('delete_user');
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      // Lokale Daten & Session sauber entfernen (scope: 'local', da User auf Server schon gelöscht ist)
       localStorage.clear();
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (error: any) {
-      setMessage({ type: 'error', text: t("prof_msg_delete_err") + error.message });
+      console.error("Fehler beim Konto löschen:", error);
+      setMessage({ type: 'error', text: t("prof_msg_delete_err") + (error?.message || "Unknown error") });
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
   };
+
 
   const toggleSound = () => {
     const newState = !soundEnabled;
