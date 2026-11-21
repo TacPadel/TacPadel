@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import SplashScreen from "./components/SplashScreen";
 import Navigation from "./components/Navigation";
 import HomeView from "./components/HomeView";
-import BasicsView from './components/Basics'; 
+import BasicsView from './components/Basics';
 import { motion, AnimatePresence } from "framer-motion";
 import TacticsBoard from "./components/TacticsBoard";
 import ScenarioCourt, { PlayerPositions } from "./components/ScenarioCourt";
@@ -18,6 +18,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { DBPlayer } from "./components/HomeView";
 import ProfileTab from './components/ProfileTab';
+import CoachTab from './components/CoachTab';
 import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
 import PublicProfileModal from "./components/PublicProfileModal";
@@ -25,13 +26,14 @@ import StrategyTrainer from "./components/StrategyTrainer";
 import ShareCardModal, { ShareCardPayload } from "./components/ShareCardModal";
 import RatingPromptModal, { shouldShowRatingPrompt } from "./components/RatingPromptModal";
 import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
+import { recordTrainerAttempt, CoachSummary } from "./lib/tacticStats";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 const CRASH_COURSE_STEPS: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 const CRASH_COURSE_BONUS_POINTS = 1500;
 
-type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
+type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy" | "coach";
 
 // Rotierende Aufgaben-Typen für den interaktiven Simulations-Modus
 type SimTaskType = "shot" | "target" | "run" | "shot_target" | "shot_run" | "target_run" | "full";
@@ -115,7 +117,7 @@ const get3DPosition = (zoneId: string, side: "left" | "right", yHeight: number =
   const num = parseInt(zoneId[1]);
   const letterIdx = letters.indexOf(letter) !== -1 ? letters.indexOf(letter) : 2;
 
-  let x = 8 - (letterIdx * 1.5); 
+  let x = 8 - (letterIdx * 1.5);
   if (side === "left") x = -x;
 
   let z = 4 - ((num - 1) * 2);
@@ -150,19 +152,19 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
   const handleSave = async () => {
     if (!username.trim()) return;
     setIsSaving(true);
-    
+
     await supabase.auth.updateUser({ data: { display_name: username } });
 
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       await supabase
         .from('user_stats')
-        .upsert({ 
-          id: session.user.id, 
+        .upsert({
+          id: session.user.id,
           email: session.user.email,
           display_name: username,
           avatar_url: session.user.user_metadata?.avatar_url || null
-        }, { onConflict: 'id' }); 
+        }, { onConflict: 'id' });
     }
 
     setIsSaving(false);
@@ -177,9 +179,9 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
         className="bg-card border border-card-border p-8 rounded-2xl shadow-2xl max-w-md w-full flex flex-col gap-6 text-center relative overflow-hidden"
       >
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-primary" />
-        
+
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary text-4xl shadow-inner"></div>
-        
+
         <div>
           <h2 className="text-3xl font-black text-primary mb-2">{t("welcome_title")}</h2>
           <p className="text-muted-foreground leading-relaxed">
@@ -187,8 +189,8 @@ function WelcomeModal({ user, onComplete }: { user: any, onComplete: () => void 
           </p>
         </div>
 
-        <input 
-          type="text" 
+        <input
+          type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder={t("welcome_placeholder")}
@@ -220,7 +222,7 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
         className="bg-[#050b18] border border-cyan-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] max-w-lg w-full max-h-[82vh] overflow-y-auto flex flex-col gap-6 relative"
       >
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-500" />
-        
+
         <div className="text-center">
           <span className="text-4xl mb-2 block">🧠</span>
           <h2 className="text-2xl font-black text-white uppercase tracking-widest">{t("tut_title")}</h2>
@@ -451,14 +453,14 @@ function GuestSignupPromptModal({
 
 const updateSupabaseScore = async (newTotalPoints: number) => {
   const { data: { session } } = await supabase.auth.getSession();
-  
+
   if (session?.user) {
     const { error } = await supabase
       .from('user_stats')
-      .upsert({ 
-        id: session.user.id, 
+      .upsert({
+        id: session.user.id,
         email: session.user.email,
-        points: newTotalPoints     
+        points: newTotalPoints
       });
 
     if (error) {
@@ -515,7 +517,7 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
   }, [activeTab]);
-  
+
   const [dbLeaderboard, setDbLeaderboard] = useState<DBPlayer[]>([]);
   const [dbSeasonLeaderboard, setDbSeasonLeaderboard] = useState<DBPlayer[]>([]);
 
@@ -530,8 +532,8 @@ export default function App(): React.JSX.Element {
       if (!errAll && allData) {
         const formattedAll = allData.map((user: any) => {
           const emailFallback = user.email ? user.email.split('@')[0] : t("player_fallback");
-          const finalName = user.display_name && user.display_name.trim() !== "" 
-            ? user.display_name 
+          const finalName = user.display_name && user.display_name.trim() !== ""
+            ? user.display_name
             : emailFallback;
 
           return {
@@ -539,7 +541,7 @@ export default function App(): React.JSX.Element {
             name: finalName,
             score: user.points || 0,
             tacPoints: user.tac_points || 0,
-            avatar_url: user.avatar_url 
+            avatar_url: user.avatar_url
           };
         });
         setDbLeaderboard(formattedAll);
@@ -554,16 +556,16 @@ export default function App(): React.JSX.Element {
       if (!errSeason && seasonData) {
         const formattedSeason = seasonData.map((user: any) => {
           const emailFallback = user.email ? user.email.split('@')[0] : t("player_fallback");
-          const finalName = user.display_name && user.display_name.trim() !== "" 
-            ? user.display_name 
+          const finalName = user.display_name && user.display_name.trim() !== ""
+            ? user.display_name
             : emailFallback;
 
           return {
             id: user.id,
             name: finalName,
-            score: user.tac_points || 0, 
+            score: user.tac_points || 0,
             tacPoints: user.tac_points || 0,
-            avatar_url: user.avatar_url 
+            avatar_url: user.avatar_url
           };
         });
         setDbSeasonLeaderboard(formattedSeason);
@@ -575,7 +577,7 @@ export default function App(): React.JSX.Element {
 
   const { points: totalPoints, addPoints } = usePoints();
   const { user, signOut } = useAuth();
-  
+
   const [dbProfile, setDbProfile] = useState<{ display_name?: string, avatar_url?: string, tac_points?: number } | null>(null);
 
   useEffect(() => {
@@ -599,11 +601,11 @@ export default function App(): React.JSX.Element {
 
   const finalUserName = dbProfile?.display_name || user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
   const finalAvatarUrl = dbProfile?.avatar_url || user?.user_metadata?.avatar_url;
-  
-  const { 
-    lockedLevels, 
-    setLockedLevels, 
-    highestScores, 
+
+  const {
+    lockedLevels,
+    setLockedLevels,
+    highestScores,
     updateHighScore,
     activeSession,
     saveActiveSession,
@@ -614,6 +616,11 @@ export default function App(): React.JSX.Element {
   const [isShotModalOpen, setIsShotModalOpen] = useState(false);
   const [level, setLevel] = useState<Level>("Schlag");
   const [simTaskType, setSimTaskType] = useState<SimTaskType>("full");
+
+  // --- SCHWÄCHEN-COACH MODUS (Aus dem TacPadel Coach Dual-Radar gestartet) ---
+  const [isWeaknessMode, setIsWeaknessMode] = useState(false);
+  const [weaknessScenarios, setWeaknessScenarios] = useState<Scenario[]>([]);
+  const [weaknessFocus, setWeaknessFocus] = useState<CoachSummary["recommendedTaskFocus"]>("full");
 
   // --- 4/4 GÄSTE-CRASHKURS & 1500-TACSCORE-STARTBONUS ---
   const [isCrashCourse, setIsCrashCourse] = useState(false);
@@ -630,12 +637,16 @@ export default function App(): React.JSX.Element {
   const [showBonusClaimedToast, setShowBonusClaimedToast] = useState(false);
   const [pendingGuestSignupPrompt, setPendingGuestSignupPrompt] = useState(false);
   const [showGuestSignupModal, setShowGuestSignupModal] = useState(false);
-  
-  const isSimulation = !isCrashCourse && (level as string) === "Simulation";
-  const maxScore = isCrashCourse ? CRASH_COURSE_STEPS.length : 10;
+
+  const isSimulation = !isCrashCourse && !isWeaknessMode && (level as string) === "Simulation";
+  const maxScore = isCrashCourse
+    ? CRASH_COURSE_STEPS.length
+    : isWeaknessMode
+    ? Math.max(1, weaknessScenarios.length)
+    : 10;
 
   const [[currentScenarioIndex, rotationPool], setRotation] = useState<[number, number[]]>(() => {
-    const initialCount = SCENARIOS.filter(s => s.id <= 10).length; 
+    const initialCount = SCENARIOS.filter(s => s.id <= 10).length;
     const pool = shuffleIndices(initialCount);
     return [pool[0], pool.slice(1)];
   });
@@ -644,8 +655,8 @@ export default function App(): React.JSX.Element {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [selectedLaufZone, setSelectedLaufZone] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [score, setScore] = useState(0); 
-  const [attempts, setAttempts] = useState<number>(0); 
+  const [score, setScore] = useState(0);
+  const [attempts, setAttempts] = useState<number>(0);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [roundsPlayed, setRoundsPlayed] = useState(0);
   const [wrongPool, setWrongPool] = useState<number[]>([]);
@@ -668,6 +679,32 @@ export default function App(): React.JSX.Element {
   // Gäste schalten den Game-Tab über den 4/4-Crashkurs frei.
   const isGameUnlocked = Boolean(user) || crashCourseDone;
 
+  // Startet gezieltes 10-Runden-Training aus dem TacPadel Coach (Trainer + Match kombiniert)
+  const startWeaknessTraining = (
+    pool: Scenario[],
+    focus: CoachSummary["recommendedTaskFocus"] = "full"
+  ) => {
+    if (!pool || pool.length === 0) return;
+    setIsCrashCourse(false);
+    setIsWeaknessMode(true);
+    setWeaknessScenarios(pool);
+    setWeaknessFocus(focus);
+    setRotation([0, pool.slice(1).map((_, idx) => idx + 1)]);
+    setSelectedShot(null);
+    setSelectedZone(null);
+    setSelectedLaufZone(null);
+    setHasSubmitted(false);
+    setScore(0);
+    setRoundsPlayed(0);
+    setWrongPool([]);
+    setIsRetryPhase(false);
+    setGameOver(false);
+    setShowRetryBanner(false);
+    setFeedbackMsg(null);
+    setAttempts(0);
+    setActiveTab("trainer");
+  };
+
   // Startet (oder setzt fort) den 4-Schritte-Crashkurs für Gäste
   const startGuestCrashCourse = () => {
     const startStep = Math.min(crashCourseProgress, CRASH_COURSE_STEPS.length - 1);
@@ -675,6 +712,7 @@ export default function App(): React.JSX.Element {
     const scenarioIdx = pickCrashCourseScenarioIndex(stepLevel);
 
     setShowGameLockedModal(false);
+    setIsWeaknessMode(false);
     setIsCrashCourse(true);
     setCrashCourseStep(startStep);
     setLevel(stepLevel);
@@ -710,6 +748,10 @@ export default function App(): React.JSX.Element {
 
     if (nextTab !== "trainer" && isCrashCourse) {
       setIsCrashCourse(false);
+    }
+
+    if (nextTab !== "trainer" && isWeaknessMode) {
+      setIsWeaknessMode(false);
     }
 
     setActiveTab(nextTab);
@@ -788,6 +830,7 @@ export default function App(): React.JSX.Element {
       .slice(0, 9);
 
     setIsCrashCourse(false);
+    setIsWeaknessMode(false);
     setLevel(targetLevel);
     setRotation([localIdx, rest]);
     setSelectedShot(null);
@@ -830,25 +873,45 @@ export default function App(): React.JSX.Element {
   }, [gameOver]);
 
   // Easy-Mode ist überall (auch in der Simulation) fest aktiv;
-  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi & im Crashkurs aktiv und in der Simulation deaktiviert.
+  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi, im Crashkurs & im Schwächen-Modus aktiv und in der Simulation deaktiviert.
   const activeEasyMode = true;
   const activeCorrectionMode = !isSimulation;
 
-  // Dynamische Anforderungen je nach Level bzw. ausgewürfelter Simulations-Aufgabe
-  const needsRun = isSimulation
+  // Aktuelles Szenario im Schwächen-Modus (für dynamische Fokus-Anforderungen)
+  const activeWeaknessScenario = isWeaknessMode
+    ? (weaknessScenarios[currentScenarioIndex] || weaknessScenarios[0] || null)
+    : null;
+  const weaknessHasTarget = Boolean(
+    activeWeaknessScenario &&
+    Array.isArray(activeWeaknessScenario.bestZones) &&
+    activeWeaknessScenario.bestZones.length > 0
+  );
+  const weaknessHasRun = Boolean(activeWeaknessScenario && activeWeaknessScenario.laufZone);
+
+  // Dynamische Anforderungen je nach Level, Schwächen-Fokus bzw. Simulations-Aufgabe
+  const needsRun = isWeaknessMode
+    ? (weaknessFocus === "positioning" || weaknessFocus === "full") && weaknessHasRun
+    : isSimulation
     ? ["run", "shot_run", "target_run", "full"].includes(simTaskType)
     : level === "Laufrichtung" || level === "Spielzug";
 
-  const needsTarget = isSimulation
+  const needsTarget = isWeaknessMode
+    ? (weaknessFocus === "placement" ||
+        weaknessFocus === "full" ||
+        (weaknessFocus === "positioning" && !weaknessHasRun)) &&
+      weaknessHasTarget
+    : isSimulation
     ? ["target", "shot_target", "target_run", "full"].includes(simTaskType)
     : level === "Schlagrichtung" || level === "Spielzug";
 
-  const needsShot = isSimulation
+  const needsShot = isWeaknessMode
+    ? true
+    : isSimulation
     ? ["shot", "shot_target", "shot_run", "full"].includes(simTaskType)
     : true;
 
   // Übersetzt den aktuellen Aufgabentyp in das passende Court-Layout für ScenarioCourt25
-  const effectiveCourtLevel: Level = isSimulation
+  const effectiveCourtLevel: Level = (isSimulation || isWeaknessMode)
     ? needsRun && needsTarget
       ? "Spielzug"
       : needsTarget
@@ -858,10 +921,37 @@ export default function App(): React.JSX.Element {
       : "Schlag"
     : level;
 
+  // Kurzes Badge für den Schwächen-Coach Fokus
+  const weaknessFocusBadgeText = useMemo(() => {
+    if (!isWeaknessMode) return "";
+    if (lang === "en") {
+      switch (weaknessFocus) {
+        case "positioning": return "🎯 COACH FOCUS: POSITIONING";
+        case "placement": return "🎯 COACH FOCUS: TARGET PLACEMENT";
+        case "shotChoice": return "🎯 COACH FOCUS: SHOT CHOICE";
+        default: return "🎯 COACH FOCUS: FULL TACTICS";
+      }
+    }
+    if (lang === "es") {
+      switch (weaknessFocus) {
+        case "positioning": return "🎯 ENFOQUE COACH: POSICIÓN";
+        case "placement": return "🎯 ENFOQUE COACH: PRECISIÓN";
+        case "shotChoice": return "🎯 ENFOQUE COACH: ELECCIÓN DE GOLPE";
+        default: return "🎯 ENFOQUE COACH: TÁCTICA COMPLETA";
+      }
+    }
+    switch (weaknessFocus) {
+      case "positioning": return "🎯 COACH-FOKUS: STELLUNGSSPIEL";
+      case "placement": return "🎯 COACH-FOKUS: PLATZIERUNG";
+      case "shotChoice": return "🎯 COACH-FOKUS: SCHLAGWAHL";
+      default: return "🎯 COACH-FOKUS: KOMPLETTER SPIELZUG";
+    }
+  }, [isWeaknessMode, weaknessFocus, lang]);
+
   // Kurzes Badge + Erklärungstext für die aktuelle Simulations-Aufgabe
   const simTaskBadgeText = useMemo(() => {
     if (!isSimulation) return "";
-    if ( lang === "en" ) {
+    if (lang === "en") {
       switch (simTaskType) {
         case "shot": return "⚡ TASK: SHOT ONLY";
         case "target": return "🎯 TASK: TARGET ONLY";
@@ -872,7 +962,7 @@ export default function App(): React.JSX.Element {
         default: return "👑 FULL MOVE (ALL 3)";
       }
     }
-    if ( lang === "es" ) {
+    if (lang === "es") {
       switch (simTaskType) {
         case "shot": return "⚡ TAREA: SOLO GOLPE";
         case "target": return "🎯 TAREA: SOLO DESTINO";
@@ -899,7 +989,7 @@ export default function App(): React.JSX.Element {
     if (l === "Schlagrichtung") return (highestScores["Schlag"] || 0) >= 10;
     if (l === "Laufrichtung") return (highestScores["Schlagrichtung"] || 0) >= 10;
     if (l === "Spielzug") return (highestScores["Laufrichtung"] || 0) >= 10;
-    return true; 
+    return true;
   };
 
   useEffect(() => {
@@ -949,10 +1039,10 @@ export default function App(): React.JSX.Element {
     const isNewSim = (targetLevel as string) === "Simulation";
     const filteredPool = SCENARIOS.filter(s => {
       if (targetLevel === "Schlag") return s.id <= 10;
-      if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30; 
+      if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30;
       if (targetLevel === "Laufrichtung") return s.id >= 31 && s.id <= 61;
       if (targetLevel === "Spielzug") return s.id >= 62;
-      if (isNewSim) return true; 
+      if (isNewSim) return true;
       return true;
     });
 
@@ -1047,32 +1137,32 @@ export default function App(): React.JSX.Element {
   }, [isProgressLoaded, activeSession, hasRestored, user, highestScores, lockedLevels, setLockedLevels, clearActiveSession]);
 
   useEffect(() => {
-    if (hasRestored && user && !gameOver && !isCrashCourse) {
+    if (hasRestored && user && !gameOver && !isCrashCourse && !isWeaknessMode) {
       saveActiveSession({
-        level, 
-        score, 
-        currentScenarioIndex, 
-        rotationPool, 
+        level,
+        score,
+        currentScenarioIndex,
+        rotationPool,
         wrongPool,
-        isRetryPhase, 
-        roundsPlayed, 
-        hasSubmitted, 
+        isRetryPhase,
+        roundsPlayed,
+        hasSubmitted,
         selectedShot,
-        selectedZone, 
-        selectedLaufZone, 
+        selectedZone,
+        selectedLaufZone,
         attempts,
         feedbackMsg
       });
     }
-    if (gameOver && hasRestored) {
+    if (gameOver && hasRestored && !isWeaknessMode) {
       clearActiveSession();
     }
-  }, [level, score, hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver, isCrashCourse]);
+  }, [level, score, hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver, isCrashCourse, isWeaknessMode]);
 
   useEffect(() => {
     if (user && activeTab === "login") {
       const savedTab = localStorage.getItem("tacpadel_activeTab") as Tab;
-      
+
       if (savedTab && savedTab !== "login") {
         setActiveTab(savedTab);
       } else {
@@ -1085,7 +1175,7 @@ export default function App(): React.JSX.Element {
     const channel = supabase
       .channel('public:profiles')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
-        setDbLeaderboard(prev => prev.map(p => 
+        setDbLeaderboard(prev => prev.map(p =>
           p.id === payload.new.id ? { ...p, score: payload.new.score } : p
         ));
       })
@@ -1116,9 +1206,9 @@ export default function App(): React.JSX.Element {
 
       if (url.includes('access_token=') || url.includes('code=')) {
         if (isNativeApp) {
-          try { await Browser.close(); } catch (e) {} 
+          try { await Browser.close(); } catch (e) {}
         }
-        
+
         const hashPart = url.includes('#') ? url.split('#')[1] : '';
         const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
 
@@ -1131,11 +1221,11 @@ export default function App(): React.JSX.Element {
 
         try {
           if (code) {
-             const { error } = await supabase.auth.exchangeCodeForSession(code);
-             if (error) throw error;
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) throw error;
           } else if (access_token && refresh_token) {
-             const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-             if (error) throw error;
+            const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (error) throw error;
           }
         } catch (e: any) {
           console.error("Fehler bei Session: " + e.message);
@@ -1146,12 +1236,12 @@ export default function App(): React.JSX.Element {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
         if (isNativeApp) {
-          try { Browser.close(); } catch (e) {} 
+          try { Browser.close(); } catch (e) {}
         }
-        
+
         setTimeout(() => {
           const savedTab = localStorage.getItem("tacpadel_activeTab") as Tab;
-          
+
           if (savedTab && savedTab !== "login") {
             setActiveTab(savedTab);
           } else {
@@ -1162,7 +1252,7 @@ export default function App(): React.JSX.Element {
     });
 
     let appListener: any;
-    
+
     if (isNativeApp) {
       CapacitorApp.addListener('appUrlOpen', (event) => {
         handleDeepLink(event.url);
@@ -1270,13 +1360,14 @@ export default function App(): React.JSX.Element {
   };
 
   const filteredScenarios = useMemo(() => {
+    if (isWeaknessMode && weaknessScenarios.length > 0) return weaknessScenarios;
     if (level === "Schlag") return SCENARIOS.filter(s => s.id <= 10);
     if (level === "Schlagrichtung") return SCENARIOS.filter(s => s.id >= 1 && s.id <= 30);
     if (level === "Laufrichtung") return SCENARIOS.filter(s => s.id >= 31 && s.id <= 61);
     if (level === "Spielzug") return SCENARIOS.filter(s => s.id >= 62);
-    if (isSimulation) return SCENARIOS; 
-    return SCENARIOS; 
-  }, [level, isSimulation]);
+    if (isSimulation) return SCENARIOS;
+    return SCENARIOS;
+  }, [level, isSimulation, isWeaknessMode, weaknessScenarios]);
 
   const scenario = filteredScenarios[currentScenarioIndex] || filteredScenarios[0];
 
@@ -1344,9 +1435,14 @@ export default function App(): React.JSX.Element {
         (selectedShot === "VOLLEY" && valid.includes("VOLLEY"))
     )
   );
-  
-  const isZoneCorrect = !needsTarget || !!(selectedZone && ((scenario.bestZones || []).includes(selectedZone) || acceptableZones.includes(selectedZone)));
-  const isLaufZoneCorrect = !needsRun || !!(selectedLaufZone && (scenario.laufZone === selectedLaufZone || acceptableLaufZones.includes(selectedLaufZone)));
+
+  const isZoneExact = !needsTarget || !!(selectedZone && (scenario.bestZones || []).includes(selectedZone));
+  const isZoneAcceptableOnly = needsTarget && !isZoneExact && !!(selectedZone && acceptableZones.includes(selectedZone));
+  const isZoneCorrect = isZoneExact || isZoneAcceptableOnly;
+
+  const isLaufZoneExact = !needsRun || !!(selectedLaufZone && scenario.laufZone === selectedLaufZone);
+  const isLaufZoneAcceptableOnly = needsRun && !isLaufZoneExact && !!(selectedLaufZone && acceptableLaufZones.includes(selectedLaufZone));
+  const isLaufZoneCorrect = isLaufZoneExact || isLaufZoneAcceptableOnly;
 
   const canSubmit = (() => {
     if (hasSubmitted) return false;
@@ -1366,9 +1462,27 @@ export default function App(): React.JSX.Element {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    
+
     const currentAttempt = attempts + 1;
     setAttempts(currentAttempt);
+
+    // 🎯 Taktik-Coach Tracking: Nur den 1. Versuch ehrlich fürs Dual-Radar zählen
+    if (currentAttempt === 1 && scenario) {
+      recordTrainerAttempt({
+        userId: user?.id,
+        scenarioId: scenario.id,
+        primaryShot: scenario.validShots[0] || "DRIVE",
+        needsShot,
+        needsTarget,
+        needsRun,
+        isShotCorrect,
+        isZoneCorrect: isZoneExact,
+        isZoneAcceptable: isZoneAcceptableOnly,
+        isLaufZoneCorrect: isLaufZoneExact,
+        isLaufZoneAcceptable: isLaufZoneAcceptableOnly,
+        isFullyCorrect,
+      });
+    }
 
     if (isFullyCorrect) {
       setHasSubmitted(true);
@@ -1400,51 +1514,56 @@ export default function App(): React.JSX.Element {
 
       const newScore = score + 1;
       setScore(newScore);
-      updateHighScore(level, newScore);
+      if (!isWeaknessMode) {
+        updateHighScore(level, newScore);
+      }
 
       setRoundsPlayed((r) => r + 1);
 
       // Punkte-Ausbeute:
+      // - Schwächen-Coach: 40 Pkt. (1. Versuch) / 20 Pkt. (ab 2. Versuch)
       // - Simulation: +20 Punkte
       // - Schlag: 100 Pkt. (1. Versuch) / 50 Pkt. (ab 2. Versuch)
       // - Ab Schlagrichtung (Schlagrichtung, Laufrichtung, Spielzug): 50 Pkt. (1. Versuch) / 25 Pkt. (ab 2. Versuch)
       let pointsEarned = 0;
-      if (isSimulation) {
+      if (isWeaknessMode) {
+        pointsEarned = currentAttempt === 1 ? 40 : 20;
+      } else if (isSimulation) {
         pointsEarned = 20;
       } else if (level === "Schlag") {
         pointsEarned = currentAttempt === 1 ? 100 : 50;
       } else {
         pointsEarned = currentAttempt === 1 ? 50 : 25;
       }
-      
+
       if (user) {
         const newTotal = totalPoints + pointsEarned;
         addPoints(pointsEarned);
         updateSupabaseScore(newTotal);
       }
 
-      if (level === "Schlag" && scenario.validShots.length === 1) {
+      if (!isWeaknessMode && level === "Schlag" && scenario.validShots.length === 1) {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
     } else {
       // Minuspunkte (-20) erst ab Simulation
       if (isSimulation && user) {
         const newTotal = Math.max(0, totalPoints - 20);
-        addPoints(-20); 
-        updateSupabaseScore(newTotal); 
-        
+        addPoints(-20);
+        updateSupabaseScore(newTotal);
+
         const unlockable = lockedLevels.filter(l => l !== "Simulation");
         if (newTotal < 1500 && unlockable.length > 0) {
           setShowUnlockModal(true);
         }
       }
-        
+
       if (activeCorrectionMode) {
         let errors = [];
         if (needsShot && !isShotCorrect) errors.push(t("trainer_err_shot"));
         if (needsTarget && !isZoneCorrect) errors.push(t("trainer_err_target"));
         if (needsRun && !isLaufZoneCorrect) errors.push(t("trainer_err_run"));
-        
+
         setFeedbackMsg(`${t("trainer_feedback_prefix")}${errors.join(t("trainer_err_and"))}.`);
       } else {
         setHasSubmitted(true);
@@ -1514,7 +1633,7 @@ export default function App(): React.JSX.Element {
     setFeedbackMsg(null);
     setAttempts(0);
 
-    const targetScore = 10;
+    const targetScore = isWeaknessMode ? maxScore : 10;
 
     if (score < targetScore && rotationPool.length > 0) {
       setRotation([rotationPool[0], rotationPool.slice(1)]);
@@ -1523,10 +1642,10 @@ export default function App(): React.JSX.Element {
 
     if (score < targetScore && wrongPool.length > 0) {
       const retryIndices = shuffleIndices(wrongPool.length).map((i) => wrongPool[i]);
-      const [next, ...rest] = retryIndices; 
-      
+      const [next, ...rest] = retryIndices;
+
       setRotation([next, rest]);
-      setWrongPool([]); 
+      setWrongPool([]);
       setIsRetryPhase(true);
       setShowRetryBanner(true);
       return;
@@ -1539,9 +1658,14 @@ export default function App(): React.JSX.Element {
       return;
     }
 
+    if (isWeaknessMode) {
+      setGameOver(true);
+      return;
+    }
+
     updateHighScore(level, targetScore);
     setGameOver(true);
-    
+
     if (level === "Spielzug") {
       setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
     } else if (level === "Schlag" || level === "Schlagrichtung" || level === "Laufrichtung") {
@@ -1550,11 +1674,13 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLevelChange = (newLevel: Level, force: boolean = false) => {
+    const wasWeakness = isWeaknessMode;
     if (isCrashCourse) setIsCrashCourse(false);
-    if (newLevel === level && !force && !gameOver) return;
+    if (isWeaknessMode) setIsWeaknessMode(false);
+    if (newLevel === level && !force && !gameOver && !wasWeakness) return;
     clearActiveSession();
     setLevel(newLevel);
-    
+
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
@@ -1571,11 +1697,13 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLogout = async () => {
-    await signOut(); 
+    await signOut();
     localStorage.clear();
     sessionStorage.clear();
     clearActiveSession();
     setIsCrashCourse(false);
+    setIsWeaknessMode(false);
+    setWeaknessScenarios([]);
     setCrashCourseStep(0);
     setCrashCourseProgress(0);
     setCrashCourseDone(false);
@@ -1592,7 +1720,7 @@ export default function App(): React.JSX.Element {
     setIsRetryPhase(false);
     setFeedbackMsg(null);
     setWrongPool([]);
-    window.location.reload(); 
+    window.location.reload();
   };
 
   const isNative = Capacitor.isNativePlatform();
@@ -1600,32 +1728,48 @@ export default function App(): React.JSX.Element {
 
   return (
   <div className="min-h-[100dvh] w-full text-foreground flex flex-col items-center font-sans isolate relative">
-    
+
     {/* OPTISCHE STATUSLEISTEN-TRENNUNG FÜR NATIVE APPS */}
     {isNative && (
-      <div 
+      <div
         className="w-full bg-[#010206] border-b border-slate-900/80 shrink-0 z-10"
-        style={{ 
-          height: isIOS 
-            ? "max(env(safe-area-inset-top, 0px), 44px)" 
-            : "max(env(safe-area-inset-top, 0px), 24px)" 
+        style={{
+          height: isIOS
+            ? "max(env(safe-area-inset-top, 0px), 44px)"
+            : "max(env(safe-area-inset-top, 0px), 24px)"
         }}
       />
     )}
 
     <header className="w-full max-w-4xl flex justify-between items-center px-4 py-2.5 z-10 bg-background/50 backdrop-blur-md border-b border-border/40 shrink-0">
-      <span className="font-black text-lg tracking-wider text-primary">TacPadel</span>
+      <button
+        onClick={() => handleTabChange("coach")}
+        className={`flex items-center gap-2 px-2.5 py-1 rounded-xl border transition-all active:scale-95 ${
+          activeTab === "coach"
+            ? "bg-cyan-950/70 border-cyan-400/70 shadow-[0_0_16px_rgba(6,182,212,0.35)]"
+            : "bg-slate-900/60 border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-950/30"
+        }`}
+        title="TacPadel Coach"
+      >
+        <span className="font-black text-base sm:text-lg tracking-wider text-primary leading-none">
+          TacPadel
+        </span>
+        <span className="text-[9px] font-black uppercase tracking-[0.16em] px-1.5 py-0.5 rounded-md bg-gradient-to-r from-cyan-500/25 to-orange-500/25 border border-cyan-400/40 text-cyan-300 leading-none">
+          COACH
+        </span>
+      </button>
+
       <div>
         {user ? (
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={() => handleTabChange("profile")}
               className="text-muted-foreground hover:text-primary transition-colors font-semibold flex items-center gap-2.5 group"
             >
               {finalAvatarUrl ? (
-                <img 
-                  src={finalAvatarUrl} 
-                  alt="Avatar" 
+                <img
+                  src={finalAvatarUrl}
+                  alt="Avatar"
                   className="w-8 h-8 rounded-full object-cover border border-primary/20 group-hover:border-primary/50 transition-colors shadow-sm"
                 />
               ) : (
@@ -1639,8 +1783,8 @@ export default function App(): React.JSX.Element {
               </span>
             </button>
 
-            <button 
-              onClick={handleLogout} 
+            <button
+              onClick={handleLogout}
               className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold hover:bg-red-500/20 transition-all ml-2"
             >
               {t("header_logout")}
@@ -1648,8 +1792,8 @@ export default function App(): React.JSX.Element {
           </div>
         ) : (
           activeTab !== "login" && (
-            <button 
-              onClick={() => handleTabChange("login")} 
+            <button
+              onClick={() => handleTabChange("login")}
               className="text-xs bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all shadow-md"
             >
               {t("header_login")}
@@ -1661,9 +1805,9 @@ export default function App(): React.JSX.Element {
 
       {/* Hintergrundbild fest in den tiefsten Hintergrund (-z-10) legen */}
       <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center opacity-40 mix-blend-screen">
-        <img 
-          src={"/background_app.png"} 
-          alt="Tactical Background" 
+        <img
+          src={"/background_app.png"}
+          alt="Tactical Background"
           className="w-[95%] max-w-2xl h-auto object-contain select-none"
         />
       </div>
@@ -1795,42 +1939,55 @@ export default function App(): React.JSX.Element {
           </motion.div>
         )}
       </AnimatePresence>
-        
+
       {/* Tech-Shell wieder mit relative z-10 über das Hintergrundbild legen */}
       <div className="flex-grow w-full tech-shell flex flex-col items-center p-3 sm:p-4 pb-28 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent relative z-10">
-        
+
         <div className="max-w-4xl w-full flex flex-col gap-4 sm:gap-6">
 
           <AnimatePresence mode="wait">
-            
+
+            {/* --- TAB: TACPADEL COACH (STATISTIKEN, DUAL-RADAR & SCHWÄCHEN-TRAINING) --- */}
+            {activeTab === "coach" && (
+              <CoachTab
+                key="coach-page"
+                userId={user?.id}
+                userName={finalUserName === "Gast" ? t("guest_name") : finalUserName}
+                totalPoints={user ? totalPoints : 0}
+                onStartWeaknessTraining={startWeaknessTraining}
+                onNavigateTab={(target) => handleTabChange(target)}
+              />
+            )}
+
             {/* --- TAB 1: HOME --- */}
             {activeTab === "home" && (
-              <motion.div 
-                key="home" 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
+              <motion.div
+                key="home"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
               >
-                <HomeView 
+                <HomeView
                   setActiveTab={handleTabChange}
                   isGameUnlocked={isGameUnlocked}
                   gameUnlockProgress={crashCourseDone ? CRASH_COURSE_STEPS.length : crashCourseProgress}
                   gameUnlockRequired={CRASH_COURSE_STEPS.length}
                   currentScore={user ? totalPoints : 0}
                   onDailyReward={(pts) => { if (user) { addPoints(pts); updateSupabaseScore(totalPoints + pts); } }}
-                  currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0} 
+                  currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0}
                   userName={finalUserName}
                   userEmail={user?.email || ""}
-                  userAvatar={finalAvatarUrl} 
+                  userAvatar={finalAvatarUrl}
                   dbLeaderboard={dbLeaderboard.length > 0 ? dbLeaderboard : undefined}
-                  dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined} 
+                  dbSeasonLeaderboard={dbSeasonLeaderboard.length > 0 ? dbSeasonLeaderboard : undefined}
                   onPlayerClick={(id, listType) => {
                     setSelectedPublicUserId(id);
                     setSelectedPublicUserTab(listType === "season" ? "tournament" : "single");
                   }}
                   onQuickStart={(specificIndex?: number) => {
                     setIsCrashCourse(false);
+                    setIsWeaknessMode(false);
                     if ((highestScores["Spielzug"] || 0) >= 10) {
                       handleLevelChange("Simulation" as Level, true);
                       setActiveTab("trainer");
@@ -1839,14 +1996,14 @@ export default function App(): React.JSX.Element {
 
                     if (typeof specificIndex === 'number') {
                       const targetScenario = SCENARIOS[specificIndex];
-                      
+
                       let targetLevel: Level = "Schlag";
                       if (targetScenario.id >= 62) targetLevel = "Spielzug";
                       else if (targetScenario.id >= 31) targetLevel = "Laufrichtung";
                       else if (targetScenario.id >= 11) targetLevel = "Schlagrichtung";
 
                       setLevel(targetLevel);
-                      
+
                       const filteredPool = SCENARIOS.filter(s => {
                         if (targetLevel === "Schlag") return s.id <= 10;
                         if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30;
@@ -1856,13 +2013,13 @@ export default function App(): React.JSX.Element {
                       });
 
                       const localIndex = filteredPool.findIndex(s => s.id === targetScenario.id);
-                      
+
                       if (localIndex !== -1) {
                         const allIndices = shuffleIndices(filteredPool.length);
                         const poolWithoutTarget = allIndices.filter(i => i !== localIndex);
-                        const maxQuestions = 10; 
+                        const maxQuestions = 10;
                         const limitedIndices = [localIndex, ...poolWithoutTarget].slice(0, maxQuestions);
-                        
+
                         setRotation([limitedIndices[0], limitedIndices.slice(1)]);
                       }
 
@@ -1898,7 +2055,7 @@ export default function App(): React.JSX.Element {
                 transition={{ duration: 0.18 }}
                 className="w-full max-w-[1400px] mx-auto"
               >
-                <StrategyTrainer 
+                <StrategyTrainer
                   onBack={() => setActiveTab("trainer")}
                   onStrategyComplete={(points) => {
                     if (user) {
@@ -1929,15 +2086,19 @@ export default function App(): React.JSX.Element {
                 {/* 1. MASTER DASHBOARD */}
                 <div className="w-full bg-[#040914]/90 border border-orange-900/50 backdrop-blur-md p-4 lg:p-5 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-hidden mt-2">
                   <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-orange-500/80 to-transparent" />
-                  
+
                   <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
                     <div className="flex items-center justify-between lg:justify-start lg:gap-8 w-full lg:w-auto">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                           <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">
-                            {isCrashCourse ? t("crashcourse_title") : t("trainer_title")}
+                            {isWeaknessMode
+                              ? (lang === "en" ? "🎯 WEAKNESS COACH" : lang === "es" ? "🎯 COACH DE DEBILIDADES" : "🎯 SCHWÄCHEN-COACH")
+                              : isCrashCourse
+                              ? t("crashcourse_title")
+                              : t("trainer_title")}
                           </span>
-                          <button 
+                          <button
                             onClick={() => setShowTutorial(true)}
                             className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] hover:bg-slate-700 hover:text-white transition-colors"
                             title={t("trainer_tutorial_tooltip")}
@@ -1946,19 +2107,38 @@ export default function App(): React.JSX.Element {
                           </button>
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-col items-end lg:items-start pl-4 lg:pl-6 lg:border-l border-slate-700/50">
                         <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">
-                          {isCrashCourse ? t("game_lock_progress") : t("trainer_total_score")}
+                          {isCrashCourse || isWeaknessMode ? t("game_lock_progress") : t("trainer_total_score")}
                         </span>
                         <div className="text-xl lg:text-2xl leading-none font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.4)]">
-                          {isCrashCourse ? `${score} / ${CRASH_COURSE_STEPS.length}` : (user ? totalPoints : 0)}
+                          {isCrashCourse
+                            ? `${score} / ${CRASH_COURSE_STEPS.length}`
+                            : isWeaknessMode
+                            ? `${score} / ${maxScore}`
+                            : (user ? totalPoints : 0)}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 w-full lg:w-auto pt-3 lg:pt-0 border-t border-slate-800 lg:border-none">
-                      {isCrashCourse ? (
+                      {isWeaknessMode ? (
+                        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+                          <span className="px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider bg-orange-950/50 border border-orange-500/50 text-orange-300">
+                            {weaknessFocusBadgeText}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setIsWeaknessMode(false);
+                              setActiveTab("coach");
+                            }}
+                            className="px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white transition-all"
+                          >
+                            {lang === "en" ? "← Back to Coach" : lang === "es" ? "← Volver al Coach" : "← Zurück zum Coach"}
+                          </button>
+                        </div>
+                      ) : isCrashCourse ? (
                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto">
                           {CRASH_COURSE_STEPS.map((lvl, idx) => {
                             const isDone = idx < crashCourseStep || (idx === crashCourseStep && hasSubmitted && isFullyCorrect);
@@ -1982,7 +2162,7 @@ export default function App(): React.JSX.Element {
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto flex-wrap lg:flex-nowrap">
-                          
+
                           {(highestScores["Spielzug"] || 0) < 10 ? (
                             (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
                               const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
@@ -1995,10 +2175,10 @@ export default function App(): React.JSX.Element {
                                   onClick={() => !isLocked && handleLevelChange(lvl as any)}
                                   disabled={isLocked}
                                   className={`flex items-center justify-center lg:justify-between gap-2 px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
-                                    isActive 
-                                      ? "bg-cyan-950/60 border border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]" 
-                                      : isLocked 
-                                        ? "bg-slate-900/50 border border-slate-800/50 text-slate-600 cursor-not-allowed" 
+                                    isActive
+                                      ? "bg-cyan-950/60 border border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                                      : isLocked
+                                        ? "bg-slate-900/50 border border-slate-800/50 text-slate-600 cursor-not-allowed"
                                         : "bg-slate-900/30 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white"
                                   }`}
                                 >
@@ -2035,11 +2215,17 @@ export default function App(): React.JSX.Element {
                     <div className="flex flex-col w-full gap-1.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs text-slate-400 leading-relaxed">
-                          {isSimulation ? t("trainer_hint_sim") : 
-                           level === "Spielzug" ? t("trainer_hint_spielzug") : 
-                           level === "Laufrichtung" ? t("trainer_hint_lauf") : 
-                           level === "Schlag" ? t("trainer_hint_schlag") :
-                           t("trainer_hint_default")}
+                          {isWeaknessMode
+                            ? (lang === "en"
+                              ? "Targeted coach drill built from your Trainer & 3D Match weaknesses."
+                              : lang === "es"
+                              ? "Entrenamiento personalizado según tus debilidades del Entrenador y del Partido 3D."
+                              : "Gezieltes Coach-Training basierend auf deinen Lücken aus Trainer & 3D-Match.")
+                            : isSimulation ? t("trainer_hint_sim") :
+                            level === "Spielzug" ? t("trainer_hint_spielzug") :
+                            level === "Laufrichtung" ? t("trainer_hint_lauf") :
+                            level === "Schlag" ? t("trainer_hint_schlag") :
+                            t("trainer_hint_default")}
                         </p>
 
                         {isSimulation && (
@@ -2069,23 +2255,25 @@ export default function App(): React.JSX.Element {
                   <div className="flex justify-between items-center mb-1.5 gap-2">
                     <h3 className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">{t("trainer_scenario_label")} {scenario.id}</h3>
                     <span className="text-[10px] font-bold text-purple-400 truncate">
-                      {isSimulation ? simTaskBadgeText : formatLevelName(level, lang)}
+                      {isWeaknessMode ? weaknessFocusBadgeText : isSimulation ? simTaskBadgeText : formatLevelName(level, lang)}
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-slate-200 leading-snug mb-4">{scenarioDescription}</p>
-                  
+
                   <div className="mt-auto pt-3 border-t border-slate-800/50">
                     <div className="flex justify-between items-end mb-2">
                       <span className="text-[10px] font-bold tracking-widest text-orange-400 uppercase">
-                        {isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
+                        {isWeaknessMode
+                          ? (lang === "en" ? "Weakness Drill" : lang === "es" ? "Drill de Debilidades" : "Schwächen-Drill")
+                          : isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                       </span>
                       <span className="text-xs font-black text-white">
                         {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
                       </span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <motion.div 
-                        className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
+                      <motion.div
+                        className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isWeaknessMode ? 'bg-orange-500' : isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
                         initial={{ width: 0 }}
                         animate={{ width: isSimulation ? "100%" : `${(score / maxScore) * 100}%` }}
                       />
@@ -2095,34 +2283,43 @@ export default function App(): React.JSX.Element {
 
                 {/* CORE WORKSPACE */}
                 <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-3 lg:gap-5 items-start">
-                  
+
                   <div className="hidden lg:flex lg:col-span-3 flex-col gap-4 order-3 lg:order-1 w-full h-full">
                     <div className="flex flex-col bg-[#050b18]/80 border border-slate-800 rounded-xl p-5 shadow-lg relative h-full">
                       <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500 rounded-l-xl shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
                       <h3 className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-1">{t("trainer_briefing")}</h3>
                       <div className="flex items-end gap-3 mb-3">
                         <span className="text-5xl font-black text-white leading-none">{scenario.id}</span>
-                        <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider pb-1">{formatLevelName(level, lang)}</span>
+                        <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider pb-1">
+                          {isWeaknessMode ? "Coach" : formatLevelName(level, lang)}
+                        </span>
                       </div>
                       {isSimulation && (
                         <div className="mb-3 px-2.5 py-1 rounded bg-purple-950/50 border border-purple-500/40 text-[10px] font-black text-purple-300 uppercase tracking-wider self-start">
                           {simTaskBadgeText}
                         </div>
                       )}
+                      {isWeaknessMode && (
+                        <div className="mb-3 px-2.5 py-1 rounded bg-orange-950/50 border border-orange-500/40 text-[10px] font-black text-orange-300 uppercase tracking-wider self-start">
+                          {weaknessFocusBadgeText}
+                        </div>
+                      )}
                       <p className="text-sm font-semibold text-slate-200 leading-relaxed mb-8 flex-1">{scenarioDescription}</p>
-                      
+
                       <div className="mt-auto">
                         <div className="flex justify-between items-end mb-2">
                           <span className="text-[10px] font-bold tracking-widest text-cyan-400 uppercase">
-                            {isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
+                            {isWeaknessMode
+                              ? (lang === "en" ? "Weakness Drill" : lang === "es" ? "Drill de Debilidades" : "Schwächen-Drill")
+                              : isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                           </span>
                           <span className="text-xs font-black text-white">
                             {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
                           </span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
+                          <motion.div
+                            className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isWeaknessMode ? 'bg-orange-500' : isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
                             initial={{ width: 0 }}
                             animate={{ width: isSimulation ? "100%" : `${(score / maxScore) * 100}%` }}
                           />
@@ -2133,7 +2330,7 @@ export default function App(): React.JSX.Element {
 
                   <div className="lg:col-span-6 order-1 lg:order-2 w-full h-[55vh] min-h-[450px] lg:h-[650px] bg-[#030611] rounded-2xl border border-slate-800 shadow-[0_0_30px_rgba(0,0,0,0.8)] relative overflow-hidden p-1 lg:p-2">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-cyan-500/5 blur-[100px] rounded-full pointer-events-none" />
-                    
+
                     <div className="absolute inset-0 w-full h-full pb-1 lg:pb-2">
                       <ScenarioCourt25
                         level={effectiveCourtLevel as any}
@@ -2153,14 +2350,14 @@ export default function App(): React.JSX.Element {
                         bestZones={needsTarget ? (scenario.bestZones || []) : []}
                         acceptableZones={needsTarget ? acceptableZones : []}
                         onZoneClick={(zoneId: string) => { if (needsTarget) handleZoneClick(zoneId); }}
-                        profiMode={effectiveCourtLevel === "Spielzug" || effectiveCourtLevel === "Laufrichtung" || isSimulation} 
+                        profiMode={effectiveCourtLevel === "Spielzug" || effectiveCourtLevel === "Laufrichtung" || isSimulation}
                         selectedLaufZone={needsRun ? selectedLaufZone : null}
                         perfectLaufZone={hasSubmitted && needsRun ? (scenario.laufZone || null) : null}
                         acceptableLaufZones={needsRun ? acceptableLaufZones : []}
                         onLaufZoneClick={handleLaufZoneClick}
                         activeChar="you"
                         hitterId="you"
-                        feedbackMsg={feedbackMsg} 
+                        feedbackMsg={feedbackMsg}
                       />
                     </div>
                   </div>
@@ -2171,21 +2368,21 @@ export default function App(): React.JSX.Element {
                   <div className="fixed bottom-24 lg:sticky lg:bottom-4 left-4 right-4 lg:left-auto lg:right-auto z-40 w-auto lg:w-full bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-3 lg:p-4 rounded-xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)] mt-2">
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center">
                       <div className="grid grid-cols-3 gap-2 lg:gap-4 flex-1 w-full">
-                        
+
                         {/* 1. LAUFZONE */}
                         <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${needsRun ? (selectedLaufZone ? 'border-purple-500/50 bg-purple-950/20' : 'border-purple-500/40 bg-purple-950/20 shadow-[inset_0_0_15px_rgba(168,85,247,0.15)] animate-pulse') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
                           <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-purple-400 uppercase">{t("trainer_step1_run")}</span>
                           <span className="text-[10px] lg:text-xs font-bold text-white truncate">{!needsRun ? "-" : selectedLaufZone ? selectedLaufZone : t("trainer_choose")}</span>
-                        </div>         
-                        
+                        </div>
+
                         {/* 2. SCHLAGZIEL */}
                         <div className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-colors ${needsTarget ? (selectedZone ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-emerald-500/40 bg-emerald-950/20 shadow-[inset_0_0_15px_rgba(16,185,129,0.15)] animate-pulse') : 'border-slate-800/50 bg-slate-900/20 opacity-40'}`}>
                           <span className="text-[8px] lg:text-[9px] font-black tracking-widest text-emerald-400 uppercase">{t("trainer_step2_target")}</span>
                           <span className="text-[10px] lg:text-xs font-bold text-white truncate">{!needsTarget ? "-" : selectedZone ? selectedZone : t("trainer_choose")}</span>
                         </div>
-                        
+
                         {/* 3. SCHLAG (Klickbar wenn gesucht, oder mit 🔒 vorgegeben bei reinen Richtungs-Aufgaben) */}
-                        <div 
+                        <div
                           onClick={() => { if (needsShot) setIsShotModalOpen(true); }}
                           className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-all ${
                             needsShot
@@ -2204,7 +2401,7 @@ export default function App(): React.JSX.Element {
                               : t("trainer_choose")}
                           </span>
                         </div>
-                      
+
                       </div>
 
                       <button
@@ -2244,27 +2441,27 @@ export default function App(): React.JSX.Element {
                       } left-3 right-3 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-2xl z-[70] bg-[#050b18] border border-orange-500/40 p-5 rounded-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.95)] flex flex-col max-h-[75vh] touch-none`}
                     >
                       <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
-                      
+
                       <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-black tracking-widest text-orange-400 uppercase">
                           {t("trainer_shot_modal_q1")}
                         </h3>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 overflow-y-auto custom-scrollbar pb-2">
                         {visibleShots.map((shot) => {
                           const isSelected = selectedShot === shot;
-                          let btnStyle = isSelected 
-                            ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]" 
+                          let btnStyle = isSelected
+                            ? "bg-orange-600/20 border-orange-500 text-orange-300 shadow-[0_0_10px_rgba(255,119,0,0.2)]"
                             : "bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/60";
-                          
+
                           return (
                             <button
                               key={shot}
                               disabled={hasSubmitted}
                               onClick={() => {
                                 handleShotClick(shot);
-                                setIsShotModalOpen(false); 
+                                setIsShotModalOpen(false);
                               }}
                               className={`w-full flex items-center justify-center py-4 px-1 rounded-lg border text-xs font-black tracking-wider uppercase transition-all duration-200 text-center ${btnStyle}`}
                             >
@@ -2297,13 +2494,13 @@ export default function App(): React.JSX.Element {
                       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                         <div className="flex-1 text-center md:text-left flex flex-col gap-2">
                           <h3 className={`text-xl font-black uppercase tracking-widest ${
-                            isFullyCorrect ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" : 
+                            isFullyCorrect ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
                             isPartiallyCorrect ? "text-amber-400" : "text-red-500"
                           }`}>
                             {isFullyCorrect
                               ? isSimulation
                                 ? `${t("trainer_res_perfect_play")} (+20)`
-                                : level === "Spielzug"
+                                : level === "Spielzug" || isWeaknessMode
                                 ? t("trainer_res_perfect_play")
                                 : t("trainer_res_success")
                               : isPartiallyCorrect
@@ -2313,7 +2510,7 @@ export default function App(): React.JSX.Element {
                           <p className="text-slate-300 text-sm leading-relaxed max-w-3xl">
                             {scenarioExplanation}
                           </p>
-                          
+
                           <div className="flex gap-2 flex-wrap justify-center md:justify-start mt-1">
                             <span className="bg-[#030611] border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                               {t("trainer_badge_shot")} <span className="text-white">{scenario.validShots.map(s => formatShotName(s, lang)).join(" / ")}</span>
@@ -2330,7 +2527,7 @@ export default function App(): React.JSX.Element {
                             )}
                           </div>
                         </div>
-                        
+
                         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                           <button
                             onClick={() =>
@@ -2363,27 +2560,43 @@ export default function App(): React.JSX.Element {
                 {/* GAME OVER */}
                 <AnimatePresence>
                   {gameOver && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="bg-[#050b18]/90 backdrop-blur-md border border-cyan-500/40 rounded-2xl p-8 lg:p-10 flex flex-col items-center gap-6 text-center mt-4 shadow-[0_0_50px_rgba(6,182,212,0.15)] mx-4 sm:mx-0"
                     >
-                      <span className="text-6xl drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]">🏆</span>
+                      <span className="text-6xl drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]">
+                        {isWeaknessMode ? "🎯" : "🏆"}
+                      </span>
                       <div className="flex flex-col gap-1">
                         <h2 className="text-2xl lg:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-widest uppercase">
-                          {t("trainer_mastered_title")}
+                          {isWeaknessMode
+                            ? (lang === "en" ? "WEAKNESS DRILL COMPLETED!" : lang === "es" ? "¡DRILL COMPLETADO!" : "SCHWÄCHEN-DRILL GEMEISTERT!")
+                            : t("trainer_mastered_title")}
                         </h2>
                         <p className="text-sm text-slate-400">
-                          {t("trainer_mastered_desc_1")} <span className="font-bold text-white uppercase">{formatLevelName(level, lang)}</span> {t("trainer_mastered_desc_2")}
+                          {isWeaknessMode
+                            ? (lang === "en"
+                              ? "Your Coach Radar has been updated. Test it in your next 3D match!"
+                              : lang === "es"
+                              ? "Tu Radar Coach se ha actualizado. ¡Pruébalo en tu próximo partido 3D!"
+                              : "Dein Coach-Radar wurde aktualisiert. Setz es jetzt im nächsten 3D-Match um!")
+                            : (
+                              <>
+                                {t("trainer_mastered_desc_1")} <span className="font-bold text-white uppercase">{formatLevelName(level, lang)}</span> {t("trainer_mastered_desc_2")}
+                              </>
+                            )}
                         </p>
                       </div>
-                      
+
                       <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
                         <button
                           onClick={() =>
                             setSharePayload({
                               mode: "trainer_result",
-                              levelName: formatLevelName(level, lang),
+                              levelName: isWeaknessMode
+                                ? (lang === "en" ? "Weakness Coach" : lang === "es" ? "Coach Debilidades" : "Schwächen-Coach")
+                                : formatLevelName(level, lang),
                               score: maxScore,
                               maxScore,
                               totalPoints: user ? totalPoints : 0,
@@ -2395,36 +2608,49 @@ export default function App(): React.JSX.Element {
                           {t("share_trainer_result_btn")}
                         </button>
 
-                        <button 
-                          onClick={() => {
-                            if (level === "Spielzug") {
-                              setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
-                              handleLevelChange("Simulation" as Level, true);
-                            } else {
-                              const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
-                              setLockedLevels(updatedLocks);
+                        {isWeaknessMode ? (
+                          <button
+                            onClick={() => {
+                              setIsWeaknessMode(false);
+                              setGameOver(false);
+                              setActiveTab("coach");
+                            }}
+                            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-black uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(249,115,22,0.4)] hover:scale-105 transition-all"
+                          >
+                            {lang === "en" ? "BACK TO COACH →" : lang === "es" ? "VOLVER AL COACH →" : "ZUM COACH-RADAR →"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (level === "Spielzug") {
+                                setLockedLevels(prev => prev.filter(l => l !== "Simulation"));
+                                handleLevelChange("Simulation" as Level, true);
+                              } else {
+                                const updatedLocks = lockedLevels.includes(level) ? lockedLevels : [...lockedLevels, level];
+                                setLockedLevels(updatedLocks);
 
-                              const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
-                              const currentIndex = TRAINER_SEQUENCE.indexOf(level);
-                              let nextLevel: Level = "Spielzug";
+                                const updatedScores = { ...highestScores, [level]: Math.max(highestScores[level] || 0, 10) };
+                                const currentIndex = TRAINER_SEQUENCE.indexOf(level);
+                                let nextLevel: Level = "Spielzug";
 
-                              for (let i = currentIndex + 1; i < TRAINER_SEQUENCE.length; i++) {
-                                const candidate = TRAINER_SEQUENCE[i];
-                                const isClosed = updatedLocks.includes(candidate) && candidate !== "Spielzug";
-                                if (!isClosed) {
-                                  nextLevel = candidate;
-                                  break;
+                                for (let i = currentIndex + 1; i < TRAINER_SEQUENCE.length; i++) {
+                                  const candidate = TRAINER_SEQUENCE[i];
+                                  const isClosed = updatedLocks.includes(candidate) && candidate !== "Spielzug";
+                                  if (!isClosed) {
+                                    nextLevel = candidate;
+                                    break;
+                                  }
                                 }
-                              }
 
-                              updateHighScore(level, updatedScores[level]);
-                              handleLevelChange(nextLevel, true);
-                            }
-                          }}
-                          className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
-                        >
-                          {level === "Spielzug" ? t("trainer_start_pro_rallye") : t("trainer_start_next_lvl")}
-                        </button>
+                                updateHighScore(level, updatedScores[level]);
+                                handleLevelChange(nextLevel, true);
+                              }
+                            }}
+                            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white uppercase tracking-[0.2em] font-black text-xs rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-all"
+                          >
+                            {level === "Spielzug" ? t("trainer_start_pro_rallye") : t("trainer_start_next_lvl")}
+                          </button>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -2446,7 +2672,7 @@ export default function App(): React.JSX.Element {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 text-primary text-3xl">
                   🎾
                 </div>
-                
+
                 <div className="text-center mb-2">
                   <h2 className="text-2xl font-black text-primary tracking-wide">
                     {isSignUp ? t("login_title_signup") : t("login_title_signin")}
@@ -2464,7 +2690,7 @@ export default function App(): React.JSX.Element {
 
                 <AnimatePresence>
                   {authMsg && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                       className={`w-full p-3 rounded-lg text-xs font-bold text-center border ${authMsg.type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}
                     >
@@ -2491,7 +2717,7 @@ export default function App(): React.JSX.Element {
                     minLength={6}
                     className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-xl text-foreground text-sm font-semibold outline-none transition-colors"
                   />
-                  
+
                   <button
                     type="submit"
                     disabled={authLoading}
@@ -2556,7 +2782,11 @@ export default function App(): React.JSX.Element {
 
             {/* PROFILE TAB */}
             {activeTab === "profile" && user && (
-              <ProfileTab key="profile-page" user={user} setActiveTab={(t) => handleTabChange(t as Tab)} />
+              <ProfileTab
+                key="profile-page"
+                user={user}
+                setActiveTab={(t) => handleTabChange(t as Tab)}
+              />
             )}
 
             {/* GAME SCREEN */}
@@ -2596,14 +2826,14 @@ export default function App(): React.JSX.Element {
               </motion.div>
             )}
 
-          </AnimatePresence>  
-        </div>   
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* --- SHARE CARD & RATING MODALS --- */}
       <ShareCardModal payload={sharePayload} onClose={() => setSharePayload(null)} />
       <RatingPromptModal isOpen={showRatingModal} onClose={() => setShowRatingModal(false)} />
-      
+
       <Navigation activeTab={activeTab as any} setActiveTab={handleTabChange as any} />
 
     </div>
