@@ -373,6 +373,25 @@ export function recordMatchTurn(params: {
 }
 
 // =========================================================================
+// 2b. DEFENSIV- & STELLUNGSFEHLER IM MATCH (Ball im Timer nicht erlaufen)
+// =========================================================================
+export function recordMatchDefenseError(params: {
+  userId?: string | null;
+  incomingShot?: string | null;
+  reason: "missed_time" | "wrong_zone" | "smash_over_head";
+}): TacticCoachStats {
+  const stats = loadLocalCoachStats(params.userId);
+
+  stats.match.totalTurns += 1;
+  addScore(stats.match.axes.positioning, 0);
+  addScore(stats.match.axes.defense, params.reason === "missed_time" ? 25 : 0);
+  stats.matchErrors.positioningErrors += 1;
+
+  persistCoachStats(params.userId, stats);
+  return stats;
+}
+
+// =========================================================================
 // 3. COACH-ANALYSE: VERGLEICH TRAINER VS. 3D-MATCH
 // =========================================================================
 export function analyzeCoachStats(stats: TacticCoachStats): CoachSummary {
