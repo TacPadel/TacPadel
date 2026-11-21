@@ -28,7 +28,8 @@ import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
-const REQUIRED_TACTICS_FOR_GAME = 3;
+const CRASH_COURSE_STEPS: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
+const CRASH_COURSE_BONUS_POINTS = 1500;
 
 type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
 
@@ -43,6 +44,32 @@ const SIM_TASK_TYPES: SimTaskType[] = [
   "target_run",
   "full",
 ];
+
+// Hilfsfunktion: Wählt für einen Crashkurs-Schritt einen passenden Szenario-Index im jeweiligen Level-Pool
+function pickCrashCourseScenarioIndex(targetLevel: Level): number {
+  const pool = SCENARIOS.filter((s) => {
+    if (targetLevel === "Schlag") return s.id <= 10;
+    if (targetLevel === "Schlagrichtung") return s.id >= 1 && s.id <= 30;
+    if (targetLevel === "Laufrichtung") return s.id >= 31 && s.id <= 61;
+    if (targetLevel === "Spielzug") return s.id >= 62;
+    return true;
+  });
+
+  const validIndices: number[] = [];
+  pool.forEach((s, idx) => {
+    const hasTarget = Array.isArray(s.bestZones) && s.bestZones.length > 0;
+    const hasRun = Boolean(s.laufZone);
+    if (targetLevel === "Schlag") validIndices.push(idx);
+    else if (targetLevel === "Schlagrichtung" && hasTarget) validIndices.push(idx);
+    else if (targetLevel === "Laufrichtung" && hasRun) validIndices.push(idx);
+    else if (targetLevel === "Spielzug" && hasTarget && hasRun) validIndices.push(idx);
+  });
+
+  if (validIndices.length > 0) {
+    return validIndices[Math.floor(Math.random() * validIndices.length)];
+  }
+  return pool.length > 0 ? Math.floor(Math.random() * pool.length) : 0;
+}
 
 // Prüft, ob ein Szenario die nötigen Felder für den jeweiligen Simulations-Aufgabentyp besitzt
 function scenarioSupportsSimTask(s: Scenario, task: SimTaskType): boolean {
@@ -245,15 +272,15 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
 function GameLockedModal({
   solvedCount,
   requiredCount,
-  onGoToTrainer,
+  onStartCrashCourse,
   onClose,
 }: {
   solvedCount: number;
   requiredCount: number;
-  onGoToTrainer: () => void;
+  onStartCrashCourse: () => void;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { lang, t } = useTranslation();
   const clampedSolved = Math.min(solvedCount, requiredCount);
   const progressPct = Math.round((clampedSolved / requiredCount) * 100);
 
@@ -263,7 +290,7 @@ function GameLockedModal({
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(249,115,22,0.2)] max-w-md w-full flex flex-col gap-5 text-center relative overflow-hidden"
+        className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(249,115,22,0.2)] max-w-md w-full max-h-[86vh] overflow-y-auto flex flex-col gap-5 text-center relative"
       >
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-cyan-500" />
 
@@ -280,14 +307,37 @@ function GameLockedModal({
           </p>
         </div>
 
-        {/* Fortschrittsbalken */}
-        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-3.5 flex flex-col gap-2">
+        {/* 4-Schritte-Übersicht + Fortschrittsbalken */}
+        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-3.5 flex flex-col gap-3">
           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
             <span className="text-slate-400">{t("game_lock_progress")}</span>
             <span className="text-orange-400">
               {clampedSolved} / {requiredCount}
             </span>
           </div>
+
+          <div className="grid grid-cols-2 gap-1.5 text-left">
+            {CRASH_COURSE_STEPS.map((stepLvl, idx) => {
+              const done = idx < clampedSolved;
+              const isNext = idx === clampedSolved;
+              return (
+                <div
+                  key={stepLvl}
+                  className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-bold flex items-center gap-1.5 ${
+                    done
+                      ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                      : isNext
+                      ? "bg-cyan-950/40 border-cyan-500/50 text-cyan-200"
+                      : "bg-slate-900/50 border-slate-800 text-slate-500"
+                  }`}
+                >
+                  <span>{done ? "✓" : `${idx + 1}.`}</span>
+                  <span className="truncate">{formatLevelName(stepLvl, lang)}</span>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-orange-500 to-cyan-400 transition-all duration-500"
@@ -296,16 +346,21 @@ function GameLockedModal({
           </div>
         </div>
 
+        {/* Bonus-Hinweis */}
+        <div className="w-full bg-emerald-950/30 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-[11px] font-bold text-emerald-300 leading-snug">
+          🎁 {t("game_lock_bonus_hint")}
+        </div>
+
         <div className="flex flex-col gap-2.5 mt-1">
           <button
-            onClick={onGoToTrainer}
-            className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-black text-xs tracking-[0.18em] uppercase shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
+            onClick={onStartCrashCourse}
+            className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-black text-xs tracking-[0.16em] uppercase shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
           >
-            {t("game_lock_btn_trainer")}
+            {clampedSolved > 0 ? t("game_lock_btn_resume") : t("game_lock_btn_trainer")}
           </button>
           <button
             onClick={onClose}
-            className="w-full py-2.5 text-[11px] font-bold text-slate-400 hover:text-white uppercase tracking-widest transition-colors"
+            className="w-full py-2 text-[11px] font-bold text-slate-400 hover:text-white uppercase tracking-widest transition-colors"
           >
             {t("game_lock_btn_close")}
           </button>
@@ -317,11 +372,11 @@ function GameLockedModal({
 
 function GuestSignupPromptModal({
   onSignUp,
-  onPlayAsGuest,
+  onGoToGameTab,
   onClose,
 }: {
   onSignUp: () => void;
-  onPlayAsGuest: () => void;
+  onGoToGameTab: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -332,15 +387,15 @@ function GuestSignupPromptModal({
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="bg-[#050b18] border border-emerald-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-md w-full flex flex-col gap-5 text-center relative overflow-hidden"
+        className="bg-[#050b18] border border-emerald-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-md w-full max-h-[86vh] overflow-y-auto flex flex-col gap-5 text-center relative"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500" />
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400" />
 
         <div className="flex flex-col items-center gap-2">
           <div className="w-16 h-16 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-center text-3xl shadow-[inset_0_0_15px_rgba(16,185,129,0.25)]">
-            🔓
+            🏆
           </div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 px-3 py-1 rounded-full">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300 bg-amber-950/50 border border-amber-500/40 px-3 py-1 rounded-full">
             {t("guest_unlock_badge")}
           </span>
         </div>
@@ -354,17 +409,17 @@ function GuestSignupPromptModal({
           </p>
         </div>
 
-        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-4 flex flex-col gap-2 text-left text-xs font-semibold text-slate-300">
+        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-4 flex flex-col gap-2.5 text-left text-xs font-semibold text-slate-300">
           <div className="flex items-center gap-2.5">
-            <span className="text-emerald-400 font-black">✓</span>
-            <span>{t("guest_unlock_b1")}</span>
+            <span className="text-amber-400 font-black">🎁</span>
+            <span className="text-amber-200 font-bold">{t("guest_unlock_b1")}</span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="text-cyan-400 font-black">✓</span>
+            <span className="text-emerald-400 font-black">✓</span>
             <span>{t("guest_unlock_b2")}</span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="text-orange-400 font-black">✓</span>
+            <span className="text-cyan-400 font-black">✓</span>
             <span>{t("guest_unlock_b3")}</span>
           </div>
         </div>
@@ -372,12 +427,12 @@ function GuestSignupPromptModal({
         <div className="flex flex-col gap-2.5 mt-1">
           <button
             onClick={onSignUp}
-            className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black rounded-xl font-black text-xs tracking-[0.16em] uppercase shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
+            className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black rounded-xl font-black text-xs tracking-[0.14em] uppercase shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
           >
             {t("guest_unlock_btn_signup")}
           </button>
           <button
-            onClick={onPlayAsGuest}
+            onClick={onGoToGameTab}
             className="w-full py-3 bg-orange-950/40 hover:bg-orange-900/50 border border-orange-500/40 text-orange-300 rounded-xl font-black text-[11px] tracking-[0.15em] uppercase transition-all"
           >
             {t("guest_unlock_btn_game")}
@@ -559,9 +614,25 @@ export default function App(): React.JSX.Element {
   const [isShotModalOpen, setIsShotModalOpen] = useState(false);
   const [level, setLevel] = useState<Level>("Schlag");
   const [simTaskType, setSimTaskType] = useState<SimTaskType>("full");
+
+  // --- 4/4 GÄSTE-CRASHKURS & 1500-TACSCORE-STARTBONUS ---
+  const [isCrashCourse, setIsCrashCourse] = useState(false);
+  const [crashCourseStep, setCrashCourseStep] = useState(0);
+  const [crashCourseProgress, setCrashCourseProgress] = useState<number>(() => {
+    const saved = parseInt(localStorage.getItem("tacpadel_guest_crashcourse_progress") || "0", 10);
+    return isNaN(saved) ? 0 : Math.min(saved, CRASH_COURSE_STEPS.length);
+  });
+  const [crashCourseDone, setCrashCourseDone] = useState<boolean>(
+    () => localStorage.getItem("tacpadel_guest_crashcourse_done") === "true"
+  );
+  const [showGameLockedModal, setShowGameLockedModal] = useState(false);
+  const [showGameUnlockedToast, setShowGameUnlockedToast] = useState(false);
+  const [showBonusClaimedToast, setShowBonusClaimedToast] = useState(false);
+  const [pendingGuestSignupPrompt, setPendingGuestSignupPrompt] = useState(false);
+  const [showGuestSignupModal, setShowGuestSignupModal] = useState(false);
   
-  const isSimulation = (level as string) === "Simulation";
-  const maxScore = 10;
+  const isSimulation = !isCrashCourse && (level as string) === "Simulation";
+  const maxScore = isCrashCourse ? CRASH_COURSE_STEPS.length : 10;
 
   const [[currentScenarioIndex, rotationPool], setRotation] = useState<[number, number[]]>(() => {
     const initialCount = SCENARIOS.filter(s => s.id <= 10).length; 
@@ -593,39 +664,43 @@ export default function App(): React.JSX.Element {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
 
-  // --- GAME-MODUS SPERRE & GÄSTE-EINLADUNG ---
-  const [localSolvedCount, setLocalSolvedCount] = useState<number>(() => {
-    const saved = parseInt(localStorage.getItem("tacpadel_tactics_solved") || "0", 10);
-    return isNaN(saved) ? 0 : saved;
-  });
-  const [showGameLockedModal, setShowGameLockedModal] = useState(false);
-  const [showGameUnlockedToast, setShowGameUnlockedToast] = useState(false);
-  const [pendingGuestSignupPrompt, setPendingGuestSignupPrompt] = useState(false);
-  const [showGuestSignupModal, setShowGuestSignupModal] = useState(false);
+  // Trennung: Eingeloggte Nutzer kommen direkt in den Game-Tab (dort greift die 1500-TacScore-Hürde).
+  // Gäste schalten den Game-Tab über den 4/4-Crashkurs frei.
+  const isGameUnlocked = Boolean(user) || crashCourseDone;
 
-  const solvedTacticsCount = useMemo(() => {
-    const sumFromHighScores = Object.values(highestScores || {}).reduce(
-      (acc, val) => acc + (typeof val === "number" ? val : 0),
-      0
-    );
-    return Math.max(sumFromHighScores, score, localSolvedCount);
-  }, [highestScores, score, localSolvedCount]);
+  // Startet (oder setzt fort) den 4-Schritte-Crashkurs für Gäste
+  const startGuestCrashCourse = () => {
+    const startStep = Math.min(crashCourseProgress, CRASH_COURSE_STEPS.length - 1);
+    const stepLevel = CRASH_COURSE_STEPS[startStep];
+    const scenarioIdx = pickCrashCourseScenarioIndex(stepLevel);
 
-  // Bestandsspieler mit vorhandenen Punkten bleiben automatisch entsperrt
-  const isGameUnlocked = useMemo(() => {
-    if (solvedTacticsCount >= REQUIRED_TACTICS_FOR_GAME) return true;
-    if (user && (totalPoints > 0 || (dbProfile?.tac_points || 0) > 0)) return true;
-    return false;
-  }, [solvedTacticsCount, user, totalPoints, dbProfile?.tac_points]);
+    setShowGameLockedModal(false);
+    setIsCrashCourse(true);
+    setCrashCourseStep(startStep);
+    setLevel(stepLevel);
+    setRotation([scenarioIdx, []]);
+    setSelectedShot(null);
+    setSelectedZone(null);
+    setSelectedLaufZone(null);
+    setHasSubmitted(false);
+    setScore(startStep);
+    setRoundsPlayed(startStep);
+    setWrongPool([]);
+    setIsRetryPhase(false);
+    setGameOver(false);
+    setShowRetryBanner(false);
+    setFeedbackMsg(null);
+    setAttempts(0);
+    setActiveTab("trainer");
+  };
 
-  // Zentraler Tab-Wechsler: blockiert "game", solange noch keine 3 Übungen gelöst wurden
+  // Zentraler Tab-Wechsler: blockiert "game" für Gäste vor Abschluss des 4/4-Crashkurses
   const handleTabChange = (nextTab: Tab) => {
     if (nextTab === "game" && !isGameUnlocked) {
       setShowGameLockedModal(true);
       return;
     }
 
-    // Falls ein Gast gerade freigeschaltet hat und direkt ins Match will, einmalig Konto-Einladung zeigen
     if (nextTab === "game" && !user && pendingGuestSignupPrompt) {
       setPendingGuestSignupPrompt(false);
       sessionStorage.setItem("tacpadel_guest_signup_shown", "true");
@@ -633,15 +708,62 @@ export default function App(): React.JSX.Element {
       return;
     }
 
+    if (nextTab !== "trainer" && isCrashCourse) {
+      setIsCrashCourse(false);
+    }
+
     setActiveTab(nextTab);
   };
 
-  // Sicherheitsnetz: Falls "game" aus localStorage geladen wurde, aber gesperrt ist
+  // Sicherheitsnetz: Falls "game" aus localStorage geladen wurde, aber für den Gast gesperrt ist
   useEffect(() => {
     if (isProgressLoaded && activeTab === "game" && !isGameUnlocked) {
       setActiveTab("home");
     }
   }, [isProgressLoaded, activeTab, isGameUnlocked]);
+
+  // Schreibt den 1.500-TacScore-Startbonus automatisch gut, sobald ein Crashkurs-Absolvent sich registriert/anmeldet
+  useEffect(() => {
+    const claimCrashCourseBonus = async () => {
+      if (!user?.id) return;
+      if (localStorage.getItem("tacpadel_pending_crashcourse_bonus") !== "true") return;
+
+      // Flag sofort entfernen, damit der Bonus nicht mehrfach vergeben wird
+      localStorage.removeItem("tacpadel_pending_crashcourse_bonus");
+      localStorage.setItem("tacpadel_guest_crashcourse_done", "true");
+      setCrashCourseDone(true);
+      setIsCrashCourse(false);
+
+      const { data: existing } = await supabase
+        .from("user_stats")
+        .select("points")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const currentDbPoints = existing?.points || 0;
+      if (currentDbPoints < CRASH_COURSE_BONUS_POINTS) {
+        const diff = CRASH_COURSE_BONUS_POINTS - currentDbPoints;
+        localStorage.setItem("tacpadel_score", String(CRASH_COURSE_BONUS_POINTS));
+
+        await supabase
+          .from("user_stats")
+          .upsert(
+            {
+              id: user.id,
+              email: user.email,
+              points: CRASH_COURSE_BONUS_POINTS,
+            },
+            { onConflict: "id" }
+          );
+
+        addPoints(diff);
+        setShowBonusClaimedToast(true);
+        setTimeout(() => setShowBonusClaimedToast(false), 5000);
+      }
+    };
+
+    claimCrashCourseBonus();
+  }, [user]);
 
   // Öffnet ein per Link geteiltes Szenario direkt im Taktik-Trainer (?scenario=ID)
   const openSharedScenarioById = (targetId: number): boolean => {
@@ -665,6 +787,7 @@ export default function App(): React.JSX.Element {
       .filter((i) => i !== localIdx)
       .slice(0, 9);
 
+    setIsCrashCourse(false);
     setLevel(targetLevel);
     setRotation([localIdx, rest]);
     setSelectedShot(null);
@@ -707,7 +830,7 @@ export default function App(): React.JSX.Element {
   }, [gameOver]);
 
   // Easy-Mode ist überall (auch in der Simulation) fest aktiv;
-  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi aktiv und in der Simulation deaktiviert.
+  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi & im Crashkurs aktiv und in der Simulation deaktiviert.
   const activeEasyMode = true;
   const activeCorrectionMode = !isSimulation;
 
@@ -924,7 +1047,7 @@ export default function App(): React.JSX.Element {
   }, [isProgressLoaded, activeSession, hasRestored, user, highestScores, lockedLevels, setLockedLevels, clearActiveSession]);
 
   useEffect(() => {
-    if (hasRestored && user && !gameOver) {
+    if (hasRestored && user && !gameOver && !isCrashCourse) {
       saveActiveSession({
         level, 
         score, 
@@ -944,7 +1067,7 @@ export default function App(): React.JSX.Element {
     if (gameOver && hasRestored) {
       clearActiveSession();
     }
-  }, [level, score, hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver]);
+  }, [level, score, hasSubmitted, currentScenarioIndex, hasRestored, user, gameOver, isCrashCourse]);
 
   useEffect(() => {
     if (user && activeTab === "login") {
@@ -1249,27 +1372,37 @@ export default function App(): React.JSX.Element {
 
     if (isFullyCorrect) {
       setHasSubmitted(true);
-      
+      setFeedbackMsg(null);
+
+      // --- SPEZIALFALL: 4/4 GÄSTE-CRASHKURS ---
+      if (isCrashCourse) {
+        const completedSteps = crashCourseStep + 1;
+        setScore(completedSteps);
+        setRoundsPlayed(completedSteps);
+
+        const nextProgress = Math.max(crashCourseProgress, completedSteps);
+        setCrashCourseProgress(nextProgress);
+        localStorage.setItem("tacpadel_guest_crashcourse_progress", String(nextProgress));
+
+        if (completedSteps >= CRASH_COURSE_STEPS.length) {
+          setCrashCourseDone(true);
+          localStorage.setItem("tacpadel_guest_crashcourse_done", "true");
+          localStorage.setItem("tacpadel_pending_crashcourse_bonus", "true");
+          setShowGameUnlockedToast(true);
+          setTimeout(() => setShowGameUnlockedToast(false), 4500);
+
+          if (!user && !sessionStorage.getItem("tacpadel_guest_signup_shown")) {
+            setPendingGuestSignupPrompt(true);
+          }
+        }
+        return;
+      }
+
       const newScore = score + 1;
       setScore(newScore);
       updateHighScore(level, newScore);
 
-      const nextLocalSolved = localSolvedCount + 1;
-      setLocalSolvedCount(nextLocalSolved);
-      localStorage.setItem("tacpadel_tactics_solved", String(nextLocalSolved));
-
-      const nextSolvedCount = Math.max(solvedTacticsCount, newScore, nextLocalSolved);
-      if (!isGameUnlocked && nextSolvedCount >= REQUIRED_TACTICS_FOR_GAME) {
-        setShowGameUnlockedToast(true);
-        setTimeout(() => setShowGameUnlockedToast(false), 4500);
-
-        if (!user && !sessionStorage.getItem("tacpadel_guest_signup_shown")) {
-          setPendingGuestSignupPrompt(true);
-        }
-      }
-
       setRoundsPlayed((r) => r + 1);
-      setFeedbackMsg(null);
 
       // Punkte-Ausbeute:
       // - Simulation: +20 Punkte
@@ -1322,11 +1455,42 @@ export default function App(): React.JSX.Element {
   };
 
   const nextRound = () => {
-    // Gäste direkt nach dem Lesen der 3. Erklärung sanft zum Konto-Anlegen einladen
-    if (!user && pendingGuestSignupPrompt) {
-      setPendingGuestSignupPrompt(false);
-      sessionStorage.setItem("tacpadel_guest_signup_shown", "true");
-      setShowGuestSignupModal(true);
+    // --- SPEZIALFALL: 4/4 GÄSTE-CRASHKURS ---
+    if (isCrashCourse) {
+      const nextStep = crashCourseStep + 1;
+      if (nextStep < CRASH_COURSE_STEPS.length) {
+        const nextLevel = CRASH_COURSE_STEPS[nextStep];
+        const nextIdx = pickCrashCourseScenarioIndex(nextLevel);
+        setCrashCourseStep(nextStep);
+        setLevel(nextLevel);
+        setRotation([nextIdx, []]);
+        setSelectedShot(null);
+        setSelectedZone(null);
+        setSelectedLaufZone(null);
+        setHasSubmitted(false);
+        setFeedbackMsg(null);
+        setAttempts(0);
+        return;
+      }
+
+      // Alle 4 Schritte abgeschlossen → Crashkurs beenden & Gäste-Einladung mit 1500-Bonus zeigen
+      setIsCrashCourse(false);
+      setLevel("Schlag");
+      initPoolForLevel("Schlag");
+      setSelectedZone(null);
+      setSelectedLaufZone(null);
+      setHasSubmitted(false);
+      setScore(0);
+      setRoundsPlayed(0);
+      setFeedbackMsg(null);
+      setAttempts(0);
+
+      if (!user && pendingGuestSignupPrompt) {
+        setPendingGuestSignupPrompt(false);
+        sessionStorage.setItem("tacpadel_guest_signup_shown", "true");
+        setShowGuestSignupModal(true);
+      }
+      return;
     }
 
     if (isSimulation) {
@@ -1386,6 +1550,7 @@ export default function App(): React.JSX.Element {
   };
 
   const handleLevelChange = (newLevel: Level, force: boolean = false) => {
+    if (isCrashCourse) setIsCrashCourse(false);
     if (newLevel === level && !force && !gameOver) return;
     clearActiveSession();
     setLevel(newLevel);
@@ -1410,7 +1575,10 @@ export default function App(): React.JSX.Element {
     localStorage.clear();
     sessionStorage.clear();
     clearActiveSession();
-    setLocalSolvedCount(0);
+    setIsCrashCourse(false);
+    setCrashCourseStep(0);
+    setCrashCourseProgress(0);
+    setCrashCourseDone(false);
     setPendingGuestSignupPrompt(false);
     setLevel("Schlag");
     setScore(0);
@@ -1564,24 +1732,19 @@ export default function App(): React.JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* --- GAME LOCKED MODAL --- */}
+      {/* --- GAME LOCKED MODAL (NUR FÜR GÄSTE VOR 4/4 CRASHKURS) --- */}
       <AnimatePresence>
-        {showGameLockedModal && (
+        {showGameLockedModal && !user && (
           <GameLockedModal
-            solvedCount={solvedTacticsCount}
-            requiredCount={REQUIRED_TACTICS_FOR_GAME}
+            solvedCount={crashCourseProgress}
+            requiredCount={CRASH_COURSE_STEPS.length}
             onClose={() => setShowGameLockedModal(false)}
-            onGoToTrainer={() => {
-              setShowGameLockedModal(false);
-              const nextOpenLevel = getTargetProgressionLevel(highestScores, lockedLevels);
-              handleLevelChange(nextOpenLevel, true);
-              setActiveTab("trainer");
-            }}
+            onStartCrashCourse={startGuestCrashCourse}
           />
         )}
       </AnimatePresence>
 
-      {/* --- GÄSTE-EINLADUNG ZUM KONTO-ANLEGEN NACH FREISCHALTUNG --- */}
+      {/* --- GÄSTE-EINLADUNG MIT 1.500 TACSCORE STARTBONUS --- */}
       <AnimatePresence>
         {showGuestSignupModal && !user && (
           <GuestSignupPromptModal
@@ -1590,7 +1753,7 @@ export default function App(): React.JSX.Element {
               setIsSignUp(true);
               setActiveTab("login");
             }}
-            onPlayAsGuest={() => {
+            onGoToGameTab={() => {
               setShowGuestSignupModal(false);
               setActiveTab("game");
             }}
@@ -1599,7 +1762,7 @@ export default function App(): React.JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* --- FREISCHALT-TOAST NACH 3 ÜBUNGEN --- */}
+      {/* --- FREISCHALT-TOAST NACH 4/4 CRASHKURS --- */}
       <AnimatePresence>
         {showGameUnlockedToast && (
           <motion.div
@@ -1611,6 +1774,23 @@ export default function App(): React.JSX.Element {
             <span className="text-lg">🔓</span>
             <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
               {t("game_unlocked_toast")}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- BONUS-TOAST NACH REGISTRIERUNG (+1.500 TACSCORE) --- */}
+      <AnimatePresence>
+        {showBonusClaimedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[180] w-[92%] max-w-md bg-[#050b18]/95 border border-amber-400/70 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2.5 text-center"
+          >
+            <span className="text-lg">🎁</span>
+            <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
+              {t("bonus_claimed_toast")}
             </span>
           </motion.div>
         )}
@@ -1635,8 +1815,8 @@ export default function App(): React.JSX.Element {
                 <HomeView 
                   setActiveTab={handleTabChange}
                   isGameUnlocked={isGameUnlocked}
-                  gameUnlockProgress={Math.min(solvedTacticsCount, REQUIRED_TACTICS_FOR_GAME)}
-                  gameUnlockRequired={REQUIRED_TACTICS_FOR_GAME}
+                  gameUnlockProgress={crashCourseDone ? CRASH_COURSE_STEPS.length : crashCourseProgress}
+                  gameUnlockRequired={CRASH_COURSE_STEPS.length}
                   currentScore={user ? totalPoints : 0}
                   onDailyReward={(pts) => { if (user) { addPoints(pts); updateSupabaseScore(totalPoints + pts); } }}
                   currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0} 
@@ -1650,6 +1830,7 @@ export default function App(): React.JSX.Element {
                     setSelectedPublicUserTab(listType === "season" ? "tournament" : "single");
                   }}
                   onQuickStart={(specificIndex?: number) => {
+                    setIsCrashCourse(false);
                     if ((highestScores["Spielzug"] || 0) >= 10) {
                       handleLevelChange("Simulation" as Level, true);
                       setActiveTab("trainer");
@@ -1753,7 +1934,9 @@ export default function App(): React.JSX.Element {
                     <div className="flex items-center justify-between lg:justify-start lg:gap-8 w-full lg:w-auto">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">{t("trainer_title")}</span>
+                          <span className="text-sm lg:text-base font-bold text-orange-500 tracking-widest uppercase">
+                            {isCrashCourse ? t("crashcourse_title") : t("trainer_title")}
+                          </span>
                           <button 
                             onClick={() => setShowTutorial(true)}
                             className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] hover:bg-slate-700 hover:text-white transition-colors"
@@ -1765,60 +1948,86 @@ export default function App(): React.JSX.Element {
                       </div>
                       
                       <div className="flex flex-col items-end lg:items-start pl-4 lg:pl-6 lg:border-l border-slate-700/50">
-                        <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">{t("trainer_total_score")}</span>
+                        <span className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-0.5">
+                          {isCrashCourse ? t("game_lock_progress") : t("trainer_total_score")}
+                        </span>
                         <div className="text-xl lg:text-2xl leading-none font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.4)]">
-                          {user ? totalPoints : 0}
+                          {isCrashCourse ? `${score} / ${CRASH_COURSE_STEPS.length}` : (user ? totalPoints : 0)}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 w-full lg:w-auto pt-3 lg:pt-0 border-t border-slate-800 lg:border-none">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto flex-wrap lg:flex-nowrap">
-                        
-                        {(highestScores["Spielzug"] || 0) < 10 ? (
-                          (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
-                            const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
-                            const isProgLocked = !isProgressionUnlocked(lvl);
-                            const isLocked = isPenaltyLocked || isProgLocked;
-                            const isActive = level === lvl;
+                      {isCrashCourse ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto">
+                          {CRASH_COURSE_STEPS.map((lvl, idx) => {
+                            const isDone = idx < crashCourseStep || (idx === crashCourseStep && hasSubmitted && isFullyCorrect);
+                            const isCurrent = idx === crashCourseStep && !isDone;
                             return (
-                              <button
+                              <div
                                 key={lvl}
-                                onClick={() => !isLocked && handleLevelChange(lvl as any)}
-                                disabled={isLocked}
-                                className={`flex items-center justify-center lg:justify-between gap-2 px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
-                                  isActive 
-                                    ? "bg-cyan-950/60 border border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]" 
-                                    : isLocked 
-                                      ? "bg-slate-900/50 border border-slate-800/50 text-slate-600 cursor-not-allowed" 
-                                      : "bg-slate-900/30 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white"
+                                className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
+                                  isDone
+                                    ? "bg-emerald-950/60 border-emerald-500/60 text-emerald-300"
+                                    : isCurrent
+                                    ? "bg-cyan-950/60 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                                    : "bg-slate-900/40 border-slate-800 text-slate-500"
                                 }`}
                               >
+                                <span>{isDone ? "✓" : `${idx + 1}.`}</span>
                                 <span>{formatLevelName(lvl, lang)}</span>
-                                {isLocked && <span className="text-slate-600">🔒</span>}
-                              </button>
+                              </div>
                             );
-                          })
-                        ) : (
-                          <button
-                            onClick={() => handleLevelChange("Simulation" as Level)}
-                            className={`col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                              isSimulation
-                                ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.6)] border border-purple-400 animate-pulse"
-                                : "bg-purple-950/40 border border-purple-800 text-purple-300 hover:bg-purple-900/60"
-                            }`}
-                          >
-                            <span>{t("trainer_pro_rallye")}</span>
-                          </button>
-                        )}
+                          })}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex gap-2 w-full lg:w-auto flex-wrap lg:flex-nowrap">
+                          
+                          {(highestScores["Spielzug"] || 0) < 10 ? (
+                            (["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"] as const).map((lvl) => {
+                              const isPenaltyLocked = lockedLevels.includes(lvl as any) && lvl !== "Spielzug";
+                              const isProgLocked = !isProgressionUnlocked(lvl);
+                              const isLocked = isPenaltyLocked || isProgLocked;
+                              const isActive = level === lvl;
+                              return (
+                                <button
+                                  key={lvl}
+                                  onClick={() => !isLocked && handleLevelChange(lvl as any)}
+                                  disabled={isLocked}
+                                  className={`flex items-center justify-center lg:justify-between gap-2 px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                                    isActive 
+                                      ? "bg-cyan-950/60 border border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]" 
+                                      : isLocked 
+                                        ? "bg-slate-900/50 border border-slate-800/50 text-slate-600 cursor-not-allowed" 
+                                        : "bg-slate-900/30 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white"
+                                  }`}
+                                >
+                                  <span>{formatLevelName(lvl, lang)}</span>
+                                  {isLocked && <span className="text-slate-600">🔒</span>}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <button
+                              onClick={() => handleLevelChange("Simulation" as Level)}
+                              className={`col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
+                                isSimulation
+                                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.6)] border border-purple-400 animate-pulse"
+                                  : "bg-purple-950/40 border border-purple-800 text-purple-300 hover:bg-purple-900/60"
+                              }`}
+                            >
+                              <span>{t("trainer_pro_rallye")}</span>
+                            </button>
+                          )}
 
-                        <button
-                          onClick={() => setActiveTab("strategy")}
-                          className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
-                        >
-                          <span>{t("trainer_strategies")}</span>
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => setActiveTab("strategy")}
+                            className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
+                          >
+                            <span>{t("trainer_strategies")}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1836,6 +2045,12 @@ export default function App(): React.JSX.Element {
                         {isSimulation && (
                           <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-purple-950/60 border border-purple-500/50 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.25)]">
                             {simTaskBadgeText}
+                          </span>
+                        )}
+
+                        {isCrashCourse && (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-amber-950/60 border border-amber-500/50 text-amber-300">
+                            🚀 {t("crashcourse_step_label")} {crashCourseStep + 1} / {CRASH_COURSE_STEPS.length}
                           </span>
                         )}
                       </div>
@@ -1862,7 +2077,7 @@ export default function App(): React.JSX.Element {
                   <div className="mt-auto pt-3 border-t border-slate-800/50">
                     <div className="flex justify-between items-end mb-2">
                       <span className="text-[10px] font-bold tracking-widest text-orange-400 uppercase">
-                        {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
+                        {isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                       </span>
                       <span className="text-xs font-black text-white">
                         {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
@@ -1870,7 +2085,7 @@ export default function App(): React.JSX.Element {
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                       <motion.div 
-                        className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
+                        className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
                         initial={{ width: 0 }}
                         animate={{ width: isSimulation ? "100%" : `${(score / maxScore) * 100}%` }}
                       />
@@ -1899,7 +2114,7 @@ export default function App(): React.JSX.Element {
                       <div className="mt-auto">
                         <div className="flex justify-between items-end mb-2">
                           <span className="text-[10px] font-bold tracking-widest text-cyan-400 uppercase">
-                            {isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
+                            {isCrashCourse ? t("crashcourse_title") : isSimulation ? t("trainer_progress_sim") : t("trainer_progress_lvl")}
                           </span>
                           <span className="text-xs font-black text-white">
                             {isSimulation ? `Serie: ${score} (+20 / -20)` : `${score} / ${maxScore}`}
@@ -1907,7 +2122,7 @@ export default function App(): React.JSX.Element {
                         </div>
                         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                           <motion.div 
-                            className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
+                            className={`h-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isCrashCourse ? 'bg-amber-400' : isSimulation ? 'bg-purple-500 animate-pulse' : 'bg-cyan-500'}`}
                             initial={{ width: 0 }}
                             animate={{ width: isSimulation ? "100%" : `${(score / maxScore) * 100}%` }}
                           />
@@ -2135,7 +2350,9 @@ export default function App(): React.JSX.Element {
                             onClick={nextRound}
                             className="w-full md:w-auto px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
                           >
-                            {t("trainer_next_task")}
+                            {isCrashCourse && crashCourseStep + 1 >= CRASH_COURSE_STEPS.length
+                              ? t("crashcourse_finish_btn")
+                              : t("trainer_next_task")}
                           </button>
                         </div>
                       </div>
@@ -2238,6 +2455,12 @@ export default function App(): React.JSX.Element {
                     {t("login_subtitle")}
                   </p>
                 </div>
+
+                {localStorage.getItem("tacpadel_pending_crashcourse_bonus") === "true" && (
+                  <div className="w-full px-3.5 py-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs font-bold text-center">
+                    🎁 {t("login_bonus_banner")}
+                  </div>
+                )}
 
                 <AnimatePresence>
                   {authMsg && (
