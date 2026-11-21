@@ -1,7 +1,7 @@
 import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Environment, Text } from "@react-three/drei";
-import * as THREE from "three"; 
+import * as THREE from "three";
 
 import { supabase } from "../../lib/supabase";
 
@@ -126,14 +126,14 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
   const progressRef = useRef(0);
   const finishedRef = useRef(false);
   const delayTimer = useRef(0);
-  
+
   const cameraPath = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0.5, -15),  
-    new THREE.Vector3(0, 4.0, -7),   
-    new THREE.Vector3(0, 1.5, 0),    
-    new THREE.Vector3(0, 6.5, 10),    
-    new THREE.Vector3(8, 11.0, 18),   
-    DEFAULT_CAM_POS.clone()   
+    new THREE.Vector3(0, 0.5, -15),
+    new THREE.Vector3(0, 4.0, -7),
+    new THREE.Vector3(0, 1.5, 0),
+    new THREE.Vector3(0, 6.5, 10),
+    new THREE.Vector3(8, 11.0, 18),
+    DEFAULT_CAM_POS.clone()
   ]), []);
 
   const lookAtPath = useMemo(() => new THREE.CatmullRomCurve3([
@@ -154,10 +154,10 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     if (delayTimer.current < 1.2) {
       state.camera.position.copy(cameraPath.getPointAt(0));
       state.camera.lookAt(lookAtPath.getPointAt(0));
-      return; 
+      return;
     }
 
-    const speed = 0.15; 
+    const speed = 0.15;
     progressRef.current += safeDelta * speed;
 
     if (progressRef.current >= 1) {
@@ -176,33 +176,33 @@ function IntroCamera({ onFinished }: { onFinished: () => void }) {
     state.camera.lookAt(lookTarget);
   });
 
-  return null; 
+  return null;
 }
 
 // =========================================================
 // 1b. CINEMATIC OUTRO KAMERA (Startet exakt auf DEFAULT_CAM_POS)
 // =========================================================
 function OutroCamera({ onCrash }: { onCrash: () => void }) {
-  const progressRef = useRef(0); 
+  const progressRef = useRef(0);
   const hasCrashed = useRef(false);
-  
+
   const cameraPath = useMemo(() => new THREE.CatmullRomCurve3([
-    DEFAULT_CAM_POS.clone(),    
-    new THREE.Vector3(0, 7.5, 6),      
-    new THREE.Vector3(0.5, 6.23, -6),  
-    new THREE.Vector3(0.5, 6.23, -11)  
+    DEFAULT_CAM_POS.clone(),
+    new THREE.Vector3(0, 7.5, 6),
+    new THREE.Vector3(0.5, 6.23, -6),
+    new THREE.Vector3(0.5, 6.23, -11)
   ]), []);
 
   const lookAtPath = useMemo(() => new THREE.CatmullRomCurve3([
-    DEFAULT_LOOK_AT.clone(),    
-    new THREE.Vector3(0.5, 6.23, -11), 
-    new THREE.Vector3(0.5, 6.23, -11.5), 
-    new THREE.Vector3(0.5, 6.23, -11.7) 
+    DEFAULT_LOOK_AT.clone(),
+    new THREE.Vector3(0.5, 6.23, -11),
+    new THREE.Vector3(0.5, 6.23, -11.5),
+    new THREE.Vector3(0.5, 6.23, -11.7)
   ]), []);
 
   useFrame((state, delta) => {
     const safeDelta = Math.min(delta, 0.1);
-    const speed = 0.35; 
+    const speed = 0.35;
     progressRef.current += safeDelta * speed;
 
     if (progressRef.current >= 0.90 && !hasCrashed.current) {
@@ -221,23 +221,23 @@ function OutroCamera({ onCrash }: { onCrash: () => void }) {
     state.camera.lookAt(lookTarget);
   });
 
-  return null; 
+  return null;
 }
 
 // =========================================================
-// 2. DYNAMISCHE ACTION-KAMERA (V4 - Angepasst an neuen Zoom)
+// 2. DYNAMISCHE ACTION-KAMERA (V5 - Kein Gitter-Anschnitt beim Zoom)
 // =========================================================
-function DynamicActionCamera({ 
-  hasSubmitted, 
-  shotType, 
+function DynamicActionCamera({
+  hasSubmitted,
+  shotType,
   turnResult,
   controlsRef,
-  hitterId,          
-  selectedZone       
-}: { 
-  hasSubmitted: boolean; 
-  shotType?: string; 
-  turnResult?: string | null; 
+  hitterId,
+  selectedZone
+}: {
+  hasSubmitted: boolean;
+  shotType?: string;
+  turnResult?: string | null;
   controlsRef: React.MutableRefObject<any>;
   hitterId: string;
   selectedZone: string | null;
@@ -246,7 +246,7 @@ function DynamicActionCamera({
   const targetPos = useRef(DEFAULT_CAM_POS.clone());
   const targetLook = useRef(DEFAULT_LOOK_AT.clone());
   const currentLook = useRef(DEFAULT_LOOK_AT.clone());
-  
+
   const timeSinceSubmit = useRef(0);
 
   useEffect(() => {
@@ -262,7 +262,7 @@ function DynamicActionCamera({
       requestAnimationFrame(() => {
         if (controlsRef.current) {
           controlsRef.current.target.copy(DEFAULT_LOOK_AT);
-          controlsRef.current.update(); 
+          controlsRef.current.update();
         }
       });
     }
@@ -286,26 +286,28 @@ function DynamicActionCamera({
     let speed = 2.5;
 
     if (isFinisher) {
-      targetPos.current.set(0, 4.2, 11); 
-      targetLook.current.set(0, 1, -8); 
-      speed = 1.2; 
-    } 
+      // Bleibt sauber über der Rückwand (z=10) und hält Spieler + Court über dem Overlay
+      targetPos.current.set(0, 9.5, 17.5);
+      targetLook.current.set(0, -0.5, -3.5);
+      speed = 1.6;
+    }
     else if (isOpponent && !isPerfect && !isError) {
       targetPos.current.copy(DEFAULT_CAM_POS);
       targetLook.current.copy(DEFAULT_LOOK_AT);
-    } 
+    }
     else if (sType === "LOB") {
-      targetPos.current.set(0, 18.5, 28.0); 
+      targetPos.current.set(0, 18.5, 28.0);
       targetLook.current.copy(DEFAULT_LOOK_AT);
-    } 
+    }
     else if (isPerfect || isError) {
-      targetPos.current.set(0, 7.5, 16.5);
-      targetLook.current.set(0, 0, -4);
-    } 
+      // Leicht angehoben, damit kein Gitter-Anschnitt entsteht
+      targetPos.current.set(0, 11.0, 20.5);
+      targetLook.current.set(0, -0.5, -3.0);
+    }
     else {
-      const panX = hitToRight ? -3 : 3; 
-      targetPos.current.set(panX, 11.0, 20.5);
-      targetLook.current.set(0, 0, -2);
+      const panX = hitToRight ? -3 : 3;
+      targetPos.current.set(panX, 11.5, 21.0);
+      targetLook.current.set(0, -0.5, -2.0);
     }
 
     camera.position.lerp(targetPos.current, speed * safeDelta);
@@ -315,9 +317,9 @@ function DynamicActionCamera({
     if (isFinisher && timeSinceSubmit.current > 0.35) {
       const shakeDuration = 0.25;
       const shakeProgress = (timeSinceSubmit.current - 0.35) / shakeDuration;
-      
+
       if (shakeProgress >= 0 && shakeProgress <= 1) {
-        const intensity = 0.3 * (1 - shakeProgress); 
+        const intensity = 0.3 * (1 - shakeProgress);
         camera.position.x += (Math.random() - 0.5) * intensity;
         camera.position.y += (Math.random() - 0.5) * intensity;
         currentLook.current.y += (Math.random() - 0.5) * (intensity * 0.5);
@@ -338,10 +340,10 @@ export interface PlayerPositions {
   partner: string;
   opp1: string;
   opp2: string;
-  ball: { 
-    side: "left" | "right"; 
-    zone: string; 
-    type?: string; 
+  ball: {
+    side: "left" | "right";
+    zone: string;
+    type?: string;
   };
 }
 
@@ -353,19 +355,19 @@ export interface Props {
   bestZones: string[];
   acceptableZones?: string[];
   onZoneClick: (id: string) => void;
-  profiMode?: boolean; 
+  profiMode?: boolean;
   selectedLaufZone?: string | null;
   perfectLaufZone?: string | null;
   acceptableLaufZones?: string[];
   onLaufZoneClick?: (id: string) => void;
   previewShot?: string | null;
-  userTeamName?: string; 
+  userTeamName?: string;
 
   activeChar: "you" | "partner" | "opp1" | "opp2";
   hitterId: "you" | "partner" | "opp1" | "opp2";
   selectedPartnerZone?: string | null;
   onPlayerClick?: (char: "you" | "partner") => void;
-  
+
   isTimerActive?: boolean;
   turnResult?: string | null;
 
@@ -377,7 +379,7 @@ export interface Props {
   isPlayerTeamServe?: boolean;
   hidePlayerLabels?: boolean;
 
-  courtState?: any; 
+  courtState?: any;
   gameOver?: boolean;
   showResultOverlay?: boolean;
   catchStatus?: string;
@@ -386,8 +388,8 @@ export interface Props {
   timerDuration?: number;
   playIntro?: boolean;
   onIntroFinished?: () => void;
-  
-  activeAiProfile?: AiProfile; 
+
+  activeAiProfile?: AiProfile;
   targetScore?: number;
   matchTitle?: string;
 
@@ -401,10 +403,10 @@ export default function ScenarioCourt3D(props: Props) {
 
   const [introFinished, setIntroFinished] = useState(false);
   const [playerName, setPlayerName] = useState(() => t("guest_name"));
-  const [partnerName, setPartnerName] = useState(() => resolvePartnerNameFromId()); 
+  const [partnerName, setPartnerName] = useState(() => resolvePartnerNameFromId());
   const [blackout, setBlackout] = useState(false);
   const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
-  
+
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
@@ -427,7 +429,7 @@ export default function ScenarioCourt3D(props: Props) {
 
         let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || t("guest_name");
         let resolvedPartnerName = resolvePartnerNameFromId();
-        
+
         const { data: profileData } = await supabase
           .from('user_stats')
           .select('display_name, partner_id')
@@ -454,17 +456,17 @@ export default function ScenarioCourt3D(props: Props) {
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
-      
+
       {/* 3D CANVAS-SCHICHT */}
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
-        <Canvas 
+        <Canvas
           dpr={ecoMode ? 1.0 : [1, 1.5]}
-          camera={{ position: [DEFAULT_CAM_POS.x, DEFAULT_CAM_POS.y, DEFAULT_CAM_POS.z], fov: 48 }} 
-          gl={{ 
-            antialias: true, 
-            toneMapping: THREE.ACESFilmicToneMapping, 
-            toneMappingExposure: 1.0, 
-            powerPreference: "high-performance" 
+          camera={{ position: [DEFAULT_CAM_POS.x, DEFAULT_CAM_POS.y, DEFAULT_CAM_POS.z], fov: 48 }}
+          gl={{
+            antialias: true,
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: 1.0,
+            powerPreference: "high-performance"
           }}
           onCreated={({ gl }) => {
             gl.domElement.addEventListener("webglcontextlost", (e) => {
@@ -475,14 +477,14 @@ export default function ScenarioCourt3D(props: Props) {
           className="w-full h-full cursor-crosshair"
         >
           <color attach="background" args={['#010205']} />
-          
+
           {/* Original-Beleuchtung & Environment bleiben dauerhaft aktiv für den echten Tron-Look */}
           <ambientLight intensity={0.1} color="#080d1e" />
           <directionalLight position={[0, 20, -10]} intensity={1.2} color="#ffffff" castShadow={false} />
           <Environment preset="city" environmentIntensity={0.5} />
 
           <Suspense fallback={<Html center className="text-white font-bold tracking-widest uppercase">{t("court_loading_arena")}</Html>}>
-            
+
             {/* 1. INTRO KAMERA */}
             {!introFinished && !props.gameOver && (
               <IntroCamera onFinished={() => {
@@ -493,11 +495,11 @@ export default function ScenarioCourt3D(props: Props) {
 
             {/* 2. SPIEL KAMERA */}
             {introFinished && !props.gameOver && (
-              <DynamicActionCamera 
-                hasSubmitted={props.hasSubmitted} 
-                shotType={props.positions.ball.type} 
+              <DynamicActionCamera
+                hasSubmitted={props.hasSubmitted}
+                shotType={props.positions.ball.type}
                 turnResult={props.turnResult}
-                controlsRef={controlsRef} 
+                controlsRef={controlsRef}
                 hitterId={props.hitterId}
                 selectedZone={props.selectedZone}
               />
@@ -505,21 +507,21 @@ export default function ScenarioCourt3D(props: Props) {
 
             {/* 3. MAUS-STEUERUNG */}
             {introFinished && !props.gameOver && (
-              <OrbitControls 
-                ref={controlsRef} 
-                enabled={!props.hasSubmitted} 
-                enablePan={true} 
-                enableZoom={true} 
-                enableDamping={true} 
+              <OrbitControls
+                ref={controlsRef}
+                enabled={!props.hasSubmitted}
+                enablePan={true}
+                enableZoom={true}
+                enableDamping={true}
                 dampingFactor={0.05}
-                minDistance={8} 
-                maxDistance={36} 
+                minDistance={8}
+                maxDistance={36}
                 screenSpacePanning={false}
-                maxPolarAngle={Math.PI / 2.2} 
+                maxPolarAngle={Math.PI / 2.2}
                 minPolarAngle={0.1}
-                minAzimuthAngle={-Math.PI / 2.5} 
+                minAzimuthAngle={-Math.PI / 2.5}
                 maxAzimuthAngle={Math.PI / 2.5}
-                target={[DEFAULT_LOOK_AT.x, DEFAULT_LOOK_AT.y, DEFAULT_LOOK_AT.z]} 
+                target={[DEFAULT_LOOK_AT.x, DEFAULT_LOOK_AT.y, DEFAULT_LOOK_AT.z]}
               />
             )}
 
@@ -527,35 +529,35 @@ export default function ScenarioCourt3D(props: Props) {
             {props.gameOver && (
               <OutroCamera onCrash={() => setBlackout(true)} />
             )}
-            
+
             {/* Bloom & Vignette bleiben aktiv */}
             <Effects />
 
-            <CourtFloor 
-              serverId={props.hitterId} 
-              playerScore={props.playerScore} 
+            <CourtFloor
+              serverId={props.hitterId}
+              playerScore={props.playerScore}
               aiScore={props.aiScore}
               isAiActive={props.isAiActive}
               phase={props.phase}
               isTimerPhase={props.isTimerPhase}
               isPlayerTeamServe={props.isPlayerTeamServe}
               playerName={playerName}
-              partnerName={partnerName} 
-              userTeamName={props.userTeamName} 
-              activeAiProfile={props.activeAiProfile} 
+              partnerName={partnerName}
+              userTeamName={props.userTeamName}
+              activeAiProfile={props.activeAiProfile}
               targetScore={props.targetScore}
               matchTitle={props.matchTitle}
               arenaModel={props.arenaModel}
-            /> 
+            />
 
             {/* 🟢 FELDKENNZEICHNUNGEN (A1-E5): Nur im Rookie-Modus (< 2000 TacScore) sichtbar */}
             {(props.showZoneLabels || props.showCourtMarkings) && introFinished && !props.gameOver && (
               <StaticCourtMarkings />
             )}
-            
-            <TacticalData 
-              {...props} 
-              playerName={playerName} 
+
+            <TacticalData
+              {...props}
+              playerName={playerName}
               partnerName={partnerName}
             />
           </Suspense>
@@ -564,10 +566,10 @@ export default function ScenarioCourt3D(props: Props) {
 
       {/* HTML OVERLAY: SCHWARZER BLENDE-EFFEKT */}
       {props.gameOver && (
-        <div 
+        <div
           className={`absolute inset-0 z-40 bg-black pointer-events-none transition-opacity duration-[400ms] ${
             blackout ? "opacity-100" : "opacity-0"
-          }`} 
+          }`}
         />
       )}
     </div>
