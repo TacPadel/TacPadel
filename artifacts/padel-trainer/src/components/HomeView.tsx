@@ -26,6 +26,9 @@ interface HomeViewProps {
   dbSeasonLeaderboard?: DBPlayer[]; 
   onPlayerClick?: (id: string, listType?: "alltime" | "season") => void;
   onDailyReward?: (points: number) => void;
+  isGameUnlocked?: boolean;
+  gameUnlockProgress?: number;
+  gameUnlockRequired?: number;
 }
 
 export default function HomeView({ 
@@ -39,7 +42,10 @@ export default function HomeView({
   dbLeaderboard = [],
   dbSeasonLeaderboard = [],
   onPlayerClick,
-  onDailyReward
+  onDailyReward,
+  isGameUnlocked = true,
+  gameUnlockProgress = 0,
+  gameUnlockRequired = 3,
 }: HomeViewProps) {
   const { user } = useAuth();
   const { lang, t } = useTranslation();
@@ -481,20 +487,41 @@ export default function HomeView({
           {/* Game / Match Starten Card */}
           <div 
             onClick={() => setActiveTab("game")} 
-            className="bg-[#040914] border border-orange-500/30 hover:border-orange-400 rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 shadow-[0_0_15px_rgba(255,119,0,0.05)] hover:shadow-[0_0_25px_rgba(255,119,0,0.15)]"
+            className={`bg-[#040914] rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden ${
+              isGameUnlocked
+                ? "border border-orange-500/30 hover:border-orange-400 shadow-[0_0_15px_rgba(255,119,0,0.05)] hover:shadow-[0_0_25px_rgba(255,119,0,0.15)]"
+                : "border border-slate-700/70 hover:border-orange-500/50 opacity-85"
+            }`}
           >
-            <div className="w-16 h-16 rounded-2xl bg-orange-950/40 border border-orange-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(255,119,0,0.2)] group-hover:scale-105 transition-transform duration-300">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-orange-400 drop-shadow-[0_0_10px_rgba(255,119,0,0.8)]">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M5.6 5.6c2.5 2.5 3.5 6.3 2.7 9.8"></path>
-                <path d="M18.4 18.4c-2.5-2.5-3.5-6.3-2.7-9.8"></path>
-              </svg>
+            {!isGameUnlocked && (
+              <span className="absolute top-3 right-3 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-orange-950/70 border border-orange-500/40 text-orange-300">
+                🔒 {gameUnlockProgress}/{gameUnlockRequired}
+              </span>
+            )}
+
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform duration-300 ${
+              isGameUnlocked
+                ? "bg-orange-950/40 border border-orange-500/40 shadow-[inset_0_0_15px_rgba(255,119,0,0.2)]"
+                : "bg-slate-900/70 border border-slate-700/60"
+            }`}>
+              {isGameUnlocked ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-orange-400 drop-shadow-[0_0_10px_rgba(255,119,0,0.8)]">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M5.6 5.6c2.5 2.5 3.5 6.3 2.7 9.8"></path>
+                  <path d="M18.4 18.4c-2.5-2.5-3.5-6.3-2.7-9.8"></path>
+                </svg>
+              ) : (
+                <span className="text-2xl">🔒</span>
+              )}
             </div>
+
             <div className="flex flex-col gap-1 mt-1">
               <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_match_title")}</h3>
-              <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">{t("home_card_match_sub")}</span>
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${isGameUnlocked ? "text-orange-400" : "text-slate-400"}`}>
+                {isGameUnlocked ? t("home_card_match_sub") : t("home_card_match_locked_sub")}
+              </span>
             </div>
-            <span className="text-orange-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
+            <span className={`${isGameUnlocked ? "text-orange-400" : "text-slate-500"} text-lg font-black mt-1 group-hover:translate-y-1 transition-transform`}>›</span>
           </div>
 
           {/* Padel-Lexikon Card */}
