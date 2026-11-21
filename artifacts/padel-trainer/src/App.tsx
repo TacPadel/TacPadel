@@ -28,6 +28,7 @@ import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
+const REQUIRED_TACTICS_FOR_GAME = 3;
 
 type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy";
 
@@ -241,6 +242,158 @@ function TutorialModal({ onComplete }: { onComplete: () => void }) {
   );
 }
 
+function GameLockedModal({
+  solvedCount,
+  requiredCount,
+  onGoToTrainer,
+  onClose,
+}: {
+  solvedCount: number;
+  requiredCount: number;
+  onGoToTrainer: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const clampedSolved = Math.min(solvedCount, requiredCount);
+  const progressPct = Math.round((clampedSolved / requiredCount) * 100);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 pt-12 bg-background/90 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-[#050b18] border border-orange-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(249,115,22,0.2)] max-w-md w-full flex flex-col gap-5 text-center relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-cyan-500" />
+
+        <div className="w-16 h-16 rounded-2xl bg-orange-950/50 border border-orange-500/40 flex items-center justify-center mx-auto text-3xl shadow-[inset_0_0_15px_rgba(249,115,22,0.2)]">
+          🔒
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-wider">
+            {t("game_lock_title")}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            {t("game_lock_desc")}
+          </p>
+        </div>
+
+        {/* Fortschrittsbalken */}
+        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-3.5 flex flex-col gap-2">
+          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+            <span className="text-slate-400">{t("game_lock_progress")}</span>
+            <span className="text-orange-400">
+              {clampedSolved} / {requiredCount}
+            </span>
+          </div>
+          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-orange-500 to-cyan-400 transition-all duration-500"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5 mt-1">
+          <button
+            onClick={onGoToTrainer}
+            className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-black text-xs tracking-[0.18em] uppercase shadow-[0_0_20px_rgba(6,182,212,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            {t("game_lock_btn_trainer")}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 text-[11px] font-bold text-slate-400 hover:text-white uppercase tracking-widest transition-colors"
+          >
+            {t("game_lock_btn_close")}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function GuestSignupPromptModal({
+  onSignUp,
+  onPlayAsGuest,
+  onClose,
+}: {
+  onSignUp: () => void;
+  onPlayAsGuest: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 pt-12 bg-background/90 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-[#050b18] border border-emerald-500/50 p-6 sm:p-8 rounded-2xl shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-md w-full flex flex-col gap-5 text-center relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500" />
+
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-center text-3xl shadow-[inset_0_0_15px_rgba(16,185,129,0.25)]">
+            🔓
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 px-3 py-1 rounded-full">
+            {t("guest_unlock_badge")}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-wider">
+            {t("guest_unlock_title")}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            {t("guest_unlock_desc")}
+          </p>
+        </div>
+
+        <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-4 flex flex-col gap-2 text-left text-xs font-semibold text-slate-300">
+          <div className="flex items-center gap-2.5">
+            <span className="text-emerald-400 font-black">✓</span>
+            <span>{t("guest_unlock_b1")}</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-cyan-400 font-black">✓</span>
+            <span>{t("guest_unlock_b2")}</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-orange-400 font-black">✓</span>
+            <span>{t("guest_unlock_b3")}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5 mt-1">
+          <button
+            onClick={onSignUp}
+            className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black rounded-xl font-black text-xs tracking-[0.16em] uppercase shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            {t("guest_unlock_btn_signup")}
+          </button>
+          <button
+            onClick={onPlayAsGuest}
+            className="w-full py-3 bg-orange-950/40 hover:bg-orange-900/50 border border-orange-500/40 text-orange-300 rounded-xl font-black text-[11px] tracking-[0.15em] uppercase transition-all"
+          >
+            {t("guest_unlock_btn_game")}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-2 text-[10px] font-bold text-slate-400 hover:text-white uppercase tracking-widest transition-colors"
+          >
+            {t("guest_unlock_btn_later")}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 const updateSupabaseScore = async (newTotalPoints: number) => {
   const { data: { session } } = await supabase.auth.getSession();
   
@@ -439,6 +592,56 @@ export default function App(): React.JSX.Element {
   // Share-Card & Store-Rating Modals
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
+
+  // --- GAME-MODUS SPERRE & GÄSTE-EINLADUNG ---
+  const [localSolvedCount, setLocalSolvedCount] = useState<number>(() => {
+    const saved = parseInt(localStorage.getItem("tacpadel_tactics_solved") || "0", 10);
+    return isNaN(saved) ? 0 : saved;
+  });
+  const [showGameLockedModal, setShowGameLockedModal] = useState(false);
+  const [showGameUnlockedToast, setShowGameUnlockedToast] = useState(false);
+  const [pendingGuestSignupPrompt, setPendingGuestSignupPrompt] = useState(false);
+  const [showGuestSignupModal, setShowGuestSignupModal] = useState(false);
+
+  const solvedTacticsCount = useMemo(() => {
+    const sumFromHighScores = Object.values(highestScores || {}).reduce(
+      (acc, val) => acc + (typeof val === "number" ? val : 0),
+      0
+    );
+    return Math.max(sumFromHighScores, score, localSolvedCount);
+  }, [highestScores, score, localSolvedCount]);
+
+  // Bestandsspieler mit vorhandenen Punkten bleiben automatisch entsperrt
+  const isGameUnlocked = useMemo(() => {
+    if (solvedTacticsCount >= REQUIRED_TACTICS_FOR_GAME) return true;
+    if (user && (totalPoints > 0 || (dbProfile?.tac_points || 0) > 0)) return true;
+    return false;
+  }, [solvedTacticsCount, user, totalPoints, dbProfile?.tac_points]);
+
+  // Zentraler Tab-Wechsler: blockiert "game", solange noch keine 3 Übungen gelöst wurden
+  const handleTabChange = (nextTab: Tab) => {
+    if (nextTab === "game" && !isGameUnlocked) {
+      setShowGameLockedModal(true);
+      return;
+    }
+
+    // Falls ein Gast gerade freigeschaltet hat und direkt ins Match will, einmalig Konto-Einladung zeigen
+    if (nextTab === "game" && !user && pendingGuestSignupPrompt) {
+      setPendingGuestSignupPrompt(false);
+      sessionStorage.setItem("tacpadel_guest_signup_shown", "true");
+      setShowGuestSignupModal(true);
+      return;
+    }
+
+    setActiveTab(nextTab);
+  };
+
+  // Sicherheitsnetz: Falls "game" aus localStorage geladen wurde, aber gesperrt ist
+  useEffect(() => {
+    if (isProgressLoaded && activeTab === "game" && !isGameUnlocked) {
+      setActiveTab("home");
+    }
+  }, [isProgressLoaded, activeTab, isGameUnlocked]);
 
   // Öffnet ein per Link geteiltes Szenario direkt im Taktik-Trainer (?scenario=ID)
   const openSharedScenarioById = (targetId: number): boolean => {
@@ -1051,6 +1254,20 @@ export default function App(): React.JSX.Element {
       setScore(newScore);
       updateHighScore(level, newScore);
 
+      const nextLocalSolved = localSolvedCount + 1;
+      setLocalSolvedCount(nextLocalSolved);
+      localStorage.setItem("tacpadel_tactics_solved", String(nextLocalSolved));
+
+      const nextSolvedCount = Math.max(solvedTacticsCount, newScore, nextLocalSolved);
+      if (!isGameUnlocked && nextSolvedCount >= REQUIRED_TACTICS_FOR_GAME) {
+        setShowGameUnlockedToast(true);
+        setTimeout(() => setShowGameUnlockedToast(false), 4500);
+
+        if (!user && !sessionStorage.getItem("tacpadel_guest_signup_shown")) {
+          setPendingGuestSignupPrompt(true);
+        }
+      }
+
       setRoundsPlayed((r) => r + 1);
       setFeedbackMsg(null);
 
@@ -1105,6 +1322,13 @@ export default function App(): React.JSX.Element {
   };
 
   const nextRound = () => {
+    // Gäste direkt nach dem Lesen der 3. Erklärung sanft zum Konto-Anlegen einladen
+    if (!user && pendingGuestSignupPrompt) {
+      setPendingGuestSignupPrompt(false);
+      sessionStorage.setItem("tacpadel_guest_signup_shown", "true");
+      setShowGuestSignupModal(true);
+    }
+
     if (isSimulation) {
       const nextSim = rollNextSimulationRound(simTaskType, scenario?.id);
       setSimTaskType(nextSim.taskType);
@@ -1186,6 +1410,8 @@ export default function App(): React.JSX.Element {
     localStorage.clear();
     sessionStorage.clear();
     clearActiveSession();
+    setLocalSolvedCount(0);
+    setPendingGuestSignupPrompt(false);
     setLevel("Schlag");
     setScore(0);
     setAttempts(0);
@@ -1225,7 +1451,7 @@ export default function App(): React.JSX.Element {
         {user ? (
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => setActiveTab("profile")}
+              onClick={() => handleTabChange("profile")}
               className="text-muted-foreground hover:text-primary transition-colors font-semibold flex items-center gap-2.5 group"
             >
               {finalAvatarUrl ? (
@@ -1255,7 +1481,7 @@ export default function App(): React.JSX.Element {
         ) : (
           activeTab !== "login" && (
             <button 
-              onClick={() => setActiveTab("login")} 
+              onClick={() => handleTabChange("login")} 
               className="text-xs bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all shadow-md"
             >
               {t("header_login")}
@@ -1337,6 +1563,58 @@ export default function App(): React.JSX.Element {
           <TutorialModal onComplete={handleTutorialComplete} />
         )}
       </AnimatePresence>
+
+      {/* --- GAME LOCKED MODAL --- */}
+      <AnimatePresence>
+        {showGameLockedModal && (
+          <GameLockedModal
+            solvedCount={solvedTacticsCount}
+            requiredCount={REQUIRED_TACTICS_FOR_GAME}
+            onClose={() => setShowGameLockedModal(false)}
+            onGoToTrainer={() => {
+              setShowGameLockedModal(false);
+              const nextOpenLevel = getTargetProgressionLevel(highestScores, lockedLevels);
+              handleLevelChange(nextOpenLevel, true);
+              setActiveTab("trainer");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* --- GÄSTE-EINLADUNG ZUM KONTO-ANLEGEN NACH FREISCHALTUNG --- */}
+      <AnimatePresence>
+        {showGuestSignupModal && !user && (
+          <GuestSignupPromptModal
+            onSignUp={() => {
+              setShowGuestSignupModal(false);
+              setIsSignUp(true);
+              setActiveTab("login");
+            }}
+            onPlayAsGuest={() => {
+              setShowGuestSignupModal(false);
+              setActiveTab("game");
+            }}
+            onClose={() => setShowGuestSignupModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* --- FREISCHALT-TOAST NACH 3 ÜBUNGEN --- */}
+      <AnimatePresence>
+        {showGameUnlockedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[180] w-[92%] max-w-md bg-[#050b18]/95 border border-emerald-400/60 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.35)] flex items-center justify-center gap-2.5 text-center"
+          >
+            <span className="text-lg">🔓</span>
+            <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+              {t("game_unlocked_toast")}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
         
       {/* Tech-Shell wieder mit relative z-10 über das Hintergrundbild legen */}
       <div className="flex-grow w-full tech-shell flex flex-col items-center p-3 sm:p-4 pb-28 lg:p-8 rounded-none border-x-0 sm:rounded-xl sm:border-x bg-transparent relative z-10">
@@ -1355,7 +1633,10 @@ export default function App(): React.JSX.Element {
                 transition={{ duration: 0.18 }}
               >
                 <HomeView 
-                  setActiveTab={setActiveTab} 
+                  setActiveTab={handleTabChange}
+                  isGameUnlocked={isGameUnlocked}
+                  gameUnlockProgress={Math.min(solvedTacticsCount, REQUIRED_TACTICS_FOR_GAME)}
+                  gameUnlockRequired={REQUIRED_TACTICS_FOR_GAME}
                   currentScore={user ? totalPoints : 0}
                   onDailyReward={(pts) => { if (user) { addPoints(pts); updateSupabaseScore(totalPoints + pts); } }}
                   currentTacPoints={user ? (dbProfile?.tac_points || 0) : 0} 
@@ -1451,7 +1732,7 @@ export default function App(): React.JSX.Element {
 
             {/* --- BASICS --- */}
             {activeTab === "basics" && (
-              <BasicsView setActiveTab={setActiveTab} />
+              <BasicsView setActiveTab={handleTabChange as any} />
             )}
 
             {/* --- TRAINER TAB --- */}
@@ -2052,7 +2333,7 @@ export default function App(): React.JSX.Element {
 
             {/* PROFILE TAB */}
             {activeTab === "profile" && user && (
-              <ProfileTab key="profile-page" user={user} setActiveTab={(t) => setActiveTab(t as Tab)} />
+              <ProfileTab key="profile-page" user={user} setActiveTab={(t) => handleTabChange(t as Tab)} />
             )}
 
             {/* GAME SCREEN */}
@@ -2100,7 +2381,7 @@ export default function App(): React.JSX.Element {
       <ShareCardModal payload={sharePayload} onClose={() => setSharePayload(null)} />
       <RatingPromptModal isOpen={showRatingModal} onClose={() => setShowRatingModal(false)} />
       
-      <Navigation activeTab={activeTab as any} setActiveTab={setActiveTab as any} />
+      <Navigation activeTab={activeTab as any} setActiveTab={handleTabChange as any} />
 
     </div>
   );
