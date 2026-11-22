@@ -43,12 +43,28 @@ interface StudioDrawing {
   y2: number;
 }
 
+// Keyframe für Multi-Step-Animation
+interface BoardKeyframe {
+  id: string;
+  items: DraggableItem[];
+}
+
+// Gespeicherter Spielzug im Playbook
+interface SavedPlay {
+  id: string;
+  title: string;
+  updatedAt: number;
+  items: DraggableItem[];
+  drawings: StudioDrawing[];
+  keyframes: BoardKeyframe[];
+}
+
 // Interaktiver Stellungsspiel-Drill auf dem Board
 interface BoardDrill {
   id: string;
-  title: { de: string; en: string; es: string };
-  prompt: { de: string; en: string; es: string };
-  explanation: { de: string; en: string; es: string };
+  titleKey: TranslationKey;
+  promptKey: TranslationKey;
+  explKey: TranslationKey;
   targetDepth: "back" | "mid" | "net";
   items: DraggableItem[];
 }
@@ -71,6 +87,19 @@ const GAP_THRESHOLD = 160;
 const WIDE_GAP_THRESHOLD = 180;
 const DEPTH_GAP_THRESHOLD = 95;
 const DEEP_DEF_THRESHOLD = 80;
+const MAX_PLAYBOOK_ITEMS = 20;
+
+const getPlaybookStorageKey = (userId?: string | null) =>
+  `tacpadel_playbook_v1_${userId || "guest"}`;
+
+const cloneItems = (list: DraggableItem[]): DraggableItem[] =>
+  list.map((i) => ({ ...i }));
+
+const cloneKeyframes = (frames: BoardKeyframe[]): BoardKeyframe[] =>
+  frames.map((f) => ({ id: f.id, items: cloneItems(f.items) }));
+
+const easeInOut = (t: number) =>
+  t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
 // Konvertiert Zonen (A1–E5) aus dem Trainer exakt in Board-Koordinaten
 const zoneToBoardCoords = (zoneId: string, side: "left" | "right"): { x: number; y: number } => {
@@ -135,7 +164,6 @@ const getDangerAngleCone = (ball: { x: number; y: number }) => {
   const topCornerY = 18;
   const bottomCornerY = V_HEIGHT - 18;
 
-  // Winkelhalbierende: perfekte Mitten-Ausrichtung für das verteidigende Team
   const aTop = Math.atan2(topCornerY - ball.y, farX - ball.x);
   const aBot = Math.atan2(bottomCornerY - ball.y, farX - ball.x);
   const midAngle = (aTop + aBot) / 2;
@@ -238,25 +266,13 @@ const SCENARIOS: Record<
   },
 };
 
-// KURATIERTE STELLUNGSSPIEL-DRILLS FÜR DAS BOARD
+// KURATIERTE STELLUNGSSPIEL-DRILLS FÜR DAS BOARD (100 % i18n)
 const BOARD_DRILLS: BoardDrill[] = [
   {
     id: "drill_rubberband_defense",
-    title: {
-      de: "Gummiband-Rettung",
-      en: "Rubber-Band Rescue",
-      es: "Rescate de Posición",
-    },
-    prompt: {
-      de: "Gegner B1 greift links am Netz an – A1 steht hinten, A2 klebt allein vorn! Schiebe A1 & A2 in eine kompakte Defensive.",
-      en: "Opponent B1 attacks from the left net while A2 is stranded up front! Move A1 & A2 into compact defense.",
-      es: "B1 ataca desde la red izquierda y A2 quedó solo arriba. Mueve a A1 y A2 a una defensa compacta.",
-    },
-    explanation: {
-      de: "Das Netz gibt man immer gemeinsam auf. Stehen beide parallel hinten links-orientiert, sind Mitte und Longline dicht.",
-      en: "Always retreat together as a pair. Staying parallel in the back protects both the middle and the down-the-line shot.",
-      es: "Siempre se retrocede en pareja. Paralelos en el fondo cubrís el centro y el paralelo.",
-    },
+    titleKey: "tb_drill_1_title",
+    promptKey: "tb_drill_1_prompt",
+    explKey: "tb_drill_1_expl",
     targetDepth: "back",
     items: [
       { id: "a1", x: 90, y: 80, color: "#e74c3c", label: "A1", isPlayer: true },
@@ -268,21 +284,9 @@ const BOARD_DRILLS: BoardDrill[] = [
   },
   {
     id: "drill_net_shift_right",
-    title: {
-      de: "Scheibenwischer am Netz",
-      en: "Net Wiper Shift",
-      es: "Desplazamiento en Red",
-    },
-    prompt: {
-      de: "Die Gegner sind hinten rechts in die Ecke gedrängt. Rücke mit A1 & A2 gemeinsam ans Netz vor und mache Mitte + Longline dicht!",
-      en: "Opponents are pinned in the back-right corner. Advance A1 & A2 together to the net and close the angles!",
-      es: "Los rivales están encerrados al fondo derecha. Sube con A1 y A2 a la red y cierra los ángulos.",
-    },
-    explanation: {
-      de: "Am Netz verschiebt das ganze Team leicht zur Ballseite: Longline-Spieler deckt die Linie, Partner schließt die Mitte.",
-      en: "At the net, both players shift slightly toward the ball side: line player guards down-the-line, partner shuts the middle.",
-      es: "En red el equipo bascula hacia la bola: uno cubre el paralelo y el compañero cierra el centro.",
-    },
+    titleKey: "tb_drill_2_title",
+    promptKey: "tb_drill_2_prompt",
+    explKey: "tb_drill_2_expl",
     targetDepth: "net",
     items: [
       { id: "a1", x: 160, y: 65, color: "#e74c3c", label: "A1", isPlayer: true },
@@ -294,21 +298,9 @@ const BOARD_DRILLS: BoardDrill[] = [
   },
   {
     id: "drill_bandeja_block",
-    title: {
-      de: "Bandeja aus dem Halbfeld",
-      en: "Defending the Bandeja",
-      es: "Defensa ante Bandeja",
-    },
-    prompt: {
-      de: "B2 bereitet rechts eine Bandeja vor. Eure Mitte steht sperrangelweit offen! Ziehe A1 & A2 in eine sichere Abwehr-Staffelung.",
-      en: "B2 sets up a Bandeja on the right and your middle is wide open! Position A1 & A2 safely behind the service line.",
-      es: "B2 prepara una bandeja a la derecha y dejáis el centro abierto. Coloca a A1 y A2 cerrando el centro atrás.",
-    },
-    explanation: {
-      de: "Gegen eine Bandeja bleibt ihr kompakt hinter der Aufschlaglinie und verengt die Mitte, damit der Ball sauber von der Scheibe genommen werden kann.",
-      en: "Against a Bandeja, stay compact behind the service line and close the middle so you can read the glass rebound cleanly.",
-      es: "Ante una bandeja, quedaos compactos detrás de la línea de saque cerrando el centro para leer bien el cristal.",
-    },
+    titleKey: "tb_drill_3_title",
+    promptKey: "tb_drill_3_prompt",
+    explKey: "tb_drill_3_expl",
     targetDepth: "back",
     items: [
       { id: "a1", x: 195, y: 42, color: "#e74c3c", label: "A1", isPlayer: true },
@@ -320,21 +312,9 @@ const BOARD_DRILLS: BoardDrill[] = [
   },
   {
     id: "drill_after_lob_take_net",
-    title: {
-      de: "Nach dem tiefen Lob vorrücken",
-      en: "Take the Net After a Deep Lob",
-      es: "Subir tras Globo Profundo",
-    },
-    prompt: {
-      de: "Euer Lob hat beide Gegner ganz nach hinten links gedrängt! Übernehmt mit A1 & A2 gemeinsam die Netzposition.",
-      en: "Your deep lob pushed both opponents to the back-left glass! Move A1 & A2 forward together to claim the net.",
-      es: "Vuestro globo profundo empujó a los rivales al fondo izquierda. ¡Subid juntos a la red con A1 y A2!",
-    },
-    explanation: {
-      de: "Sobald die Gegner nach hinten gezwungen sind, rückt ihr synchron bis vor die T-Linie vor und verschiebt leicht Richtung Ballseite.",
-      en: "Once opponents are forced to the back glass, advance in sync to the net zone and lean slightly toward the ball side.",
-      es: "Cuando los rivales retroceden al cristal, subid sincronizados a zona de volea basculando hacia la bola.",
-    },
+    titleKey: "tb_drill_4_title",
+    promptKey: "tb_drill_4_prompt",
+    explKey: "tb_drill_4_expl",
     targetDepth: "net",
     items: [
       { id: "a1", x: 95, y: 115, color: "#e74c3c", label: "A1", isPlayer: true },
@@ -354,8 +334,7 @@ const getTacticalTargetAndRec = (
   filters: TacticalFilters,
   scenarioKey: string,
   customTarget: { x: number; y: number } | null,
-  t: (key: TranslationKey) => string,
-  lang: string
+  t: (key: TranslationKey) => string
 ) => {
   const netX = V_WIDTH / 2;
   const isBallOnSideA = ball.x <= netX;
@@ -387,12 +366,7 @@ const getTacticalTargetAndRec = (
       if (depthGapB > DEPTH_GAP_THRESHOLD) {
         targetX = (teamB[0].x + teamB[1].x) / 2;
         targetY = (teamB[0].y + teamB[1].y) / 2;
-        recommendation =
-          lang === "en"
-            ? "Opponent split in depth – play flat through the open middle!"
-            : lang === "es"
-            ? "Rival partido en profundidad: ¡juega rápido al centro abierto!"
-            : "Gegner auseinandergerissen – spiel flach durch die offene Mitte!";
+        recommendation = t("tb_rec_opp_split");
       } else if (teamB_X < netX + DEEP_DEF_THRESHOLD) {
         recommendation = t("tb_rec_opp_at_net");
         targetX = V_WIDTH - 40;
@@ -412,12 +386,7 @@ const getTacticalTargetAndRec = (
       if (depthGapA > DEPTH_GAP_THRESHOLD) {
         targetX = (teamA[0].x + teamA[1].x) / 2;
         targetY = (teamA[0].y + teamA[1].y) / 2;
-        recommendation =
-          lang === "en"
-            ? "Team split in depth – move up or retreat together as a pair!"
-            : lang === "es"
-            ? "Equipo partido en profundidad: ¡subid o retroceded juntos!"
-            : "Team auseinandergerissen – gemeinsam vor oder zurück verschieben!";
+        recommendation = t("tb_rec_team_split");
       } else if (isAAtNet) {
         recommendation = t("tb_rec_lob_danger");
         targetX = 40;
@@ -437,8 +406,7 @@ const getTacticalAnalysis = (
   filters: TacticalFilters,
   scenarioKey: string,
   customTarget: { x: number; y: number } | null,
-  t: (key: TranslationKey) => string,
-  lang: string
+  t: (key: TranslationKey) => string
 ) => {
   const teamA = items.filter((i) => i.id.startsWith("a"));
   const teamB = items.filter((i) => i.id.startsWith("b"));
@@ -468,8 +436,7 @@ const getTacticalAnalysis = (
     filters,
     scenarioKey,
     customTarget,
-    t,
-    lang
+    t
   );
 
   const movements: Record<string, { tx: number; ty: number }> = {};
@@ -782,7 +749,7 @@ function TrajectoryView3D() {
 }
 
 // ==========================================
-// HAUPT-KOMPONENTE (COACH-LABOR & STUDIO)
+// HAUPT-KOMPONENTE (COACH-LABOR, ANIMATION, PLAYBOOK & STUDIO)
 // ==========================================
 export default function TacticsBoard() {
   const { lang, t } = useTranslation();
@@ -803,7 +770,7 @@ export default function TacticsBoard() {
   // --- DYNAMISCHER SCHALTER: 2D | [STUDIO] | 3D ---
   const [activeMode, setActiveMode] = useState<"tactics" | "studio" | "3d">("tactics");
 
-  // --- STILLSCHWEIGENDE FEATURE-FREISCHALTUNG (kein "Pro"-Hinweis im UI) ---
+  // --- STILLSCHWEIGENDE FEATURE-FREISCHALTUNG (ohne sichtbare Schranken-Hinweise) ---
   const [isProUser, setIsProUser] = useState<boolean>(false);
   const [boardUserId, setBoardUserId] = useState<string | null>(null);
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
@@ -812,55 +779,18 @@ export default function TacticsBoard() {
   const [activeDrillIdx, setActiveDrillIdx] = useState<number | null>(null);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
 
-  useEffect(() => {
-    async function checkAccessAndCoachData() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        setBoardUserId(null);
-        setIsProUser(false);
-        return;
-      }
+  // --- MULTI-STEP KEYFRAME ANIMATION ---
+  const [keyframes, setKeyframes] = useState<BoardKeyframe[]>([]);
+  const [activeStepIdx, setActiveStepIdx] = useState<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [playSpeed, setPlaySpeed] = useState<0.7 | 1 | 1.5>(1);
+  const animRafRef = useRef<number | null>(null);
 
-      setBoardUserId(session.user.id);
-      let unlocked = false;
-
-      const emailLower = session.user.email?.toLowerCase().trim() || "";
-      const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
-      if (isAdmin) {
-        const localOverride = localStorage.getItem("tacpadel_is_pro");
-        unlocked = localOverride === null ? true : localOverride === "true";
-      } else {
-        const { data: statsData } = await supabase
-          .from("user_stats")
-          .select("is_pro")
-          .eq("id", session.user.id)
-          .maybeSingle();
-
-        unlocked = Boolean(statsData?.is_pro);
-        localStorage.setItem("tacpadel_is_pro", String(unlocked));
-      }
-
-      setIsProUser(unlocked);
-
-      if (unlocked) {
-        const stats = await fetchCoachStats(session.user.id);
-        const { scenarios } = buildSmartWeaknessPool(stats, 8);
-        setWeaknessPool(scenarios);
-      }
-    }
-    checkAccessAndCoachData();
-  }, []);
-
-  // Falls Zugriff entzogen wird, sicher aus Studio/Drill zurückfallen
-  useEffect(() => {
-    if (!isProUser) {
-      if (activeMode === "studio") setActiveMode("tactics");
-      if (activeDrillIdx !== null) {
-        setActiveDrillIdx(null);
-        setDrillResult(null);
-      }
-    }
-  }, [isProUser, activeMode, activeDrillIdx]);
+  // --- MEIN PLAYBOOK (Lokal + Supabase user_metadata Sync) ---
+  const [isPlaybookOpen, setIsPlaybookOpen] = useState<boolean>(false);
+  const [playbook, setPlaybook] = useState<SavedPlay[]>([]);
+  const [playTitle, setPlayTitle] = useState<string>("");
+  const [playbookToast, setPlaybookToast] = useState<string | null>(null);
 
   // --- TACTICAL STUDIO STATES (Zeichnen, Aufnehmen, Teilen) ---
   const [studioTool, setStudioTool] = useState<StudioTool>("move");
@@ -894,6 +824,278 @@ export default function TacticsBoard() {
     showAngleCone: true,
   });
 
+  useEffect(() => {
+    async function checkAccessAndLoadData() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setBoardUserId(null);
+        setIsProUser(false);
+        return;
+      }
+
+      const uid = session.user.id;
+      setBoardUserId(uid);
+      let unlocked = false;
+
+      const emailLower = session.user.email?.toLowerCase().trim() || "";
+      const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
+      if (isAdmin) {
+        const localOverride = localStorage.getItem("tacpadel_is_pro");
+        unlocked = localOverride === null ? true : localOverride === "true";
+      } else {
+        const { data: statsData } = await supabase
+          .from("user_stats")
+          .select("is_pro")
+          .eq("id", uid)
+          .maybeSingle();
+
+        unlocked = Boolean(statsData?.is_pro);
+        localStorage.setItem("tacpadel_is_pro", String(unlocked));
+      }
+
+      setIsProUser(unlocked);
+
+      if (unlocked) {
+        // Schwächen-Pool aus dem Coach laden
+        const stats = await fetchCoachStats(uid);
+        const { scenarios } = buildSmartWeaknessPool(stats, 8);
+        setWeaknessPool(scenarios);
+
+        // Playbook laden (Lokal + Remote user_metadata zusammenführen)
+        let localPlays: SavedPlay[] = [];
+        try {
+          const raw = localStorage.getItem(getPlaybookStorageKey(uid));
+          if (raw) localPlays = JSON.parse(raw);
+        } catch {}
+
+        const remotePlays = Array.isArray(session.user.user_metadata?.tactic_playbook)
+          ? (session.user.user_metadata.tactic_playbook as SavedPlay[])
+          : [];
+
+        const mergedMap = new Map<string, SavedPlay>();
+        [...remotePlays, ...localPlays].forEach((p) => {
+          const existing = mergedMap.get(p.id);
+          if (!existing || (p.updatedAt || 0) > (existing.updatedAt || 0)) {
+            mergedMap.set(p.id, p);
+          }
+        });
+
+        const merged = Array.from(mergedMap.values())
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+          .slice(0, MAX_PLAYBOOK_ITEMS);
+
+        setPlaybook(merged);
+        try {
+          localStorage.setItem(getPlaybookStorageKey(uid), JSON.stringify(merged));
+        } catch {}
+      }
+    }
+    checkAccessAndLoadData();
+  }, []);
+
+  // Falls Zugriff entzogen wird, sicher aus Studio/Drill/Playbook zurückfallen
+  useEffect(() => {
+    if (!isProUser) {
+      if (activeMode === "studio") setActiveMode("tactics");
+      if (activeDrillIdx !== null) {
+        setActiveDrillIdx(null);
+        setDrillResult(null);
+      }
+      if (isPlaybookOpen) setIsPlaybookOpen(false);
+      if (isPlaying) setIsPlaying(false);
+    }
+  }, [isProUser, activeMode, activeDrillIdx, isPlaybookOpen, isPlaying]);
+
+  // --- KEYFRAME ANIMATIONS-SCHLEIFE ---
+  const stopAnimation = useCallback(() => {
+    if (animRafRef.current !== null) {
+      cancelAnimationFrame(animRafRef.current);
+      animRafRef.current = null;
+    }
+    setIsPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaying || keyframes.length < 2) return;
+
+    const transitionMs = 1050 / playSpeed;
+    const holdMs = 300 / playSpeed;
+    const segmentMs = transitionMs + holdMs;
+    const totalSegments = keyframes.length - 1;
+    const startTime = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const segIndex = Math.floor(elapsed / segmentMs);
+
+      if (segIndex >= totalSegments) {
+        const lastIdx = keyframes.length - 1;
+        setItems(cloneItems(keyframes[lastIdx].items));
+        setActiveStepIdx(lastIdx);
+        setIsPlaying(false);
+        animRafRef.current = null;
+        return;
+      }
+
+      const segElapsed = elapsed - segIndex * segmentMs;
+      const rawT = Math.min(1, segElapsed / transitionMs);
+      const tEased = easeInOut(rawT);
+
+      const fromFrame = keyframes[segIndex].items;
+      const toFrame = keyframes[segIndex + 1].items;
+
+      const interpolated = fromFrame.map((fromItem) => {
+        const target = toFrame.find((i) => i.id === fromItem.id) || fromItem;
+        return {
+          ...fromItem,
+          x: fromItem.x + (target.x - fromItem.x) * tEased,
+          y: fromItem.y + (target.y - fromItem.y) * tEased,
+        };
+      });
+
+      setItems(interpolated);
+      setActiveStepIdx(rawT >= 0.85 ? segIndex + 1 : segIndex);
+      animRafRef.current = requestAnimationFrame(tick);
+    };
+
+    animRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animRafRef.current !== null) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = null;
+      }
+    };
+  }, [isPlaying, keyframes, playSpeed]);
+
+  // Keyframe-Aktionen
+  const handleAddKeyframe = () => {
+    stopAnimation();
+    const newFrame: BoardKeyframe = {
+      id: `kf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      items: cloneItems(items),
+    };
+    setKeyframes((prev) => {
+      const next = [...prev, newFrame];
+      setActiveStepIdx(next.length - 1);
+      return next;
+    });
+  };
+
+  const handleSelectKeyframe = (idx: number) => {
+    stopAnimation();
+    const frame = keyframes[idx];
+    if (!frame) return;
+    setActiveStepIdx(idx);
+    setItems(cloneItems(frame.items));
+  };
+
+  const handleUpdateActiveKeyframe = () => {
+    if (activeStepIdx === null || !keyframes[activeStepIdx]) return;
+    stopAnimation();
+    setKeyframes((prev) =>
+      prev.map((kf, idx) => (idx === activeStepIdx ? { ...kf, items: cloneItems(items) } : kf))
+    );
+  };
+
+  const handleDeleteActiveKeyframe = () => {
+    if (activeStepIdx === null) return;
+    stopAnimation();
+    setKeyframes((prev) => {
+      const next = prev.filter((_, idx) => idx !== activeStepIdx);
+      if (next.length === 0) {
+        setActiveStepIdx(null);
+      } else {
+        const nextIdx = Math.min(activeStepIdx, next.length - 1);
+        setActiveStepIdx(nextIdx);
+        setItems(cloneItems(next[nextIdx].items));
+      }
+      return next;
+    });
+  };
+
+  const handleClearKeyframes = () => {
+    stopAnimation();
+    setKeyframes([]);
+    setActiveStepIdx(null);
+  };
+
+  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN ---
+  const persistPlaybook = useCallback(
+    (nextList: SavedPlay[]) => {
+      const trimmed = nextList.slice(0, MAX_PLAYBOOK_ITEMS);
+      setPlaybook(trimmed);
+      try {
+        localStorage.setItem(getPlaybookStorageKey(boardUserId), JSON.stringify(trimmed));
+      } catch {}
+
+      if (boardUserId) {
+        supabase.auth
+          .updateUser({ data: { tactic_playbook: trimmed } })
+          .catch(() => {});
+      }
+    },
+    [boardUserId]
+  );
+
+  const handleSaveToPlaybook = () => {
+    if (!isProUser) return;
+    stopAnimation();
+    const cleanTitle = (playTitle || studioTitle || t("tb_default_studio_title")).trim();
+    if (!cleanTitle) return;
+
+    const existing = playbook.find(
+      (p) => p.title.toLowerCase() === cleanTitle.toLowerCase()
+    );
+
+    const savedEntry: SavedPlay = {
+      id: existing ? existing.id : `play-${Date.now()}`,
+      title: cleanTitle,
+      updatedAt: Date.now(),
+      items: cloneItems(items),
+      drawings: drawings.map((d) => ({ ...d })),
+      keyframes: cloneKeyframes(keyframes),
+    };
+
+    const nextList = [
+      savedEntry,
+      ...playbook.filter((p) => p.id !== savedEntry.id),
+    ];
+
+    persistPlaybook(nextList);
+    setPlayTitle(cleanTitle);
+    setStudioTitle(cleanTitle);
+    setPlaybookToast(t("tb_pb_saved_msg"));
+    setTimeout(() => setPlaybookToast(null), 2500);
+  };
+
+  const handleLoadPlay = (play: SavedPlay) => {
+    stopAnimation();
+    setActiveDrillIdx(null);
+    setDrillResult(null);
+    setLoadedTrainerScenario(null);
+    setSelectedScenarioKey("custom");
+    setCustomTarget(null);
+
+    const loadedFrames = cloneKeyframes(play.keyframes || []);
+    setKeyframes(loadedFrames);
+    if (loadedFrames.length > 0) {
+      setActiveStepIdx(0);
+      setItems(cloneItems(loadedFrames[0].items));
+    } else {
+      setActiveStepIdx(null);
+      setItems(cloneItems(play.items));
+    }
+
+    setDrawings((play.drawings || []).map((d) => ({ ...d })));
+    setPlayTitle(play.title);
+    setStudioTitle(play.title);
+  };
+
+  const handleDeletePlay = (playId: string) => {
+    const nextList = playbook.filter((p) => p.id !== playId);
+    persistPlaybook(nextList);
+  };
+
   // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
   const effectiveFilters: TacticalFilters = useMemo(() => {
     if (isProUser) return filters;
@@ -918,8 +1120,7 @@ export default function TacticsBoard() {
         effectiveFilters,
         selectedScenarioKey,
         isProUser ? customTarget : null,
-        t,
-        lang
+        t
       ),
     [items, effectiveFilters, selectedScenarioKey, customTarget, isProUser, lang]
   );
@@ -954,6 +1155,7 @@ export default function TacticsBoard() {
 
   const handleScenarioChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const key = e.target.value;
+    stopAnimation();
     setActiveDrillIdx(null);
     setDrillResult(null);
     setSelectedScenarioKey(key);
@@ -972,7 +1174,7 @@ export default function TacticsBoard() {
 
     setLoadedTrainerScenario(null);
     if (SCENARIOS[key]) {
-      setItems(SCENARIOS[key].items);
+      setItems(cloneItems(SCENARIOS[key].items));
       if (isProUser && key === "angriff_dynamisch") {
         setFilters((prev) => ({ ...prev, showAttackArc: true }));
       }
@@ -982,6 +1184,8 @@ export default function TacticsBoard() {
   // --- COACH-DRILL STARTEN & PRÜFEN ---
   const startBoardDrill = (index: number = 0) => {
     if (!isProUser) return;
+    stopAnimation();
+    setIsPlaybookOpen(false);
     const safeIdx = index % BOARD_DRILLS.length;
     const drill = BOARD_DRILLS[safeIdx];
     setActiveDrillIdx(safeIdx);
@@ -990,7 +1194,7 @@ export default function TacticsBoard() {
     setSelectedScenarioKey("custom");
     setCustomTarget(null);
     setShowTactics(true);
-    setItems(drill.items.map((item) => ({ ...item })));
+    setItems(cloneItems(drill.items));
   };
 
   const evaluateActiveDrill = () => {
@@ -1018,48 +1222,16 @@ export default function TacticsBoard() {
     const angleOk = Math.abs(avgY - cone.bisectorY) <= 78;
 
     const checks = [
-      {
-        label:
-          lang === "en"
-            ? "Middle closed (compact spacing)"
-            : lang === "es"
-            ? "Centro cerrado (distancia compacta)"
-            : "Mitte dicht (kompakter Abstand)",
-        ok: middleOk,
-      },
-      {
-        label:
-          lang === "en"
-            ? "Parallel pair (no depth split)"
-            : lang === "es"
-            ? "Pareja paralela (sin brecha)"
-            : "Kein Tiefen-Riss (parallel im Team)",
-        ok: parallelOk,
-      },
+      { label: t("tb_drill_chk_middle"), ok: middleOk },
+      { label: t("tb_drill_chk_parallel"), ok: parallelOk },
       {
         label:
           activeDrill.targetDepth === "net"
-            ? lang === "en"
-              ? "Net dominance (advanced together)"
-              : lang === "es"
-              ? "Dominio de red (subida juntos)"
-              : "Netzposition eingenommen"
-            : lang === "en"
-            ? "Safe defensive depth"
-            : lang === "es"
-            ? "Profundidad defensiva segura"
-            : "Sichere Abwehr-Tiefe",
+            ? t("tb_drill_chk_net")
+            : t("tb_drill_chk_back"),
         ok: depthOk,
       },
-      {
-        label:
-          lang === "en"
-            ? "Ball-side angle coverage"
-            : lang === "es"
-            ? "Cobertura de ángulo hacia la bola"
-            : "Winkel zur Ballseite abgedeckt",
-        ok: angleOk,
-      },
+      { label: t("tb_drill_chk_angle"), ok: angleOk },
     ];
 
     const passedCount = checks.filter((c) => c.ok).length;
@@ -1109,7 +1281,7 @@ export default function TacticsBoard() {
   }, []);
 
   const handleSvgDoubleClick = (e: React.MouseEvent) => {
-    if (!isProUser || activeDrill) return;
+    if (!isProUser || activeDrill || isPlaying) return;
     if (activeMode === "studio" && studioTool !== "move") return;
     const pt = getPoint(e);
     setCustomTarget({ x: pt.x, y: pt.y });
@@ -1131,7 +1303,7 @@ export default function TacticsBoard() {
       return;
     }
 
-    if (isProUser && !activeDrill && "touches" in e) {
+    if (isProUser && !activeDrill && !isPlaying && "touches" in e) {
       const now = Date.now();
       const DOUBLE_TAP_DELAY = 300;
       if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
@@ -1148,6 +1320,10 @@ export default function TacticsBoard() {
       if (isProUser && activeMode === "studio" && studioTool !== "move") {
         handleSvgPointerDown(e);
         return;
+      }
+
+      if (isPlaying) {
+        stopAnimation();
       }
 
       // Im aktiven Coach-Drill dürfen nur Team A (A1 & A2) verschoben werden
@@ -1175,7 +1351,7 @@ export default function TacticsBoard() {
         setDrillResult(null);
       }
     },
-    [items, getPoint, activeMode, studioTool, isProUser, activeDrill]
+    [items, getPoint, activeMode, studioTool, isProUser, activeDrill, isPlaying, stopAnimation]
   );
 
   const onPointerMove = useCallback(
@@ -1216,8 +1392,7 @@ export default function TacticsBoard() {
             effectiveFilters,
             selectedScenarioKey,
             isProUser ? customTarget : null,
-            t,
-            lang
+            t
           );
           const targetRatio = Math.max(0, Math.min(1, simTargetY / V_HEIGHT));
 
@@ -1288,7 +1463,7 @@ export default function TacticsBoard() {
         });
       });
     },
-    [getPoint, effectiveFilters, selectedScenarioKey, customTarget, currentDraft, netX, t, lang, isProUser, activeDrill]
+    [getPoint, effectiveFilters, selectedScenarioKey, customTarget, currentDraft, netX, t, isProUser, activeDrill]
   );
 
   const onPointerUp = useCallback(() => {
@@ -1308,12 +1483,13 @@ export default function TacticsBoard() {
   }, [currentDraft]);
 
   const reset = () => {
+    stopAnimation();
     setActiveDrillIdx(null);
     setDrillResult(null);
     setLoadedTrainerScenario(null);
     setSelectedScenarioKey("initial");
     setCustomTarget(null);
-    setItems(SCENARIOS.initial.items);
+    setItems(cloneItems(SCENARIOS.initial.items));
   };
 
   // =========================================================================
@@ -1393,7 +1569,6 @@ export default function TacticsBoard() {
     if (state.showTactics) {
       const ball = state.items.find((i) => i.id === "ball");
 
-      // Gefahrenwinkel-Kegel + Winkelhalbierende im Export
       if (state.filters.showAngleCone && ball) {
         const cone = getDangerAngleCone(ball);
         ctx.fillStyle = "rgba(250, 204, 21, 0.13)";
@@ -1404,7 +1579,7 @@ export default function TacticsBoard() {
         ctx.closePath();
         ctx.fill();
 
-        ctx.strokeStyle = "rgba(250, 204, 21, 0.45)";
+        ctx.strokeStyle = "rgba(34, 211, 238, 0.55)";
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
@@ -1421,9 +1596,10 @@ export default function TacticsBoard() {
             : [state.items.find((i) => i.id === "a1"), state.items.find((i) => i.id === "a2")];
         if (pair[0] && pair[1]) {
           const gap = Math.abs(pair[0].y - pair[1].y);
+          const depthGap = Math.abs(pair[0].x - pair[1].x);
           const avgX = (pair[0].x + pair[1].x) / 2;
           const avgY = (pair[0].y + pair[1].y) / 2;
-          if (gap > GAP_THRESHOLD + 2) {
+          if (gap > GAP_THRESHOLD + 2 || depthGap > DEPTH_GAP_THRESHOLD) {
             ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
             ctx.fillRect(avgX - 30, avgY - 80, 60, 160);
           }
@@ -1666,7 +1842,6 @@ export default function TacticsBoard() {
     };
   }, []);
 
-  // Hilfsfunktion: File -> Base64 für Capacitor Filesystem
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1765,7 +1940,6 @@ export default function TacticsBoard() {
     document.body.removeChild(a);
   };
 
-  // Sichtbare Standard-Aufstellungen (Basis sieht 2, erweiterter Zugriff sieht alle 5)
   const visiblePresetEntries = useMemo(() => {
     return Object.entries(SCENARIOS).filter(([, val]) => isProUser || val.basicVisible);
   }, [isProUser]);
@@ -1880,13 +2054,14 @@ export default function TacticsBoard() {
                   : "text-pink-400 hover:text-pink-300"
               }`}
             >
-              <span>🎬 Studio</span>
+              <span>{t("tb_mode_studio_clean")}</span>
             </button>
           )}
 
           <button
             onClick={() => {
               if (isRecording) stopVideoRecording();
+              stopAnimation();
               setActiveMode("3d");
             }}
             className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
@@ -1914,7 +2089,7 @@ export default function TacticsBoard() {
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-1">
                     <span className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-pink-500/20 text-pink-300 border border-pink-500/40 shrink-0">
-                      🎬 STUDIO
+                      {t("tb_mode_studio_clean")}
                     </span>
                     <input
                       type="text"
@@ -2015,7 +2190,86 @@ export default function TacticsBoard() {
           )}
 
           {/* ============================================================= */}
-          {/* AKTIVER STELLUNGSSPIEL-DRILL BANNER (NUR WENN AKTIV)          */}
+          {/* MEIN PLAYBOOK PANEL (SPEICHERN & LADEN EIGENER SPIELZÜGE)     */}
+          {/* ============================================================= */}
+          {isProUser && isPlaybookOpen && !activeDrill && (
+            <div className="w-full max-w-[600px] px-3">
+              <div className="bg-[#050b18]/95 border border-cyan-500/40 rounded-2xl p-4 shadow-[0_0_25px_rgba(6,182,212,0.12)] flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                    {t("tb_pb_title")} ({playbook.length}/{MAX_PLAYBOOK_ITEMS})
+                  </span>
+                  <button
+                    onClick={() => setIsPlaybookOpen(false)}
+                    className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-white text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={playTitle}
+                    onChange={(e) => setPlayTitle(e.target.value)}
+                    placeholder={t("tb_pb_placeholder")}
+                    className="flex-1 bg-[#030611] border border-slate-700 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                  />
+                  <button
+                    onClick={handleSaveToPlaybook}
+                    className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 transition-all"
+                  >
+                    {t("tb_pb_save")}
+                  </button>
+                </div>
+
+                {playbookToast && (
+                  <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
+                    {playbookToast}
+                  </div>
+                )}
+
+                {playbook.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-3 bg-[#030611] rounded-xl border border-slate-800/80">
+                    {t("tb_pb_empty")}
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {playbook.map((play) => (
+                      <div
+                        key={play.id}
+                        className="flex items-center justify-between gap-2 bg-[#030611] border border-slate-800 rounded-xl px-3 py-2"
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-bold text-white truncate">{play.title}</span>
+                          <span className="text-[9px] text-slate-500 font-semibold">
+                            {play.keyframes?.length || 1} {t("tb_pb_steps_label")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleLoadPlay(play)}
+                            className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all"
+                          >
+                            {t("tb_pb_load")}
+                          </button>
+                          <button
+                            onClick={() => handleDeletePlay(play.id)}
+                            className="px-2 py-1.5 rounded-lg bg-red-950/30 hover:bg-red-600 border border-red-500/30 text-red-400 hover:text-white text-[10px] font-bold transition-all"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================= */}
+          {/* AKTIVER STELLUNGSSPIEL-DRILL BANNER                           */}
           {/* ============================================================= */}
           {isProUser && activeDrill && (
             <div className="w-full max-w-[600px] px-3">
@@ -2023,19 +2277,10 @@ export default function TacticsBoard() {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400 block">
-                      🎯{" "}
-                      {lang === "en"
-                        ? `POSITIONING DRILL ${(activeDrillIdx ?? 0) + 1}/${BOARD_DRILLS.length}`
-                        : lang === "es"
-                        ? `DRILL DE POSICIÓN ${(activeDrillIdx ?? 0) + 1}/${BOARD_DRILLS.length}`
-                        : `STELLUNGSSPIEL-DRILL ${(activeDrillIdx ?? 0) + 1}/${BOARD_DRILLS.length}`}
+                      {t("tb_drill_badge")} {(activeDrillIdx ?? 0) + 1}/{BOARD_DRILLS.length}
                     </span>
                     <h4 className="text-sm sm:text-base font-black text-white">
-                      {lang === "en"
-                        ? activeDrill.title.en
-                        : lang === "es"
-                        ? activeDrill.title.es
-                        : activeDrill.title.de}
+                      {t(activeDrill.titleKey)}
                     </h4>
                   </div>
                   <button
@@ -2050,11 +2295,7 @@ export default function TacticsBoard() {
                 </div>
 
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  {lang === "en"
-                    ? activeDrill.prompt.en
-                    : lang === "es"
-                    ? activeDrill.prompt.es
-                    : activeDrill.prompt.de}
+                  {t(activeDrill.promptKey)}
                 </p>
 
                 {drillResult ? (
@@ -2065,17 +2306,7 @@ export default function TacticsBoard() {
                           drillResult.passed ? "text-emerald-400" : "text-amber-400"
                         }`}
                       >
-                        {drillResult.passed
-                          ? lang === "en"
-                            ? "✅ Great Positioning!"
-                            : lang === "es"
-                            ? "✅ ¡Gran Posición!"
-                            : "✅ Starkes Stellungsspiel!"
-                          : lang === "en"
-                          ? "⚠️ Almost – adjust your pair!"
-                          : lang === "es"
-                          ? "⚠️ Casi – ajusta la pareja"
-                          : "⚠️ Noch Lücken – korrigiere A1 & A2!"}
+                        {drillResult.passed ? t("tb_drill_passed") : t("tb_drill_failed")}
                       </span>
                       <span className="text-sm font-black text-white">{drillResult.scorePct}%</span>
                     </div>
@@ -2096,12 +2327,7 @@ export default function TacticsBoard() {
                     </div>
 
                     <p className="text-[11px] text-slate-400 leading-snug pt-1 border-t border-slate-800/80">
-                      💡{" "}
-                      {lang === "en"
-                        ? activeDrill.explanation.en
-                        : lang === "es"
-                        ? activeDrill.explanation.es
-                        : activeDrill.explanation.de}
+                      💡 {t(activeDrill.explKey)}
                     </p>
 
                     <div className="flex gap-2">
@@ -2109,18 +2335,14 @@ export default function TacticsBoard() {
                         onClick={() => startBoardDrill(((activeDrillIdx ?? 0) + 1) % BOARD_DRILLS.length)}
                         className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-[11px] uppercase tracking-wider"
                       >
-                        {lang === "en"
-                          ? "Next Drill →"
-                          : lang === "es"
-                          ? "Siguiente Drill →"
-                          : "Nächster Drill →"}
+                        {t("tb_drill_next_btn")}
                       </button>
                       {!drillResult.passed && (
                         <button
                           onClick={() => setDrillResult(null)}
                           className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-200 font-black text-[11px] uppercase tracking-wider"
                         >
-                          {lang === "en" ? "Retry" : lang === "es" ? "Reintentar" : "Nochmal"}
+                          {t("tb_drill_retry_btn")}
                         </button>
                       )}
                     </div>
@@ -2130,11 +2352,7 @@ export default function TacticsBoard() {
                     onClick={evaluateActiveDrill}
                     className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-black text-xs uppercase tracking-widest transition-all"
                   >
-                    {lang === "en"
-                      ? "Check Positioning ✓"
-                      : lang === "es"
-                      ? "Comprobar Posición ✓"
-                      : "Aufstellung prüfen ✓"}
+                    {t("tb_drill_check_btn")}
                   </button>
                 )}
               </div>
@@ -2157,7 +2375,7 @@ export default function TacticsBoard() {
                     onChange={handleScenarioChange}
                     className="w-full px-3 py-2.5 bg-[#030611] border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer appearance-none pr-8"
                   >
-                    <optgroup label={lang === "en" ? "Standard Formations" : lang === "es" ? "Formaciones" : "Standard-Aufstellungen"}>
+                    <optgroup label={t("tb_opt_standard")}>
                       {visiblePresetEntries.map(([key, value]) => (
                         <option key={key} value={key} className="bg-[#050b18] text-white">
                           {t(value.nameKey)}
@@ -2166,7 +2384,7 @@ export default function TacticsBoard() {
                     </optgroup>
 
                     {isProUser && weaknessPool.length > 0 && (
-                      <optgroup label={lang === "en" ? "Coach Focus (Your Weaknesses)" : lang === "es" ? "Enfoque Coach (Debilidades)" : "Coach-Fokus (Deine Baustellen)"}>
+                      <optgroup label={t("tb_opt_coach_focus")}>
                         {weaknessPool.map((sc) => (
                           <option key={`weak-${sc.id}`} value={`trainer_${sc.id}`} className="bg-[#050b18] text-amber-300">
                             🎯 #{sc.id} – {sc.validShots[0] || "Taktik"}
@@ -2176,7 +2394,7 @@ export default function TacticsBoard() {
                     )}
 
                     {isProUser && (
-                      <optgroup label={lang === "en" ? "All Trainer Scenarios (1–111)" : lang === "es" ? "Todos los Escenarios" : "Alle Trainer-Szenarien (1–111)"}>
+                      <optgroup label={t("tb_opt_all_trainer")}>
                         {TRAINER_SCENARIOS.map((sc, idx) => (
                           <option key={`tr-${sc.id}-${idx}`} value={`trainer_${sc.id}`} className="bg-[#050b18] text-slate-200">
                             #{sc.id} – {sc.validShots[0] || "Szenario"}
@@ -2195,12 +2413,11 @@ export default function TacticsBoard() {
                 </div>
               </div>
 
-              {/* Geladenes Trainer-Szenario Kontext-Karte */}
               {isProUser && loadedTrainerScenario && loadedScenarioDesc && (
                 <div className="p-3.5 bg-cyan-950/30 border border-cyan-500/40 rounded-xl flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
-                      🧠 Coach-Szenario #{loadedTrainerScenario.id}
+                      {t("tb_coach_scen_badge")} #{loadedTrainerScenario.id}
                     </span>
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 border border-orange-500/40 text-orange-300">
                       {loadedTrainerScenario.validShots.join(" / ")}
@@ -2217,7 +2434,6 @@ export default function TacticsBoard() {
                 </div>
               )}
 
-              {/* Erweiterte Taktik-Filter (nur bei isProUser sichtbar) */}
               {isProUser && (
                 <div className="p-3.5 sm:p-4 bg-[#050b18]/95 border border-slate-800 rounded-xl shadow-lg w-full">
                   <span className="text-[10px] uppercase tracking-widest font-black block mb-2.5 text-slate-400">
@@ -2231,9 +2447,7 @@ export default function TacticsBoard() {
                         onChange={() => toggleFilter("showAngleCone")}
                         className="rounded text-amber-500 w-3.5 h-3.5"
                       />
-                      <span className="font-bold text-amber-200">
-                        {lang === "en" ? "Angle Cone" : lang === "es" ? "Cono de Ángulo" : "Winkel-Kegel"}
-                      </span>
+                      <span className="font-bold text-amber-200">{t("tb_filter_angle_cone")}</span>
                     </label>
 
                     <label className="flex items-center gap-2 bg-indigo-950/40 hover:bg-indigo-950/60 px-2.5 py-1.5 rounded-lg border border-indigo-500/40 cursor-pointer select-none transition-all">
@@ -2301,6 +2515,108 @@ export default function TacticsBoard() {
             </div>
           )}
 
+          {/* ============================================================= */}
+          {/* MULTI-STEP KEYFRAME ANIMATIONS-LEISTE (2D & STUDIO)           */}
+          {/* ============================================================= */}
+          {isProUser && !activeDrill && (
+            <div className="w-full max-w-[600px] px-3">
+              <div className="bg-[#050b18]/95 border border-slate-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                    {t("tb_anim_title")}
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    {([0.7, 1, 1.5] as const).map((spd) => (
+                      <button
+                        key={spd}
+                        onClick={() => setPlaySpeed(spd)}
+                        className={`px-2 py-0.5 rounded text-[9px] font-black border transition-all ${
+                          playSpeed === spd
+                            ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                            : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
+
+                    {keyframes.length >= 2 && (
+                      <button
+                        onClick={() => (isPlaying ? stopAnimation() : setIsPlaying(true))}
+                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                          isPlaying
+                            ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]"
+                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                        }`}
+                      >
+                        {isPlaying ? t("tb_anim_stop") : t("tb_anim_play")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {keyframes.map((kf, idx) => (
+                    <button
+                      key={kf.id}
+                      onClick={() => handleSelectKeyframe(idx)}
+                      className={`w-7 h-7 rounded-lg text-xs font-black border transition-all ${
+                        activeStepIdx === idx
+                          ? "bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-105"
+                          : "bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/60"
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={handleAddKeyframe}
+                    className="px-2.5 h-7 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/50 text-indigo-200 hover:text-white transition-all"
+                  >
+                    {t("tb_anim_add_step")}
+                  </button>
+
+                  {activeStepIdx !== null && (
+                    <>
+                      <button
+                        onClick={handleUpdateActiveKeyframe}
+                        title={t("tb_anim_update_step")}
+                        className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300"
+                      >
+                        ↻
+                      </button>
+                      <button
+                        onClick={handleDeleteActiveKeyframe}
+                        title={t("tb_anim_del_step")}
+                        className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-red-900/50 border border-slate-700 text-red-400"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+
+                  {keyframes.length > 0 && (
+                    <button
+                      onClick={handleClearKeyframes}
+                      className="ml-auto px-2 h-7 rounded-lg text-[9px] font-bold uppercase tracking-wider text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      {t("tb_anim_clear")}
+                    </button>
+                  )}
+                </div>
+
+                {keyframes.length < 2 && (
+                  <p className="text-[10px] text-slate-500 leading-snug">{t("tb_anim_hint")}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================= */}
+          {/* SPIELFELD SVG                                                 */}
+          {/* ============================================================= */}
           <div
             ref={containerRef}
             className="w-full max-w-[600px] mx-auto px-3 flex-1 flex flex-col items-center justify-center min-h-[300px]"
@@ -2311,6 +2627,8 @@ export default function TacticsBoard() {
               className={`rounded-xl shadow-2xl border-4 w-full h-auto max-h-[75vh] touch-none select-none overflow-hidden ${
                 isRecording
                   ? "border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]"
+                  : isPlaying
+                  ? "border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
                   : activeDrill
                   ? "border-orange-500/70 shadow-[0_0_20px_rgba(249,115,22,0.3)]"
                   : activeMode === "studio"
@@ -2620,9 +2938,7 @@ export default function TacticsBoard() {
                   </>
                 )}
 
-                {/* ========================================================= */}
-                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN             */}
-                {/* ========================================================= */}
+                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN */}
                 {isProUser &&
                   allDrawingsToRender.map((d) => {
                     if (d.type === "zone_circle") {
@@ -2747,14 +3063,8 @@ export default function TacticsBoard() {
                       <div className="flex items-center gap-2">
                         <span className="w-3.5 h-3.5 bg-yellow-400/25 border border-yellow-400/60 rounded inline-block" />
                         <span>
-                          <strong className="text-amber-300">
-                            {lang === "en" ? "Angle Cone:" : lang === "es" ? "Cono:" : "Winkel-Kegel:"}
-                          </strong>{" "}
-                          {lang === "en"
-                            ? "Danger corridor & center bisector"
-                            : lang === "es"
-                            ? "Ángulos de tiro y bisectriz"
-                            : "Gefahrenkorridor & Winkelhalbierende"}
+                          <strong className="text-amber-300">{t("tb_leg_cone_b")}</strong>{" "}
+                          {t("tb_leg_cone_t")}
                         </span>
                       </div>
                     )}
@@ -2809,14 +3119,8 @@ export default function TacticsBoard() {
                       <div className="flex items-center gap-2">
                         <span className="w-5 h-1 bg-emerald-500 rounded inline-block" />
                         <span>
-                          <strong className="text-emerald-300">
-                            {lang === "en" ? "Team Line:" : lang === "es" ? "Línea Equipo:" : "Gummiband:"}
-                          </strong>{" "}
-                          {lang === "en"
-                            ? "Green = compact, Red = split"
-                            : lang === "es"
-                            ? "Verde = compacto, Rojo = abierto"
-                            : "Grün = kompakt, Rot = Lücke/Tiefen-Riss"}
+                          <strong className="text-emerald-300">{t("tb_leg_rubber_b")}</strong>{" "}
+                          {t("tb_leg_rubber_t")}
                         </span>
                       </div>
                     )}
@@ -2844,6 +3148,9 @@ export default function TacticsBoard() {
             )}
           </div>
 
+          {/* ============================================================= */}
+          {/* AKTIONS-LEISTE UNTEN                                          */}
+          {/* ============================================================= */}
           <div className="flex gap-2 sm:gap-3 flex-wrap justify-center px-3 mb-6 w-full">
             <button
               onClick={reset}
@@ -2851,6 +3158,7 @@ export default function TacticsBoard() {
             >
               {t("tb_btn_reset_pos")}
             </button>
+
             <button
               onClick={() => {
                 if (activeDrill) {
@@ -2869,33 +3177,42 @@ export default function TacticsBoard() {
             </button>
 
             {isProUser && (
-              <button
-                onClick={() => {
-                  if (activeDrill) {
-                    setActiveDrillIdx(null);
-                    setDrillResult(null);
-                  } else {
-                    startBoardDrill(0);
-                  }
-                }}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all shadow-md ${
-                  activeDrill
-                    ? "bg-orange-500 text-black hover:bg-orange-400"
-                    : "bg-gradient-to-r from-orange-600 to-amber-500 text-black hover:from-orange-500 hover:to-amber-400"
-                }`}
-              >
-                {activeDrill
-                  ? lang === "en"
-                    ? "Exit Drill"
-                    : lang === "es"
-                    ? "Salir del Drill"
-                    : "Drill beenden"
-                  : lang === "en"
-                  ? "🎯 Coach Drill"
-                  : lang === "es"
-                  ? "🎯 Drill Coach"
-                  : "🎯 Coach-Drill"}
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    if (activeDrill) {
+                      setActiveDrillIdx(null);
+                      setDrillResult(null);
+                    }
+                    setIsPlaybookOpen((prev) => !prev);
+                  }}
+                  className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all shadow-md ${
+                    isPlaybookOpen && !activeDrill
+                      ? "bg-cyan-600 text-white hover:bg-cyan-500"
+                      : "bg-slate-800 text-cyan-300 border border-cyan-500/40 hover:bg-slate-700"
+                  }`}
+                >
+                  {t("tb_pb_toggle")}
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (activeDrill) {
+                      setActiveDrillIdx(null);
+                      setDrillResult(null);
+                    } else {
+                      startBoardDrill(0);
+                    }
+                  }}
+                  className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all shadow-md ${
+                    activeDrill
+                      ? "bg-orange-500 text-black hover:bg-orange-400"
+                      : "bg-gradient-to-r from-orange-600 to-amber-500 text-black hover:from-orange-500 hover:to-amber-400"
+                  }`}
+                >
+                  {activeDrill ? t("tb_btn_exit_drill") : t("tb_btn_coach_drill")}
+                </button>
+              </>
             )}
           </div>
         </>
