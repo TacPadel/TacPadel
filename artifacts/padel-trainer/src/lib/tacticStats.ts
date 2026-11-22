@@ -51,7 +51,7 @@ export interface TacticCoachStats {
   match: ModeStats;
   matchErrors: MatchErrorCounters;
   byScenario: Record<number, ScenarioHistory>;
-  // Erweiterungspunkt für spätere TaktikBoard-Übungen / eigene Drills
+  // Zählt bestandene Stellungsspiel-Drills auf dem TacticsBoard
   boardDrillsCompleted: number;
 }
 
@@ -234,8 +234,8 @@ export async function fetchCoachStats(userId?: string | null): Promise<TacticCoa
 
     if (!error && data?.tactic_stats && (data.tactic_stats as any).version === 2) {
       const remote = hydrateStats(data.tactic_stats);
-      const localVolume = local.trainer.totalTurns + local.match.totalTurns;
-      const remoteVolume = remote.trainer.totalTurns + remote.match.totalTurns;
+      const localVolume = local.trainer.totalTurns + local.match.totalTurns + local.boardDrillsCompleted;
+      const remoteVolume = remote.trainer.totalTurns + remote.match.totalTurns + remote.boardDrillsCompleted;
 
       const winner = remoteVolume >= localVolume ? remote : local;
       try {
@@ -386,6 +386,28 @@ export function recordMatchDefenseError(params: {
   addScore(stats.match.axes.positioning, 0);
   addScore(stats.match.axes.defense, params.reason === "missed_time" ? 25 : 0);
   stats.matchErrors.positioningErrors += 1;
+
+  persistCoachStats(params.userId, stats);
+  return stats;
+}
+
+// =========================================================================
+// 2c. TRACKING FÜR TAKTIKBOARD-DRILLS (Stellungsspiel-Training am Board)
+// =========================================================================
+export function recordBoardDrill(params: {
+  userId?: string | null;
+  scorePct: number;
+  passed: boolean;
+}): TacticCoachStats {
+  const stats = loadLocalCoachStats(params.userId);
+  const clampedScore = Math.max(0, Math.min(100, Math.round(params.scorePct)));
+
+  if (params.passed) {
+    stats.boardDrillsCompleted = (stats.boardDrillsCompleted || 0) + 1;
+  }
+
+  stats.trainer.totalTurns += 1;
+  addScore(stats.trainer.axes.positioning, clampedScore);
 
   persistCoachStats(params.userId, stats);
   return stats;
