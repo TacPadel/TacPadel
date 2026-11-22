@@ -43,10 +43,11 @@ interface StudioDrawing {
   y2: number;
 }
 
-// Keyframe für Multi-Step-Animation
+// Keyframe für Multi-Step-Animation (inkl. eigener Zeichnungen pro Schritt)
 interface BoardKeyframe {
   id: string;
   items: DraggableItem[];
+  drawings: StudioDrawing[];
 }
 
 // Gespeicherter Spielzug im Playbook
@@ -95,8 +96,15 @@ const getPlaybookStorageKey = (userId?: string | null) =>
 const cloneItems = (list: DraggableItem[]): DraggableItem[] =>
   list.map((i) => ({ ...i }));
 
+const cloneDrawings = (list: StudioDrawing[] = []): StudioDrawing[] =>
+  list.map((d) => ({ ...d }));
+
 const cloneKeyframes = (frames: BoardKeyframe[]): BoardKeyframe[] =>
-  frames.map((f) => ({ id: f.id, items: cloneItems(f.items) }));
+  frames.map((f) => ({
+    id: f.id,
+    items: cloneItems(f.items || []),
+    drawings: cloneDrawings(f.drawings || []),
+  }));
 
 const easeInOut = (t: number) =>
   t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -779,11 +787,12 @@ export default function TacticsBoard() {
   const [activeDrillIdx, setActiveDrillIdx] = useState<number | null>(null);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
 
-  // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio) ---
+  // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio, inkl. Zeichnungen pro Schritt) ---
   const [keyframes, setKeyframes] = useState<BoardKeyframe[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeed, setPlaySpeed] = useState<0.7 | 1 | 1.5>(1);
+  const [stepToast, setStepToast] = useState<string | null>(null);
   const animRafRef = useRef<number | null>(null);
 
   // --- MEIN PLAYBOOK (Exklusiv im Studio, Lokal + Supabase Sync) ---
@@ -856,12 +865,10 @@ export default function TacticsBoard() {
       setIsProUser(unlocked);
 
       if (unlocked) {
-        // Schwächen-Pool aus dem Coach laden
         const stats = await fetchCoachStats(uid);
         const { scenarios } = buildSmartWeaknessPool(stats, 8);
         setWeaknessPool(scenarios);
 
-        // Playbook laden (Lokal + Remote user_metadata zusammenführen)
         let localPlays: SavedPlay[] = [];
         try {
           const raw = localStorage.getItem(getPlaybookStorageKey(uid));
@@ -959,7 +966,38 @@ export default function TacticsBoard() {
     };
   }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle]);
 
-  // --- KEYFRAME ANIMATIONS-SCHLEIFE (Studio) ---
+  // Prüft, ob am aktuell ausgewählten Schritt ungespeicherte Änderungen (Positionen oder Zeichnungen) vorliegen
+  const isActiveStepDirty = useMemo(() => {
+    if (activeStepIdx === null || isPlaying) return false;
+    const kf = keyframes[activeStepIdx];
+    if (!kf) return false;
+
+    const itemsChanged = kf.items.some((kItem) => {
+      const cur = items.find((i) => i.id === kItem.id);
+      return (
+        !cur ||
+        Math.round(cur.x) !== Math.round(kItem.x) ||
+        Math.round(cur.y) !== Math.round(kItem.y)
+      );
+    });
+    if (itemsChanged) return true;
+
+    const kfDrawings = kf.drawings || [];
+    if (kfDrawings.length !== drawings.length) return true;
+    return kfDrawings.some((kd, idx) => {
+      const cd = drawings[idx];
+      return (
+        !cd ||
+        cd.type !== kd.type ||
+        Math.round(cd.x1) !== Math.round(kd.x1) ||
+        Math.round(cd.y1) !== Math.round(kd.y1) ||
+        Math.round(cd.x2) !== Math.round(kd.x2) ||
+        Math.round(cd.y2) !== Math.round(kd.y2)
+      );
+    });
+  }, [activeStepIdx, keyframes, items, drawings, isPlaying]);
+
+  // --- KEYFRAME ANIMATIONS-SCHLEIFE (Studio – inkl. automatischem Zeichnungswechsel pro Schritt) ---
   const stopAnimation = useCallback(() => {
     if (animRafRef.current !== null) {
       cancelAnimationFrame(animRafRef.current);
@@ -971,28 +1009,60 @@ export default function TacticsBoard() {
   useEffect(() => {
     if (!isPlaying || keyframes.length < 2) return;
 
+    const initialHoldMs = 450 / playSpeed;
     const transitionMs = 1050 / playSpeed;
-    const holdMs = 300 / playSpeed;
+    const holdMs = 400 / playSpeed;
     const segmentMs = transitionMs + holdMs;
     const totalSegments = keyframes.length - 1;
     const startTime = performance.now();
 
+    // Direkt auf Schritt 1 inkl. zugehöriger Zeichnungen springen
+    const firstItems = cloneItems(keyframes[0].items);
+    const firstDrawings = cloneDrawings(keyframes[0].drawings || []);
+    liveStateRef.current.items = firstItems;
+    liveStateRef.current.drawings = firstDrawings;
+    setItems(firstItems);
+    setDrawings(firstDrawings);
+    setActiveStepIdx(0);
+
+    let lastAppliedDrawingStep = 0;
+
+    const applyStepDrawings = (stepIdx: number) => {
+      if (stepIdx === lastAppliedDrawingStep) return;
+      lastAppliedDrawingStep = stepIdx;
+      const nextDrawings = cloneDrawings(keyframes[stepIdx]?.drawings || []);
+      liveStateRef.current.drawings = nextDrawings;
+      setDrawings(nextDrawings);
+    };
+
     const tick = (now: number) => {
       const elapsed = now - startTime;
-      const segIndex = Math.floor(elapsed / segmentMs);
+
+      // Kurze Start-Haltezeit bei Schritt 1, damit die Start-Pfeile gut lesbar sind
+      if (elapsed < initialHoldMs) {
+        animRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const animElapsed = elapsed - initialHoldMs;
+      const segIndex = Math.floor(animElapsed / segmentMs);
 
       if (segIndex >= totalSegments) {
         const lastIdx = keyframes.length - 1;
         const finalItems = cloneItems(keyframes[lastIdx].items);
+        const finalDrawings = cloneDrawings(keyframes[lastIdx].drawings || []);
         liveStateRef.current.items = finalItems;
+        liveStateRef.current.drawings = finalDrawings;
         setItems(finalItems);
+        setDrawings(finalDrawings);
         setActiveStepIdx(lastIdx);
         setIsPlaying(false);
         animRafRef.current = null;
         return;
       }
 
-      const segElapsed = elapsed - segIndex * segmentMs;
+      const segElapsed = animElapsed - segIndex * segmentMs;
+      const isHoldPhase = segElapsed >= transitionMs;
       const rawT = Math.min(1, segElapsed / transitionMs);
       const tEased = easeInOut(rawT);
 
@@ -1008,10 +1078,15 @@ export default function TacticsBoard() {
         };
       });
 
+      // Während der Bewegung zeigen wir die Pfeile des Start-Schritts;
+      // sobald die Spieler im Ziel-Schritt ankommen (Haltephase), blenden die Pfeile des nächsten Schritts ein.
+      const drawingStepIdx = isHoldPhase ? segIndex + 1 : segIndex;
+      applyStepDrawings(drawingStepIdx);
+
       // Direkt in liveStateRef spiegeln für verzögerungsfreie 30-FPS-Aufnahme
       liveStateRef.current.items = interpolated;
       setItems(interpolated);
-      setActiveStepIdx(rawT >= 0.85 ? segIndex + 1 : segIndex);
+      setActiveStepIdx(isHoldPhase ? segIndex + 1 : segIndex);
       animRafRef.current = requestAnimationFrame(tick);
     };
 
@@ -1024,12 +1099,13 @@ export default function TacticsBoard() {
     };
   }, [isPlaying, keyframes, playSpeed]);
 
-  // Keyframe-Aktionen
+  // Keyframe-Aktionen (inkl. Zeichnungen pro Schritt)
   const handleAddKeyframe = () => {
     stopAnimation();
     const newFrame: BoardKeyframe = {
       id: `kf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       items: cloneItems(items),
+      drawings: cloneDrawings(drawings),
     };
     setKeyframes((prev) => {
       const next = [...prev, newFrame];
@@ -1044,14 +1120,21 @@ export default function TacticsBoard() {
     if (!frame) return;
     setActiveStepIdx(idx);
     setItems(cloneItems(frame.items));
+    setDrawings(cloneDrawings(frame.drawings || []));
   };
 
   const handleUpdateActiveKeyframe = () => {
     if (activeStepIdx === null || !keyframes[activeStepIdx]) return;
     stopAnimation();
     setKeyframes((prev) =>
-      prev.map((kf, idx) => (idx === activeStepIdx ? { ...kf, items: cloneItems(items) } : kf))
+      prev.map((kf, idx) =>
+        idx === activeStepIdx
+          ? { ...kf, items: cloneItems(items), drawings: cloneDrawings(drawings) }
+          : kf
+      )
     );
+    setStepToast(t("tb_anim_step_updated"));
+    setTimeout(() => setStepToast(null), 2000);
   };
 
   const handleDeleteActiveKeyframe = () => {
@@ -1065,6 +1148,7 @@ export default function TacticsBoard() {
         const nextIdx = Math.min(activeStepIdx, next.length - 1);
         setActiveStepIdx(nextIdx);
         setItems(cloneItems(next[nextIdx].items));
+        setDrawings(cloneDrawings(next[nextIdx].drawings || []));
       }
       return next;
     });
@@ -1100,6 +1184,20 @@ export default function TacticsBoard() {
     const cleanTitle = (playTitle || studioTitle || t("tb_default_studio_title")).trim();
     if (!cleanTitle) return;
 
+    // Falls der aktive Schritt gerade bearbeitet wurde, automatisch vor dem Speichern aktualisieren
+    const syncedKeyframes =
+      activeStepIdx !== null && keyframes[activeStepIdx] && isActiveStepDirty
+        ? keyframes.map((kf, idx) =>
+            idx === activeStepIdx
+              ? { ...kf, items: cloneItems(items), drawings: cloneDrawings(drawings) }
+              : kf
+          )
+        : keyframes;
+
+    if (syncedKeyframes !== keyframes) {
+      setKeyframes(syncedKeyframes);
+    }
+
     const existing = playbook.find(
       (p) => p.title.toLowerCase() === cleanTitle.toLowerCase()
     );
@@ -1109,8 +1207,8 @@ export default function TacticsBoard() {
       title: cleanTitle,
       updatedAt: Date.now(),
       items: cloneItems(items),
-      drawings: drawings.map((d) => ({ ...d })),
-      keyframes: cloneKeyframes(keyframes),
+      drawings: cloneDrawings(drawings),
+      keyframes: cloneKeyframes(syncedKeyframes),
     };
 
     const nextList = [
@@ -1138,12 +1236,18 @@ export default function TacticsBoard() {
     if (loadedFrames.length > 0) {
       setActiveStepIdx(0);
       setItems(cloneItems(loadedFrames[0].items));
+      // Abwärtskompatibel: falls älterer Playbook-Eintrag noch keine Schritt-Zeichnungen hatte
+      const initialDrawings =
+        loadedFrames[0].drawings && loadedFrames[0].drawings.length > 0
+          ? cloneDrawings(loadedFrames[0].drawings)
+          : cloneDrawings(play.drawings || []);
+      setDrawings(initialDrawings);
     } else {
       setActiveStepIdx(null);
       setItems(cloneItems(play.items));
+      setDrawings(cloneDrawings(play.drawings || []));
     }
 
-    setDrawings((play.drawings || []).map((d) => ({ ...d })));
     setPlayTitle(play.title);
     setStudioTitle(play.title);
   };
@@ -1295,6 +1399,7 @@ export default function TacticsBoard() {
 
   const handleSvgPointerDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (isProUser && activeMode === "studio" && studioTool !== "move") {
+      if (isPlaying) stopAnimation();
       if (e.cancelable) e.preventDefault();
       const pt = getPoint(e);
       setCurrentDraft({
@@ -2153,7 +2258,7 @@ export default function TacticsBoard() {
                   </div>
                 </div>
 
-                {/* 2. Zeichen-Werkzeuge */}
+                {/* 2. Zeichen-Werkzeuge (für den jeweils aktiven Schritt) */}
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-2.5 border-t border-slate-800/80">
                   <button
                     onClick={() => setStudioTool("move")}
@@ -2211,12 +2316,19 @@ export default function TacticsBoard() {
                   </button>
                 </div>
 
-                {/* 3. Integrierte Spielzug-Animation (Schritte vorarbeiten & beim Abspielen aufnehmen) */}
+                {/* 3. Integrierte Spielzug-Animation (Zeichnungen pro Schritt) */}
                 <div className="pt-2.5 border-t border-slate-800/80 flex flex-col gap-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                      {t("tb_anim_title")}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                        {t("tb_anim_title")}
+                      </span>
+                      {activeStepIdx !== null && (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
+                          {t("tb_anim_step_label")} {activeStepIdx + 1}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-1.5">
                       {([0.7, 1, 1.5] as const).map((spd) => (
@@ -2249,19 +2361,29 @@ export default function TacticsBoard() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {keyframes.map((kf, idx) => (
-                      <button
-                        key={kf.id}
-                        onClick={() => handleSelectKeyframe(idx)}
-                        className={`w-7 h-7 rounded-lg text-xs font-black border transition-all ${
-                          activeStepIdx === idx
-                            ? "bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-105"
-                            : "bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/60"
-                        }`}
-                      >
-                        {idx + 1}
-                      </button>
-                    ))}
+                    {keyframes.map((kf, idx) => {
+                      const hasStepDrawings = (kf.drawings?.length || 0) > 0;
+                      return (
+                        <button
+                          key={kf.id}
+                          onClick={() => handleSelectKeyframe(idx)}
+                          className={`relative w-7 h-7 rounded-lg text-xs font-black border transition-all ${
+                            activeStepIdx === idx
+                              ? "bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-105"
+                              : "bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/60"
+                          }`}
+                        >
+                          {idx + 1}
+                          {hasStepDrawings && (
+                            <span
+                              className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-[#050b18] ${
+                                activeStepIdx === idx ? "bg-pink-500" : "bg-amber-400"
+                              }`}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
 
                     <button
                       onClick={handleAddKeyframe}
@@ -2275,7 +2397,11 @@ export default function TacticsBoard() {
                         <button
                           onClick={handleUpdateActiveKeyframe}
                           title={t("tb_anim_update_step")}
-                          className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300"
+                          className={`px-2 h-7 rounded-lg text-[10px] font-black border transition-all ${
+                            isActiveStepDirty
+                              ? "bg-amber-500/25 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)] animate-pulse"
+                              : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-amber-300"
+                          }`}
                         >
                           ↻
                         </button>
@@ -2299,8 +2425,16 @@ export default function TacticsBoard() {
                     )}
                   </div>
 
-                  {keyframes.length < 2 && (
-                    <p className="text-[10px] text-slate-500 leading-snug">{t("tb_anim_hint")}</p>
+                  {stepToast ? (
+                    <p className="text-[10px] font-bold text-emerald-400 leading-snug">{stepToast}</p>
+                  ) : isActiveStepDirty ? (
+                    <p className="text-[10px] font-semibold text-amber-300 leading-snug">
+                      {t("tb_anim_unsaved_hint")}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 leading-snug">
+                      {keyframes.length < 2 ? t("tb_anim_hint") : t("tb_anim_step_drawings_hint")}
+                    </p>
                   )}
                 </div>
 

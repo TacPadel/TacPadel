@@ -1220,6 +1220,10 @@ export const TRANSLATIONS = {
     guest_unlock_btn_later: "Weiter im Taktiktrainer",
     login_bonus_banner: "Dein Crashkurs-Bonus (1.500 TacScore) wartet nach der Anmeldung auf dich!",
     bonus_claimed_toast: "Willkommen! +1.500 TacScore Crashkurs-Bonus gutgeschrieben.",
+    tb_anim_step_drawings_hint: "Pfeile & Zonen werden pro Schritt gespeichert und wechseln beim Abspielen automatisch.",
+    tb_anim_step_label: "Schritt",
+    tb_anim_step_updated: "✓ Schritt aktualisiert!",
+    tb_anim_unsaved_hint: "Änderungen mit ↻ speichern oder als '+ Schritt' neu anlegen.",
   },
 
   en: {
@@ -2272,6 +2276,10 @@ export const TRANSLATIONS = {
     guest_unlock_btn_later: "Continue in Tactics Trainer",
     login_bonus_banner: "Your 1,500 TacScore Crash Course bonus will be credited right after signing up!",
     bonus_claimed_toast: "Welcome! +1,500 TacScore Crash Course bonus added.",
+    tb_anim_step_drawings_hint: "Arrows & zones are saved per step and switch automatically during playback.",
+    tb_anim_step_label: "Step",
+    tb_anim_step_updated: "✓ Step updated!",
+    tb_anim_unsaved_hint: "Save changes with ↻ or add as a new '+ Step'.",
   },
 
   es: {
@@ -3324,6 +3332,10 @@ export const TRANSLATIONS = {
     guest_unlock_btn_later: "Seguir en el Entrenador Táctico",
     login_bonus_banner: "¡Tu bono de 1.500 TacScore del Curso Rápido te espera tras registrarte!",
     bonus_claimed_toast: "¡Bienvenido! +1.500 TacScore del Curso Rápido añadidos.",
+    tb_anim_step_drawings_hint: "Las flechas y zonas se guardan por paso y cambian automáticamente al reproducir.",
+    tb_anim_step_label: "Paso",
+    tb_anim_step_updated: "✓ ¡Paso actualizado!",
+    tb_anim_unsaved_hint: "Guarda cambios con ↻ o añade un nuevo '+ Paso'.",
   },
 } as const;
 
