@@ -1193,7 +1193,7 @@ export const TRANSLATIONS = {
     rating_title: "Gefällt dir TacPadel?",
     rating_desc: "Als Indie-Entwickler hilft mir jede einzelne Bewertung enorm, damit mehr Padel-Spieler die App finden!",
     rating_later: "Später vielleicht",
-    game_rookie_serve_hint: "💡 Coach-Tipp: Serviere diagonal nach {target} & rücke auf {run} vor!",
+    game_rookie_serve_hint: "Coach-Tipp: Serviere diagonal nach {target} & rücke auf {run} vor!",
 
     // 4-Schritte-Crashkurs & Gäste-Bonus
     game_lock_badge: "Gesperrt",
@@ -1225,6 +1225,8 @@ export const TRANSLATIONS = {
     tb_anim_step_updated: "✓ Schritt aktualisiert!",
     tb_anim_unsaved_hint: "Änderungen mit ↻ speichern oder als '+ Schritt' neu anlegen.",
     tb_anim_step_saved: "✓ Schritt gespeichert – Figuren vorgerückt & Pfeile für den nächsten Schritt geleert!",
+    tb_tool_lob: "Lob",
+    tb_tool_glass: "Scheibe",
   },
 
   en: {
@@ -2250,7 +2252,7 @@ export const TRANSLATIONS = {
     rating_title: "Enjoying TacPadel?",
     rating_desc: "As an indie developer, every single review helps massively so more Padel players can discover the app!",
     rating_later: "Maybe later",
-    game_rookie_serve_hint: "💡 Coach: Serve diagonally into {target} & move to {run}!",
+    game_rookie_serve_hint: "Coach: Serve diagonally into {target} & move to {run}!",
 
     // 4-Step Crash Course & Guest Bonus
     game_lock_badge: "Locked",
@@ -2282,6 +2284,8 @@ export const TRANSLATIONS = {
     tb_anim_step_updated: "✓ Step updated!",
     tb_anim_unsaved_hint: "Save changes with ↻ or add as a new '+ Step'.",
     tb_anim_step_saved: "✓ Step saved – figures moved & arrows cleared for the next step!",
+    tb_tool_lob: "Lob",
+    tb_tool_glass: "Glass",
   },
 
   es: {
@@ -3307,7 +3311,7 @@ export const TRANSLATIONS = {
     rating_title: "¿Te gusta TacPadel?",
     rating_desc: "Como desarrollador independiente, cada valoración ayuda muchísimo a que más jugadores de pádel descubran la app.",
     rating_later: "Quizás más tarde",
-    game_rookie_serve_hint: "💡 Coach: ¡Saca en diagonal a {target} y sube a {run}!",
+    game_rookie_serve_hint: "Coach: ¡Saca en diagonal a {target} y sube a {run}!",
 
     // Curso Rápido de 4 Pasos y Bono de Invitado
     game_lock_badge: "Bloqueado",
@@ -3339,6 +3343,8 @@ export const TRANSLATIONS = {
     tb_anim_step_updated: "✓ ¡Paso actualizado!",
     tb_anim_unsaved_hint: "Guarda cambios con ↻ o añade un nuevo '+ Paso'.",
     tb_anim_step_saved: "✓ ¡Paso guardado – fichas movidas y flechas limpiadas para el siguiente paso!",
+    tb_tool_lob: "Globo",
+    tb_tool_glass: "Cristal",
   },
 } as const;
 

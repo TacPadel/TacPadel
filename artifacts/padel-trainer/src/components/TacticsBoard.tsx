@@ -32,11 +32,12 @@ interface TacticalFilters {
 }
 
 // Typen für das Tactical Studio (Zeichnungen & Rekorder)
-type StudioTool = "move" | "arrow_run" | "arrow_ball" | "zone_circle";
+type StudioTool = "move" | "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_glass" | "zone_circle";
+type DrawingType = Exclude<StudioTool, "move">;
 
 interface StudioDrawing {
   id: string;
-  type: "arrow_run" | "arrow_ball" | "zone_circle";
+  type: DrawingType;
   x1: number;
   y1: number;
   x2: number;
@@ -91,6 +92,9 @@ const DEPTH_GAP_THRESHOLD = 95;
 const DEEP_DEF_THRESHOLD = 80;
 const MAX_PLAYBOOK_ITEMS = 20;
 
+const isBallArrowType = (type: StudioTool): boolean =>
+  type === "arrow_ball" || type === "arrow_lob" || type === "arrow_glass";
+
 const getPlaybookStorageKey = (userId?: string | null) =>
   `tacpadel_playbook_v1_${userId || "guest"}`;
 
@@ -110,6 +114,81 @@ const cloneKeyframes = (frames: BoardKeyframe[]): BoardKeyframe[] =>
 const easeInOut = (t: number) =>
   t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
+// Berechnet den Kontrollpunkt einer quadratischen Bézier-Kurve für den gebogenen Lob-Pfeil
+const getLobControlPoint = (x1: number, y1: number, x2: number, y2: number) => {
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+  const arcOffset = Math.min(95, Math.max(38, len * 0.28));
+
+  const cand1x = mx + nx * arcOffset;
+  const cand1y = my + ny * arcOffset;
+  const cand2x = mx - nx * arcOffset;
+  const cand2y = my - ny * arcOffset;
+
+  const d1 = Math.hypot(cand1x - V_WIDTH / 2, cand1y - V_HEIGHT / 2);
+  const d2 = Math.hypot(cand2x - V_WIDTH / 2, cand2y - V_HEIGHT / 2);
+
+  const chosenX = d1 <= d2 ? cand1x : cand2x;
+  const chosenY = d1 <= d2 ? cand1y : cand2y;
+
+  return {
+    cx: Math.max(20, Math.min(V_WIDTH - 20, chosenX)),
+    cy: Math.max(20, Math.min(V_HEIGHT - 20, chosenY)),
+  };
+};
+
+// Berechnet den physikalischen Auftreffpunkt an Rück- oder Seitenscheibe (Spiegelungsprinzip)
+const getGlassBouncePoint = (x1: number, y1: number, x2: number, y2: number) => {
+  const netCenter = V_WIDTH / 2;
+  const minX = 14;
+  const maxX = V_WIDTH - 14;
+  const minY = 14;
+  const maxY = V_HEIGHT - 14;
+
+  const xBack = x2 >= netCenter ? maxX : minX;
+  const dBack = Math.abs(xBack - x2);
+  const dTop = Math.abs(y2 - minY);
+  const dBot = Math.abs(maxY - y2);
+  const dSide = Math.min(dTop, dBot);
+
+  // Seitenwand-Abpraller, wenn der Zielpunkt deutlich näher an der Seitenwand liegt
+  if (dSide < dBack * 0.72 && dSide < 120) {
+    const yWall = dTop <= dBot ? minY : maxY;
+    const y2Mirrored = 2 * yWall - y2;
+    const denom = y2Mirrored - y1;
+    if (Math.abs(denom) > 1) {
+      const s = (yWall - y1) / denom;
+      if (s > 0.05 && s < 0.98) {
+        const bx = Math.max(minX, Math.min(maxX, x1 + s * (x2 - x1)));
+        const sameSide =
+          (x1 <= netCenter && x2 <= netCenter) || (x1 > netCenter && x2 > netCenter);
+        const hitsTargetSide = x2 >= netCenter ? bx > netCenter + 18 : bx < netCenter - 18;
+        if (sameSide || hitsTargetSide) {
+          return { bx, by: yWall };
+        }
+      }
+    }
+  }
+
+  // Standard: Rückwand-Scheibe (Einfallswinkel = Ausfallswinkel)
+  const x2Mirrored = 2 * xBack - x2;
+  const denom = x2Mirrored - x1;
+  if (Math.abs(denom) > 1) {
+    const s = (xBack - x1) / denom;
+    const clampedS = Math.max(0.05, Math.min(0.98, s));
+    const by = Math.max(minY, Math.min(maxY, y1 + clampedS * (y2 - y1)));
+    return { bx: xBack, by };
+  }
+
+  return { bx: xBack, by: Math.max(minY, Math.min(maxY, (y1 + y2) / 2)) };
+};
+
 // Verschiebt Figuren und Ball automatisch entlang der gezeichneten Pfeile eines Schritts
 const applyDrawingsToItems = (
   baseItems: DraggableItem[],
@@ -123,9 +202,8 @@ const applyDrawingsToItems = (
 
     let targetId = d.linkedItemId;
 
-    // Fallback-Zuordnung für frei angesetzte oder ältere gespeicherte Pfeile
     if (!targetId) {
-      if (d.type === "arrow_ball") {
+      if (isBallArrowType(d.type)) {
         targetId = "ball";
       } else if (d.type === "arrow_run") {
         let bestId: string | undefined;
@@ -841,11 +919,12 @@ export default function TacticsBoard() {
   const [activeDrillIdx, setActiveDrillIdx] = useState<number | null>(null);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
 
-  // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio, inkl. Zeichnungen pro Schritt) ---
+  // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio, inkl. Lob & Scheibe) ---
   const [keyframes, setKeyframes] = useState<BoardKeyframe[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeed, setPlaySpeed] = useState<0.7 | 1 | 1.5>(1);
+  const [ballScale, setBallScale] = useState<number>(1);
   const [stepToast, setStepToast] = useState<string | null>(null);
   const animRafRef = useRef<number | null>(null);
   const playbackFramesRef = useRef<BoardKeyframe[]>([]);
@@ -1008,6 +1087,7 @@ export default function TacticsBoard() {
     filters: effectiveFilters,
     analysis,
     studioTitle,
+    ballScale,
   });
 
   useEffect(() => {
@@ -1018,8 +1098,9 @@ export default function TacticsBoard() {
       filters: effectiveFilters,
       analysis,
       studioTitle,
+      ballScale,
     };
-  }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle]);
+  }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle, ballScale]);
 
   // Prüft, ob am aktuell ausgewählten Schritt ungespeicherte Änderungen (Positionen oder Zeichnungen) vorliegen
   const isActiveStepDirty = useMemo(() => {
@@ -1064,12 +1145,14 @@ export default function TacticsBoard() {
     return drawings.some((d) => d.type !== "zone_circle");
   }, [keyframes, drawings]);
 
-  // --- KEYFRAME ANIMATIONS-STEUERUNG (Studio – Figuren gleiten exakt entlang der Pfeile) ---
+  // --- KEYFRAME ANIMATIONS-STEUERUNG (Figuren + Ball gleiten exakt entlang Gerade, Lob-Kurve & Scheiben-Abpraller) ---
   const stopAnimation = useCallback(() => {
     if (animRafRef.current !== null) {
       cancelAnimationFrame(animRafRef.current);
       animRafRef.current = null;
     }
+    liveStateRef.current.ballScale = 1;
+    setBallScale(1);
     setIsPlaying(false);
   }, []);
 
@@ -1086,7 +1169,6 @@ export default function TacticsBoard() {
     } else {
       frames = cloneKeyframes(keyframes);
 
-      // Falls auf dem aktuellen (noch nicht gespeicherten) Schritt bereits Pfeile gezeichnet wurden
       if (activeStepIdx === null && drawings.some((d) => d.type !== "zone_circle")) {
         frames.push({
           id: "unsaved-step",
@@ -1095,7 +1177,6 @@ export default function TacticsBoard() {
         });
       }
 
-      // Zielposition des letzten Schritts automatisch als End-Frame anhängen, falls Pfeile vorhanden sind
       const lastFrame = frames[frames.length - 1];
       if ((lastFrame.drawings || []).some((d) => d.type !== "zone_circle")) {
         frames.push({
@@ -1120,7 +1201,7 @@ export default function TacticsBoard() {
     }
 
     const initialHoldMs = 450 / playSpeed;
-    const transitionMs = 1050 / playSpeed;
+    const transitionMs = 1100 / playSpeed;
     const holdMs = 420 / playSpeed;
     const segmentMs = transitionMs + holdMs;
     const totalSegments = frames.length - 1;
@@ -1131,8 +1212,10 @@ export default function TacticsBoard() {
     const firstDrawings = cloneDrawings(frames[0].drawings || []);
     liveStateRef.current.items = firstItems;
     liveStateRef.current.drawings = firstDrawings;
+    liveStateRef.current.ballScale = 1;
     setItems(firstItems);
     setDrawings(firstDrawings);
+    setBallScale(1);
     setActiveStepIdx(keyframes.length > 0 ? 0 : null);
 
     let lastAppliedDrawingStep = 0;
@@ -1148,7 +1231,6 @@ export default function TacticsBoard() {
     const tick = (now: number) => {
       const elapsed = now - startTime;
 
-      // Kurze Haltezeit bei Schritt 1, damit Startposition + Pfeile gut lesbar sind
       if (elapsed < initialHoldMs) {
         animRafRef.current = requestAnimationFrame(tick);
         return;
@@ -1163,8 +1245,10 @@ export default function TacticsBoard() {
         const finalDrawings = cloneDrawings(frames[lastIdx].drawings || []);
         liveStateRef.current.items = finalItems;
         liveStateRef.current.drawings = finalDrawings;
+        liveStateRef.current.ballScale = 1;
         setItems(finalItems);
         setDrawings(finalDrawings);
+        setBallScale(1);
         setActiveStepIdx(lastIdx < keyframes.length ? lastIdx : null);
         setIsPlaying(false);
         animRafRef.current = null;
@@ -1178,9 +1262,52 @@ export default function TacticsBoard() {
 
       const fromFrame = frames[segIndex].items;
       const toFrame = frames[segIndex + 1].items;
+      const stepDrawings = frames[segIndex].drawings || [];
+      const ballDrawing = stepDrawings.find((d) => isBallArrowType(d.type));
+
+      let nextBallScale = 1;
 
       const interpolated = fromFrame.map((fromItem) => {
         const target = toFrame.find((i) => i.id === fromItem.id) || fromItem;
+
+        // Spezielle Ball-Flugkurven (Lob-Bogen & Scheiben-Abpraller)
+        if (fromItem.id === "ball" && ballDrawing && !isHoldPhase) {
+          if (ballDrawing.type === "arrow_lob") {
+            const { cx, cy } = getLobControlPoint(fromItem.x, fromItem.y, target.x, target.y);
+            const inv = 1 - tEased;
+            const x = inv * inv * fromItem.x + 2 * inv * tEased * cx + tEased * tEased * target.x;
+            const y = inv * inv * fromItem.y + 2 * inv * tEased * cy + tEased * tEased * target.y;
+            nextBallScale = 1 + 0.65 * Math.sin(Math.PI * tEased);
+            return { ...fromItem, x, y };
+          }
+
+          if (ballDrawing.type === "arrow_glass") {
+            const { bx, by } = getGlassBouncePoint(fromItem.x, fromItem.y, target.x, target.y);
+            const l1 = Math.hypot(bx - fromItem.x, by - fromItem.y);
+            const l2 = Math.hypot(target.x - bx, target.y - by);
+            const totalLen = l1 + l2;
+            if (totalLen > 1) {
+              const dist = tEased * totalLen;
+              if (dist <= l1 && l1 > 0) {
+                const u = dist / l1;
+                return {
+                  ...fromItem,
+                  x: fromItem.x + (bx - fromItem.x) * u,
+                  y: fromItem.y + (by - fromItem.y) * u,
+                };
+              }
+              if (l2 > 0) {
+                const u = (dist - l1) / l2;
+                return {
+                  ...fromItem,
+                  x: bx + (target.x - bx) * u,
+                  y: by + (target.y - by) * u,
+                };
+              }
+            }
+          }
+        }
+
         return {
           ...fromItem,
           x: fromItem.x + (target.x - fromItem.x) * tEased,
@@ -1188,14 +1315,14 @@ export default function TacticsBoard() {
         };
       });
 
-      // Während der Bewegung bleiben die Pfeile des Start-Schritts sichtbar;
-      // bei Ankunft am Ziel-Schritt blenden automatisch die Pfeile des nächsten Schritts ein.
       const drawingStepIdx = isHoldPhase ? segIndex + 1 : segIndex;
       applyStepDrawings(drawingStepIdx);
 
       // Direkt in liveStateRef spiegeln für verzögerungsfreie 30-FPS-Aufnahme
       liveStateRef.current.items = interpolated;
+      liveStateRef.current.ballScale = nextBallScale;
       setItems(interpolated);
+      setBallScale(nextBallScale);
 
       const highlightIdx = isHoldPhase ? segIndex + 1 : segIndex;
       setActiveStepIdx(highlightIdx < keyframes.length ? highlightIdx : null);
@@ -1549,7 +1676,7 @@ export default function TacticsBoard() {
             startY = (closest as DraggableItem).y;
           }
         }
-      } else if (studioTool === "arrow_ball") {
+      } else if (isBallArrowType(studioTool)) {
         const ball = items.find((i) => i.id === "ball");
         linkedItemId = "ball";
         if (ball && (preferredItemId === "ball" || Math.hypot(ball.x - pt.x, ball.y - pt.y) < 85)) {
@@ -1758,16 +1885,16 @@ export default function TacticsBoard() {
             ? { ...currentDraft, x2: currentDraft.x1 + 32, y2: currentDraft.y1 }
             : currentDraft;
         setDrawings((prev) => {
-          // Pro Figur und Schritt immer nur den neuesten Pfeil behalten (kein doppelter Konflikt)
+          const newIsBall = isBallArrowType(finalDraft.type);
           const filtered =
             finalDraft.linkedItemId && finalDraft.type !== "zone_circle"
-              ? prev.filter(
-                  (d) =>
-                    !(
-                      d.type === finalDraft.type &&
-                      d.linkedItemId === finalDraft.linkedItemId
-                    )
-                )
+              ? prev.filter((d) => {
+                  if (newIsBall && isBallArrowType(d.type)) return false;
+                  if (d.type === finalDraft.type && d.linkedItemId === finalDraft.linkedItemId) {
+                    return false;
+                  }
+                  return true;
+                })
               : prev;
           return [...filtered, finalDraft];
         });
@@ -1789,7 +1916,7 @@ export default function TacticsBoard() {
   };
 
   // =========================================================================
-  // SYNCHRONER 30-FPS CANVAS-RENDERER
+  // SYNCHRONER 30-FPS CANVAS-RENDERER (INKL. LOB-KURVE, SCHEIBE & BALL-HÖHE)
   // =========================================================================
   const drawBoardFrameSynchronously = useCallback((): HTMLCanvasElement | null => {
     let canvas = recCanvasRef.current;
@@ -1978,6 +2105,54 @@ export default function TacticsBoard() {
         return;
       }
 
+      if (d.type === "arrow_lob") {
+        const { cx, cy } = getLobControlPoint(d.x1, d.y1, d.x2, d.y2);
+        ctx.strokeStyle = "#34d399";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 5]);
+        ctx.beginPath();
+        ctx.moveTo(d.x1, d.y1);
+        ctx.quadraticCurveTo(cx, cy, d.x2, d.y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawArrowhead(cx, cy, d.x2, d.y2, "#34d399", 14);
+        return;
+      }
+
+      if (d.type === "arrow_glass") {
+        const { bx, by } = getGlassBouncePoint(d.x1, d.y1, d.x2, d.y2);
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([7, 4]);
+        ctx.beginPath();
+        ctx.moveTo(d.x1, d.y1);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(d.x2, d.y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "rgba(192, 132, 252, 0.28)";
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bx, by, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(bx, by, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        const rebLen = Math.hypot(d.x2 - bx, d.y2 - by);
+        if (rebLen > 6) {
+          drawArrowhead(bx, by, d.x2, d.y2, "#c084fc", 14);
+        } else {
+          drawArrowhead(d.x1, d.y1, bx, by, "#c084fc", 14);
+        }
+        return;
+      }
+
       const isRun = d.type === "arrow_run";
       const color = isRun ? "#00f0ff" : "#fbbf24";
       ctx.strokeStyle = color;
@@ -1992,7 +2167,14 @@ export default function TacticsBoard() {
     });
 
     state.items.forEach((item) => {
-      const r = item.isPlayer ? 16 : 10;
+      const r = item.isPlayer ? 16 : 10 * (state.ballScale || 1);
+      if (!item.isPlayer && (state.ballScale || 1) > 1.08) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.beginPath();
+        ctx.arc(item.x - 6, item.y + 6, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       ctx.fillStyle = item.color;
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2.5;
@@ -2444,11 +2626,11 @@ export default function TacticsBoard() {
                   </div>
                 </div>
 
-                {/* 2. Zeichen-Werkzeuge (rasten an Figuren/Ball ein & steuern die Bewegung) */}
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-2.5 border-t border-slate-800/80">
+                {/* 2. Zeichen-Werkzeuge (2x4 Grid inkl. Lob-Kurve & Scheiben-Abpraller) */}
+                <div className="grid grid-cols-4 gap-1.5 pt-2.5 border-t border-slate-800/80">
                   <button
                     onClick={() => setStudioTool("move")}
-                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
                       studioTool === "move"
                         ? "bg-white text-black border-white shadow-md"
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
@@ -2458,7 +2640,7 @@ export default function TacticsBoard() {
                   </button>
                   <button
                     onClick={() => setStudioTool("arrow_run")}
-                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
                       studioTool === "arrow_run"
                         ? "bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-cyan-300"
@@ -2468,7 +2650,7 @@ export default function TacticsBoard() {
                   </button>
                   <button
                     onClick={() => setStudioTool("arrow_ball")}
-                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
                       studioTool === "arrow_ball"
                         ? "bg-amber-500/20 text-amber-300 border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.3)]"
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-amber-300"
@@ -2477,8 +2659,28 @@ export default function TacticsBoard() {
                     {t("tb_tool_ball")}
                   </button>
                   <button
+                    onClick={() => setStudioTool("arrow_lob")}
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "arrow_lob"
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-emerald-300"
+                    }`}
+                  >
+                    {t("tb_tool_lob")}
+                  </button>
+                  <button
+                    onClick={() => setStudioTool("arrow_glass")}
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                      studioTool === "arrow_glass"
+                        ? "bg-purple-500/20 text-purple-300 border-purple-400 shadow-[0_0_10px_rgba(192,132,252,0.3)]"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-purple-300"
+                    }`}
+                  >
+                    {t("tb_tool_glass")}
+                  </button>
+                  <button
                     onClick={() => setStudioTool("zone_circle")}
-                    className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
                       studioTool === "zone_circle"
                         ? "bg-pink-500/20 text-pink-300 border-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.3)]"
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-pink-300"
@@ -2489,14 +2691,14 @@ export default function TacticsBoard() {
                   <button
                     onClick={() => setDrawings((prev) => prev.slice(0, -1))}
                     disabled={drawings.length === 0}
-                    className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+                    className="py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 disabled:opacity-40"
                   >
                     {t("tb_tool_undo")}
                   </button>
                   <button
                     onClick={() => setDrawings([])}
                     disabled={drawings.length === 0}
-                    className="col-span-2 sm:col-span-1 py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider bg-red-950/30 text-red-400 border border-red-900/40 hover:bg-red-900/40 disabled:opacity-40"
+                    className="py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-red-950/30 text-red-400 border border-red-900/40 hover:bg-red-900/40 disabled:opacity-40"
                   >
                     {t("tb_tool_clear")}
                   </button>
@@ -2999,6 +3201,12 @@ export default function TacticsBoard() {
                 <marker id="studioBallArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
                   <polygon points="0 0, 8 3, 0 6" fill="#fbbf24" />
                 </marker>
+                <marker id="studioLobArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="#34d399" />
+                </marker>
+                <marker id="studioGlassArrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="#c084fc" />
+                </marker>
                 <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
                   <feDropShadow dx="-2" dy="0" stdDeviation="2" floodColor="rgba(0,0,0,0.5)" />
                 </filter>
@@ -3273,7 +3481,7 @@ export default function TacticsBoard() {
                   </>
                 )}
 
-                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN (Nur im Studio sichtbar) */}
+                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN (Gerade, Lob-Kurve, Scheibe & Zone) */}
                 {isProUser &&
                   activeMode === "studio" &&
                   allDrawingsToRender.map((d) => {
@@ -3291,6 +3499,48 @@ export default function TacticsBoard() {
                             strokeDasharray="6 4"
                           />
                           <circle cx={d.x1} cy={d.y1} r="4" fill="#ec4899" />
+                        </g>
+                      );
+                    }
+
+                    if (d.type === "arrow_lob") {
+                      const { cx, cy } = getLobControlPoint(d.x1, d.y1, d.x2, d.y2);
+                      return (
+                        <path
+                          key={d.id}
+                          d={`M ${d.x1} ${d.y1} Q ${cx} ${cy} ${d.x2} ${d.y2}`}
+                          fill="none"
+                          stroke="#34d399"
+                          strokeWidth="4"
+                          strokeDasharray="10 5"
+                          markerEnd="url(#studioLobArrow)"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      );
+                    }
+
+                    if (d.type === "arrow_glass") {
+                      const { bx, by } = getGlassBouncePoint(d.x1, d.y1, d.x2, d.y2);
+                      return (
+                        <g key={d.id} style={{ pointerEvents: "none" }}>
+                          <polyline
+                            points={`${d.x1},${d.y1} ${bx},${by} ${d.x2},${d.y2}`}
+                            fill="none"
+                            stroke="#c084fc"
+                            strokeWidth="4"
+                            strokeDasharray="7 4"
+                            strokeLinejoin="round"
+                            markerEnd="url(#studioGlassArrow)"
+                          />
+                          <circle
+                            cx={bx}
+                            cy={by}
+                            r="8"
+                            fill="rgba(192, 132, 252, 0.28)"
+                            stroke="#c084fc"
+                            strokeWidth="2"
+                          />
+                          <circle cx={bx} cy={by} r="3" fill="#ffffff" />
                         </g>
                       );
                     }
@@ -3315,7 +3565,7 @@ export default function TacticsBoard() {
                 {/* Figuren */}
                 {items.map((item) => {
                   const isDragging = activeId === item.id;
-                  const baseR = item.isPlayer ? 16 : 10;
+                  const baseR = item.isPlayer ? 16 : 10 * ballScale;
                   const r = isDragging ? baseR * 1.15 : baseR;
                   const isActivePlayer = showTactics && analysis && analysis.activePlayerId === item.id;
                   const isDrillMovable = !activeDrill || item.id.startsWith("a");
@@ -3331,6 +3581,10 @@ export default function TacticsBoard() {
                       onTouchStart={(e) => onPointerDown(item.id, e)}
                     >
                       <circle cx={item.x} cy={item.y} r={baseR + 12} fill="transparent" />
+                      {/* Dezenter Bodenschatten beim hohen Lob */}
+                      {!item.isPlayer && ballScale > 1.08 && (
+                        <circle cx={item.x - 6} cy={item.y + 6} r={9} fill="rgba(0,0,0,0.32)" />
+                      )}
                       {isActivePlayer && effectiveFilters.showPulse && (
                         <circle
                           cx={item.x}
