@@ -1224,6 +1224,7 @@ export const TRANSLATIONS = {
     tb_anim_step_label: "Schritt",
     tb_anim_step_updated: "✓ Schritt aktualisiert!",
     tb_anim_unsaved_hint: "Änderungen mit ↻ speichern oder als '+ Schritt' neu anlegen.",
+    tb_anim_step_saved: "✓ Schritt gespeichert – Figuren vorgerückt & Pfeile für den nächsten Schritt geleert!",
   },
 
   en: {
@@ -2280,6 +2281,7 @@ export const TRANSLATIONS = {
     tb_anim_step_label: "Step",
     tb_anim_step_updated: "✓ Step updated!",
     tb_anim_unsaved_hint: "Save changes with ↻ or add as a new '+ Step'.",
+    tb_anim_step_saved: "✓ Step saved – figures moved & arrows cleared for the next step!",
   },
 
   es: {
@@ -3336,6 +3338,7 @@ export const TRANSLATIONS = {
     tb_anim_step_label: "Paso",
     tb_anim_step_updated: "✓ ¡Paso actualizado!",
     tb_anim_unsaved_hint: "Guarda cambios con ↻ o añade un nuevo '+ Paso'.",
+    tb_anim_step_saved: "✓ ¡Paso guardado – fichas movidas y flechas limpiadas para el siguiente paso!",
   },
 } as const;
 
