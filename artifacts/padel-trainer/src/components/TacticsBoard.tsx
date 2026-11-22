@@ -749,7 +749,7 @@ function TrajectoryView3D() {
 }
 
 // ==========================================
-// HAUPT-KOMPONENTE (COACH-LABOR, ANIMATION, PLAYBOOK & STUDIO)
+// HAUPT-KOMPONENTE (2D COACH-LABOR & VEREINTES STUDIO)
 // ==========================================
 export default function TacticsBoard() {
   const { lang, t } = useTranslation();
@@ -775,18 +775,18 @@ export default function TacticsBoard() {
   const [boardUserId, setBoardUserId] = useState<string | null>(null);
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
 
-  // --- INTERAKTIVER STELLUNGSSPIEL-DRILL ---
+  // --- INTERAKTIVER STELLUNGSSPIEL-DRILL (Nur im 2D-Taktik-Modus) ---
   const [activeDrillIdx, setActiveDrillIdx] = useState<number | null>(null);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
 
-  // --- MULTI-STEP KEYFRAME ANIMATION ---
+  // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio) ---
   const [keyframes, setKeyframes] = useState<BoardKeyframe[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeed, setPlaySpeed] = useState<0.7 | 1 | 1.5>(1);
   const animRafRef = useRef<number | null>(null);
 
-  // --- MEIN PLAYBOOK (Lokal + Supabase user_metadata Sync) ---
+  // --- MEIN PLAYBOOK (Exklusiv im Studio, Lokal + Supabase Sync) ---
   const [isPlaybookOpen, setIsPlaybookOpen] = useState<boolean>(false);
   const [playbook, setPlaybook] = useState<SavedPlay[]>([]);
   const [playTitle, setPlayTitle] = useState<string>("");
@@ -906,7 +906,60 @@ export default function TacticsBoard() {
     }
   }, [isProUser, activeMode, activeDrillIdx, isPlaybookOpen, isPlaying]);
 
-  // --- KEYFRAME ANIMATIONS-SCHLEIFE ---
+  // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
+  const effectiveFilters: TacticalFilters = useMemo(() => {
+    if (isProUser) return filters;
+    return {
+      showBallVector: true,
+      showTeamLines: true,
+      showWeaknessZones: false,
+      showMovements: false,
+      showPulse: false,
+      showAttackArc: false,
+      showAngleCone: false,
+    };
+  }, [isProUser, filters]);
+
+  const netX = V_WIDTH / 2;
+  const offsetX = 10 + (V_WIDTH - 20) * 0.15;
+
+  const analysis = useMemo(
+    () =>
+      getTacticalAnalysis(
+        items,
+        effectiveFilters,
+        selectedScenarioKey,
+        isProUser ? customTarget : null,
+        t
+      ),
+    [items, effectiveFilters, selectedScenarioKey, customTarget, isProUser, lang]
+  );
+
+  const activeDrill =
+    activeMode === "tactics" && activeDrillIdx !== null ? BOARD_DRILLS[activeDrillIdx] : null;
+  const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
+
+  const liveStateRef = useRef({
+    items,
+    drawings: allDrawingsToRender,
+    showTactics,
+    filters: effectiveFilters,
+    analysis,
+    studioTitle,
+  });
+
+  useEffect(() => {
+    liveStateRef.current = {
+      items,
+      drawings: allDrawingsToRender,
+      showTactics,
+      filters: effectiveFilters,
+      analysis,
+      studioTitle,
+    };
+  }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle]);
+
+  // --- KEYFRAME ANIMATIONS-SCHLEIFE (Studio) ---
   const stopAnimation = useCallback(() => {
     if (animRafRef.current !== null) {
       cancelAnimationFrame(animRafRef.current);
@@ -930,7 +983,9 @@ export default function TacticsBoard() {
 
       if (segIndex >= totalSegments) {
         const lastIdx = keyframes.length - 1;
-        setItems(cloneItems(keyframes[lastIdx].items));
+        const finalItems = cloneItems(keyframes[lastIdx].items);
+        liveStateRef.current.items = finalItems;
+        setItems(finalItems);
         setActiveStepIdx(lastIdx);
         setIsPlaying(false);
         animRafRef.current = null;
@@ -953,6 +1008,8 @@ export default function TacticsBoard() {
         };
       });
 
+      // Direkt in liveStateRef spiegeln für verzögerungsfreie 30-FPS-Aufnahme
+      liveStateRef.current.items = interpolated;
       setItems(interpolated);
       setActiveStepIdx(rawT >= 0.85 ? segIndex + 1 : segIndex);
       animRafRef.current = requestAnimationFrame(tick);
@@ -1019,7 +1076,7 @@ export default function TacticsBoard() {
     setActiveStepIdx(null);
   };
 
-  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN ---
+  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Studio) ---
   const persistPlaybook = useCallback(
     (nextList: SavedPlay[]) => {
       const trimmed = nextList.slice(0, MAX_PLAYBOOK_ITEMS);
@@ -1095,58 +1152,6 @@ export default function TacticsBoard() {
     const nextList = playbook.filter((p) => p.id !== playId);
     persistPlaybook(nextList);
   };
-
-  // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
-  const effectiveFilters: TacticalFilters = useMemo(() => {
-    if (isProUser) return filters;
-    return {
-      showBallVector: true,
-      showTeamLines: true,
-      showWeaknessZones: false,
-      showMovements: false,
-      showPulse: false,
-      showAttackArc: false,
-      showAngleCone: false,
-    };
-  }, [isProUser, filters]);
-
-  const netX = V_WIDTH / 2;
-  const offsetX = 10 + (V_WIDTH - 20) * 0.15;
-
-  const analysis = useMemo(
-    () =>
-      getTacticalAnalysis(
-        items,
-        effectiveFilters,
-        selectedScenarioKey,
-        isProUser ? customTarget : null,
-        t
-      ),
-    [items, effectiveFilters, selectedScenarioKey, customTarget, isProUser, lang]
-  );
-
-  const activeDrill = activeDrillIdx !== null ? BOARD_DRILLS[activeDrillIdx] : null;
-  const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
-
-  const liveStateRef = useRef({
-    items,
-    drawings: allDrawingsToRender,
-    showTactics,
-    filters: effectiveFilters,
-    analysis,
-    studioTitle,
-  });
-
-  useEffect(() => {
-    liveStateRef.current = {
-      items,
-      drawings: allDrawingsToRender,
-      showTactics,
-      filters: effectiveFilters,
-      analysis,
-      studioTitle,
-    };
-  }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle]);
 
   const toggleFilter = (key: keyof TacticalFilters) => {
     if (!isProUser) return;
@@ -2034,6 +2039,8 @@ export default function TacticsBoard() {
           <button
             onClick={() => {
               if (isRecording) stopVideoRecording();
+              stopAnimation();
+              setIsPlaybookOpen(false);
               setActiveMode("tactics");
             }}
             className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
@@ -2047,7 +2054,11 @@ export default function TacticsBoard() {
 
           {isProUser && (
             <button
-              onClick={() => setActiveMode("studio")}
+              onClick={() => {
+                setActiveDrillIdx(null);
+                setDrillResult(null);
+                setActiveMode("studio");
+              }}
               className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
                 activeMode === "studio"
                   ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]"
@@ -2062,6 +2073,7 @@ export default function TacticsBoard() {
             onClick={() => {
               if (isRecording) stopVideoRecording();
               stopAnimation();
+              setIsPlaybookOpen(false);
               setActiveMode("3d");
             }}
             className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
@@ -2081,11 +2093,12 @@ export default function TacticsBoard() {
       ) : (
         <>
           {/* ============================================================= */}
-          {/* TACTICAL STUDIO WERKZEUGLEISTE                                */}
+          {/* VEREINTER STUDIO-, ZEICHEN-, ANIMATIONS- & PLAYBOOK-BLOCK     */}
           {/* ============================================================= */}
           {activeMode === "studio" && isProUser && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
               <div className="bg-[#050b18] border border-pink-500/40 rounded-2xl p-3 sm:p-4 shadow-[0_0_25px_rgba(236,72,153,0.12)] flex flex-col gap-3">
+                {/* 1. Kopfzeile: Titel, Playbook-Schalter, Foto & Video-REC */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-1">
                     <span className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-pink-500/20 text-pink-300 border border-pink-500/40 shrink-0">
@@ -2100,10 +2113,21 @@ export default function TacticsBoard() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => setIsPlaybookOpen((prev) => !prev)}
+                      className={`px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
+                        isPlaybookOpen
+                          ? "bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]"
+                          : "bg-slate-900 text-cyan-300 border-cyan-500/40 hover:bg-slate-800"
+                      }`}
+                    >
+                      {t("tb_pb_toggle")}
+                    </button>
+
                     <button
                       onClick={handleTakeSnapshot}
-                      className="flex-1 sm:flex-initial px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                      className="flex-1 sm:flex-initial px-2.5 py-2 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
                     >
                       {t("tb_studio_photo_btn")}
                     </button>
@@ -2111,7 +2135,7 @@ export default function TacticsBoard() {
                     {!isRecording ? (
                       <button
                         onClick={startVideoRecording}
-                        className="flex-1 sm:flex-initial px-3 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                        className="flex-1 sm:flex-initial px-2.5 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
                       >
                         <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                         <span>{t("tb_studio_rec_btn")}</span>
@@ -2119,7 +2143,7 @@ export default function TacticsBoard() {
                     ) : (
                       <button
                         onClick={stopVideoRecording}
-                        className="flex-1 sm:flex-initial px-3.5 py-2 bg-red-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)] flex items-center justify-center gap-1.5"
+                        className="flex-1 sm:flex-initial px-3 py-2 bg-red-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)] flex items-center justify-center gap-1.5"
                       >
                         <span>
                           {t("tb_studio_stop_btn")} ({recSeconds}s)
@@ -2129,7 +2153,8 @@ export default function TacticsBoard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-2 border-t border-slate-800/80">
+                {/* 2. Zeichen-Werkzeuge */}
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-2.5 border-t border-slate-800/80">
                   <button
                     onClick={() => setStudioTool("move")}
                     className={`py-2 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
@@ -2185,83 +2210,172 @@ export default function TacticsBoard() {
                     {t("tb_tool_clear")}
                   </button>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* ============================================================= */}
-          {/* MEIN PLAYBOOK PANEL (SPEICHERN & LADEN EIGENER SPIELZÜGE)     */}
-          {/* ============================================================= */}
-          {isProUser && isPlaybookOpen && !activeDrill && (
-            <div className="w-full max-w-[600px] px-3">
-              <div className="bg-[#050b18]/95 border border-cyan-500/40 rounded-2xl p-4 shadow-[0_0_25px_rgba(6,182,212,0.12)] flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
-                    {t("tb_pb_title")} ({playbook.length}/{MAX_PLAYBOOK_ITEMS})
-                  </span>
-                  <button
-                    onClick={() => setIsPlaybookOpen(false)}
-                    className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-white text-xs font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
+                {/* 3. Integrierte Spielzug-Animation (Schritte vorarbeiten & beim Abspielen aufnehmen) */}
+                <div className="pt-2.5 border-t border-slate-800/80 flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                      {t("tb_anim_title")}
+                    </span>
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={playTitle}
-                    onChange={(e) => setPlayTitle(e.target.value)}
-                    placeholder={t("tb_pb_placeholder")}
-                    className="flex-1 bg-[#030611] border border-slate-700 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
-                  />
-                  <button
-                    onClick={handleSaveToPlaybook}
-                    className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 transition-all"
-                  >
-                    {t("tb_pb_save")}
-                  </button>
-                </div>
+                    <div className="flex items-center gap-1.5">
+                      {([0.7, 1, 1.5] as const).map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => setPlaySpeed(spd)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-black border transition-all ${
+                            playSpeed === spd
+                              ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                              : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
+                          }`}
+                        >
+                          {spd}x
+                        </button>
+                      ))}
 
-                {playbookToast && (
-                  <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
-                    {playbookToast}
+                      {keyframes.length >= 2 && (
+                        <button
+                          onClick={() => (isPlaying ? stopAnimation() : setIsPlaying(true))}
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                            isPlaying
+                              ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]"
+                              : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                          }`}
+                        >
+                          {isPlaying ? t("tb_anim_stop") : t("tb_anim_play")}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {playbook.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-3 bg-[#030611] rounded-xl border border-slate-800/80">
-                    {t("tb_pb_empty")}
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
-                    {playbook.map((play) => (
-                      <div
-                        key={play.id}
-                        className="flex items-center justify-between gap-2 bg-[#030611] border border-slate-800 rounded-xl px-3 py-2"
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {keyframes.map((kf, idx) => (
+                      <button
+                        key={kf.id}
+                        onClick={() => handleSelectKeyframe(idx)}
+                        className={`w-7 h-7 rounded-lg text-xs font-black border transition-all ${
+                          activeStepIdx === idx
+                            ? "bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-105"
+                            : "bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/60"
+                        }`}
                       >
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-white truncate">{play.title}</span>
-                          <span className="text-[9px] text-slate-500 font-semibold">
-                            {play.keyframes?.length || 1} {t("tb_pb_steps_label")}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={() => handleLoadPlay(play)}
-                            className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all"
-                          >
-                            {t("tb_pb_load")}
-                          </button>
-                          <button
-                            onClick={() => handleDeletePlay(play.id)}
-                            className="px-2 py-1.5 rounded-lg bg-red-950/30 hover:bg-red-600 border border-red-500/30 text-red-400 hover:text-white text-[10px] font-bold transition-all"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
+                        {idx + 1}
+                      </button>
                     ))}
+
+                    <button
+                      onClick={handleAddKeyframe}
+                      className="px-2.5 h-7 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/50 text-indigo-200 hover:text-white transition-all"
+                    >
+                      {t("tb_anim_add_step")}
+                    </button>
+
+                    {activeStepIdx !== null && (
+                      <>
+                        <button
+                          onClick={handleUpdateActiveKeyframe}
+                          title={t("tb_anim_update_step")}
+                          className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300"
+                        >
+                          ↻
+                        </button>
+                        <button
+                          onClick={handleDeleteActiveKeyframe}
+                          title={t("tb_anim_del_step")}
+                          className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-red-900/50 border border-slate-700 text-red-400"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+
+                    {keyframes.length > 0 && (
+                      <button
+                        onClick={handleClearKeyframes}
+                        className="ml-auto px-2 h-7 rounded-lg text-[9px] font-bold uppercase tracking-wider text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        {t("tb_anim_clear")}
+                      </button>
+                    )}
+                  </div>
+
+                  {keyframes.length < 2 && (
+                    <p className="text-[10px] text-slate-500 leading-snug">{t("tb_anim_hint")}</p>
+                  )}
+                </div>
+
+                {/* 4. Ausklappbares Playbook direkt im Studio-Block */}
+                {isPlaybookOpen && (
+                  <div className="pt-3 border-t border-cyan-500/30 flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                        {t("tb_pb_title")} ({playbook.length}/{MAX_PLAYBOOK_ITEMS})
+                      </span>
+                      <button
+                        onClick={() => setIsPlaybookOpen(false)}
+                        className="w-6 h-6 rounded-md bg-slate-900 border border-slate-700 text-slate-400 hover:text-white text-[10px] font-bold"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={playTitle}
+                        onChange={(e) => setPlayTitle(e.target.value)}
+                        placeholder={t("tb_pb_placeholder")}
+                        className="flex-1 bg-[#030611] border border-slate-700 focus:border-cyan-400 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none"
+                      />
+                      <button
+                        onClick={handleSaveToPlaybook}
+                        className="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 transition-all"
+                      >
+                        {t("tb_pb_save")}
+                      </button>
+                    </div>
+
+                    {playbookToast && (
+                      <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
+                        {playbookToast}
+                      </div>
+                    )}
+
+                    {playbook.length === 0 ? (
+                      <p className="text-xs text-slate-500 text-center py-2.5 bg-[#030611] rounded-xl border border-slate-800/80">
+                        {t("tb_pb_empty")}
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto pr-1">
+                        {playbook.map((play) => (
+                          <div
+                            key={play.id}
+                            className="flex items-center justify-between gap-2 bg-[#030611] border border-slate-800 rounded-xl px-3 py-2"
+                          >
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-bold text-white truncate">{play.title}</span>
+                              <span className="text-[9px] text-slate-500 font-semibold">
+                                {play.keyframes?.length || 1} {t("tb_pb_steps_label")}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handleLoadPlay(play)}
+                                className="px-2.5 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all"
+                              >
+                                {t("tb_pb_load")}
+                              </button>
+                              <button
+                                onClick={() => handleDeletePlay(play.id)}
+                                className="px-2 py-1 rounded-lg bg-red-950/30 hover:bg-red-600 border border-red-500/30 text-red-400 hover:text-white text-[10px] font-bold transition-all"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2269,7 +2383,7 @@ export default function TacticsBoard() {
           )}
 
           {/* ============================================================= */}
-          {/* AKTIVER STELLUNGSSPIEL-DRILL BANNER                           */}
+          {/* AKTIVER STELLUNGSSPIEL-DRILL BANNER (NUR IN 2D TAKTIK)        */}
           {/* ============================================================= */}
           {isProUser && activeDrill && (
             <div className="w-full max-w-[600px] px-3">
@@ -2512,105 +2626,6 @@ export default function TacticsBoard() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ============================================================= */}
-          {/* MULTI-STEP KEYFRAME ANIMATIONS-LEISTE (2D & STUDIO)           */}
-          {/* ============================================================= */}
-          {isProUser && !activeDrill && (
-            <div className="w-full max-w-[600px] px-3">
-              <div className="bg-[#050b18]/95 border border-slate-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-lg">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                    {t("tb_anim_title")}
-                  </span>
-
-                  <div className="flex items-center gap-1.5">
-                    {([0.7, 1, 1.5] as const).map((spd) => (
-                      <button
-                        key={spd}
-                        onClick={() => setPlaySpeed(spd)}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black border transition-all ${
-                          playSpeed === spd
-                            ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
-                            : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
-                        }`}
-                      >
-                        {spd}x
-                      </button>
-                    ))}
-
-                    {keyframes.length >= 2 && (
-                      <button
-                        onClick={() => (isPlaying ? stopAnimation() : setIsPlaying(true))}
-                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                          isPlaying
-                            ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]"
-                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]"
-                        }`}
-                      >
-                        {isPlaying ? t("tb_anim_stop") : t("tb_anim_play")}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {keyframes.map((kf, idx) => (
-                    <button
-                      key={kf.id}
-                      onClick={() => handleSelectKeyframe(idx)}
-                      className={`w-7 h-7 rounded-lg text-xs font-black border transition-all ${
-                        activeStepIdx === idx
-                          ? "bg-cyan-500 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-105"
-                          : "bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/60"
-                      }`}
-                    >
-                      {idx + 1}
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={handleAddKeyframe}
-                    className="px-2.5 h-7 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/50 text-indigo-200 hover:text-white transition-all"
-                  >
-                    {t("tb_anim_add_step")}
-                  </button>
-
-                  {activeStepIdx !== null && (
-                    <>
-                      <button
-                        onClick={handleUpdateActiveKeyframe}
-                        title={t("tb_anim_update_step")}
-                        className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300"
-                      >
-                        ↻
-                      </button>
-                      <button
-                        onClick={handleDeleteActiveKeyframe}
-                        title={t("tb_anim_del_step")}
-                        className="px-2 h-7 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-red-900/50 border border-slate-700 text-red-400"
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
-
-                  {keyframes.length > 0 && (
-                    <button
-                      onClick={handleClearKeyframes}
-                      className="ml-auto px-2 h-7 rounded-lg text-[9px] font-bold uppercase tracking-wider text-slate-500 hover:text-red-400 transition-colors"
-                    >
-                      {t("tb_anim_clear")}
-                    </button>
-                  )}
-                </div>
-
-                {keyframes.length < 2 && (
-                  <p className="text-[10px] text-slate-500 leading-snug">{t("tb_anim_hint")}</p>
-                )}
-              </div>
             </div>
           )}
 
@@ -2938,8 +2953,9 @@ export default function TacticsBoard() {
                   </>
                 )}
 
-                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN */}
+                {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN (Nur im Studio sichtbar) */}
                 {isProUser &&
+                  activeMode === "studio" &&
                   allDrawingsToRender.map((d) => {
                     if (d.type === "zone_circle") {
                       const radius = Math.max(18, Math.hypot(d.x2 - d.x1, d.y2 - d.y1));
@@ -3176,43 +3192,24 @@ export default function TacticsBoard() {
               {showTactics ? t("tb_btn_analysis_off") : t("tb_btn_analysis_on")}
             </button>
 
-            {isProUser && (
-              <>
-                <button
-                  onClick={() => {
-                    if (activeDrill) {
-                      setActiveDrillIdx(null);
-                      setDrillResult(null);
-                    }
-                    setIsPlaybookOpen((prev) => !prev);
-                  }}
-                  className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all shadow-md ${
-                    isPlaybookOpen && !activeDrill
-                      ? "bg-cyan-600 text-white hover:bg-cyan-500"
-                      : "bg-slate-800 text-cyan-300 border border-cyan-500/40 hover:bg-slate-700"
-                  }`}
-                >
-                  {t("tb_pb_toggle")}
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (activeDrill) {
-                      setActiveDrillIdx(null);
-                      setDrillResult(null);
-                    } else {
-                      startBoardDrill(0);
-                    }
-                  }}
-                  className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all shadow-md ${
-                    activeDrill
-                      ? "bg-orange-500 text-black hover:bg-orange-400"
-                      : "bg-gradient-to-r from-orange-600 to-amber-500 text-black hover:from-orange-500 hover:to-amber-400"
-                  }`}
-                >
-                  {activeDrill ? t("tb_btn_exit_drill") : t("tb_btn_coach_drill")}
-                </button>
-              </>
+            {isProUser && activeMode === "tactics" && (
+              <button
+                onClick={() => {
+                  if (activeDrill) {
+                    setActiveDrillIdx(null);
+                    setDrillResult(null);
+                  } else {
+                    startBoardDrill(0);
+                  }
+                }}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all shadow-md ${
+                  activeDrill
+                    ? "bg-orange-500 text-black hover:bg-orange-400"
+                    : "bg-gradient-to-r from-orange-600 to-amber-500 text-black hover:from-orange-500 hover:to-amber-400"
+                }`}
+              >
+                {activeDrill ? t("tb_btn_exit_drill") : t("tb_btn_coach_drill")}
+              </button>
             )}
           </div>
         </>
