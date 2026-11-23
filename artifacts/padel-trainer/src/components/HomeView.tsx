@@ -6,6 +6,7 @@ import DailyChallengeModal, { getTodayDateString } from "./DailyChallengeModal";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 import { useTranslation, TACTIC_TIPS_I18N } from "../lib/i18n";
+import { loadPlaybook } from "../lib/playbook";
 
 export interface DBPlayer {
   id: string;
@@ -15,15 +16,17 @@ export interface DBPlayer {
 }
 
 interface HomeViewProps {
-  setActiveTab: (tab: "home" | "trainer" | "taktik" | "basics" | "game") => void;
+  setActiveTab: (
+    tab: "home" | "trainer" | "taktik" | "board" | "basics" | "game" | "playbook" | "coach"
+  ) => void;
   onQuickStart: (scenarioIndex?: number) => void;
-  currentScore?: number; 
-  currentTacPoints?: number; 
-  userName?: string; 
-  userEmail?: string; 
+  currentScore?: number;
+  currentTacPoints?: number;
+  userName?: string;
+  userEmail?: string;
   userAvatar?: string;
   dbLeaderboard?: DBPlayer[];
-  dbSeasonLeaderboard?: DBPlayer[]; 
+  dbSeasonLeaderboard?: DBPlayer[];
   onPlayerClick?: (id: string, listType?: "alltime" | "season") => void;
   onDailyReward?: (points: number) => void;
   isGameUnlocked?: boolean;
@@ -31,13 +34,13 @@ interface HomeViewProps {
   gameUnlockRequired?: number;
 }
 
-export default function HomeView({ 
-  setActiveTab, 
-  onQuickStart, 
-  currentScore = 0, 
+export default function HomeView({
+  setActiveTab,
+  onQuickStart,
+  currentScore = 0,
   currentTacPoints = 0,
   userName = "Gast",
-  userEmail = "", 
+  userEmail = "",
   userAvatar = "",
   dbLeaderboard = [],
   dbSeasonLeaderboard = [],
@@ -51,19 +54,32 @@ export default function HomeView({
   const { lang, t } = useTranslation();
 
   const displayUserName = userName === "Gast" ? t("guest_name") : userName;
-  
+
   const [randomScenarioIndex] = useState(() => Math.floor(Math.random() * SCENARIOS.length));
   const previewScenario = SCENARIOS[randomScenarioIndex];
-  
+
   const [dailyBonusAdded, setDailyBonusAdded] = useState(0);
 
   const displayScore = Math.floor(currentScore + dailyBonusAdded);
   const displayTacPoints = Math.floor(currentTacPoints);
   const isNewbie = displayScore === 0 && displayTacPoints === 0;
-  
+
   const [tipIndex] = useState(() => Math.floor(Math.random() * TACTIC_TIPS_I18N.de.length));
   const dailyTip = TACTIC_TIPS_I18N[lang]?.[tipIndex] || TACTIC_TIPS_I18N.de[0];
-  
+
+  // --- LIVE-ZÄHLER FÜR GESPEICHERTE PLAYBOOK-SPIELZÜGE ---
+  const [playbookCount, setPlaybookCount] = useState<number>(0);
+
+  useEffect(() => {
+    let active = true;
+    loadPlaybook(user?.id).then((list) => {
+      if (active) setPlaybookCount(list.length);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
   // --- DAILY CHALLENGE STATES ---
   const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
   const [dailyStatus, setDailyStatus] = useState<"open" | "won" | "lost">("open");
@@ -111,9 +127,9 @@ export default function HomeView({
   // --- ALL-TIME LEADERBOARD LOGIK ---
   const sortedLeaderboard = useMemo(() => {
     let playersList = (dbLeaderboard && dbLeaderboard.length > 0) ? [...dbLeaderboard] : [];
-      
-    const userIndex = playersList.findIndex(p => 
-      p.name.toLowerCase() === userName.toLowerCase() || 
+
+    const userIndex = playersList.findIndex(p =>
+      p.name.toLowerCase() === userName.toLowerCase() ||
       (userEmail && p.name.toLowerCase() === userEmail.toLowerCase())
     );
 
@@ -134,9 +150,9 @@ export default function HomeView({
   // --- SEASON LEADERBOARD LOGIK ---
   const sortedSeasonLeaderboard = useMemo(() => {
     let playersList = (dbSeasonLeaderboard && dbSeasonLeaderboard.length > 0) ? [...dbSeasonLeaderboard] : [];
-      
-    const userIndex = playersList.findIndex(p => 
-      p.name.toLowerCase() === userName.toLowerCase() || 
+
+    const userIndex = playersList.findIndex(p =>
+      p.name.toLowerCase() === userName.toLowerCase() ||
       (userEmail && p.name.toLowerCase() === userEmail.toLowerCase())
     );
 
@@ -159,7 +175,7 @@ export default function HomeView({
 
   const activeLeaderboard = lbTab === "alltime" ? sortedLeaderboard : sortedSeasonLeaderboard;
   const activeRank = lbTab === "alltime" ? allTimeRank : seasonRank;
-  
+
   const isUserInTop5 = activeRank > 0 && activeRank <= 5;
   const currentUserData = activeLeaderboard[activeRank - 1];
   const top5Players = activeLeaderboard.slice(0, 5);
@@ -174,10 +190,10 @@ export default function HomeView({
   const renderAvatar = (url?: string, name: string = "") => {
     if (url) {
       return (
-        <img 
-          src={url} 
-          alt={name} 
-          className="w-8 h-8 rounded-full border border-slate-700 object-cover shadow-[0_0_10px_rgba(0,0,0,0.5)]" 
+        <img
+          src={url}
+          alt={name}
+          className="w-8 h-8 rounded-full border border-slate-700 object-cover shadow-[0_0_10px_rgba(0,0,0,0.5)]"
           referrerPolicy="no-referrer"
         />
       );
@@ -211,7 +227,7 @@ export default function HomeView({
         {/* ======================================================== */}
         <div className="w-full bg-[#040914]/90 border border-cyan-900/50 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-600 via-cyan-400 to-transparent" />
-          
+
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
             <div className="flex items-center gap-4">
               {userAvatar && (
@@ -226,7 +242,7 @@ export default function HomeView({
             </div>
 
             <div className="flex items-center justify-between gap-4 md:gap-8 bg-[#030611] border border-slate-800 p-4 rounded-xl shadow-inner w-full md:w-auto">
-              
+
               {/* 1. Einzel (TacScore) */}
               <div className="flex flex-col items-start md:items-end flex-1 md:flex-auto">
                 <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacScore (All-Time)</span>
@@ -238,9 +254,9 @@ export default function HomeView({
                 </div>
                 <div className="text-[10px] font-bold text-slate-400 mt-1">{t("home_rank")} <span className="text-white">#{allTimeRank > 0 ? allTimeRank : "-"}</span></div>
               </div>
-              
+
               <div className="h-10 w-px bg-slate-800 hidden md:block"></div>
-              
+
               {/* 2. Turniere (TacPoints) */}
               <div className="flex flex-col items-end flex-1 md:flex-auto">
                 <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase">TacPoints (TP Tour)</span>
@@ -261,7 +277,7 @@ export default function HomeView({
         {/* 2. TAKTIK-TIPP DES TAGES & TÄGLICHE CHALLENGE            */}
         {/* ======================================================== */}
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-4">
-          
+
           {/* LINKS: Taktik-Tipp des Tages */}
           <div className="lg:col-span-7 bg-[#050b18]/80 border border-emerald-900/30 p-5 rounded-xl shadow-lg relative overflow-hidden flex items-center">
             <div className="absolute left-0 top-0 w-1 h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
@@ -333,7 +349,7 @@ export default function HomeView({
           </motion.div>
 
         </div>
-          
+
         <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-5 mt-2">
           {/* ======================================================== */}
           {/* 3. TRAINER FORTSETZEN                                    */}
@@ -342,17 +358,17 @@ export default function HomeView({
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">
               {t("home_training_header")}
             </h3>
-            
-            <motion.div 
+
+            <motion.div
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => onQuickStart()} 
+              onClick={() => onQuickStart()}
               className="w-full h-full min-h-[220px] relative group overflow-hidden rounded-2xl bg-[#050b18] border border-cyan-900/50 p-1 transition-all duration-300 hover:shadow-[0_0_30px_rgba(6,182,212,0.2)] cursor-pointer flex flex-col"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/10 to-blue-600/10 group-hover:from-cyan-500/30 group-hover:to-blue-500/30 transition-colors z-10" />
-              
+
               <div className="relative flex-1 bg-[#030611]/80 backdrop-blur-sm p-6 rounded-xl flex flex-col justify-between border border-slate-800/50 group-hover:border-cyan-500/50 transition-colors z-20 overflow-hidden">
-                
+
                 <div className="flex justify-between items-start w-full relative z-30">
                   <div className="flex flex-col items-start text-left gap-1.5">
                     <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">
@@ -365,7 +381,7 @@ export default function HomeView({
                       {isNewbie ? t("home_newbie_desc") : t("home_continue_desc")}
                     </p>
                   </div>
-                  
+
                   <div className="w-12 h-12 rounded-full bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white group-hover:shadow-[0_0_15px_rgba(6,182,212,0.6)] transition-all">
                     <span className="text-xl font-black">➔</span>
                   </div>
@@ -383,7 +399,7 @@ export default function HomeView({
                       profiMode={false}
                       acceptableZones={[]}
                       activeChar="you"
-                      hitterId="opp1" 
+                      hitterId="opp1"
                     />
                   </div>
                 </div>
@@ -397,14 +413,14 @@ export default function HomeView({
           <div className="lg:col-span-5 flex flex-col gap-4">
             <div className="flex justify-between items-end px-1">
               <div className="flex items-center gap-3 sm:gap-4">
-                <h3 
+                <h3
                   onClick={() => setLbTab("alltime")}
                   className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'alltime' ? 'text-cyan-400' : 'text-slate-600 hover:text-slate-400'}`}
                 >
                   TacScore (All-Time)
                 </h3>
                 <span className="text-slate-700 font-black">|</span>
-                <h3 
+                <h3
                   onClick={() => setLbTab("season")}
                   className={`text-[10px] sm:text-xs font-black uppercase tracking-widest cursor-pointer transition-colors ${lbTab === 'season' ? 'text-orange-400' : 'text-slate-600 hover:text-slate-400'}`}
                 >
@@ -415,15 +431,15 @@ export default function HomeView({
             </div>
 
             <div className="w-full h-full bg-[#040914]/90 border border-slate-800 rounded-2xl p-4 lg:p-5 shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col gap-2">
-              
+
               {top5Players.map((player, index) => {
-                const isUser = player.name === userName; 
+                const isUser = player.name === userName;
                 const highlightColor = lbTab === 'alltime' ? 'text-cyan-400' : 'text-orange-400';
                 const activeBg = lbTab === 'alltime' ? 'bg-cyan-950/30 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/30 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]';
                 const tagColor = lbTab === 'alltime' ? 'bg-cyan-600/20 text-cyan-300' : 'bg-orange-600/20 text-orange-300';
-                
+
                 return (
-                  <div 
+                  <div
                     key={`rank-${player.id}-${player.name}`}
                     onClick={() => onPlayerClick?.(player.id, lbTab)}
                     className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer hover:scale-[1.02] active:scale-95 ${
@@ -448,7 +464,7 @@ export default function HomeView({
               {!isUserInTop5 && currentUserData && (
                 <>
                   <div className="text-center text-slate-700 font-black tracking-widest text-xs py-1">•••</div>
-                  <div 
+                  <div
                     onClick={() => onPlayerClick?.(currentUserData.id, lbTab)}
                     className={`flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer hover:scale-[1.02] active:scale-95 ${
                       lbTab === 'alltime' ? 'bg-cyan-950/20 border-cyan-900/50 shadow-[inset_0_0_15px_rgba(6,182,212,0.1)]' : 'bg-orange-950/20 border-orange-900/50 shadow-[inset_0_0_15px_rgba(255,165,0,0.1)]'
@@ -480,14 +496,14 @@ export default function HomeView({
         </div>
 
         {/* ======================================================== */}
-        {/* 5. APP NAVIGATION KACHELN (Game, Lexikon, Board)         */}
+        {/* 5. APP NAVIGATION KACHELN (Game, Lexikon, Board, Hub)    */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-          
-          {/* Game / Match Starten Card */}
-          <div 
-            onClick={() => setActiveTab("game")} 
-            className={`bg-[#040914] rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden ${
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-2">
+
+          {/* 1. Game / Match Starten Card */}
+          <div
+            onClick={() => setActiveTab("game")}
+            className={`bg-[#040914] rounded-2xl p-4 sm:p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-3 sm:gap-4 relative overflow-hidden ${
               isGameUnlocked
                 ? "border border-orange-500/30 hover:border-orange-400 shadow-[0_0_15px_rgba(255,119,0,0.05)] hover:shadow-[0_0_25px_rgba(255,119,0,0.15)]"
                 : "border border-slate-700/70 hover:border-orange-500/50 opacity-85"
@@ -499,13 +515,13 @@ export default function HomeView({
               </span>
             )}
 
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform duration-300 ${
+            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform duration-300 ${
               isGameUnlocked
                 ? "bg-orange-950/40 border border-orange-500/40 shadow-[inset_0_0_15px_rgba(255,119,0,0.2)]"
                 : "bg-slate-900/70 border border-slate-700/60"
             }`}>
               {isGameUnlocked ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-orange-400 drop-shadow-[0_0_10px_rgba(255,119,0,0.8)]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 sm:w-8 sm:h-8 text-orange-400 drop-shadow-[0_0_10px_rgba(255,119,0,0.8)]">
                   <circle cx="12" cy="12" r="10"></circle>
                   <path d="M5.6 5.6c2.5 2.5 3.5 6.3 2.7 9.8"></path>
                   <path d="M18.4 18.4c-2.5-2.5-3.5-6.3-2.7-9.8"></path>
@@ -516,49 +532,72 @@ export default function HomeView({
             </div>
 
             <div className="flex flex-col gap-1 mt-1">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_match_title")}</h3>
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${isGameUnlocked ? "text-orange-400" : "text-slate-400"}`}>
+              <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">{t("home_card_match_title")}</h3>
+              <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest ${isGameUnlocked ? "text-orange-400" : "text-slate-400"}`}>
                 {isGameUnlocked ? t("home_card_match_sub") : t("home_card_match_locked_sub")}
               </span>
             </div>
-            <span className={`${isGameUnlocked ? "text-orange-400" : "text-slate-500"} text-lg font-black mt-1 group-hover:translate-y-1 transition-transform`}>›</span>
+            <span className={`${isGameUnlocked ? "text-orange-400" : "text-slate-500"} text-lg font-black mt-auto group-hover:translate-y-1 transition-transform`}>›</span>
           </div>
 
-          {/* Padel-Lexikon Card */}
-          <div 
+          {/* 2. Padel-Lexikon Card */}
+          <div
             onClick={() => setActiveTab("basics")}
-            className="bg-[#040914] border border-emerald-500/30 hover:border-emerald-400 rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 shadow-[0_0_15px_rgba(16,185,129,0.05)] hover:shadow-[0_0_25px_rgba(16,185,129,0.15)]"
+            className="bg-[#040914] border border-emerald-500/30 hover:border-emerald-400 rounded-2xl p-4 sm:p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-3 sm:gap-4 shadow-[0_0_15px_rgba(16,185,129,0.05)] hover:shadow-[0_0_25px_rgba(16,185,129,0.15)]"
           >
-            <div className="w-16 h-16 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(16,185,129,0.2)] group-hover:scale-105 transition-transform duration-300">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(16,185,129,0.2)] group-hover:scale-105 transition-transform duration-300">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]">
                 <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
                 <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
               </svg>
             </div>
             <div className="flex flex-col gap-1 mt-1">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_lexicon_title")}</h3>
-              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{t("home_card_lexicon_sub")}</span>
+              <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">{t("home_card_lexicon_title")}</h3>
+              <span className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{t("home_card_lexicon_sub")}</span>
             </div>
-            <span className="text-emerald-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
+            <span className="text-emerald-400 text-lg font-black mt-auto group-hover:translate-y-1 transition-transform">›</span>
           </div>
 
-          {/* Freies Board Card */}
-          <div 
-            onClick={() => setActiveTab("taktik")} 
-            className="bg-[#040914] border border-purple-500/30 hover:border-purple-400 rounded-2xl p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-4 shadow-[0_0_15px_rgba(168,85,247,0.05)] hover:shadow-[0_0_25px_rgba(168,85,247,0.15)]"
+          {/* 3. Freies Board Card */}
+          <div
+            onClick={() => setActiveTab("taktik")}
+            className="bg-[#040914] border border-purple-500/30 hover:border-purple-400 rounded-2xl p-4 sm:p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-3 sm:gap-4 shadow-[0_0_15px_rgba(168,85,247,0.05)] hover:shadow-[0_0_25px_rgba(168,85,247,0.15)]"
           >
-            <div className="w-16 h-16 rounded-2xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(168,85,247,0.2)] group-hover:scale-105 transition-transform duration-300">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(168,85,247,0.2)] group-hover:scale-105 transition-transform duration-300">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 sm:w-8 sm:h-8 text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">
                 <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
                 <path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"></path>
                 <path d="M8 12l2 2 4-4"></path>
               </svg>
             </div>
             <div className="flex flex-col gap-1 mt-1">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">{t("home_card_board_title")}</h3>
-              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{t("home_card_board_sub")}</span>
+              <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">{t("home_card_board_title")}</h3>
+              <span className="text-[9px] sm:text-[10px] font-bold text-purple-400 uppercase tracking-widest">{t("home_card_board_sub")}</span>
             </div>
-            <span className="text-purple-400 text-lg font-black mt-1 group-hover:translate-y-1 transition-transform">›</span>
+            <span className="text-purple-400 text-lg font-black mt-auto group-hover:translate-y-1 transition-transform">›</span>
+          </div>
+
+          {/* 4. Playbook Hub Card (inkl. Live-Zähler) */}
+          <div
+            onClick={() => setActiveTab("playbook")}
+            className="bg-[#040914] border border-cyan-500/30 hover:border-cyan-400 rounded-2xl p-4 sm:p-5 lg:p-6 transition-all cursor-pointer group flex flex-col items-center text-center gap-3 sm:gap-4 shadow-[0_0_15px_rgba(6,182,212,0.05)] hover:shadow-[0_0_25px_rgba(6,182,212,0.18)] relative overflow-hidden"
+          >
+            <span className="absolute top-3 right-3 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300">
+              {playbookCount}
+            </span>
+
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-center shadow-[inset_0_0_15px_rgba(6,182,212,0.2)] group-hover:scale-105 transition-transform duration-300">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                <path d="M10 8l5 3-5 3V8z"></path>
+              </svg>
+            </div>
+            <div className="flex flex-col gap-1 mt-1">
+              <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">{t("home_card_playbook_title")}</h3>
+              <span className="text-[9px] sm:text-[10px] font-bold text-cyan-400 uppercase tracking-widest">{t("home_card_playbook_sub")}</span>
+            </div>
+            <span className="text-cyan-400 text-lg font-black mt-auto group-hover:translate-y-1 transition-transform">›</span>
           </div>
 
         </div>

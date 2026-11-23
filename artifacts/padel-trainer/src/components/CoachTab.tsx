@@ -24,6 +24,7 @@ import {
   analyzeCoachStats,
   buildSmartWeaknessPool,
 } from "../lib/tacticStats";
+import { loadPlaybook } from "../lib/playbook";
 
 interface CoachTabProps {
   userId?: string | null;
@@ -34,7 +35,7 @@ interface CoachTabProps {
     scenarios: Scenario[],
     focus: CoachSummary["recommendedTaskFocus"]
   ) => void;
-  onNavigateTab: (tab: "trainer" | "game" | "board") => void;
+  onNavigateTab: (tab: "trainer" | "game" | "board" | "playbook") => void;
 }
 
 const getAxisLabel = (axis: RadarAxisKey, lang: string): string => {
@@ -219,6 +220,7 @@ export default function CoachTab({
 }: CoachTabProps) {
   const { lang, t } = useTranslation();
   const [coachStats, setCoachStats] = useState<TacticCoachStats | null>(null);
+  const [playbookCount, setPlaybookCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   // --- Übernommene Match-Statistiken & Chart-States (Einzel / Turnier) ---
@@ -230,8 +232,14 @@ export default function CoachTab({
 
     const loadAllCoachData = async () => {
       setLoading(true);
-      const stats = await fetchCoachStats(userId, highestScores);
-      if (active) setCoachStats(stats);
+      const [stats, pbList] = await Promise.all([
+        fetchCoachStats(userId, highestScores),
+        loadPlaybook(userId),
+      ]);
+      if (active) {
+        setCoachStats(stats);
+        setPlaybookCount(pbList.length);
+      }
 
       if (userId) {
         try {
@@ -1045,20 +1053,24 @@ export default function CoachTab({
         )}
       </div>
 
-      {/* 7. DIE 3 COACH-SÄULEN (DIREKT-SPRUNG) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* 7. DIE 4 COACH-SÄULEN (DIREKT-SPRUNG INKL. PLAYBOOK HUB) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           onClick={() => onNavigateTab("trainer")}
           className="bg-[#050b18] hover:bg-cyan-950/30 border border-cyan-500/30 hover:border-cyan-400 rounded-xl p-4 text-left transition-all flex flex-col gap-1"
         >
           <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-            1. {lang === "en" ? "THEORY" : "THEORIE"}
+            1. {lang === "en" ? "THEORY" : lang === "es" ? "TEORÍA" : "THEORIE"}
           </span>
           <span className="text-sm font-black text-white">
-            {lang === "en" ? "Tactic Trainer →" : "Taktik-Trainer →"}
+            {lang === "en" ? "Tactic Trainer →" : lang === "es" ? "Entrenador →" : "Taktik-Trainer →"}
           </span>
           <span className="text-[11px] text-slate-400">
-            {lang === "en" ? "Build tactical foundations" : "Muster & Laufwege festigen"}
+            {lang === "en"
+              ? "Build tactical foundations"
+              : lang === "es"
+              ? "Fija patrones y posiciones"
+              : "Muster & Laufwege festigen"}
           </span>
         </button>
 
@@ -1067,13 +1079,17 @@ export default function CoachTab({
           className="bg-[#050b18] hover:bg-orange-950/30 border border-orange-500/30 hover:border-orange-400 rounded-xl p-4 text-left transition-all flex flex-col gap-1"
         >
           <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">
-            2. {lang === "en" ? "PRACTICE" : "PRAXIS"}
+            2. {lang === "en" ? "PRACTICE" : lang === "es" ? "PRÁCTICA" : "PRAXIS"}
           </span>
           <span className="text-sm font-black text-white">
-            {lang === "en" ? "3D Match →" : "3D-Match →"}
+            {lang === "en" ? "3D Match →" : lang === "es" ? "Partido 3D →" : "3D-Match →"}
           </span>
           <span className="text-[11px] text-slate-400">
-            {lang === "en" ? "Apply tactics under pressure" : "Unter Druck umsetzen & testen"}
+            {lang === "en"
+              ? "Apply tactics under pressure"
+              : lang === "es"
+              ? "Aplica tu táctica bajo presión"
+              : "Unter Druck umsetzen & testen"}
           </span>
         </button>
 
@@ -1082,13 +1098,41 @@ export default function CoachTab({
           className="bg-[#050b18] hover:bg-purple-950/30 border border-purple-500/30 hover:border-purple-400 rounded-xl p-4 text-left transition-all flex flex-col gap-1"
         >
           <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">
-            3. {lang === "en" ? "ANALYSIS" : "ANALYSE"}
+            3. {lang === "en" ? "ANALYSIS" : lang === "es" ? "ANÁLISIS" : "ANALYSE"}
           </span>
           <span className="text-sm font-black text-white">
-            {lang === "en" ? "Tactics Board →" : "TaktikBoard →"}
+            {lang === "en" ? "Tactics Board →" : lang === "es" ? "Pizarra Táctica →" : "TaktikBoard →"}
           </span>
           <span className="text-[11px] text-slate-400">
-            {lang === "en" ? "Draw plays & analyze gaps" : "Spielzüge aufzeichnen & verstehen"}
+            {lang === "en"
+              ? "Draw plays & analyze gaps"
+              : lang === "es"
+              ? "Dibuja jugadas y huecos"
+              : "Spielzüge aufzeichnen & verstehen"}
+          </span>
+        </button>
+
+        <button
+          onClick={() => onNavigateTab("playbook")}
+          className="bg-[#050b18] hover:bg-emerald-950/30 border border-emerald-500/35 hover:border-emerald-400 rounded-xl p-4 text-left transition-all flex flex-col gap-1"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+              4. {lang === "en" ? "LIBRARY" : lang === "es" ? "BIBLIOTECA" : "SAMMLUNG"}
+            </span>
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-950/70 border border-emerald-500/40 text-emerald-300">
+              {playbookCount}
+            </span>
+          </div>
+          <span className="text-sm font-black text-white">
+            📘 {t("pb_hub_title")} →
+          </span>
+          <span className="text-[11px] text-slate-400">
+            {lang === "en"
+              ? "3D Replays, Drills & Share"
+              : lang === "es"
+              ? "Replays 3D, Drills y Retos"
+              : "3D-Replays, Drills & Teilen"}
           </span>
         </button>
       </div>

@@ -19,21 +19,27 @@ import { Browser } from '@capacitor/browser';
 import { DBPlayer } from "./components/HomeView";
 import ProfileTab from './components/ProfileTab';
 import CoachTab from './components/CoachTab';
+import PlaybookHub from './components/PlaybookHub';
 import * as THREE from "three";
 import ScenarioCourt25 from "./components/ScenarioCourt25";
 import PublicProfileModal from "./components/PublicProfileModal";
-import StrategyTrainer from "./components/StrategyTrainer";
 import ShareCardModal, { ShareCardPayload } from "./components/ShareCardModal";
 import RatingPromptModal, { shouldShowRatingPrompt } from "./components/RatingPromptModal";
 import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 import { recordTrainerAttempt, CoachSummary } from "./lib/tacticStats";
+import {
+  createPlayFromTrainerScenario,
+  upsertPlaybookEntry,
+  decodeReplayFromParam,
+  ReplayContext,
+} from "./lib/playbook";
 
 const SHOTS = ["LOB", "SMASH", "BANDEJA", "VIBORA", "VOLLEY", "BLOCK", "BAJADA", "CHIQUITA", "AUFSCHLAG", "DRIVE"];
 const TRAINER_SEQUENCE: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 const CRASH_COURSE_STEPS: Level[] = ["Schlag", "Schlagrichtung", "Laufrichtung", "Spielzug"];
 const CRASH_COURSE_BONUS_POINTS = 1500;
 
-type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "strategy" | "coach";
+type Tab = "home" | "trainer" | "game" | "board" | "taktik" | "basics" | "login" | "profile" | "playbook" | "coach";
 
 // Rotierende Aufgaben-Typen für den interaktiven Simulations-Modus
 type SimTaskType = "shot" | "target" | "run" | "shot_target" | "shot_run" | "target_run" | "full";
@@ -309,7 +315,6 @@ function GameLockedModal({
           </p>
         </div>
 
-        {/* 4-Schritte-Übersicht + Fortschrittsbalken */}
         <div className="w-full bg-[#030611] border border-slate-800 rounded-xl p-3.5 flex flex-col gap-3">
           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
             <span className="text-slate-400">{t("game_lock_progress")}</span>
@@ -348,7 +353,6 @@ function GameLockedModal({
           </div>
         </div>
 
-        {/* Bonus-Hinweis */}
         <div className="w-full bg-emerald-950/30 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-[11px] font-bold text-emerald-300 leading-snug">
           🎁 {t("game_lock_bonus_hint")}
         </div>
@@ -501,8 +505,10 @@ export default function App(): React.JSX.Element {
   const { lang, t } = useTranslation();
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
-    const savedTab = localStorage.getItem("tacpadel_activeTab") as Tab;
-    return savedTab ? savedTab : "home";
+    const savedTab = localStorage.getItem("tacpadel_activeTab");
+    if (!savedTab) return "home";
+    if (savedTab === "strategy") return "playbook";
+    return savedTab as Tab;
   });
 
   const [email, setEmail] = useState("");
@@ -513,6 +519,10 @@ export default function App(): React.JSX.Element {
 
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
   const [selectedPublicUserTab, setSelectedPublicUserTab] = useState<"single" | "tournament">("single");
+
+  // Geteilter 3D-Replay-Link (?replay=...) + Trainer-Playbook-Status
+  const [sharedReplay, setSharedReplay] = useState<{ title: string; context: ReplayContext } | null>(null);
+  const [savedTrainerScenarioToPb, setSavedTrainerScenarioToPb] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
@@ -675,8 +685,6 @@ export default function App(): React.JSX.Element {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
 
-  // Trennung: Eingeloggte Nutzer kommen direkt in den Game-Tab (dort greift die 1500-TacScore-Hürde).
-  // Gäste schalten den Game-Tab über den 4/4-Crashkurs frei.
   const isGameUnlocked = Boolean(user) || crashCourseDone;
 
   // Startet gezieltes 10-Runden-Training aus dem TacPadel Coach (Trainer + Match kombiniert)
@@ -694,6 +702,7 @@ export default function App(): React.JSX.Element {
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+    setSavedTrainerScenarioToPb(false);
     setScore(0);
     setRoundsPlayed(0);
     setWrongPool([]);
@@ -721,6 +730,7 @@ export default function App(): React.JSX.Element {
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+    setSavedTrainerScenarioToPb(false);
     setScore(startStep);
     setRoundsPlayed(startStep);
     setWrongPool([]);
@@ -757,20 +767,17 @@ export default function App(): React.JSX.Element {
     setActiveTab(nextTab);
   };
 
-  // Sicherheitsnetz: Falls "game" aus localStorage geladen wurde, aber für den Gast gesperrt ist
   useEffect(() => {
     if (isProgressLoaded && activeTab === "game" && !isGameUnlocked) {
       setActiveTab("home");
     }
   }, [isProgressLoaded, activeTab, isGameUnlocked]);
 
-  // Schreibt den 1.500-TacScore-Startbonus automatisch gut, sobald ein Crashkurs-Absolvent sich registriert/anmeldet
   useEffect(() => {
     const claimCrashCourseBonus = async () => {
       if (!user?.id) return;
       if (localStorage.getItem("tacpadel_pending_crashcourse_bonus") !== "true") return;
 
-      // Flag sofort entfernen, damit der Bonus nicht mehrfach vergeben wird
       localStorage.removeItem("tacpadel_pending_crashcourse_bonus");
       localStorage.setItem("tacpadel_guest_crashcourse_done", "true");
       setCrashCourseDone(true);
@@ -837,6 +844,7 @@ export default function App(): React.JSX.Element {
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+    setSavedTrainerScenarioToPb(false);
     setScore(0);
     setRoundsPlayed(0);
     setWrongPool([]);
@@ -849,9 +857,22 @@ export default function App(): React.JSX.Element {
     return true;
   };
 
-  // Prüft beim App-Start sofort auf ?scenario=ID (funktioniert für Gäste & eingeloggte Spieler)
+  // Prüft beim App-Start sofort auf ?replay=... oder ?scenario=ID
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+
+    const replayParam = urlParams.get("replay");
+    if (replayParam) {
+      const decoded = decodeReplayFromParam(replayParam);
+      if (decoded) {
+        setSharedReplay(decoded);
+        setActiveTab("playbook");
+        setHasRestored(true);
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
+    }
+
     const sharedScenarioParam = urlParams.get("scenario");
     if (sharedScenarioParam) {
       const targetId = parseInt(sharedScenarioParam, 10);
@@ -862,7 +883,6 @@ export default function App(): React.JSX.Element {
     }
   }, []);
 
-  // Bewertungs-Moment nach einem erfolgreich abgeschlossenen Taktik-Level
   useEffect(() => {
     if (gameOver && shouldShowRatingPrompt()) {
       const timer = setTimeout(() => {
@@ -872,12 +892,9 @@ export default function App(): React.JSX.Element {
     }
   }, [gameOver]);
 
-  // Easy-Mode ist überall (auch in der Simulation) fest aktiv;
-  // Trainer-Korrektur-Modus ist in den 4 Lern-Modi, im Crashkurs & im Schwächen-Modus aktiv und in der Simulation deaktiviert.
   const activeEasyMode = true;
   const activeCorrectionMode = !isSimulation;
 
-  // Aktuelles Szenario im Schwächen-Modus (für dynamische Fokus-Anforderungen)
   const activeWeaknessScenario = isWeaknessMode
     ? (weaknessScenarios[currentScenarioIndex] || weaknessScenarios[0] || null)
     : null;
@@ -888,7 +905,6 @@ export default function App(): React.JSX.Element {
   );
   const weaknessHasRun = Boolean(activeWeaknessScenario && activeWeaknessScenario.laufZone);
 
-  // Dynamische Anforderungen je nach Level, Schwächen-Fokus bzw. Simulations-Aufgabe
   const needsRun = isWeaknessMode
     ? (weaknessFocus === "positioning" || weaknessFocus === "full") && weaknessHasRun
     : isSimulation
@@ -910,7 +926,6 @@ export default function App(): React.JSX.Element {
     ? ["shot", "shot_target", "shot_run", "full"].includes(simTaskType)
     : true;
 
-  // Übersetzt den aktuellen Aufgabentyp in das passende Court-Layout für ScenarioCourt25
   const effectiveCourtLevel: Level = (isSimulation || isWeaknessMode)
     ? needsRun && needsTarget
       ? "Spielzug"
@@ -921,7 +936,6 @@ export default function App(): React.JSX.Element {
       : "Schlag"
     : level;
 
-  // Kurzes Badge für den Schwächen-Coach Fokus
   const weaknessFocusBadgeText = useMemo(() => {
     if (!isWeaknessMode) return "";
     if (lang === "en") {
@@ -948,7 +962,6 @@ export default function App(): React.JSX.Element {
     }
   }, [isWeaknessMode, weaknessFocus, lang]);
 
-  // Kurzes Badge + Erklärungstext für die aktuelle Simulations-Aufgabe
   const simTaskBadgeText = useMemo(() => {
     if (!isSimulation) return "";
     if (lang === "en") {
@@ -1190,6 +1203,21 @@ export default function App(): React.JSX.Element {
     const isNativeApp = Capacitor.isNativePlatform();
 
     const handleDeepLink = async (url: string) => {
+      // 3D-Replay Challenge Deep-Link (?replay=...)
+      if (url.includes('replay=')) {
+        const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+        const replayParam = new URLSearchParams(queryPart).get('replay');
+        if (replayParam) {
+          const decoded = decodeReplayFromParam(replayParam);
+          if (decoded) {
+            setSharedReplay(decoded);
+            setActiveTab("playbook");
+            setHasRestored(true);
+            return;
+          }
+        }
+      }
+
       // Szenario-Challenge Deep-Link (z. B. ?scenario=42)
       if (url.includes('scenario=')) {
         const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
@@ -1381,7 +1409,6 @@ export default function App(): React.JSX.Element {
     (lang === "es" && (scenario as any)?.explanation_es) ||
     scenario.explanation;
 
-  // Easy-Mode (3er-Auswahl) gilt für alle Trainings-Modi und die Simulation
   const visibleShots = useMemo(() => {
     if (activeEasyMode && scenario) {
       const correctShot = scenario.validShots[0];
@@ -1460,13 +1487,19 @@ export default function App(): React.JSX.Element {
     (needsRun && isLaufZoneCorrect)
   );
 
+  const handleSaveTrainerScenarioToPlaybook = () => {
+    if (!scenario || savedTrainerScenarioToPb) return;
+    const entry = createPlayFromTrainerScenario(scenario, lang);
+    upsertPlaybookEntry(user?.id, entry);
+    setSavedTrainerScenarioToPb(true);
+  };
+
   const handleSubmit = () => {
     if (!canSubmit) return;
 
     const currentAttempt = attempts + 1;
     setAttempts(currentAttempt);
 
-    // 🎯 Taktik-Coach Tracking: Nur den 1. Versuch ehrlich fürs Dual-Radar zählen
     if (currentAttempt === 1 && scenario) {
       recordTrainerAttempt({
         userId: user?.id,
@@ -1488,7 +1521,6 @@ export default function App(): React.JSX.Element {
       setHasSubmitted(true);
       setFeedbackMsg(null);
 
-      // --- SPEZIALFALL: 4/4 GÄSTE-CRASHKURS ---
       if (isCrashCourse) {
         const completedSteps = crashCourseStep + 1;
         setScore(completedSteps);
@@ -1541,7 +1573,6 @@ export default function App(): React.JSX.Element {
         setMasteredShots((prev) => new Set([...prev, scenario.validShots[0]]));
       }
     } else {
-      // Minuspunkte (-20) erst ab Simulation
       if (isSimulation && user) {
         const newTotal = Math.max(0, totalPoints - 20);
         addPoints(-20);
@@ -1569,7 +1600,8 @@ export default function App(): React.JSX.Element {
   };
 
   const nextRound = () => {
-    // --- SPEZIALFALL: 4/4 GÄSTE-CRASHKURS ---
+    setSavedTrainerScenarioToPb(false);
+
     if (isCrashCourse) {
       const nextStep = crashCourseStep + 1;
       if (nextStep < CRASH_COURSE_STEPS.length) {
@@ -1678,6 +1710,7 @@ export default function App(): React.JSX.Element {
     setSelectedZone(null);
     setSelectedLaufZone(null);
     setHasSubmitted(false);
+    setSavedTrainerScenarioToPb(false);
     setScore(0);
     setRoundsPlayed(0);
     setWrongPool([]);
@@ -1707,6 +1740,7 @@ export default function App(): React.JSX.Element {
     setAttempts(0);
     setRoundsPlayed(0);
     setHasSubmitted(false);
+    setSavedTrainerScenarioToPb(false);
     setSelectedShot(null);
     setSelectedZone(null);
     setSelectedLaufZone(null);
@@ -1941,7 +1975,7 @@ export default function App(): React.JSX.Element {
 
           <AnimatePresence mode="wait">
 
-            {/* --- TAB: TACPADEL COACH (STATISTIKEN, DUAL-RADAR & SCHWÄCHEN-TRAINING) --- */}
+            {/* --- TAB: TACPADEL COACH --- */}
             {activeTab === "coach" && (
               <CoachTab
                 key="coach-page"
@@ -1950,6 +1984,24 @@ export default function App(): React.JSX.Element {
                 totalPoints={user ? totalPoints : 0}
                 highestScores={highestScores}
                 onStartWeaknessTraining={startWeaknessTraining}
+                onNavigateTab={(target) => handleTabChange(target)}
+              />
+            )}
+
+            {/* --- TAB: PLAYBOOK HUB & 3D-REPLAY --- */}
+            {activeTab === "playbook" && (
+              <PlaybookHub
+                key="playbook-page"
+                userId={user?.id}
+                tacScore={user ? totalPoints : 2000}
+                initialSharedReplay={sharedReplay}
+                onClearSharedReplay={() => setSharedReplay(null)}
+                onOpenInBoard={(playId) => {
+                  try {
+                    sessionStorage.setItem("tacpadel_open_play_id", playId);
+                  } catch {}
+                  handleTabChange("board");
+                }}
                 onNavigateTab={(target) => handleTabChange(target)}
               />
             )}
@@ -2022,6 +2074,7 @@ export default function App(): React.JSX.Element {
                       setSelectedZone(null);
                       setSelectedLaufZone(null);
                       setHasSubmitted(false);
+                      setSavedTrainerScenarioToPb(false);
                       setScore(0);
                       setRoundsPlayed(0);
                       setWrongPool([]);
@@ -2035,29 +2088,6 @@ export default function App(): React.JSX.Element {
                       handleLevelChange(nextOpenLevel, true);
                     }
                     setActiveTab("trainer");
-                  }}
-                />
-              </motion.div>
-            )}
-
-            {/* --- NEUER TAB: STRATEGIE MODUS --- */}
-            {activeTab === "strategy" && (
-              <motion.div
-                key="strategy"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18 }}
-                className="w-full max-w-[1400px] mx-auto"
-              >
-                <StrategyTrainer
-                  onBack={() => setActiveTab("trainer")}
-                  onStrategyComplete={(points) => {
-                    if (user) {
-                      const newTotal = totalPoints + points;
-                      addPoints(points);
-                      updateSupabaseScore(newTotal);
-                    }
                   }}
                 />
               </motion.div>
@@ -2196,10 +2226,10 @@ export default function App(): React.JSX.Element {
                           )}
 
                           <button
-                            onClick={() => setActiveTab("strategy")}
-                            className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400 hover:scale-105"
+                            onClick={() => handleTabChange("playbook")}
+                            className="col-span-2 sm:col-span-4 lg:w-auto px-4 py-2.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-[0.18em] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.35)] border border-cyan-400/70 hover:scale-105"
                           >
-                            <span>{t("trainer_strategies")}</span>
+                            <span>{t("trainer_playbook_btn")}</span>
                           </button>
                         </div>
                       )}
@@ -2376,7 +2406,7 @@ export default function App(): React.JSX.Element {
                           <span className="text-[10px] lg:text-xs font-bold text-white truncate">{!needsTarget ? "-" : selectedZone ? selectedZone : t("trainer_choose")}</span>
                         </div>
 
-                        {/* 3. SCHLAG (Klickbar wenn gesucht, oder mit 🔒 vorgegeben bei reinen Richtungs-Aufgaben) */}
+                        {/* 3. SCHLAG */}
                         <div
                           onClick={() => { if (needsShot) setIsShotModalOpen(true); }}
                           className={`flex flex-col gap-0.5 lg:gap-1 p-2 lg:p-2.5 rounded-lg border transition-all ${
@@ -2486,7 +2516,7 @@ export default function App(): React.JSX.Element {
                           : "bottom-24 lg:bottom-6"
                       } left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)]`}
                     >
-                      <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+                      <div className="flex flex-col md:flex-row gap-5 items-center justify-between">
                         <div className="flex-1 text-center md:text-left flex flex-col gap-2">
                           <h3 className={`text-xl font-black uppercase tracking-widest ${
                             isFullyCorrect ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
@@ -2523,7 +2553,19 @@ export default function App(): React.JSX.Element {
                           </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                        <div className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
+                          <button
+                            onClick={handleSaveTrainerScenarioToPlaybook}
+                            disabled={savedTrainerScenarioToPb}
+                            className={`w-full sm:w-auto px-4 py-4 sm:py-5 font-black text-xs tracking-[0.12em] uppercase rounded-xl border transition-all whitespace-nowrap ${
+                              savedTrainerScenarioToPb
+                                ? "bg-emerald-950/60 border-emerald-500/50 text-emerald-300 cursor-default"
+                                : "bg-cyan-950/60 hover:bg-cyan-900/80 border-cyan-500/50 text-cyan-300 hover:scale-105 active:scale-95"
+                            }`}
+                          >
+                            {savedTrainerScenarioToPb ? t("trainer_saved_pb_btn") : t("trainer_save_pb_btn")}
+                          </button>
+
                           <button
                             onClick={() =>
                               setSharePayload({
@@ -2533,14 +2575,14 @@ export default function App(): React.JSX.Element {
                                 userName: finalUserName,
                               })
                             }
-                            className="w-full sm:w-auto px-5 py-5 bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-500/50 font-black text-xs tracking-[0.15em] uppercase rounded-xl transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
+                            className="w-full sm:w-auto px-4 py-4 sm:py-5 bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-500/50 font-black text-xs tracking-[0.12em] uppercase rounded-xl transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
                           >
                             {t("share_ask_partner_btn")}
                           </button>
 
                           <button
                             onClick={nextRound}
-                            className="w-full md:w-auto px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
+                            className="w-full md:w-auto px-8 py-4 sm:py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-transform hover:scale-105 active:scale-95 whitespace-nowrap"
                           >
                             {isCrashCourse && crashCourseStep + 1 >= CRASH_COURSE_STEPS.length
                               ? t("crashcourse_finish_btn")

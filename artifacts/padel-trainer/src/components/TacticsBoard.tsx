@@ -11,15 +11,22 @@ import {
   buildSmartWeaknessPool,
   recordBoardDrill,
 } from "../lib/tacticStats";
+import {
+  BOARD_V_WIDTH,
+  BOARD_V_HEIGHT,
+  MAX_PLAYBOOK_ITEMS,
+  DrillDepth,
+  PlaybookDraggableItem,
+  PlaybookStudioDrawing,
+  PlaybookKeyframe,
+  SavedPlay,
+  loadPlaybook,
+  savePlaybookList,
+} from "../lib/playbook";
 
-interface DraggableItem {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-  label: string;
-  isPlayer: boolean;
-}
+type DraggableItem = PlaybookDraggableItem;
+type StudioDrawing = PlaybookStudioDrawing;
+type BoardKeyframe = PlaybookKeyframe;
 
 interface TacticalFilters {
   showBallVector: boolean;
@@ -33,41 +40,8 @@ interface TacticalFilters {
 
 // Typen für das Tactical Studio (Zeichnungen & Rekorder)
 type StudioTool = "move" | "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_glass" | "zone_circle";
-type DrawingType = Exclude<StudioTool, "move">;
 type BoardMode = "tactics" | "drill" | "studio" | "3d";
 type DrillCategory = "all" | "standard" | "playbook";
-type DrillDepth = "back" | "mid" | "net";
-
-interface StudioDrawing {
-  id: string;
-  type: DrawingType;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  linkedItemId?: string;
-}
-
-// Keyframe für Multi-Step-Animation (inkl. eigener Zeichnungen pro Schritt)
-interface BoardKeyframe {
-  id: string;
-  items: DraggableItem[];
-  drawings: StudioDrawing[];
-}
-
-// Gespeicherter Spielzug im Playbook (optional direkt als Coach-Drill nutzbar)
-interface SavedPlay {
-  id: string;
-  title: string;
-  updatedAt: number;
-  items: DraggableItem[];
-  drawings: StudioDrawing[];
-  keyframes: BoardKeyframe[];
-  isDrill?: boolean;
-  drillPrompt?: string;
-  drillExplanation?: string;
-  drillTargetDepth?: DrillDepth;
-}
 
 // Kuratierter Standard-Stellungsspiel-Drill
 interface BoardDrill {
@@ -102,21 +76,17 @@ interface DrillCheckResult {
 }
 
 // Virtuelle Konstanten für stabiles Scaling (Logik bleibt 16:9, Ansicht wird 9:16 gedreht!)
-const V_WIDTH = 760;
-const V_HEIGHT = 380;
+const V_WIDTH = BOARD_V_WIDTH;
+const V_HEIGHT = BOARD_V_HEIGHT;
 
 // Globale Taktik-Schwellenwerte für Analyse
 const GAP_THRESHOLD = 160;
 const WIDE_GAP_THRESHOLD = 180;
 const DEPTH_GAP_THRESHOLD = 95;
 const DEEP_DEF_THRESHOLD = 80;
-const MAX_PLAYBOOK_ITEMS = 20;
 
 const isBallArrowType = (type: StudioTool): boolean =>
   type === "arrow_ball" || type === "arrow_lob" || type === "arrow_glass";
-
-const getPlaybookStorageKey = (userId?: string | null) =>
-  `tacpadel_playbook_v1_${userId || "guest"}`;
 
 const cloneItems = (list: DraggableItem[]): DraggableItem[] =>
   list.map((i) => ({ ...i }));
@@ -989,38 +959,88 @@ export default function TacticsBoard() {
     showAngleCone: true,
   });
 
+  // Lädt einen gespeicherten Playbook-Spielzug sauber ins Board / Studio
+  const applySavedPlayToBoard = useCallback((play: SavedPlay) => {
+    setLoadedTrainerScenario(null);
+    setSelectedScenarioKey("custom");
+    setCustomTarget(null);
+
+    const loadedFrames = cloneKeyframes(play.keyframes || []);
+    setKeyframes(loadedFrames);
+    if (loadedFrames.length > 0) {
+      setActiveStepIdx(0);
+      setItems(cloneItems(loadedFrames[0].items));
+      const initialDrawings =
+        loadedFrames[0].drawings && loadedFrames[0].drawings.length > 0
+          ? cloneDrawings(loadedFrames[0].drawings)
+          : cloneDrawings(play.drawings || []);
+      setDrawings(initialDrawings);
+    } else {
+      setActiveStepIdx(null);
+      setItems(cloneItems(play.items));
+      setDrawings(cloneDrawings(play.drawings || []));
+    }
+
+    setPlayTitle(play.title);
+    setStudioTitle(play.title);
+    setPlayAsDrill(Boolean(play.isDrill));
+    setPlayDrillPrompt(play.drillPrompt || "");
+    setPlayDrillExpl(play.drillExplanation || "");
+    setPlayDrillDepth(play.drillTargetDepth || "back");
+  }, []);
+
   useEffect(() => {
     async function checkAccessAndLoadData() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        setBoardUserId(null);
-        setIsProUser(false);
-        return;
-      }
-
-      const uid = session.user.id;
+      const uid = session?.user?.id || null;
       setBoardUserId(uid);
+
       let unlocked = false;
+      if (session?.user) {
+        const emailLower = session.user.email?.toLowerCase().trim() || "";
+        const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
+        if (isAdmin) {
+          const localOverride = localStorage.getItem("tacpadel_is_pro");
+          unlocked = localOverride === null ? true : localOverride === "true";
+        } else {
+          const { data: statsData } = await supabase
+            .from("user_stats")
+            .select("is_pro")
+            .eq("id", session.user.id)
+            .maybeSingle();
 
-      const emailLower = session.user.email?.toLowerCase().trim() || "";
-      const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
-      if (isAdmin) {
-        const localOverride = localStorage.getItem("tacpadel_is_pro");
-        unlocked = localOverride === null ? true : localOverride === "true";
-      } else {
-        const { data: statsData } = await supabase
-          .from("user_stats")
-          .select("is_pro")
-          .eq("id", uid)
-          .maybeSingle();
-
-        unlocked = Boolean(statsData?.is_pro);
-        localStorage.setItem("tacpadel_is_pro", String(unlocked));
+          unlocked = Boolean(statsData?.is_pro);
+          localStorage.setItem("tacpadel_is_pro", String(unlocked));
+        }
       }
 
       setIsProUser(unlocked);
 
-      if (unlocked) {
+      // Playbook zentral laden (inkl. Cloud-Sync bei eingeloggten Nutzern)
+      const mergedPlaybook = await loadPlaybook(uid);
+      setPlaybook(mergedPlaybook);
+
+      // Prüfen, ob aus dem Playbook Hub ein konkreter Spielzug zum Öffnen übergeben wurde
+      let pendingPlayId: string | null = null;
+      try {
+        pendingPlayId = sessionStorage.getItem("tacpadel_open_play_id");
+        if (pendingPlayId) {
+          sessionStorage.removeItem("tacpadel_open_play_id");
+        }
+      } catch {}
+
+      if (pendingPlayId) {
+        const targetPlay = mergedPlaybook.find((p) => p.id === pendingPlayId);
+        if (targetPlay) {
+          applySavedPlayToBoard(targetPlay);
+          if (unlocked) {
+            setActiveMode("studio");
+            setIsPlaybookOpen(false);
+          }
+        }
+      }
+
+      if (unlocked && uid) {
         const stats = await fetchCoachStats(uid);
         if (stats.trainer.totalTurns > 0 || stats.match.totalTurns > 0) {
           const { scenarios } = buildSmartWeaknessPool(stats, 5);
@@ -1028,37 +1048,10 @@ export default function TacticsBoard() {
         } else {
           setWeaknessPool([]);
         }
-
-        let localPlays: SavedPlay[] = [];
-        try {
-          const raw = localStorage.getItem(getPlaybookStorageKey(uid));
-          if (raw) localPlays = JSON.parse(raw);
-        } catch {}
-
-        const remotePlays = Array.isArray(session.user.user_metadata?.tactic_playbook)
-          ? (session.user.user_metadata.tactic_playbook as SavedPlay[])
-          : [];
-
-        const mergedMap = new Map<string, SavedPlay>();
-        [...remotePlays, ...localPlays].forEach((p) => {
-          const existing = mergedMap.get(p.id);
-          if (!existing || (p.updatedAt || 0) > (existing.updatedAt || 0)) {
-            mergedMap.set(p.id, p);
-          }
-        });
-
-        const merged = Array.from(mergedMap.values())
-          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-          .slice(0, MAX_PLAYBOOK_ITEMS);
-
-        setPlaybook(merged);
-        try {
-          localStorage.setItem(getPlaybookStorageKey(uid), JSON.stringify(merged));
-        } catch {}
       }
     }
     checkAccessAndLoadData();
-  }, []);
+  }, [applySavedPlayToBoard]);
 
   // Falls Zugriff entzogen wird, sicher auf 2D Taktik zurückfallen
   useEffect(() => {
@@ -1484,20 +1477,11 @@ export default function TacticsBoard() {
     setDrawings([]);
   };
 
-  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Studio + Coach-Drill-Verbindung) ---
+  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Zentral über src/lib/playbook.ts) ---
   const persistPlaybook = useCallback(
     (nextList: SavedPlay[]) => {
-      const trimmed = nextList.slice(0, MAX_PLAYBOOK_ITEMS);
-      setPlaybook(trimmed);
-      try {
-        localStorage.setItem(getPlaybookStorageKey(boardUserId), JSON.stringify(trimmed));
-      } catch {}
-
-      if (boardUserId) {
-        supabase.auth
-          .updateUser({ data: { tactic_playbook: trimmed } })
-          .catch(() => {});
-      }
+      const saved = savePlaybookList(boardUserId, nextList);
+      setPlaybook(saved);
     },
     [boardUserId]
   );
@@ -1536,6 +1520,8 @@ export default function TacticsBoard() {
       drillPrompt: playAsDrill ? playDrillPrompt.trim() : undefined,
       drillExplanation: playAsDrill ? playDrillExpl.trim() : undefined,
       drillTargetDepth: playAsDrill ? playDrillDepth : undefined,
+      source: existing?.source || "studio",
+      replayContext: existing?.replayContext,
     };
 
     const nextList = [
@@ -1552,32 +1538,7 @@ export default function TacticsBoard() {
 
   const handleLoadPlay = (play: SavedPlay) => {
     stopAnimation();
-    setLoadedTrainerScenario(null);
-    setSelectedScenarioKey("custom");
-    setCustomTarget(null);
-
-    const loadedFrames = cloneKeyframes(play.keyframes || []);
-    setKeyframes(loadedFrames);
-    if (loadedFrames.length > 0) {
-      setActiveStepIdx(0);
-      setItems(cloneItems(loadedFrames[0].items));
-      const initialDrawings =
-        loadedFrames[0].drawings && loadedFrames[0].drawings.length > 0
-          ? cloneDrawings(loadedFrames[0].drawings)
-          : cloneDrawings(play.drawings || []);
-      setDrawings(initialDrawings);
-    } else {
-      setActiveStepIdx(null);
-      setItems(cloneItems(play.items));
-      setDrawings(cloneDrawings(play.drawings || []));
-    }
-
-    setPlayTitle(play.title);
-    setStudioTitle(play.title);
-    setPlayAsDrill(Boolean(play.isDrill));
-    setPlayDrillPrompt(play.drillPrompt || "");
-    setPlayDrillExpl(play.drillExplanation || "");
-    setPlayDrillDepth(play.drillTargetDepth || "back");
+    applySavedPlayToBoard(play);
   };
 
   const handleDeletePlay = (playId: string) => {
@@ -1644,7 +1605,6 @@ export default function TacticsBoard() {
     let checks: { label: string; ok: boolean }[] = [];
 
     if (activeDrill.solutionItems) {
-      // Exakte Musterlösungs-Prüfung (aus Schritt 2 oder Laufpfeilen des Playbooks)
       const solA1 = activeDrill.solutionItems.find((i) => i.id === "a1");
       const solA2 = activeDrill.solutionItems.find((i) => i.id === "a2");
 
@@ -1668,7 +1628,6 @@ export default function TacticsBoard() {
         { label: t("tb_drill_chk_parallel"), ok: parallelOk },
       ];
     } else {
-      // Regelbasierte Padel-Prüfung (Standard-Drills & 1-Schritt-Playbook-Drills)
       const avgX = (a1.x + a2.x) / 2;
       const avgY = (a1.y + a2.y) / 2;
       const cone = getDangerAngleCone(ball);
@@ -1847,7 +1806,6 @@ export default function TacticsBoard() {
         stopAnimation();
       }
 
-      // Im Drill-Tab dürfen nur A1 & A2 verschoben werden
       if (activeMode === "drill" && !id.startsWith("a")) {
         return;
       }
