@@ -1303,6 +1303,10 @@ export const TRANSLATIONS = {
     pb_replay_error: "❌ FEHLER",
     home_card_playbook_title: "Playbook Hub",
     home_card_playbook_sub: "3D-Replays & Drills",
+    pb_limit_reached: "Playbook voll ({max}/{max}) – lösche erst einen alten Spielzug.",
+    tb_anim_limit_reached: "Maximal {max} Animations-Schritte im Free-Modus.",
+    coach_weekly_limit_reached: "Wochen-Limit erreicht (1/1) – nächste Woche wieder frei!",
+    coach_weekly_free_badge: "1× / Woche frei",
   },
 
   en: {
@@ -2438,6 +2442,10 @@ export const TRANSLATIONS = {
     pb_replay_error: "❌ MISTAKE",
     home_card_playbook_title: "Playbook Hub",
     home_card_playbook_sub: "3D Replays & Drills",
+    pb_limit_reached: "Playbook full ({max}/{max}) – delete an older play first.",
+    tb_anim_limit_reached: "Maximum {max} animation steps in Free mode.",
+    coach_weekly_limit_reached: "Weekly limit reached (1/1) – resets next week!",
+    coach_weekly_free_badge: "1× / week free",
   },
 
   es: {
@@ -3573,6 +3581,10 @@ export const TRANSLATIONS = {
     pb_replay_error: "❌ ERROR",
     home_card_playbook_title: "Playbook Hub",
     home_card_playbook_sub: "Replays 3D y Drills",
+    pb_limit_reached: "Playbook lleno ({max}/{max}) – borra primero una jugada antigua.",
+    tb_anim_limit_reached: "Máximo {max} pasos de animación en modo gratuito.",
+    coach_weekly_limit_reached: "Límite semanal alcanzado (1/1) – ¡vuelve la próxima semana!",
+    coach_weekly_free_badge: "1× / semana gratis",
   },
 } as const;
 

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three';
 
-// --- Imports für Loadout-Shop, RPG-Upgrades, Match-Lock, Admin, 3D & i18n ---
+// --- Imports für Loadout-Shop, RPG-Upgrades, Match-Lock, Entitlements, Admin, 3D & i18n ---
 import {
   SHOP_PARTNERS,
   SHOP_RACKETS,
@@ -18,6 +18,11 @@ import {
   performItemUpgrade,
   calculateLoadoutStats,
 } from '../lib/loadout';
+import {
+  OPEN_ACCESS_MODE,
+  useEntitlements,
+  notifyEntitlementsChanged,
+} from '../lib/entitlements';
 import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
@@ -275,6 +280,10 @@ const normalizeUnlockedList = (list: string[]): string[] => {
 
 export default function ProfileTab({ user, setActiveTab }: { user: any, setActiveTab: (t: string) => void }) {
   const { lang, setLang, t } = useTranslation();
+  const { entitlements, isAdmin } = useEntitlements();
+
+  const isProUser = entitlements.isPro;
+  const showProBadge = isProUser && (!entitlements.isOpenAccess || isAdmin);
 
   const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "";
   const [username, setUsername] = useState(fallbackName);
@@ -409,24 +418,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem("tacpadel_haptics") !== "false");
   const [staminaEnabled, setStaminaEnabled] = useState(() => localStorage.getItem("tacpadel_stamina") !== "false");
 
-  // --- ADMIN TEST-SCHALTER FÜR DEN PRO-USER-STATUS ---
-  const userEmailLower = user?.email?.toLowerCase().trim() || "";
-  const isAdmin = userEmailLower === "admin@tacpadel.com" || userEmailLower === "caposion@gmail.com";
-  const [isProUser, setIsProUser] = useState<boolean>(() => {
-    if (isAdmin) {
-      const saved = localStorage.getItem("tacpadel_is_pro");
-      if (saved === "true") return true;
-      if (saved === "false") return false;
-      return true;
-    }
-    return false;
-  });
   const [showAdminModal, setShowAdminModal] = useState(false);
 
+  // Live-Switch für Admin-Preview (Free vs. Pro) über zentrale entitlements.ts
   const toggleProUserStatus = async () => {
     const newState = !isProUser;
-    setIsProUser(newState);
     localStorage.setItem("tacpadel_is_pro", String(newState));
+    notifyEntitlementsChanged();
 
     await supabase.auth.updateUser({ data: { is_pro: newState } }).catch(() => {});
     await supabase.from('user_stats').update({ is_pro: newState }).eq('id', user.id).then(() => {});
@@ -524,18 +522,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           setSavedTeamName(profileData.team_name);
         }
 
-        if (!isAdmin) {
-          const dbPro = Boolean(profileData.is_pro);
-          setIsProUser(dbPro);
-          localStorage.setItem("tacpadel_is_pro", String(dbPro));
-        } else {
-          const localOverride = localStorage.getItem("tacpadel_is_pro");
-          if (localOverride === null && typeof profileData.is_pro === "boolean") {
-            setIsProUser(profileData.is_pro);
-            localStorage.setItem("tacpadel_is_pro", String(profileData.is_pro));
-          }
-        }
-
         if (profileData.preferred_position) {
           setPreferredPosition(profileData.preferred_position);
           localStorage.setItem("tacpadel_preferred_position", profileData.preferred_position);
@@ -572,7 +558,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     };
 
     loadUserData();
-  }, [user.id, isAdmin]);
+  }, [user.id]);
 
   // --- ZENTRALE BERECHNUNG DER SPIELER-ATTRIBUTE (KLASSIK BIS +5 | SPEZIAL BIS +10) ---
   const loadoutStats = useMemo(
@@ -909,7 +895,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex justify-between items-center w-full">
             <div className="flex items-center gap-2.5">
               <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">{t("prof_title")}</h2>
-              {isProUser && (
+              {showProBadge && (
                 <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-pink-950/60 border border-pink-500/50 text-pink-300 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
                   👑 PRO USER
                 </span>
@@ -1533,11 +1519,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         <div className="w-full bg-[#050b18] border border-pink-500/40 rounded-xl p-5 shadow-[0_0_25px_rgba(236,72,153,0.12)] mt-2 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex flex-col text-center sm:text-left">
-              <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
-                🛡️ Admin Test-Steuerung &amp; Zentrale
-              </h3>
+              <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
+                  🛡️ Admin Test-Steuerung &amp; Zentrale
+                </h3>
+                <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                  OPEN_ACCESS_MODE
+                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                    : 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                }`}>
+                  {OPEN_ACCESS_MODE ? '🌍 Open Access: AN' : '🔐 Freemium: AN'}
+                </span>
+              </div>
               <span className="text-[9px] text-slate-400 font-bold mt-1">
-                Eigenen Pro-Status testen, Tester freischalten &amp; Strategien prüfen
+                Eigenen Free/Pro-Status live testen &amp; Admin-Zentrale öffnen
               </span>
             </div>
 

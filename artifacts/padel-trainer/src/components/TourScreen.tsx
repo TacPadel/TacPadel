@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from '../lib/supabase'; 
+import { supabase } from '../lib/supabase';
 import { useTranslation } from '../lib/i18n';
+import { useEntitlements } from '../lib/entitlements';
 
 // --- AKTUELL: SAISON-Turniere (Später für Season 1 einfach auf '../engine/TournamentsSeason1' ändern!) ---
 import { Tournament, TourType, TOURNAMENTS } from '../engine/TournamentsSeason1';
@@ -21,9 +22,9 @@ interface TourProgress {
 
 interface LeaderboardEntry {
   id: string;
-  username: string; 
+  username: string;
   tac_points: number;
-  points: number; 
+  points: number;
 }
 
 interface PlayerStats {
@@ -57,14 +58,17 @@ const getRetryFee = (tour: Tournament) => {
 
 export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const { t } = useTranslation();
+  const { entitlements } = useEntitlements();
+
+  const canAccessProTours = entitlements.isPro;
+  const showProTourBadge = canAccessProTours && !entitlements.isOpenAccess;
 
   const [selectedTour, setSelectedTour] = useState<ExtendedTournament | null>(null);
-  
+
   // -- SUPABASE STATES --
   const [progress, setProgress] = useState<Record<string, TourProgress>>({});
-  const [tacPoints, setTacPoints] = useState<number>(0); 
-  const [tacScore, setTacScore] = useState<number>(0); 
-  const [isProUser, setIsProUser] = useState<boolean>(false);
+  const [tacPoints, setTacPoints] = useState<number>(0);
+  const [tacScore, setTacScore] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   // -- WOCHEN-FILTER & PRO-FILTER --
@@ -73,11 +77,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const [activeWeek, setActiveWeek] = useState<number>(1);
 
   const visibleTournaments = useMemo(() => {
-    // Pro-Turniere sind nur für Pro-User & freigeschaltete Tester sichtbar
-    const allowedTours = allTours.filter(tr => !tr.isProUserOnly || isProUser);
+    const allowedTours = allTours.filter(tr => !tr.isProUserOnly || canAccessProTours);
     if (!hasWeeks) return allowedTours;
     return allowedTours.filter(tr => (tr.week || 1) === activeWeek);
-  }, [allTours, hasWeeks, activeWeek, isProUser]);
+  }, [allTours, hasWeeks, activeWeek, canAccessProTours]);
+
+  // Falls im Admin-Preview auf Free geschaltet wird, offenes Pro-Turnier-Sheet sauber schließen
+  useEffect(() => {
+    if (selectedTour?.isProUserOnly && !canAccessProTours) {
+      setSelectedTour(null);
+    }
+  }, [selectedTour, canAccessProTours]);
 
   // -- TIMER STATE --
   const [timeLeft, setTimeLeft] = useState<string>(() => t("tour_calc_time"));
@@ -112,26 +122,22 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Lade Turnier-Fortschritt, TacPoints (Währung), TacScore (Skill Level) & Pro-Status
+  // Lade Turnier-Fortschritt, TacPoints (Währung) & TacScore (Skill Level)
   useEffect(() => {
     const fetchData = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session?.user) {
           const savedTacPoints = localStorage.getItem("tacpadel_tac_points");
           if (savedTacPoints) setTacPoints(parseInt(savedTacPoints, 10));
-          
+
           const savedScore = localStorage.getItem("tacpadel_score");
           if (savedScore) setTacScore(parseInt(savedScore, 10));
-          
-          setIsProUser(false);
+
           setLoading(false);
           return;
         }
-
-        const emailLower = session.user.email?.toLowerCase().trim() || "";
-        const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
 
         // 1. Turnier Progress
         const { data: tourData, error: tourError } = await supabase
@@ -147,10 +153,10 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setProgress(progressMap);
         }
 
-        // 2. Stats & Pro-Status
+        // 2. Stats (Points & TacPoints)
         const { data: statsData, error: statsError } = await supabase
           .from("user_stats")
-          .select("*")
+          .select("points, tac_points")
           .eq("id", session.user.id)
           .maybeSingle();
 
@@ -158,28 +164,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           setTacPoints(statsData.tac_points || 0);
           setTacScore(statsData.points || 0);
 
-          if (isAdmin) {
-            const localOverride = localStorage.getItem("tacpadel_is_pro");
-            setIsProUser(localOverride === null ? true : localOverride === "true");
-          } else {
-            const dbPro = Boolean(statsData.is_pro);
-            setIsProUser(dbPro);
-            localStorage.setItem("tacpadel_is_pro", String(dbPro));
-          }
-
           localStorage.setItem("tacpadel_tac_points", (statsData.tac_points || 0).toString());
           localStorage.setItem("tacpadel_score", (statsData.points || 0).toString());
         } else {
-          if (isAdmin) {
-            const localOverride = localStorage.getItem("tacpadel_is_pro");
-            setIsProUser(localOverride === null ? true : localOverride === "true");
-          } else {
-            setIsProUser(false);
-          }
-
           const savedTacPoints = localStorage.getItem("tacpadel_tac_points");
           if (savedTacPoints) setTacPoints(parseInt(savedTacPoints, 10));
-          
+
           const savedScore = localStorage.getItem("tacpadel_score");
           if (savedScore) setTacScore(parseInt(savedScore, 10));
         }
@@ -200,15 +190,15 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
     try {
       const { data, error } = await supabase
         .from('user_stats')
-        .select('id, email, display_name, tac_points, points') 
+        .select('id, email, display_name, tac_points, points')
         .order('tac_points', { ascending: false })
-        .limit(10); 
+        .limit(10);
 
       if (data && !error) {
         const formattedData = data.map((user: any) => {
           const emailFallback = user.email ? user.email.split('@')[0] : t("player_fallback");
-          const finalName = user.display_name && user.display_name.trim() !== "" 
-            ? user.display_name 
+          const finalName = user.display_name && user.display_name.trim() !== ""
+            ? user.display_name
             : emailFallback;
 
           return {
@@ -218,7 +208,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             points: user.points || 0
           };
         });
-        
+
         setLeaderboardData(formattedData);
       }
     } catch (err) {
@@ -289,7 +279,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   // Re-Buy / Straf-Logik (Verwendet getRetryFee)
   // -----------------------------------------------------------
   const handleRetryTournament = async (tour: ExtendedTournament) => {
-    if (tour.isProUserOnly && !isProUser) return;
+    if (tour.isProUserOnly && !canAccessProTours) return;
 
     const retryFee = getRetryFee(tour);
 
@@ -300,7 +290,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       const newTacPoints = tacPoints - retryFee;
       setTacPoints(newTacPoints);
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
@@ -310,12 +300,12 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         delete savedTourStamina[tour.id];
         localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
       }
-      
+
       if (session?.user) {
         await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
-        
-        await supabase.from("tour_progress").update({ 
-          status: "active", 
+
+        await supabase.from("tour_progress").update({
+          status: "active",
           current_round: 1,
           retry_used: false
         }).eq("user_id", session.user.id).eq("tournament_id", tour.id);
@@ -337,7 +327,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   };
 
   const handleStartTournament = async (tour: ExtendedTournament) => {
-    if (tour.isProUserOnly && !isProUser) return;
+    if (tour.isProUserOnly && !canAccessProTours) return;
 
     const currentStatus = progress[tour.id];
 
@@ -348,46 +338,46 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!currentStatus) {
         if (tacPoints < tour.entryFee) {
-           alert(`${t("tour_alert_entry_low_1")} ${tour.entryFee} ${t("tour_alert_entry_low_2")}`);
-           return;
+          alert(`${t("tour_alert_entry_low_1")} ${tour.entryFee} ${t("tour_alert_entry_low_2")}`);
+          return;
         }
 
         if (tour.entryFee > 0) {
-           const newTacPoints = tacPoints - tour.entryFee;
-           setTacPoints(newTacPoints);
-           localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
-           
-           if (session?.user) {
-             await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
-           }
+          const newTacPoints = tacPoints - tour.entryFee;
+          setTacPoints(newTacPoints);
+          localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
+
+          if (session?.user) {
+            await supabase.from('user_stats').update({ tac_points: newTacPoints }).eq('id', session.user.id);
+          }
         }
 
         if (session?.user) {
-            const { error } = await supabase.from("tour_progress").insert({
+          const { error } = await supabase.from("tour_progress").insert({
             user_id: session.user.id,
             tournament_id: tour.id,
             status: "active",
             current_round: 1
-            });
-            if (error) throw error;
+          });
+          if (error) throw error;
         }
-        
+
         setProgress(prev => ({
           ...prev,
           [tour.id]: { tournament_id: tour.id, status: "active", current_round: 1 }
         }));
 
         if (onStartMatch) {
-            onStartMatch(tour.id, 1, tour.baseDifficulty, tour.tacPointsReward);
+          onStartMatch(tour.id, 1, tour.baseDifficulty, tour.tacPointsReward);
         }
 
       } else {
         if (onStartMatch) {
           onStartMatch(tour.id, currentStatus.current_round, tour.baseDifficulty, tour.tacPointsReward);
-        } 
+        }
       }
 
     } catch (err) {
@@ -399,31 +389,31 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
   const getBracketStatus = (tourId: string) => {
     const tourProgress = progress[tourId];
     const currentRound = tourProgress?.current_round || 1;
-    const dbStat = tourProgress?.status; 
+    const dbStat = tourProgress?.status;
 
     return {
       vf: {
         text: currentRound === 1 ? (dbStat === 'eliminated' ? t("tour_bracket_out") : t("tour_bracket_next")) : t("tour_bracket_done"),
-        styles: currentRound === 1 
-          ? (dbStat === 'eliminated' ? "bg-red-600 text-white" : "bg-orange-600 text-white shadow-[0_0_10px_rgba(234,88,12,0.5)]") 
+        styles: currentRound === 1
+          ? (dbStat === 'eliminated' ? "bg-red-600 text-white" : "bg-orange-600 text-white shadow-[0_0_10px_rgba(234,88,12,0.5)]")
           : "bg-emerald-600 text-white",
         opacity: "opacity-100"
       },
       hf: {
         text: currentRound < 2 ? t("tour_bracket_locked") : (currentRound === 2 ? (dbStat === 'eliminated' ? t("tour_bracket_out") : t("tour_bracket_next")) : t("tour_bracket_done")),
-        styles: currentRound < 2 
-          ? "text-slate-600" 
-          : (currentRound === 2 
-              ? (dbStat === 'eliminated' ? "bg-red-600 text-white" : "bg-orange-600 text-white shadow-[0_0_10px_rgba(234,88,12,0.5)]") 
+        styles: currentRound < 2
+          ? "text-slate-600"
+          : (currentRound === 2
+              ? (dbStat === 'eliminated' ? "bg-red-600 text-white" : "bg-orange-600 text-white shadow-[0_0_10px_rgba(234,88,12,0.5)]")
               : "bg-emerald-600 text-white"),
         opacity: currentRound >= 2 ? "opacity-100" : "opacity-60"
       },
       f: {
         text: currentRound < 3 ? t("tour_bracket_locked") : (dbStat === 'won' ? t("tour_bracket_champ") : (dbStat === 'eliminated' ? t("tour_bracket_out") : t("tour_bracket_next"))),
-        styles: currentRound < 3 
-          ? "text-slate-600" 
-          : (dbStat === 'won' 
-              ? "bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.5)]" 
+        styles: currentRound < 3
+          ? "text-slate-600"
+          : (dbStat === 'won'
+              ? "bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.5)]"
               : (dbStat === 'eliminated' ? "bg-red-600 text-white" : "bg-orange-600 text-white shadow-[0_0_10px_rgba(234,88,12,0.5)]")),
         opacity: currentRound >= 3 ? "opacity-100" : "opacity-60"
       }
@@ -435,13 +425,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
   return (
     <div className="w-full h-full flex flex-col bg-[#02050a] text-slate-200 relative overflow-hidden pointer-events-auto">
-      
+
       {/* HINTERGRUND GRID */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none"></div>
 
       {/* --- HEADER --- */}
       <div className="flex flex-col items-center w-full px-4 pt-6 pb-4 shrink-0 relative border-b border-slate-800/50 bg-[#050b18]/90 backdrop-blur-md z-10">
-        <button 
+        <button
           onClick={onClose}
           className="absolute left-4 top-6 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors z-20 shadow-md"
         >
@@ -456,7 +446,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
         </p>
 
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm px-2">
-          
+
           <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-emerald-500/30 bg-emerald-950/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.1)]">
             <span className="text-emerald-400 font-black text-sm tracking-wider drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]">{tacScore}</span>
             <span className="text-[7px] text-emerald-500/70 uppercase tracking-widest font-bold mt-0.5">TacScore</span>
@@ -467,7 +457,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             <span className="text-[7px] text-amber-500/70 uppercase tracking-widest font-bold mt-0.5">TacPoints</span>
           </div>
 
-          <button 
+          <button
             onClick={fetchLeaderboard}
             className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-indigo-500/40 bg-indigo-900/20 hover:bg-indigo-900/40 transition-colors shadow-[inset_0_0_10px_rgba(99,102,241,0.15)] active:scale-95"
           >
@@ -494,11 +484,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
             <div className="w-8 h-8 rounded-full border-t-2 border-fuchsia-500 animate-spin"></div>
           </div>
         ) : isTourLocked ? (
-          
+
           /* ========================================================= */
           /* LOCK SCREEN                                               */
           /* ========================================================= */
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="flex flex-col items-center justify-center flex-1 h-full px-4"
@@ -507,17 +497,17 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               <span className="text-4xl">🔒</span>
               <div className="absolute inset-0 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-[spin_4s_linear_infinite] opacity-50"></div>
             </div>
-            
+
             <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-widest text-center mb-3 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
               {t("tour_locked_title")}
             </h2>
-            
+
             <p className="text-slate-400 text-center text-sm font-medium mb-8 max-w-xs leading-relaxed">
               {t("tour_locked_desc_1")} <strong className="text-emerald-400 font-black">{TOUR_UNLOCK_SCORE}</strong> {t("tour_locked_desc_2")}
             </p>
 
             <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-full h-4 mb-2 overflow-hidden relative shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
-              <div 
+              <div
                 className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.8)] transition-all duration-1000 ease-out"
                 style={{ width: `${Math.min(100, (tacScore / TOUR_UNLOCK_SCORE) * 100)}%` }}
               />
@@ -534,7 +524,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           /* TURNIER LISTE                                             */
           /* ========================================================= */
           <div className="flex flex-col gap-4">
-            
+
             {hasWeeks && (
               <div className="grid grid-cols-4 gap-2 bg-[#050b14] p-1.5 rounded-xl border border-slate-800 shrink-0">
                 {[1, 2, 3, 4].map((w) => (
@@ -557,14 +547,14 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
               const dbProg = progress[tour.id];
               const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
               const isEliminated = dbProg?.status === 'eliminated';
-              
+
               const isLockedByScore = tacScore < tour.reqScore;
-              const isLockedByFunds = tacPoints < tour.entryFee && !dbProg; 
-              
+              const isLockedByFunds = tacPoints < tour.entryFee && !dbProg;
+
               const retryFee = getRetryFee(tour);
 
               return (
-                <motion.div 
+                <motion.div
                   key={tour.id}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -572,7 +562,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   className={`relative p-[1px] rounded-xl cursor-pointer bg-gradient-to-br ${!isCompleted || dbProg?.status === 'eliminated' ? 'from-orange-500 via-slate-800 to-orange-500 animate-pulse' : 'from-slate-700 to-slate-900'} ${dbProg?.status === 'won' ? 'opacity-50 grayscale-[0.3]' : ''}`}
                 >
                   <div className={`w-full h-full bg-gradient-to-br ${getTypeBg(tour.type)} p-4 rounded-xl flex flex-col bg-[#050b14]`}>
-                    
+
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -580,7 +570,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             {tour.type === "master" ? "Premier Master" : tour.type === "pro" ? "Pro" : "Open"}
                           </span>
 
-                          {tour.isProUserOnly && isProUser && (
+                          {tour.isProUserOnly && showProTourBadge && (
                             <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full border border-pink-500/60 text-pink-300 bg-pink-950/60 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
                               👑 PRO USER
                             </span>
@@ -588,7 +578,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                         </div>
                         <h3 className="text-lg font-black text-white uppercase tracking-wider mt-2 drop-shadow-lg">{tour.name}</h3>
                       </div>
-                      
+
                       {/* STATUS BADGE */}
                       {!isCompleted && dbProg?.status === "active" && (
                         <span className="text-[10px] font-black text-orange-400 bg-orange-950/50 border border-orange-500 px-2 py-1 rounded animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.3)]">
@@ -611,29 +601,29 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                       <div className="flex flex-col">
                         <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">{t("tour_entry_tacscore")}</span>
                         <span className={`text-sm font-black ${
-                          tour.reqScore === 0 
-                            ? 'text-slate-300' 
-                            : !isLockedByScore 
-                              ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]' 
+                          tour.reqScore === 0
+                            ? 'text-slate-300'
+                            : !isLockedByScore
+                              ? 'text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]'
                               : 'text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
                         }`}>
                           {tour.reqScore === 0 ? t("tour_open_req") : `${tour.reqScore}`}
                         </span>
                       </div>
-                      
+
                       <div className="w-[1px] h-6 bg-slate-700"></div>
-                      
+
                       <div className="flex flex-col">
                         <span className={`text-[8px] font-bold uppercase tracking-widest ${isEliminated ? 'text-red-400/80' : 'text-slate-500'}`}>
                           {isEliminated ? t("tour_rebuy_penalty") : t("tour_entry_fee")}
                         </span>
-                        
+
                         <span className={`text-sm font-black flex items-center gap-1 ${
                           isEliminated
                             ? (tacPoints >= retryFee ? 'text-red-400' : 'text-red-600 line-through')
-                            : (tour.entryFee === 0 
-                                ? 'text-emerald-400' 
-                                : !isLockedByFunds 
+                            : (tour.entryFee === 0
+                                ? 'text-emerald-400'
+                                : !isLockedByFunds
                                   ? 'text-amber-400'
                                   : 'text-red-500 line-through')
                         }`}>
@@ -642,7 +632,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                       </div>
 
                       <div className="w-[1px] h-6 bg-slate-700"></div>
-                      
+
                       <div className="flex flex-col">
                         <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">{t("tour_rewards")}</span>
                         <span className="text-sm font-bold text-amber-400">{tour.rewardText}</span>
@@ -663,7 +653,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
           const dbProg = progress[selectedTour.id];
           const isCompleted = dbProg?.status === 'won' || dbProg?.status === 'eliminated';
           const isEliminated = dbProg?.status === 'eliminated';
-          
+
           const isLockedByScore = tacScore < selectedTour.reqScore;
           const isLockedByFunds = tacPoints < selectedTour.entryFee && !dbProg;
           const isLocked = isLockedByScore || isLockedByFunds;
@@ -680,25 +670,25 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
           return (
             <>
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 onClick={() => setSelectedTour(null)}
                 className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[100]"
               />
 
-              <motion.div 
+              <motion.div
                 initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
                 className="absolute bottom-0 left-0 right-0 z-[110] bg-[#050b18] border-t-2 border-slate-700 p-6 rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.9)] max-h-[90vh] flex flex-col"
               >
                 <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-6 shrink-0 cursor-grab active:cursor-grabbing" onClick={() => setSelectedTour(null)} />
-                
+
                 <div className="flex flex-col items-center text-center mb-6 shrink-0">
                   <div className="flex items-center gap-2 mb-3">
                     <span className={`text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border ${getTypeColor(selectedTour.type)}`}>
                       {selectedTour.type.toUpperCase()}
                     </span>
-                    {selectedTour.isProUserOnly && isProUser && (
+                    {selectedTour.isProUserOnly && showProTourBadge && (
                       <span className="text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full border border-pink-500 text-pink-300 bg-pink-950/60">
                         👑 PRO USER
                       </span>
@@ -706,11 +696,11 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   </div>
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest">{selectedTour.name}</h2>
                   <p className="text-slate-400 text-sm mt-1">{selectedTour.location}</p>
-                  
+
                   <div className="mt-2 bg-slate-900 border border-slate-700 px-3 py-1 rounded text-xs text-slate-400 flex gap-4 items-center">
                     <span>{t("tour_ai_level")} <span className="font-bold text-white">{selectedTour.baseDifficulty}</span></span>
                     <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                    
+
                     {isEliminated ? (
                       <span className="text-red-400 font-black drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]">
                         {t("tour_rebuy_penalty")}: {retryFee} TP
@@ -725,7 +715,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
 
                 <div className="flex-1 overflow-y-auto mb-6 custom-scrollbar">
                   <div className="flex flex-col gap-3">
-                    
+
                     {(() => {
                       const bracket = getBracketStatus(selectedTour.id);
                       return (
@@ -771,7 +761,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 {isEliminated ? (
                   <div className="w-full flex flex-col gap-2">
                     <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">{t("tour_dont_give_up")}</p>
-                    <button 
+                    <button
                       disabled={!canAffordRetry}
                       onClick={() => handleRetryTournament(selectedTour)}
                       className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
@@ -780,13 +770,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                       }`}
                     >
-                      {!canAffordRetry 
-                        ? `${t("tour_retry_low_tp_1")}${retryFee} ${t("tour_retry_low_tp_2")}` 
+                      {!canAffordRetry
+                        ? `${t("tour_retry_low_tp_1")}${retryFee} ${t("tour_retry_low_tp_2")}`
                         : `${t("tour_retry_btn")} (${retryFee} TP)`}
                     </button>
                   </div>
                 ) : (
-                  <button 
+                  <button
                     disabled={isCompleted || isLocked}
                     onClick={() => handleStartTournament(selectedTour)}
                     className={`w-full py-5 font-black tracking-[0.1em] uppercase rounded-xl transition-all shrink-0 ${
@@ -808,13 +798,13 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
       <AnimatePresence>
         {showLeaderboard && (
           <>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }}
               className="absolute inset-0 bg-black/80 backdrop-blur-md z-[120]"
             />
 
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="absolute top-[10%] bottom-[10%] left-4 right-4 z-[130] bg-[#050b14] border border-indigo-500/50 p-6 rounded-2xl shadow-[0_0_50px_rgba(99,102,241,0.2)] flex flex-col overflow-hidden"
             >
@@ -823,8 +813,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                   <h2 className="text-2xl font-black text-white uppercase tracking-widest drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">{t("tour_lb_title")}</h2>
                   <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">{t("tour_lb_sub")}</p>
                 </div>
-                <button 
-                  onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }} 
+                <button
+                  onClick={() => { setShowLeaderboard(false); setSelectedPlayer(null); }}
                   className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-full hover:bg-slate-800 text-slate-400 transition-colors"
                 >
                   ✕
@@ -843,7 +833,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                 ) : (
                   leaderboardData.map((player, index) => {
                     const rank = index + 1;
-                    
+
                     let rankStyle = "bg-slate-900 border-slate-800 text-slate-400";
                     let textStyle = "text-slate-300";
                     if (rank === 1) {
@@ -858,8 +848,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     }
 
                     return (
-                      <div 
-                        key={player.id} 
+                      <div
+                        key={player.id}
                         onClick={() => handlePlayerClick(player)}
                         className="flex items-center gap-3 p-3 bg-slate-900/40 border border-slate-800/60 rounded-xl hover:bg-indigo-900/30 hover:border-indigo-500/50 cursor-pointer transition-all group"
                       >
@@ -871,7 +861,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                             {player.username || t("player_fallback")}
                           </p>
                         </div>
-                        
+
                         <div className="flex items-center gap-3 shrink-0">
                           <div className="flex flex-col items-end">
                             <span className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">TacScore</span>
@@ -881,7 +871,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           </div>
 
                           <div className="w-px h-6 bg-slate-700/50"></div>
-                          
+
                           <div className="flex flex-col items-end w-14">
                             <span className="text-[9px] font-black uppercase text-indigo-500/70 tracking-widest leading-none">TacPoints</span>
                             <span className="text-sm font-black text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]">
@@ -906,7 +896,7 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                     className="absolute inset-0 z-20 bg-[#050b14] flex flex-col"
                   >
                     <div className="flex items-center gap-4 p-4 border-b border-slate-800 shrink-0">
-                      <button 
+                      <button
                         onClick={() => setSelectedPlayer(null)}
                         className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition-colors"
                       >
@@ -946,8 +936,8 @@ export default function TourScreen({ onClose, onStartMatch }: TourScreenProps) {
                           <div className="bg-indigo-950/30 border border-indigo-900/50 p-4 rounded-xl flex flex-col items-center text-center">
                             <span className="text-3xl mb-1 drop-shadow-[0_0_10px_rgba(99,102,241,0.4)]">📊</span>
                             <span className="text-2xl font-black text-indigo-400">
-                              {selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated > 0 
-                                ? Math.round((selectedPlayer.tournaments_won / (selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated)) * 100) 
+                              {selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated > 0
+                                ? Math.round((selectedPlayer.tournaments_won / (selectedPlayer.tournaments_won + selectedPlayer.tournaments_eliminated)) * 100)
                                 : 0}%
                             </span>
                             <span className="text-[9px] text-indigo-500/70 uppercase font-black tracking-widest">{t("tour_stats_winrate")}</span>

@@ -4,7 +4,7 @@ import { AppLanguage, formatShotName } from "./i18n";
 
 export const BOARD_V_WIDTH = 760;
 export const BOARD_V_HEIGHT = 380;
-export const MAX_PLAYBOOK_ITEMS = 20;
+export const MAX_PLAYBOOK_ITEMS = 50;
 
 export type PlaybookSource = "match" | "trainer" | "studio";
 export type DrillDepth = "back" | "mid" | "net";
@@ -58,6 +58,12 @@ export interface SavedPlay {
   drillTargetDepth?: DrillDepth;
   source?: PlaybookSource;
   replayContext?: ReplayContext;
+}
+
+export interface UpsertPlaybookResult {
+  saved: boolean;
+  list: SavedPlay[];
+  limitReached: boolean;
 }
 
 export const getPlaybookStorageKey = (userId?: string | null) =>
@@ -318,7 +324,10 @@ export function createPlayFromReplayContext(
 }
 
 // Lädt Playbook (Lokal + Supabase user_metadata zusammenführen)
-export async function loadPlaybook(userId?: string | null): Promise<SavedPlay[]> {
+export async function loadPlaybook(
+  userId?: string | null,
+  maxSlots: number = MAX_PLAYBOOK_ITEMS
+): Promise<SavedPlay[]> {
   let localPlays: SavedPlay[] = [];
   try {
     const raw = localStorage.getItem(getPlaybookStorageKey(userId));
@@ -347,7 +356,7 @@ export async function loadPlaybook(userId?: string | null): Promise<SavedPlay[]>
 
   const merged = Array.from(mergedMap.values())
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .slice(0, MAX_PLAYBOOK_ITEMS);
+    .slice(0, maxSlots);
 
   try {
     localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(merged));
@@ -358,9 +367,10 @@ export async function loadPlaybook(userId?: string | null): Promise<SavedPlay[]>
 
 export function savePlaybookList(
   userId: string | null | undefined,
-  list: SavedPlay[]
+  list: SavedPlay[],
+  maxSlots: number = MAX_PLAYBOOK_ITEMS
 ): SavedPlay[] {
-  const trimmed = list.slice(0, MAX_PLAYBOOK_ITEMS);
+  const trimmed = list.slice(0, maxSlots);
   try {
     localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(trimmed));
   } catch {}
@@ -375,16 +385,30 @@ export function savePlaybookList(
 
 export function upsertPlaybookEntry(
   userId: string | null | undefined,
-  entry: SavedPlay
-): SavedPlay[] {
+  entry: SavedPlay,
+  maxSlots: number = MAX_PLAYBOOK_ITEMS
+): UpsertPlaybookResult {
   let current: SavedPlay[] = [];
   try {
     const raw = localStorage.getItem(getPlaybookStorageKey(userId));
     if (raw) current = JSON.parse(raw);
   } catch {}
 
+  const exists = current.some((p) => p.id === entry.id);
+  if (!exists && current.length >= maxSlots) {
+    return {
+      saved: false,
+      list: current,
+      limitReached: true,
+    };
+  }
+
   const next = [entry, ...current.filter((p) => p.id !== entry.id)];
-  return savePlaybookList(userId, next);
+  return {
+    saved: true,
+    list: savePlaybookList(userId, next, maxSlots),
+    limitReached: false,
+  };
 }
 
 // =========================================================================

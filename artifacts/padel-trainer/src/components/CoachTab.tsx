@@ -25,6 +25,11 @@ import {
   buildSmartWeaknessPool,
 } from "../lib/tacticStats";
 import { loadPlaybook } from "../lib/playbook";
+import {
+  useEntitlements,
+  canStartWeaknessDrill,
+  recordWeaknessDrillStarted,
+} from "../lib/entitlements";
 
 interface CoachTabProps {
   userId?: string | null;
@@ -219,13 +224,21 @@ export default function CoachTab({
   onNavigateTab,
 }: CoachTabProps) {
   const { lang, t } = useTranslation();
+  const { entitlements } = useEntitlements();
+
   const [coachStats, setCoachStats] = useState<TacticCoachStats | null>(null);
   const [playbookCount, setPlaybookCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [drillUsageTick, setDrillUsageTick] = useState(0);
 
   // --- Übernommene Match-Statistiken & Chart-States (Einzel / Turnier) ---
   const [statsMode, setStatsMode] = useState<"single" | "tournament">("single");
   const [allHistory, setAllHistory] = useState<any[]>([]);
+
+  const canLaunchWeaknessDrill = useMemo(
+    () => canStartWeaknessDrill(userId, entitlements),
+    [userId, entitlements, drillUsageTick]
+  );
 
   useEffect(() => {
     let active = true;
@@ -382,7 +395,11 @@ export default function CoachTab({
     : null;
 
   const handleLaunchDrill = () => {
-    if (!coachStats) return;
+    if (!coachStats || !canLaunchWeaknessDrill) return;
+    if (!entitlements.hasUnlimitedWeaknessDrills) {
+      recordWeaknessDrillStarted(userId);
+      setDrillUsageTick((n) => n + 1);
+    }
     const { scenarios, focus } = buildSmartWeaknessPool(coachStats, 10);
     onStartWeaknessTraining(scenarios, focus);
   };
@@ -617,13 +634,20 @@ export default function CoachTab({
             {summary?.primaryFocus && primaryFocusMeta && (
               <div className="bg-gradient-to-br from-[#071126] to-[#040914] border border-orange-500/40 rounded-xl p-4 sm:p-5 flex flex-col gap-3.5 shadow-[0_0_25px_rgba(249,115,22,0.12)]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                    {lang === "en"
-                      ? "COACH RECOMMENDATION #1"
-                      : lang === "es"
-                      ? "RECOMENDACIÓN DEL COACH #1"
-                      : "COACH-EMPFEHLUNG #1"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      {lang === "en"
+                        ? "COACH RECOMMENDATION #1"
+                        : lang === "es"
+                        ? "RECOMENDACIÓN DEL COACH #1"
+                        : "COACH-EMPFEHLUNG #1"}
+                    </span>
+                    {!entitlements.hasUnlimitedWeaknessDrills && (
+                      <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
+                        {t("coach_weekly_free_badge")}
+                      </span>
+                    )}
+                  </div>
                   <span
                     className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${primaryFocusMeta.color}`}
                   >
@@ -657,14 +681,22 @@ export default function CoachTab({
 
                 <button
                   onClick={handleLaunchDrill}
-                  className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-black text-xs sm:text-sm uppercase tracking-[0.18em] rounded-xl shadow-[0_0_25px_rgba(249,115,22,0.35)] hover:scale-[1.01] active:scale-95 transition-all"
+                  disabled={!canLaunchWeaknessDrill}
+                  className={`w-full py-3.5 sm:py-4 font-black text-xs sm:text-sm uppercase tracking-[0.18em] rounded-xl transition-all ${
+                    canLaunchWeaknessDrill
+                      ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black shadow-[0_0_25px_rgba(249,115,22,0.35)] hover:scale-[1.01] active:scale-95"
+                      : "bg-slate-800/80 border border-slate-700 text-slate-400 cursor-not-allowed"
+                  }`}
                 >
-                  🎯{" "}
-                  {lang === "en"
-                    ? "Train Weaknesses Now (10 Rounds)"
-                    : lang === "es"
-                    ? "Entrenar Debilidades Ahora (10 Rondas)"
-                    : "Schwachstellen jetzt trainieren (10 Runden)"}
+                  {canLaunchWeaknessDrill
+                    ? `🎯 ${
+                        lang === "en"
+                          ? "Train Weaknesses Now (10 Rounds)"
+                          : lang === "es"
+                          ? "Entrenar Debilidades Ahora (10 Rondas)"
+                          : "Schwachstellen jetzt trainieren (10 Runden)"
+                      }`
+                    : t("coach_weekly_limit_reached")}
                 </button>
               </div>
             )}
@@ -673,7 +705,7 @@ export default function CoachTab({
       </div>
 
       {/* 4. DETAIL-VERGLEICH ALLER 6 ACHSEN (THEORIE VS. PRAXIS) */}
-      {summary && hasAnyRadarData && (
+      {entitlements.hasFullCoachAnalytics && summary && hasAnyRadarData && (
         <div className="w-full bg-[#050b18]/90 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3.5">
           <h2 className="text-xs sm:text-sm font-black uppercase tracking-widest text-slate-300">
             📐{" "}
@@ -738,7 +770,7 @@ export default function CoachTab({
       )}
 
       {/* 5. FEHLER-ANALYSE AUS DEN MATCHES + SCHLAG-CHECK */}
-      {coachStats && (
+      {entitlements.hasFullCoachAnalytics && coachStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Fehler-Aufschlüsselung */}
           <div className="bg-[#050b18]/90 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">

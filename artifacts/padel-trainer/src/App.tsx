@@ -27,6 +27,7 @@ import ShareCardModal, { ShareCardPayload } from "./components/ShareCardModal";
 import RatingPromptModal, { shouldShowRatingPrompt } from "./components/RatingPromptModal";
 import { useTranslation, formatLevelName, formatShotName } from "./lib/i18n";
 import { recordTrainerAttempt, CoachSummary } from "./lib/tacticStats";
+import { useEntitlements } from "./lib/entitlements";
 import {
   createPlayFromTrainerScenario,
   upsertPlaybookEntry,
@@ -503,6 +504,7 @@ const getAdjacentZones = (zoneId: string) => {
 
 export default function App(): React.JSX.Element {
   const { lang, t } = useTranslation();
+  const { entitlements } = useEntitlements();
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const savedTab = localStorage.getItem("tacpadel_activeTab");
@@ -523,6 +525,7 @@ export default function App(): React.JSX.Element {
   // Geteilter 3D-Replay-Link (?replay=...) + Trainer-Playbook-Status
   const [sharedReplay, setSharedReplay] = useState<{ title: string; context: ReplayContext } | null>(null);
   const [savedTrainerScenarioToPb, setSavedTrainerScenarioToPb] = useState(false);
+  const [pbLimitToast, setPbLimitToast] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
@@ -883,13 +886,13 @@ export default function App(): React.JSX.Element {
     }
   }, []);
 
+  // TS7030-Fix: Explizites Early-Return, damit alle Code-Pfade sauber zurückgeben
   useEffect(() => {
-    if (gameOver && shouldShowRatingPrompt()) {
-      const timer = setTimeout(() => {
-        setShowRatingModal(true);
-      }, 1200);
-      return () => clearTimeout(timer);
-    }
+    if (!gameOver || !shouldShowRatingPrompt()) return;
+    const timer = setTimeout(() => {
+      setShowRatingModal(true);
+    }, 1200);
+    return () => clearTimeout(timer);
   }, [gameOver]);
 
   const activeEasyMode = true;
@@ -1490,7 +1493,14 @@ export default function App(): React.JSX.Element {
   const handleSaveTrainerScenarioToPlaybook = () => {
     if (!scenario || savedTrainerScenarioToPb) return;
     const entry = createPlayFromTrainerScenario(scenario, lang);
-    upsertPlaybookEntry(user?.id, entry);
+    const res = upsertPlaybookEntry(user?.id, entry, entitlements.maxPlaybookSlots);
+    if (res.limitReached) {
+      setPbLimitToast(
+        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+      );
+      setTimeout(() => setPbLimitToast(null), 3200);
+      return;
+    }
     setSavedTrainerScenarioToPb(true);
   };
 
@@ -1963,6 +1973,23 @@ export default function App(): React.JSX.Element {
             <span className="text-lg">🎁</span>
             <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
               {t("bonus_claimed_toast")}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- PLAYBOOK LIMIT-TOAST (Falls Free-Limit erreicht) --- */}
+      <AnimatePresence>
+        {pbLimitToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[180] w-[92%] max-w-md bg-[#050b18]/95 border border-amber-400/70 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2.5 text-center"
+          >
+            <span className="text-lg">📘</span>
+            <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
+              {pbLimitToast}
             </span>
           </motion.div>
         )}

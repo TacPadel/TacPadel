@@ -4,17 +4,16 @@ import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import ScenarioCourt4D from "./ScenarioCourt4D";
 import type { Scenario as TrainerScenario } from "./Scenarios";
-import { supabase } from "../lib/supabase";
 import { useTranslation, TranslationKey, formatShotName } from "../lib/i18n";
 import {
   fetchCoachStats,
   buildSmartWeaknessPool,
   recordBoardDrill,
 } from "../lib/tacticStats";
+import { useEntitlements } from "../lib/entitlements";
 import {
   BOARD_V_WIDTH,
   BOARD_V_HEIGHT,
-  MAX_PLAYBOOK_ITEMS,
   DrillDepth,
   PlaybookDraggableItem,
   PlaybookStudioDrawing,
@@ -879,6 +878,7 @@ function TrajectoryView3D() {
 // ==========================================
 export default function TacticsBoard() {
   const { lang, t } = useTranslation();
+  const { userId: boardUserId, entitlements } = useEntitlements();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -896,9 +896,7 @@ export default function TacticsBoard() {
   // --- DYNAMISCHER HAUPTSCHALTER: 2D | [DRILL] | [STUDIO] | 3D ---
   const [activeMode, setActiveMode] = useState<BoardMode>("tactics");
 
-  // --- STILLSCHWEIGENDE FEATURE-FREISCHALTUNG (ohne sichtbare Schranken-Hinweise) ---
-  const [isProUser, setIsProUser] = useState<boolean>(false);
-  const [boardUserId, setBoardUserId] = useState<string | null>(null);
+  // --- COACH-SCHWÄCHEN-POOL FÜR 2D-VORLAGEN ---
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
 
   // --- COACH-DRILL TAB STATES (Standard + eigene Playbook-Drills) ---
@@ -917,7 +915,7 @@ export default function TacticsBoard() {
   const animRafRef = useRef<number | null>(null);
   const playbackFramesRef = useRef<BoardKeyframe[]>([]);
 
-  // --- MEIN PLAYBOOK (Exklusiv im Studio, Lokal + Supabase Sync + Drill-Export) ---
+  // --- MEIN PLAYBOOK (Zentral über src/lib/playbook.ts) ---
   const [isPlaybookOpen, setIsPlaybookOpen] = useState<boolean>(false);
   const [playbook, setPlaybook] = useState<SavedPlay[]>([]);
   const [playTitle, setPlayTitle] = useState<string>("");
@@ -989,38 +987,15 @@ export default function TacticsBoard() {
     setPlayDrillDepth(play.drillTargetDepth || "back");
   }, []);
 
+  // Lädt Playbook, prüft Auto-Load aus dem Playbook Hub und holt Coach-Schwächen
   useEffect(() => {
-    async function checkAccessAndLoadData() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id || null;
-      setBoardUserId(uid);
+    let active = true;
 
-      let unlocked = false;
-      if (session?.user) {
-        const emailLower = session.user.email?.toLowerCase().trim() || "";
-        const isAdmin = emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
-        if (isAdmin) {
-          const localOverride = localStorage.getItem("tacpadel_is_pro");
-          unlocked = localOverride === null ? true : localOverride === "true";
-        } else {
-          const { data: statsData } = await supabase
-            .from("user_stats")
-            .select("is_pro")
-            .eq("id", session.user.id)
-            .maybeSingle();
-
-          unlocked = Boolean(statsData?.is_pro);
-          localStorage.setItem("tacpadel_is_pro", String(unlocked));
-        }
-      }
-
-      setIsProUser(unlocked);
-
-      // Playbook zentral laden (inkl. Cloud-Sync bei eingeloggten Nutzern)
-      const mergedPlaybook = await loadPlaybook(uid);
+    async function loadBoardData() {
+      const mergedPlaybook = await loadPlaybook(boardUserId);
+      if (!active) return;
       setPlaybook(mergedPlaybook);
 
-      // Prüfen, ob aus dem Playbook Hub ein konkreter Spielzug zum Öffnen übergeben wurde
       let pendingPlayId: string | null = null;
       try {
         pendingPlayId = sessionStorage.getItem("tacpadel_open_play_id");
@@ -1033,36 +1008,60 @@ export default function TacticsBoard() {
         const targetPlay = mergedPlaybook.find((p) => p.id === pendingPlayId);
         if (targetPlay) {
           applySavedPlayToBoard(targetPlay);
-          if (unlocked) {
+          if (entitlements.canAccessStudio) {
             setActiveMode("studio");
             setIsPlaybookOpen(false);
           }
         }
       }
 
-      if (unlocked && uid) {
-        const stats = await fetchCoachStats(uid);
+      if (entitlements.hasAdvancedBoardOverlays && boardUserId) {
+        const stats = await fetchCoachStats(boardUserId);
+        if (!active) return;
         if (stats.trainer.totalTurns > 0 || stats.match.totalTurns > 0) {
           const { scenarios } = buildSmartWeaknessPool(stats, 5);
           setWeaknessPool(scenarios);
         } else {
           setWeaknessPool([]);
         }
+      } else if (active) {
+        setWeaknessPool([]);
       }
     }
-    checkAccessAndLoadData();
-  }, [applySavedPlayToBoard]);
 
-  // Falls Zugriff entzogen wird, sicher auf 2D Taktik zurückfallen
+    loadBoardData();
+    return () => {
+      active = false;
+    };
+  }, [
+    boardUserId,
+    entitlements.canAccessStudio,
+    entitlements.hasAdvancedBoardOverlays,
+    applySavedPlayToBoard,
+  ]);
+
+  // Sicherheits-Fallback, falls ein Modus durch Entitlements deaktiviert wird
   useEffect(() => {
-    if (!isProUser) {
-      if (activeMode === "studio" || activeMode === "drill") setActiveMode("tactics");
-      if (isPlaybookOpen) setIsPlaybookOpen(false);
-      if (isPlaying) setIsPlaying(false);
+    if (!entitlements.canAccessStudio && activeMode === "studio") {
+      setActiveMode("tactics");
+      setIsPlaybookOpen(false);
+      setIsPlaying(false);
     }
-  }, [isProUser, activeMode, isPlaybookOpen, isPlaying]);
+    if (!entitlements.canAccessDrills && activeMode === "drill") {
+      setActiveMode("tactics");
+    }
+    if (!entitlements.canCreateCustomDrills && drillCategory === "playbook") {
+      setDrillCategory("all");
+    }
+  }, [
+    entitlements.canAccessStudio,
+    entitlements.canAccessDrills,
+    entitlements.canCreateCustomDrills,
+    activeMode,
+    drillCategory,
+  ]);
 
-  // --- VEREINHEITLICHTE DRILL-LISTE (Standard + Playbook-Drills) ---
+  // --- VEREINHEITLICHTE DRILL-LISTE (Standard + eigene Playbook-Drills) ---
   const standardDrills: UnifiedDrill[] = useMemo(
     () =>
       BOARD_DRILLS.map((d) => ({
@@ -1077,24 +1076,26 @@ export default function TacticsBoard() {
     [lang]
   );
 
-  const playbookDrills: UnifiedDrill[] = useMemo(
-    () =>
-      playbook
-        .filter((p) => Boolean(p.isDrill))
-        .map((p) => convertPlayToUnifiedDrill(p, t)),
-    [playbook, lang]
-  );
+  const playbookDrills: UnifiedDrill[] = useMemo(() => {
+    if (!entitlements.canCreateCustomDrills) return [];
+    return playbook
+      .filter((p) => Boolean(p.isDrill))
+      .map((p) => convertPlayToUnifiedDrill(p, t));
+  }, [playbook, lang, entitlements.canCreateCustomDrills]);
 
   const filteredDrills: UnifiedDrill[] = useMemo(() => {
+    if (!entitlements.canCreateCustomDrills) return standardDrills;
     if (drillCategory === "standard") return standardDrills;
     if (drillCategory === "playbook") return playbookDrills;
     return [...playbookDrills, ...standardDrills];
-  }, [drillCategory, standardDrills, playbookDrills]);
+  }, [drillCategory, standardDrills, playbookDrills, entitlements.canCreateCustomDrills]);
 
   const safeDrillIdx =
     filteredDrills.length > 0 ? Math.min(activeDrillIdx, filteredDrills.length - 1) : 0;
   const activeDrill: UnifiedDrill | null =
-    isProUser && activeMode === "drill" ? filteredDrills[safeDrillIdx] || null : null;
+    entitlements.canAccessDrills && activeMode === "drill"
+      ? filteredDrills[safeDrillIdx] || null
+      : null;
 
   // Lädt die Startaufstellung automatisch, sobald ein neuer Drill oder der Drill-Tab aktiviert wird
   const activeDrillId = activeDrill?.id || null;
@@ -1112,7 +1113,7 @@ export default function TacticsBoard() {
 
   // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
   const effectiveFilters: TacticalFilters = useMemo(() => {
-    if (isProUser) return filters;
+    if (entitlements.hasAdvancedBoardOverlays) return filters;
     return {
       showBallVector: true,
       showTeamLines: true,
@@ -1122,7 +1123,7 @@ export default function TacticsBoard() {
       showAttackArc: false,
       showAngleCone: false,
     };
-  }, [isProUser, filters]);
+  }, [entitlements.hasAdvancedBoardOverlays, filters]);
 
   const netX = V_WIDTH / 2;
   const offsetX = 10 + (V_WIDTH - 20) * 0.15;
@@ -1133,10 +1134,10 @@ export default function TacticsBoard() {
         items,
         effectiveFilters,
         selectedScenarioKey,
-        isProUser ? customTarget : null,
+        entitlements.hasAdvancedBoardOverlays ? customTarget : null,
         t
       ),
-    [items, effectiveFilters, selectedScenarioKey, customTarget, isProUser, lang]
+    [items, effectiveFilters, selectedScenarioKey, customTarget, entitlements.hasAdvancedBoardOverlays, lang]
   );
 
   const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
@@ -1149,6 +1150,7 @@ export default function TacticsBoard() {
     analysis,
     studioTitle,
     ballScale,
+    hasCleanVideoExport: entitlements.hasCleanVideoExport,
   });
 
   useEffect(() => {
@@ -1160,8 +1162,18 @@ export default function TacticsBoard() {
       analysis,
       studioTitle,
       ballScale,
+      hasCleanVideoExport: entitlements.hasCleanVideoExport,
     };
-  }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle, ballScale]);
+  }, [
+    items,
+    allDrawingsToRender,
+    showTactics,
+    effectiveFilters,
+    analysis,
+    studioTitle,
+    ballScale,
+    entitlements.hasCleanVideoExport,
+  ]);
 
   // Prüft, ob am aktuell ausgewählten Schritt ungespeicherte Änderungen vorliegen
   const isActiveStepDirty = useMemo(() => {
@@ -1406,9 +1418,17 @@ export default function TacticsBoard() {
     };
   }, [isPlaying, playSpeed, keyframes.length]);
 
-  // Keyframe-Aktionen
+  // Keyframe-Aktionen (respektiert entitlements.maxAnimSteps)
   const handleAddKeyframe = () => {
     stopAnimation();
+    if (keyframes.length >= entitlements.maxAnimSteps) {
+      setStepToast(
+        t("tb_anim_limit_reached").replace(/\{max\}/g, String(entitlements.maxAnimSteps))
+      );
+      setTimeout(() => setStepToast(null), 2600);
+      return;
+    }
+
     const newFrame: BoardKeyframe = {
       id: `kf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       items: cloneItems(items),
@@ -1480,17 +1500,33 @@ export default function TacticsBoard() {
   // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Zentral über src/lib/playbook.ts) ---
   const persistPlaybook = useCallback(
     (nextList: SavedPlay[]) => {
-      const saved = savePlaybookList(boardUserId, nextList);
+      const saved = savePlaybookList(
+        boardUserId,
+        nextList,
+        Math.max(nextList.length, entitlements.maxPlaybookSlots)
+      );
       setPlaybook(saved);
     },
-    [boardUserId]
+    [boardUserId, entitlements.maxPlaybookSlots]
   );
 
   const handleSaveToPlaybook = () => {
-    if (!isProUser) return;
+    if (!entitlements.canAccessStudio) return;
     stopAnimation();
     const cleanTitle = (playTitle || studioTitle || t("tb_default_studio_title")).trim();
     if (!cleanTitle) return;
+
+    const existing = playbook.find(
+      (p) => p.title.toLowerCase() === cleanTitle.toLowerCase()
+    );
+
+    if (!existing && playbook.length >= entitlements.maxPlaybookSlots) {
+      setPlaybookToast(
+        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+      );
+      setTimeout(() => setPlaybookToast(null), 3000);
+      return;
+    }
 
     const syncedKeyframes =
       activeStepIdx !== null && keyframes[activeStepIdx] && isActiveStepDirty
@@ -1505,9 +1541,9 @@ export default function TacticsBoard() {
       setKeyframes(syncedKeyframes);
     }
 
-    const existing = playbook.find(
-      (p) => p.title.toLowerCase() === cleanTitle.toLowerCase()
-    );
+    const effectiveIsDrill = entitlements.canCreateCustomDrills
+      ? playAsDrill
+      : Boolean(existing?.isDrill);
 
     const savedEntry: SavedPlay = {
       id: existing ? existing.id : `play-${Date.now()}`,
@@ -1516,10 +1552,10 @@ export default function TacticsBoard() {
       items: cloneItems(items),
       drawings: cloneDrawings(drawings),
       keyframes: cloneKeyframes(syncedKeyframes),
-      isDrill: playAsDrill,
-      drillPrompt: playAsDrill ? playDrillPrompt.trim() : undefined,
-      drillExplanation: playAsDrill ? playDrillExpl.trim() : undefined,
-      drillTargetDepth: playAsDrill ? playDrillDepth : undefined,
+      isDrill: effectiveIsDrill,
+      drillPrompt: effectiveIsDrill ? playDrillPrompt.trim() : existing?.drillPrompt,
+      drillExplanation: effectiveIsDrill ? playDrillExpl.trim() : existing?.drillExplanation,
+      drillTargetDepth: effectiveIsDrill ? playDrillDepth : existing?.drillTargetDepth,
       source: existing?.source || "studio",
       replayContext: existing?.replayContext,
     };
@@ -1547,7 +1583,7 @@ export default function TacticsBoard() {
   };
 
   const toggleFilter = (key: keyof TacticalFilters) => {
-    if (!isProUser) return;
+    if (!entitlements.hasAdvancedBoardOverlays) return;
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -1557,7 +1593,7 @@ export default function TacticsBoard() {
     setSelectedScenarioKey(key);
     setCustomTarget(null);
 
-    if (key.startsWith("weakness_") && isProUser) {
+    if (key.startsWith("weakness_") && entitlements.hasAdvancedBoardOverlays) {
       const scId = parseInt(key.replace("weakness_", ""), 10);
       const found = weaknessPool.find((s) => s.id === scId) || null;
       if (found) {
@@ -1571,7 +1607,7 @@ export default function TacticsBoard() {
     setLoadedTrainerScenario(null);
     if (SCENARIOS[key]) {
       setItems(cloneItems(SCENARIOS[key].items));
-      if (isProUser && key === "angriff_dynamisch") {
+      if (entitlements.hasAdvancedBoardOverlays && key === "angriff_dynamisch") {
         setFilters((prev) => ({ ...prev, showAttackArc: true }));
       }
     }
@@ -1769,7 +1805,7 @@ export default function TacticsBoard() {
   );
 
   const handleSvgDoubleClick = (e: React.MouseEvent) => {
-    if (!isProUser || activeMode === "drill" || isPlaying) return;
+    if (!entitlements.hasAdvancedBoardOverlays || activeMode === "drill" || isPlaying) return;
     if (activeMode === "studio" && studioTool !== "move") return;
     const pt = getPoint(e);
     setCustomTarget({ x: pt.x, y: pt.y });
@@ -1777,12 +1813,17 @@ export default function TacticsBoard() {
   };
 
   const handleSvgPointerDown = (e: React.MouseEvent | React.TouchEvent) => {
-    if (isProUser && activeMode === "studio" && studioTool !== "move") {
+    if (entitlements.canAccessStudio && activeMode === "studio" && studioTool !== "move") {
       startStudioDrawing(e);
       return;
     }
 
-    if (isProUser && activeMode !== "drill" && !isPlaying && "touches" in e) {
+    if (
+      entitlements.hasAdvancedBoardOverlays &&
+      activeMode !== "drill" &&
+      !isPlaying &&
+      "touches" in e
+    ) {
       const now = Date.now();
       const DOUBLE_TAP_DELAY = 300;
       if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
@@ -1796,7 +1837,7 @@ export default function TacticsBoard() {
 
   const onPointerDown = useCallback(
     (id: string, e: React.MouseEvent | React.TouchEvent) => {
-      if (isProUser && activeMode === "studio" && studioTool !== "move") {
+      if (entitlements.canAccessStudio && activeMode === "studio" && studioTool !== "move") {
         e.stopPropagation();
         startStudioDrawing(e, id);
         return;
@@ -1831,7 +1872,16 @@ export default function TacticsBoard() {
         setShowDrillSolution(false);
       }
     },
-    [items, getPoint, activeMode, studioTool, isProUser, isPlaying, stopAnimation, startStudioDrawing]
+    [
+      items,
+      getPoint,
+      activeMode,
+      studioTool,
+      entitlements.canAccessStudio,
+      isPlaying,
+      stopAnimation,
+      startStudioDrawing,
+    ]
   );
 
   const onPointerMove = useCallback(
@@ -1871,7 +1921,7 @@ export default function TacticsBoard() {
             pTeamB,
             effectiveFilters,
             selectedScenarioKey,
-            isProUser ? customTarget : null,
+            entitlements.hasAdvancedBoardOverlays ? customTarget : null,
             t
           );
           const targetRatio = Math.max(0, Math.min(1, simTargetY / V_HEIGHT));
@@ -1943,7 +1993,17 @@ export default function TacticsBoard() {
         });
       });
     },
-    [getPoint, effectiveFilters, selectedScenarioKey, customTarget, currentDraft, netX, t, isProUser, activeMode]
+    [
+      getPoint,
+      effectiveFilters,
+      selectedScenarioKey,
+      customTarget,
+      currentDraft,
+      netX,
+      t,
+      entitlements.hasAdvancedBoardOverlays,
+      activeMode,
+    ]
   );
 
   const onPointerUp = useCallback(() => {
@@ -1990,7 +2050,7 @@ export default function TacticsBoard() {
   };
 
   // =========================================================================
-  // SYNCHRONER 30-FPS CANVAS-RENDERER (INKL. LOB-KURVE, SCHEIBE & BALL-HÖHE)
+  // SYNCHRONER 30-FPS CANVAS-RENDERER (INKL. LOB-KURVE, SCHEIBE & BRANDING)
   // =========================================================================
   const drawBoardFrameSynchronously = useCallback((): HTMLCanvasElement | null => {
     let canvas = recCanvasRef.current;
@@ -2270,28 +2330,49 @@ export default function TacticsBoard() {
 
     ctx.restore();
 
-    ctx.fillStyle = "rgba(4, 9, 20, 0.94)";
-    ctx.fillRect(0, canvas.height - 48, canvas.width, 48);
-    ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height - 48);
-    ctx.lineTo(canvas.width, canvas.height - 48);
-    ctx.stroke();
+    // Free-Modus: TacPadel-Wasserzeichen für organisches Wachstum; Pro-Modus: sauberer Titel-Balken
+    if (!state.hasCleanVideoExport) {
+      ctx.fillStyle = "rgba(4, 9, 20, 0.94)";
+      ctx.fillRect(0, canvas.height - 48, canvas.width, 48);
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height - 48);
+      ctx.lineTo(canvas.width, canvas.height - 48);
+      ctx.stroke();
 
-    ctx.fillStyle = "#22d3ee";
-    ctx.font = "900 13px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText("TACPADEL • TACTICAL COACH", 16, canvas.height - 19);
+      ctx.fillStyle = "#22d3ee";
+      ctx.font = "900 13px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("TACPADEL • TACTICAL COACH", 16, canvas.height - 19);
 
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 12px sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(
-      (state.studioTitle || t("tb_watermark_fallback")).toUpperCase(),
-      canvas.width - 16,
-      canvas.height - 19
-    );
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(
+        (state.studioTitle || t("tb_watermark_fallback")).toUpperCase(),
+        canvas.width - 16,
+        canvas.height - 19
+      );
+    } else if (state.studioTitle?.trim()) {
+      ctx.fillStyle = "rgba(4, 9, 20, 0.9)";
+      ctx.fillRect(0, canvas.height - 44, canvas.width, 44);
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height - 44);
+      ctx.lineTo(canvas.width, canvas.height - 44);
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        state.studioTitle.trim().toUpperCase(),
+        canvas.width / 2,
+        canvas.height - 17
+      );
+    }
 
     return canvas;
   }, [netX, offsetX, t]);
@@ -2511,10 +2592,19 @@ export default function TacticsBoard() {
     stopAnimation();
     setActiveMode("studio");
     setIsPlaybookOpen(true);
-    setPlayAsDrill(true);
+    setPlayAsDrill(entitlements.canCreateCustomDrills);
     setDrillResult(null);
     setShowDrillSolution(false);
   };
+
+  const tabCount =
+    2 + (entitlements.canAccessDrills ? 1 : 0) + (entitlements.canAccessStudio ? 1 : 0);
+  const tabGridClass =
+    tabCount === 4
+      ? "grid-cols-4 max-w-xl"
+      : tabCount === 3
+      ? "grid-cols-3 max-w-lg"
+      : "grid-cols-2 max-w-md";
 
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
@@ -2584,9 +2674,7 @@ export default function TacticsBoard() {
       {/* ================================================================= */}
       <div className="w-full max-w-5xl flex flex-col items-center mb-1 px-3">
         <div
-          className={`bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid ${
-            isProUser ? "grid-cols-4 max-w-xl" : "grid-cols-2 max-w-md"
-          } relative w-full`}
+          className={`bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid ${tabGridClass} relative w-full`}
         >
           <button
             onClick={() => {
@@ -2606,7 +2694,7 @@ export default function TacticsBoard() {
             {t("tb_mode_2d")}
           </button>
 
-          {isProUser && (
+          {entitlements.canAccessDrills && (
             <button
               onClick={() => {
                 if (isRecording) stopVideoRecording();
@@ -2624,7 +2712,7 @@ export default function TacticsBoard() {
             </button>
           )}
 
-          {isProUser && (
+          {entitlements.canAccessStudio && (
             <button
               onClick={() => {
                 setDrillResult(null);
@@ -2656,7 +2744,7 @@ export default function TacticsBoard() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            {isProUser ? t("tb_mode_3d_short") : t("tb_mode_3d")}
+            {tabCount > 2 ? t("tb_mode_3d_short") : t("tb_mode_3d")}
           </button>
         </div>
       </div>
@@ -2669,7 +2757,7 @@ export default function TacticsBoard() {
           {/* ============================================================= */}
           {/* VEREINTER STUDIO-, ZEICHEN-, ANIMATIONS- & PLAYBOOK-BLOCK     */}
           {/* ============================================================= */}
-          {activeMode === "studio" && isProUser && (
+          {activeMode === "studio" && entitlements.canAccessStudio && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
               <div className="bg-[#050b18] border border-pink-500/40 rounded-2xl p-3 sm:p-4 shadow-[0_0_25px_rgba(236,72,153,0.12)] flex flex-col gap-3">
                 {/* 1. Kopfzeile: Titel, Playbook-Schalter, Foto & Video-REC */}
@@ -2810,7 +2898,7 @@ export default function TacticsBoard() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                        {t("tb_anim_title")}
+                        {t("tb_anim_title")} ({keyframes.length}/{entitlements.maxAnimSteps})
                       </span>
                       {activeStepIdx !== null && (
                         <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
@@ -2932,7 +3020,7 @@ export default function TacticsBoard() {
                   <div className="pt-3 border-t border-cyan-500/30 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
-                        {t("tb_pb_title")} ({playbook.length}/{MAX_PLAYBOOK_ITEMS})
+                        {t("tb_pb_title")} ({playbook.length}/{entitlements.maxPlaybookSlots})
                       </span>
                       <button
                         onClick={() => setIsPlaybookOpen(false)}
@@ -2958,73 +3046,75 @@ export default function TacticsBoard() {
                       </button>
                     </div>
 
-                    {/* Playbook -> Coach-Drill Option */}
-                    <div className="bg-[#030611] border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={playAsDrill}
-                          onChange={(e) => setPlayAsDrill(e.target.checked)}
-                          className="rounded text-orange-500 w-3.5 h-3.5"
-                        />
-                        <span className="text-[11px] font-black text-orange-300 uppercase tracking-wider">
-                          {t("tb_pb_as_drill")}
-                        </span>
-                      </label>
-
-                      {playAsDrill && (
-                        <div className="flex flex-col gap-2 pt-1.5 border-t border-slate-800/80">
+                    {/* Playbook -> Coach-Drill Option (nur wenn Custom-Drills erlaubt) */}
+                    {entitlements.canCreateCustomDrills && (
+                      <div className="bg-[#030611] border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
                           <input
-                            type="text"
-                            value={playDrillPrompt}
-                            onChange={(e) => setPlayDrillPrompt(e.target.value)}
-                            placeholder={t("tb_pb_drill_prompt_ph")}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white outline-none"
+                            type="checkbox"
+                            checked={playAsDrill}
+                            onChange={(e) => setPlayAsDrill(e.target.checked)}
+                            className="rounded text-orange-500 w-3.5 h-3.5"
                           />
-                          <input
-                            type="text"
-                            value={playDrillExpl}
-                            onChange={(e) => setPlayDrillExpl(e.target.value)}
-                            placeholder={t("tb_pb_drill_expl_ph")}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none"
-                          />
+                          <span className="text-[11px] font-black text-orange-300 uppercase tracking-wider">
+                            {t("tb_pb_as_drill")}
+                          </span>
+                        </label>
 
-                          {currentStudioHasAutoSolution ? (
-                            <p className="text-[10px] font-bold text-emerald-400">
-                              {t("tb_pb_drill_auto_sol")}
-                            </p>
-                          ) : (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {t("tb_pb_drill_depth_label")}
-                              </span>
-                              <div className="flex gap-1">
-                                {(
-                                  [
-                                    { id: "back", label: t("tb_pb_depth_back") },
-                                    { id: "mid", label: t("tb_pb_depth_mid") },
-                                    { id: "net", label: t("tb_pb_depth_net") },
-                                  ] as const
-                                ).map((opt) => (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setPlayDrillDepth(opt.id)}
-                                    className={`px-2 py-1 rounded text-[9px] font-black uppercase border transition-all ${
-                                      playDrillDepth === opt.id
-                                        ? "bg-orange-500/25 border-orange-400 text-orange-300"
-                                        : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
-                                    }`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
+                        {playAsDrill && (
+                          <div className="flex flex-col gap-2 pt-1.5 border-t border-slate-800/80">
+                            <input
+                              type="text"
+                              value={playDrillPrompt}
+                              onChange={(e) => setPlayDrillPrompt(e.target.value)}
+                              placeholder={t("tb_pb_drill_prompt_ph")}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={playDrillExpl}
+                              onChange={(e) => setPlayDrillExpl(e.target.value)}
+                              placeholder={t("tb_pb_drill_expl_ph")}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none"
+                            />
+
+                            {currentStudioHasAutoSolution ? (
+                              <p className="text-[10px] font-bold text-emerald-400">
+                                {t("tb_pb_drill_auto_sol")}
+                              </p>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  {t("tb_pb_drill_depth_label")}
+                                </span>
+                                <div className="flex gap-1">
+                                  {(
+                                    [
+                                      { id: "back", label: t("tb_pb_depth_back") },
+                                      { id: "mid", label: t("tb_pb_depth_mid") },
+                                      { id: "net", label: t("tb_pb_depth_net") },
+                                    ] as const
+                                  ).map((opt) => (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => setPlayDrillDepth(opt.id)}
+                                      className={`px-2 py-1 rounded text-[9px] font-black uppercase border transition-all ${
+                                        playDrillDepth === opt.id
+                                          ? "bg-orange-500/25 border-orange-400 text-orange-300"
+                                          : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {playbookToast && (
                       <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
@@ -3046,7 +3136,7 @@ export default function TacticsBoard() {
                             <div className="flex flex-col min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs font-bold text-white truncate">{play.title}</span>
-                                {play.isDrill && (
+                                {play.isDrill && entitlements.canCreateCustomDrills && (
                                   <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-500/40 text-orange-300 shrink-0">
                                     {t("tb_pb_drill_badge")}
                                   </span>
@@ -3083,39 +3173,41 @@ export default function TacticsBoard() {
           {/* ============================================================= */}
           {/* COACH-DRILL COCKPIT (EIGENER HAUPT-TAB + PLAYBOOK-DRILLS)     */}
           {/* ============================================================= */}
-          {isProUser && activeMode === "drill" && (
+          {entitlements.canAccessDrills && activeMode === "drill" && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
-              {/* Kategorie-Auswahl: Alle | Standard | Playbook */}
-              <div className="bg-[#050b18] border border-slate-800 rounded-xl p-1 grid grid-cols-3 gap-1">
-                {(
-                  [
-                    {
-                      id: "all" as DrillCategory,
-                      label: `${t("tb_drill_cat_all")} (${standardDrills.length + playbookDrills.length})`,
-                    },
-                    {
-                      id: "standard" as DrillCategory,
-                      label: `${t("tb_drill_cat_standard")} (${standardDrills.length})`,
-                    },
-                    {
-                      id: "playbook" as DrillCategory,
-                      label: `${t("tb_drill_cat_playbook")} (${playbookDrills.length})`,
-                    },
-                  ]
-                ).map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => handleSelectDrillCategory(cat.id)}
-                    className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all truncate ${
-                      drillCategory === cat.id
-                        ? "bg-orange-500/25 border border-orange-400/70 text-orange-300"
-                        : "text-slate-400 hover:text-white border border-transparent"
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
+              {/* Kategorie-Auswahl: Alle | Standard | Playbook (bei Custom-Drills) */}
+              {entitlements.canCreateCustomDrills && (
+                <div className="bg-[#050b18] border border-slate-800 rounded-xl p-1 grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      {
+                        id: "all" as DrillCategory,
+                        label: `${t("tb_drill_cat_all")} (${standardDrills.length + playbookDrills.length})`,
+                      },
+                      {
+                        id: "standard" as DrillCategory,
+                        label: `${t("tb_drill_cat_standard")} (${standardDrills.length})`,
+                      },
+                      {
+                        id: "playbook" as DrillCategory,
+                        label: `${t("tb_drill_cat_playbook")} (${playbookDrills.length})`,
+                      },
+                    ]
+                  ).map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleSelectDrillCategory(cat.id)}
+                      className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all truncate ${
+                        drillCategory === cat.id
+                          ? "bg-orange-500/25 border border-orange-400/70 text-orange-300"
+                          : "text-slate-400 hover:text-white border border-transparent"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {!activeDrill ? (
                 <div className="bg-[#050b18] border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center gap-3">
@@ -3273,7 +3365,7 @@ export default function TacticsBoard() {
                       ))}
                     </optgroup>
 
-                    {isProUser && weaknessPool.length > 0 && (
+                    {entitlements.hasAdvancedBoardOverlays && weaknessPool.length > 0 && (
                       <optgroup label={t("tb_opt_coach_focus")}>
                         {weaknessPool.map((sc) => (
                           <option
@@ -3297,7 +3389,7 @@ export default function TacticsBoard() {
                 </div>
               </div>
 
-              {isProUser && loadedTrainerScenario && loadedScenarioDesc && (
+              {entitlements.hasAdvancedBoardOverlays && loadedTrainerScenario && loadedScenarioDesc && (
                 <div className="p-3.5 bg-cyan-950/30 border border-cyan-500/40 rounded-xl flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
@@ -3320,7 +3412,7 @@ export default function TacticsBoard() {
                 </div>
               )}
 
-              {isProUser && (
+              {entitlements.hasAdvancedBoardOverlays && (
                 <div className="p-3.5 sm:p-4 bg-[#050b18]/95 border border-slate-800 rounded-xl shadow-lg w-full">
                   <span className="text-[10px] uppercase tracking-widest font-black block mb-2.5 text-slate-400">
                     {t("tb_filter_title")}
@@ -3732,7 +3824,7 @@ export default function TacticsBoard() {
                 )}
 
                 {/* MUSTERLÖSUNGS-OVERLAY FÜR PLAYBOOK-DRILLS (Ziel-Ringe für A1 & A2) */}
-                {isProUser &&
+                {entitlements.canAccessDrills &&
                   activeMode === "drill" &&
                   showDrillSolution &&
                   activeDrill?.solutionItems && (
@@ -3783,7 +3875,7 @@ export default function TacticsBoard() {
                   )}
 
                 {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN (Gerade, Lob-Kurve, Scheibe & Zone) */}
-                {isProUser &&
+                {entitlements.canAccessStudio &&
                   activeMode === "studio" &&
                   allDrawingsToRender.map((d) => {
                     if (d.type === "zone_circle") {

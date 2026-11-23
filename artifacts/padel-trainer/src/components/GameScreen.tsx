@@ -20,6 +20,16 @@ import {
   recordMatchDefenseError,
   QualityLevel,
 } from "../lib/tacticStats";
+import { useEntitlements } from "../lib/entitlements";
+import {
+  BOARD_V_WIDTH,
+  PlaybookDraggableItem,
+  PlaybookStudioDrawing,
+  PlaybookKeyframe,
+  SavedPlay,
+  zoneToBoardCoords,
+  upsertPlaybookEntry,
+} from "../lib/playbook";
 
 import ScenarioCourt3D from "../components/ScenarioCourt3D/ScenarioCourt3D";
 import TourScreen from "./TourScreen";
@@ -38,70 +48,6 @@ import {
   addMatchXpToEquippedLoadout,
 } from "../lib/loadout";
 import { useTranslation, formatShotName } from "../lib/i18n";
-
-// --- PLAYBOOK-EXPORT TYPEN & KOORDINATEN-KONVERTER (1:1 kompatibel mit TacticsBoard.tsx) ---
-const BOARD_V_WIDTH = 760;
-const BOARD_V_HEIGHT = 380;
-const MAX_PLAYBOOK_ITEMS = 20;
-
-interface PlaybookDraggableItem {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-  label: string;
-  isPlayer: boolean;
-}
-
-interface PlaybookStudioDrawing {
-  id: string;
-  type: "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_glass" | "zone_circle";
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  linkedItemId?: string;
-}
-
-interface PlaybookKeyframe {
-  id: string;
-  items: PlaybookDraggableItem[];
-  drawings: PlaybookStudioDrawing[];
-}
-
-interface PlaybookSavedPlay {
-  id: string;
-  title: string;
-  updatedAt: number;
-  items: PlaybookDraggableItem[];
-  drawings: PlaybookStudioDrawing[];
-  keyframes: PlaybookKeyframe[];
-  isDrill?: boolean;
-  drillPrompt?: string;
-  drillExplanation?: string;
-  drillTargetDepth?: "back" | "mid" | "net";
-}
-
-const getPlaybookStorageKey = (uid?: string | null) =>
-  `tacpadel_playbook_v1_${uid || "guest"}`;
-
-const zoneToBoardCoords = (zoneId: string, side: "left" | "right"): { x: number; y: number } => {
-  if (!zoneId || zoneId.length < 2) {
-    return { x: side === "left" ? 120 : BOARD_V_WIDTH - 120, y: BOARD_V_HEIGHT / 2 };
-  }
-  const letters = ["A", "B", "C", "D", "E"];
-  const colIdx = Math.max(0, Math.min(4, letters.indexOf(zoneId[0].toUpperCase())));
-  const rowNum = Math.max(1, Math.min(5, parseInt(zoneId[1], 10) || 2));
-
-  const y = 10 + (colIdx + 0.5) * ((BOARD_V_HEIGHT - 20) / 5);
-  const rowStep = (BOARD_V_WIDTH / 2 - 10) / 5;
-  const x =
-    side === "left"
-      ? 10 + (rowNum - 0.5) * rowStep
-      : BOARD_V_WIDTH - 10 - (rowNum - 0.5) * rowStep;
-
-  return { x: Math.round(x), y: Math.round(y) };
-};
 
 const buildBoardItemsFromCourt = (
   youZone: string,
@@ -479,6 +425,7 @@ const getContinueFee = (tourId: string, currentRound: number) => {
 
 export default function GameScreen() {
   const { lang, t } = useTranslation();
+  const { entitlements } = useEntitlements();
 
   // --- IPAD SPEZIAL-SKALIERUNG (Greift ausschließlich auf iPads) ---
   const [isIpadScreen, setIsIpadScreen] = useState<boolean>(() => detectIPadViewport());
@@ -502,8 +449,7 @@ export default function GameScreen() {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
 
-  // --- STILLSCHWEIGENDE PLAYBOOK-EXPORT-FREISCHALTUNG & RALLY-REKORDER ---
-  const [isProUser, setIsProUser] = useState<boolean>(false);
+  // --- PLAYBOOK RALLY-REKORDER ---
   const rallyKeyframesRef = useRef<PlaybookKeyframe[]>([]);
   const [rallySaved, setRallySaved] = useState<boolean>(false);
 
@@ -687,10 +633,6 @@ export default function GameScreen() {
           setUserId(session.user.id);
           userIdRef.current = session.user.id;
 
-          const emailLower = session.user.email?.toLowerCase().trim() || "";
-          const isAdminUser =
-            emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
-
           const rawSave = localStorage.getItem("tacpadel_savegame");
           if (rawSave) {
             try {
@@ -706,7 +648,7 @@ export default function GameScreen() {
           const { data, error } = await supabase
             .from("user_stats")
             .select(
-              "points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name, is_pro"
+              "points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name"
             )
             .eq("id", session.user.id)
             .single();
@@ -720,15 +662,6 @@ export default function GameScreen() {
           if (data && !error) {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
-
-            if (isAdminUser) {
-              const localOverride = localStorage.getItem("tacpadel_is_pro");
-              setIsProUser(localOverride === null ? true : localOverride === "true");
-            } else {
-              const dbPro = Boolean(data.is_pro);
-              setIsProUser(dbPro);
-              localStorage.setItem("tacpadel_is_pro", String(dbPro));
-            }
 
             if (data.tac_points != null) {
               setCurrentTacPoints(data.tac_points);
@@ -750,14 +683,10 @@ export default function GameScreen() {
             }
             refreshLoadoutAndPartner(data.partner_id);
             return;
-          } else if (isAdminUser) {
-            const localOverride = localStorage.getItem("tacpadel_is_pro");
-            setIsProUser(localOverride === null ? true : localOverride === "true");
           }
         } else {
           setUserId(null);
           userIdRef.current = null;
-          setIsProUser(false);
           setPlayerName(t("guest_name"));
           setUserTeamName(`Team ${t("guest_name")}`);
           refreshLoadoutAndPartner("partner_rookie");
@@ -2391,9 +2320,9 @@ export default function GameScreen() {
     }, pFlightTime + 300);
   };
 
-  // --- AKTUELLEN BALLWECHSEL INS TACTICSBOARD-PLAYBOOK SPEICHERN ---
+  // --- AKTUELLEN BALLWECHSEL INS PLAYBOOK SPEICHERN (Zentral über src/lib/playbook.ts) ---
   const handleSaveRallyToPlaybook = () => {
-    if (!isProUser || rallySaved) return;
+    if (!entitlements.canSaveMatchRally || rallySaved) return;
     const rawFrames = rallyKeyframesRef.current;
     if (!rawFrames || rawFrames.length === 0) return;
 
@@ -2425,42 +2354,64 @@ export default function GameScreen() {
       parseInt(courtState.opp1[1] || "1", 10) >= 3 ||
       parseInt(courtState.opp2[1] || "1", 10) >= 3;
 
-    // Bei einem direkten 1-Zug-Punktverlust sofort als regelbasierten Coach-Drill markieren
-    const autoMarkAsDrill = !playerWonPoint && clonedFrames.length === 1;
+    // Bei einem direkten 1-Zug-Punktverlust sofort als regelbasierten Coach-Drill markieren (falls erlaubt)
+    const autoMarkAsDrill =
+      !playerWonPoint &&
+      clonedFrames.length === 1 &&
+      entitlements.canCreateCustomDrills;
+
     const drillPrompt = `${t("game_pb_drill_prompt_prefix")} ${shotLabel} ${t(
       "game_pb_drill_prompt_suffix"
     )}`;
 
-    const newEntry: PlaybookSavedPlay = {
+    // Schlüsselmoment für das 3D-Replay im Playbook Hub mitgeben
+    const replayYou = hitterId === "partner" ? courtState.partner : courtState.you;
+    const replayPartner = hitterId === "partner" ? courtState.you : courtState.partner;
+    const replayIncomingShot =
+      wasAiTurn || isTimeout
+        ? courtState.ball.type || "DRIVE"
+        : aiShotHistory[0] || "DRIVE";
+
+    const newEntry: SavedPlay = {
       id: `match-play-${Date.now()}`,
       title: playTitle,
       updatedAt: Date.now(),
       items: clonedFrames[0].items.map((it) => ({ ...it })),
       drawings: clonedFrames[0].drawings.map((dr) => ({ ...dr })),
       keyframes: clonedFrames,
+      source: "match",
       isDrill: autoMarkAsDrill,
       drillPrompt,
       drillExplanation: turnMessage || turnTitle || undefined,
       drillTargetDepth: oppsAtNet ? "back" : "net",
+      replayContext: {
+        you: replayYou,
+        partner: replayPartner,
+        opp1: courtState.opp1,
+        opp2: courtState.opp2,
+        ballZone: replayYou,
+        ballSide: "left",
+        incomingShot: replayIncomingShot,
+        note: turnMessage || turnTitle || undefined,
+      },
     };
 
-    const storageKey = getPlaybookStorageKey(userIdRef.current);
-    let existingList: PlaybookSavedPlay[] = [];
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) existingList = JSON.parse(raw);
-    } catch {}
+    const res = upsertPlaybookEntry(
+      userIdRef.current,
+      newEntry,
+      entitlements.maxPlaybookSlots
+    );
 
-    const nextList = [newEntry, ...existingList].slice(0, MAX_PLAYBOOK_ITEMS);
-
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(nextList));
-    } catch {}
-
-    if (userIdRef.current) {
-      supabase.auth
-        .updateUser({ data: { tactic_playbook: nextList } })
-        .catch(() => {});
+    if (res.limitReached) {
+      showFlash(
+        `📘 ${t("pb_limit_reached").replace(
+          /\{max\}/g,
+          String(entitlements.maxPlaybookSlots)
+        )}`,
+        "text-amber-400",
+        3000
+      );
+      return;
     }
 
     setRallySaved(true);
@@ -3050,7 +3001,7 @@ export default function GameScreen() {
       turnMessage.includes("PUNKT GEWONNEN")
   );
   const canSaveRallyToPlaybook =
-    isProUser &&
+    entitlements.canSaveMatchRally &&
     isPointEndedOverlay &&
     !isFirstServeFaultOverlay &&
     rallyKeyframesRef.current.length > 0;

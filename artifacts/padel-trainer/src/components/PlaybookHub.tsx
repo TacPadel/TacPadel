@@ -5,11 +5,11 @@ import { Share } from "@capacitor/share";
 import ScenarioCourt25 from "./ScenarioCourt25";
 import { SHOT_TYPES, TurnResult, evaluatePlayerShot } from "../engine/GameLogic";
 import { useTranslation, formatShotName } from "../lib/i18n";
+import { useEntitlements } from "../lib/entitlements";
 import {
   SavedPlay,
   ReplayContext,
   PlaybookSource,
-  MAX_PLAYBOOK_ITEMS,
   loadPlaybook,
   savePlaybookList,
   upsertPlaybookEntry,
@@ -58,6 +58,7 @@ export default function PlaybookHub({
   onNavigateTab,
 }: PlaybookHubProps) {
   const { lang, t } = useTranslation();
+  const { entitlements } = useEntitlements();
 
   const [plays, setPlays] = useState<SavedPlay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,16 +144,25 @@ export default function PlaybookHub({
   }, [plays]);
 
   const handleToggleDrill = (playId: string) => {
+    if (!entitlements.canCreateCustomDrills) return;
     const next = plays.map((p) =>
       p.id === playId ? { ...p, isDrill: !p.isDrill, updatedAt: Date.now() } : p
     );
-    const saved = savePlaybookList(userId, next);
+    const saved = savePlaybookList(
+      userId,
+      next,
+      Math.max(next.length, entitlements.maxPlaybookSlots)
+    );
     setPlays(saved);
   };
 
   const handleDeletePlay = (playId: string) => {
     const next = plays.filter((p) => p.id !== playId);
-    const saved = savePlaybookList(userId, next);
+    const saved = savePlaybookList(
+      userId,
+      next,
+      Math.max(next.length, entitlements.maxPlaybookSlots)
+    );
     setPlays(saved);
   };
 
@@ -259,8 +269,14 @@ export default function PlaybookHub({
   const handleSaveSharedChallengeToPlaybook = () => {
     if (!replayItem || savedSharedToMine) return;
     const entry = createPlayFromReplayContext(replayItem.title, replayItem.context);
-    const updated = upsertPlaybookEntry(userId, entry);
-    setPlays(updated);
+    const res = upsertPlaybookEntry(userId, entry, entitlements.maxPlaybookSlots);
+    if (res.limitReached) {
+      showToast(
+        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+      );
+      return;
+    }
+    setPlays(res.list);
     setSavedSharedToMine(true);
     showToast(t("tb_pb_saved_msg"));
   };
@@ -586,7 +602,7 @@ export default function PlaybookHub({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-400">
-              {t("pb_hub_badge")} • {plays.length}/{MAX_PLAYBOOK_ITEMS}
+              {t("pb_hub_badge")} • {plays.length}/{entitlements.maxPlaybookSlots}
             </span>
             <h1 className="text-xl sm:text-2xl font-black text-white uppercase tracking-wider mt-0.5">
               📘 {t("pb_hub_title")}
@@ -614,7 +630,14 @@ export default function PlaybookHub({
               { id: "match" as HubFilter, label: `${t("pb_hub_filter_match")} (${counts.match})` },
               { id: "trainer" as HubFilter, label: `${t("pb_hub_filter_trainer")} (${counts.trainer})` },
               { id: "studio" as HubFilter, label: `${t("pb_hub_filter_studio")} (${counts.studio})` },
-              { id: "drills" as HubFilter, label: `${t("pb_hub_filter_drills")} (${counts.drills})` },
+              ...(entitlements.canCreateCustomDrills || counts.drills > 0
+                ? [
+                    {
+                      id: "drills" as HubFilter,
+                      label: `${t("pb_hub_filter_drills")} (${counts.drills})`,
+                    },
+                  ]
+                : []),
             ]
           ).map((f) => (
             <button
@@ -710,16 +733,18 @@ export default function PlaybookHub({
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => handleToggleDrill(play.id)}
-                      className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border transition-all ${
-                        play.isDrill
-                          ? "bg-amber-500/20 border-amber-400 text-amber-300"
-                          : "bg-slate-900 border-slate-700 text-slate-400 hover:text-amber-300"
-                      }`}
-                    >
-                      {play.isDrill ? t("pb_hub_btn_drill_on") : t("pb_hub_btn_drill_off")}
-                    </button>
+                    {entitlements.canCreateCustomDrills && (
+                      <button
+                        onClick={() => handleToggleDrill(play.id)}
+                        className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border transition-all ${
+                          play.isDrill
+                            ? "bg-amber-500/20 border-amber-400 text-amber-300"
+                            : "bg-slate-900 border-slate-700 text-slate-400 hover:text-amber-300"
+                        }`}
+                      >
+                        {play.isDrill ? t("pb_hub_btn_drill_on") : t("pb_hub_btn_drill_off")}
+                      </button>
+                    )}
                   </div>
 
                   <h3 className="text-sm font-black text-white leading-snug">{play.title}</h3>
