@@ -29,6 +29,7 @@ interface CoachTabProps {
   userId?: string | null;
   userName: string;
   totalPoints: number;
+  highestScores?: Record<string, number>;
   onStartWeaknessTraining: (
     scenarios: Scenario[],
     focus: CoachSummary["recommendedTaskFocus"]
@@ -212,6 +213,7 @@ export default function CoachTab({
   userId,
   userName,
   totalPoints,
+  highestScores,
   onStartWeaknessTraining,
   onNavigateTab,
 }: CoachTabProps) {
@@ -228,7 +230,7 @@ export default function CoachTab({
 
     const loadAllCoachData = async () => {
       setLoading(true);
-      const stats = await fetchCoachStats(userId);
+      const stats = await fetchCoachStats(userId, highestScores);
       if (active) setCoachStats(stats);
 
       if (userId) {
@@ -258,7 +260,7 @@ export default function CoachTab({
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [userId, highestScores]);
 
   const summary = useMemo(() => {
     if (!coachStats) return null;
@@ -361,6 +363,11 @@ export default function CoachTab({
   const hasTrainerData = (coachStats?.trainer.totalTurns || 0) > 0;
   const hasMatchData = (coachStats?.match.totalTurns || 0) > 0;
   const hasAnyRadarData = hasTrainerData || hasMatchData;
+
+  const isUsingBaselineCalibration = Boolean(
+    (coachStats?.backfilledMatch && !coachStats?.hasLiveMatch) ||
+      (coachStats?.backfilledTrainer && !coachStats?.hasLiveTrainer)
+  );
 
   const primaryFocusMeta = summary?.primaryFocus
     ? getDiagnosisMeta(summary.primaryFocus.diagnosis, lang)
@@ -512,6 +519,17 @@ export default function CoachTab({
           </div>
         ) : (
           <>
+            {isUsingBaselineCalibration && (
+              <div className="bg-cyan-950/30 border border-cyan-500/35 rounded-xl px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 shrink-0">
+                  {t("coach_backfill_badge")}
+                </span>
+                <span className="text-[11px] text-slate-300 leading-snug">
+                  {t("coach_backfill_desc")}
+                </span>
+              </div>
+            )}
+
             <div className="w-full h-72 sm:h-80 bg-[#030611]/90 rounded-xl border border-slate-800/80 p-2 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
