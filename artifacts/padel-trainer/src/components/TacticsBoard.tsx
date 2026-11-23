@@ -3,9 +3,9 @@ import { Capacitor } from "@capacitor/core";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import ScenarioCourt4D from "./ScenarioCourt4D";
-import { SCENARIOS as TRAINER_SCENARIOS, Scenario as TrainerScenario } from "./Scenarios";
+import type { Scenario as TrainerScenario } from "./Scenarios";
 import { supabase } from "../lib/supabase";
-import { useTranslation, TranslationKey } from "../lib/i18n";
+import { useTranslation, TranslationKey, formatShotName } from "../lib/i18n";
 import {
   fetchCoachStats,
   buildSmartWeaknessPool,
@@ -157,7 +157,6 @@ const getGlassBouncePoint = (x1: number, y1: number, x2: number, y2: number) => 
   const dBot = Math.abs(maxY - y2);
   const dSide = Math.min(dTop, dBot);
 
-  // Seitenwand-Abpraller, wenn der Zielpunkt deutlich näher an der Seitenwand liegt
   if (dSide < dBack * 0.72 && dSide < 120) {
     const yWall = dTop <= dBot ? minY : maxY;
     const y2Mirrored = 2 * yWall - y2;
@@ -176,7 +175,6 @@ const getGlassBouncePoint = (x1: number, y1: number, x2: number, y2: number) => 
     }
   }
 
-  // Standard: Rückwand-Scheibe (Einfallswinkel = Ausfallswinkel)
   const x2Mirrored = 2 * xBack - x2;
   const denom = x2Mirrored - x1;
   if (Math.abs(denom) > 1) {
@@ -322,19 +320,17 @@ const getDangerAngleCone = (ball: { x: number; y: number }) => {
   };
 };
 
-// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (SZENARIOS)
+// VORDEFINIERTE TAKTISCHE AUFSTELLUNGEN (Nur Standard & Dynamischer Angriff)
 const SCENARIOS: Record<
   string,
   {
     nameKey: TranslationKey;
-    basicVisible?: boolean;
     items: DraggableItem[];
     customAnalysis?: { targetX: number; targetY: number; recommendationKey: TranslationKey };
   }
 > = {
   initial: {
     nameKey: "tb_scen_initial_name",
-    basicVisible: true,
     items: [
       { id: "a1", x: 120, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },
       { id: "a2", x: 120, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
@@ -342,22 +338,6 @@ const SCENARIOS: Record<
       { id: "b2", x: V_WIDTH - 120, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
       { id: "ball", x: V_WIDTH / 2, y: V_HEIGHT / 2, color: "#2ecc71", label: "●", isPlayer: false },
     ],
-  },
-  angriff_netz_a: {
-    nameKey: "tb_scen_net_name",
-    basicVisible: true,
-    items: [
-      { id: "a1", x: 310, y: 110, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 310, y: 270, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: V_WIDTH - 70, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 80, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 335, y: 135, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-    customAnalysis: {
-      targetX: 680,
-      targetY: 195,
-      recommendationKey: "tb_scen_net_rec",
-    },
   },
   angriff_dynamisch: {
     nameKey: "tb_scen_wiper_name",
@@ -372,36 +352,6 @@ const SCENARIOS: Record<
       targetX: 680,
       targetY: 60,
       recommendationKey: "tb_scen_wiper_rec",
-    },
-  },
-  aufschlag_a: {
-    nameKey: "tb_scen_serve_name",
-    items: [
-      { id: "a1", x: 60, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 320, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: V_WIDTH - 80, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: V_WIDTH - 100, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 85, y: 270, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-    customAnalysis: {
-      targetX: 660,
-      targetY: 100,
-      recommendationKey: "tb_scen_serve_rec",
-    },
-  },
-  return_a: {
-    nameKey: "tb_scen_return_name",
-    items: [
-      { id: "a1", x: 80, y: 270, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 90, y: 110, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: V_WIDTH - 60, y: 110, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 440, y: 270, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: V_WIDTH - 90, y: 110, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-    customAnalysis: {
-      targetX: 100,
-      targetY: 280,
-      recommendationKey: "tb_scen_return_rec",
     },
   },
 };
@@ -1000,8 +950,12 @@ export default function TacticsBoard() {
 
       if (unlocked) {
         const stats = await fetchCoachStats(uid);
-        const { scenarios } = buildSmartWeaknessPool(stats, 8);
-        setWeaknessPool(scenarios);
+        if (stats.trainer.totalTurns > 0 || stats.match.totalTurns > 0) {
+          const { scenarios } = buildSmartWeaknessPool(stats, 5);
+          setWeaknessPool(scenarios);
+        } else {
+          setWeaknessPool([]);
+        }
 
         let localPlays: SavedPlay[] = [];
         try {
@@ -1207,7 +1161,6 @@ export default function TacticsBoard() {
     const totalSegments = frames.length - 1;
     const startTime = performance.now();
 
-    // Direkt auf Schritt 1 inkl. zugehöriger Zeichnungen springen
     const firstItems = cloneItems(frames[0].items);
     const firstDrawings = cloneDrawings(frames[0].drawings || []);
     liveStateRef.current.items = firstItems;
@@ -1270,7 +1223,6 @@ export default function TacticsBoard() {
       const interpolated = fromFrame.map((fromItem) => {
         const target = toFrame.find((i) => i.id === fromItem.id) || fromItem;
 
-        // Spezielle Ball-Flugkurven (Lob-Bogen & Scheiben-Abpraller)
         if (fromItem.id === "ball" && ballDrawing && !isHoldPhase) {
           if (ballDrawing.type === "arrow_lob") {
             const { cx, cy } = getLobControlPoint(fromItem.x, fromItem.y, target.x, target.y);
@@ -1318,7 +1270,6 @@ export default function TacticsBoard() {
       const drawingStepIdx = isHoldPhase ? segIndex + 1 : segIndex;
       applyStepDrawings(drawingStepIdx);
 
-      // Direkt in liveStateRef spiegeln für verzögerungsfreie 30-FPS-Aufnahme
       liveStateRef.current.items = interpolated;
       liveStateRef.current.ballScale = nextBallScale;
       setItems(interpolated);
@@ -1518,9 +1469,9 @@ export default function TacticsBoard() {
     setSelectedScenarioKey(key);
     setCustomTarget(null);
 
-    if (key.startsWith("trainer_") && isProUser) {
-      const scId = parseInt(key.replace("trainer_", ""), 10);
-      const found = TRAINER_SCENARIOS.find((s) => s.id === scId) || null;
+    if (key.startsWith("weakness_") && isProUser) {
+      const scId = parseInt(key.replace("weakness_", ""), 10);
+      const found = weaknessPool.find((s) => s.id === scId) || null;
       if (found) {
         setLoadedTrainerScenario(found);
         setItems(trainerScenarioToBoardItems(found));
@@ -1736,7 +1687,6 @@ export default function TacticsBoard() {
         stopAnimation();
       }
 
-      // Im aktiven Coach-Drill dürfen nur Team A (A1 & A2) verschoben werden
       if (activeDrill && !id.startsWith("a")) {
         return;
       }
@@ -2418,10 +2368,6 @@ export default function TacticsBoard() {
     document.body.removeChild(a);
   };
 
-  const visiblePresetEntries = useMemo(() => {
-    return Object.entries(SCENARIOS).filter(([, val]) => isProUser || val.basicVisible);
-  }, [isProUser]);
-
   const loadedScenarioDesc = loadedTrainerScenario
     ? (lang === "en" && (loadedTrainerScenario as any).description_en) ||
       (lang === "es" && (loadedTrainerScenario as any).description_es) ||
@@ -3012,7 +2958,7 @@ export default function TacticsBoard() {
                     className="w-full px-3 py-2.5 bg-[#030611] border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer appearance-none pr-8"
                   >
                     <optgroup label={t("tb_opt_standard")}>
-                      {visiblePresetEntries.map(([key, value]) => (
+                      {Object.entries(SCENARIOS).map(([key, value]) => (
                         <option key={key} value={key} className="bg-[#050b18] text-white">
                           {t(value.nameKey)}
                         </option>
@@ -3022,18 +2968,12 @@ export default function TacticsBoard() {
                     {isProUser && weaknessPool.length > 0 && (
                       <optgroup label={t("tb_opt_coach_focus")}>
                         {weaknessPool.map((sc) => (
-                          <option key={`weak-${sc.id}`} value={`trainer_${sc.id}`} className="bg-[#050b18] text-amber-300">
-                            🎯 #{sc.id} – {sc.validShots[0] || "Taktik"}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-
-                    {isProUser && (
-                      <optgroup label={t("tb_opt_all_trainer")}>
-                        {TRAINER_SCENARIOS.map((sc, idx) => (
-                          <option key={`tr-${sc.id}-${idx}`} value={`trainer_${sc.id}`} className="bg-[#050b18] text-slate-200">
-                            #{sc.id} – {sc.validShots[0] || "Szenario"}
+                          <option
+                            key={`weak-${sc.id}`}
+                            value={`weakness_${sc.id}`}
+                            className="bg-[#050b18] text-amber-300"
+                          >
+                            🎯 #{sc.id} – {formatShotName(sc.validShots[0] || "DRIVE", lang)}
                           </option>
                         ))}
                       </optgroup>
@@ -3056,7 +2996,9 @@ export default function TacticsBoard() {
                       {t("tb_coach_scen_badge")} #{loadedTrainerScenario.id}
                     </span>
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 border border-orange-500/40 text-orange-300">
-                      {loadedTrainerScenario.validShots.join(" / ")}
+                      {loadedTrainerScenario.validShots
+                        .map((s) => formatShotName(s, lang))
+                        .join(" / ")}
                     </span>
                   </div>
                   <p className="text-xs text-slate-200 font-semibold leading-snug">
