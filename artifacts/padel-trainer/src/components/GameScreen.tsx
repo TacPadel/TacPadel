@@ -39,6 +39,104 @@ import {
 } from "../lib/loadout";
 import { useTranslation, formatShotName } from "../lib/i18n";
 
+// --- PLAYBOOK-EXPORT TYPEN & KOORDINATEN-KONVERTER (1:1 kompatibel mit TacticsBoard.tsx) ---
+const BOARD_V_WIDTH = 760;
+const BOARD_V_HEIGHT = 380;
+const MAX_PLAYBOOK_ITEMS = 20;
+
+interface PlaybookDraggableItem {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  label: string;
+  isPlayer: boolean;
+}
+
+interface PlaybookStudioDrawing {
+  id: string;
+  type: "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_glass" | "zone_circle";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  linkedItemId?: string;
+}
+
+interface PlaybookKeyframe {
+  id: string;
+  items: PlaybookDraggableItem[];
+  drawings: PlaybookStudioDrawing[];
+}
+
+interface PlaybookSavedPlay {
+  id: string;
+  title: string;
+  updatedAt: number;
+  items: PlaybookDraggableItem[];
+  drawings: PlaybookStudioDrawing[];
+  keyframes: PlaybookKeyframe[];
+  isDrill?: boolean;
+  drillPrompt?: string;
+  drillExplanation?: string;
+  drillTargetDepth?: "back" | "mid" | "net";
+}
+
+const getPlaybookStorageKey = (uid?: string | null) =>
+  `tacpadel_playbook_v1_${uid || "guest"}`;
+
+const zoneToBoardCoords = (zoneId: string, side: "left" | "right"): { x: number; y: number } => {
+  if (!zoneId || zoneId.length < 2) {
+    return { x: side === "left" ? 120 : BOARD_V_WIDTH - 120, y: BOARD_V_HEIGHT / 2 };
+  }
+  const letters = ["A", "B", "C", "D", "E"];
+  const colIdx = Math.max(0, Math.min(4, letters.indexOf(zoneId[0].toUpperCase())));
+  const rowNum = Math.max(1, Math.min(5, parseInt(zoneId[1], 10) || 2));
+
+  const y = 10 + (colIdx + 0.5) * ((BOARD_V_HEIGHT - 20) / 5);
+  const rowStep = (BOARD_V_WIDTH / 2 - 10) / 5;
+  const x =
+    side === "left"
+      ? 10 + (rowNum - 0.5) * rowStep
+      : BOARD_V_WIDTH - 10 - (rowNum - 0.5) * rowStep;
+
+  return { x: Math.round(x), y: Math.round(y) };
+};
+
+const buildBoardItemsFromCourt = (
+  youZone: string,
+  partnerZone: string,
+  opp1Zone: string,
+  opp2Zone: string,
+  ballZone: string,
+  ballSide: "left" | "right"
+): PlaybookDraggableItem[] => {
+  const a1 = zoneToBoardCoords(youZone, "left");
+  const a2 = zoneToBoardCoords(partnerZone, "left");
+  const b1 = zoneToBoardCoords(opp1Zone, "right");
+  const b2 = zoneToBoardCoords(opp2Zone, "right");
+  const ball = zoneToBoardCoords(ballZone, ballSide);
+
+  return [
+    { id: "a1", x: a1.x, y: a1.y, color: "#e74c3c", label: "A1", isPlayer: true },
+    { id: "a2", x: a2.x, y: a2.y, color: "#e74c3c", label: "A2", isPlayer: true },
+    { id: "b1", x: b1.x, y: b1.y, color: "#f1c40f", label: "B1", isPlayer: true },
+    { id: "b2", x: b2.x, y: b2.y, color: "#f1c40f", label: "B2", isPlayer: true },
+    { id: "ball", x: ball.x, y: ball.y, color: "#2ecc71", label: "●", isPlayer: false },
+  ];
+};
+
+const resolveBallArrowType = (
+  shotType?: string | null,
+  isWallHit?: boolean,
+  result?: TurnResult
+): "arrow_ball" | "arrow_lob" | "arrow_glass" => {
+  const s = (shotType || "").toUpperCase();
+  if (s.includes("LOB")) return "arrow_lob";
+  if (isWallHit || s === "BAJADA" || result === "error_wall_direct") return "arrow_glass";
+  return "arrow_ball";
+};
+
 // --- HILFSFUNKTION: Erkennt ausschließlich iPads / große Tablets (niemals Smartphones) ---
 const detectIPadViewport = (): boolean => {
   if (typeof window === "undefined") return false;
@@ -404,6 +502,11 @@ export default function GameScreen() {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
 
+  // --- STILLSCHWEIGENDE PLAYBOOK-EXPORT-FREISCHALTUNG & RALLY-REKORDER ---
+  const [isProUser, setIsProUser] = useState<boolean>(false);
+  const rallyKeyframesRef = useRef<PlaybookKeyframe[]>([]);
+  const [rallySaved, setRallySaved] = useState<boolean>(false);
+
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
@@ -584,6 +687,10 @@ export default function GameScreen() {
           setUserId(session.user.id);
           userIdRef.current = session.user.id;
 
+          const emailLower = session.user.email?.toLowerCase().trim() || "";
+          const isAdminUser =
+            emailLower === "caposion@gmail.com" || emailLower === "admin@tacpadel.com";
+
           const rawSave = localStorage.getItem("tacpadel_savegame");
           if (rawSave) {
             try {
@@ -599,7 +706,7 @@ export default function GameScreen() {
           const { data, error } = await supabase
             .from("user_stats")
             .select(
-              "points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name"
+              "points, tac_points, team_name, partner_id, equipped_racket, equipped_shot, display_name, is_pro"
             )
             .eq("id", session.user.id)
             .single();
@@ -613,6 +720,15 @@ export default function GameScreen() {
           if (data && !error) {
             setTacScore(data.points);
             localStorage.setItem("tacpadel_score", data.points.toString());
+
+            if (isAdminUser) {
+              const localOverride = localStorage.getItem("tacpadel_is_pro");
+              setIsProUser(localOverride === null ? true : localOverride === "true");
+            } else {
+              const dbPro = Boolean(data.is_pro);
+              setIsProUser(dbPro);
+              localStorage.setItem("tacpadel_is_pro", String(dbPro));
+            }
 
             if (data.tac_points != null) {
               setCurrentTacPoints(data.tac_points);
@@ -634,10 +750,14 @@ export default function GameScreen() {
             }
             refreshLoadoutAndPartner(data.partner_id);
             return;
+          } else if (isAdminUser) {
+            const localOverride = localStorage.getItem("tacpadel_is_pro");
+            setIsProUser(localOverride === null ? true : localOverride === "true");
           }
         } else {
           setUserId(null);
           userIdRef.current = null;
+          setIsProUser(false);
           setPlayerName(t("guest_name"));
           setUserTeamName(`Team ${t("guest_name")}`);
           refreshLoadoutAndPartner("partner_rookie");
@@ -930,6 +1050,8 @@ export default function GameScreen() {
       }
 
       refreshLoadoutAndPartner();
+      rallyKeyframesRef.current = [];
+      setRallySaved(false);
 
       setActiveTournamentId(parsed.tournamentId || null);
       setActiveTournamentRound(parsed.tournamentRound || 1);
@@ -1020,6 +1142,8 @@ export default function GameScreen() {
     setAiShotHistory([]);
     setEarnedTP(0);
     setEarnedItemXp(0);
+    rallyKeyframesRef.current = [];
+    setRallySaved(false);
 
     if (isRematch) {
       setRetryUsed(true);
@@ -1134,6 +1258,8 @@ export default function GameScreen() {
     setShowGameOverUI(false);
     setEarnedTP(0);
     setEarnedItemXp(0);
+    rallyKeyframesRef.current = [];
+    setRallySaved(false);
 
     setMatchStats(initialStatsData);
     setAiShotHistory([]);
@@ -1381,37 +1507,111 @@ export default function GameScreen() {
 
         showFlash(finalAiTitle, fColor, calcDuration + 800);
 
+        // Nächste KI-Positionen vorab berechnen (für State & Playbook-Rally-Rekorder)
+        let nextOpp1 = courtState.opp1;
+        let nextOpp2 = courtState.opp2;
+
+        if (isAiServing) {
+          if (currentAiHitter === "opp1") nextOpp1 = "B4";
+          else nextOpp2 = "D4";
+        } else {
+          if (currentAiHitter === "opp1") nextOpp1 = ballLandedAt;
+          else nextOpp2 = ballLandedAt;
+
+          const pId = currentAiHitter === "opp1" ? "opp2" : "opp1";
+          let pTarget = brain.opp2Target || "C2";
+          const targetRow = pTarget[1];
+          const hitterCol = ballLandedAt[0];
+
+          if (hitterCol === "A" || hitterCol === "B") pTarget = "D" + targetRow;
+          else if (hitterCol === "D" || hitterCol === "E") pTarget = "B" + targetRow;
+          else pTarget = pId === "opp1" ? "B" + targetRow : "D" + targetRow;
+
+          if (pId === "opp1") nextOpp1 = pTarget;
+          else nextOpp2 = pTarget;
+        }
+
+        // 📘 Rally-Rekorder: KI-Zug als Schritt fürs Playbook mitschneiden
+        const aiStartItems = buildBoardItemsFromCourt(
+          courtState.you,
+          courtState.partner,
+          courtState.opp1,
+          courtState.opp2,
+          ballLandedAt,
+          "right"
+        );
+        const aiStepDrawings: PlaybookStudioDrawing[] = [];
+        const ballStartPt = zoneToBoardCoords(ballLandedAt, "right");
+        const aiDestZone = brain.reboundZone || brain.target || "C2";
+        const ballEndPt =
+          finalAiResult === "error_net"
+            ? {
+                x: BOARD_V_WIDTH / 2 + 8,
+                y: Math.round((ballStartPt.y + zoneToBoardCoords(aiDestZone, "left").y) / 2),
+              }
+            : zoneToBoardCoords(aiDestZone, "left");
+
+        aiStepDrawings.push({
+          id: `draw-ai-ball-${Date.now()}`,
+          type: resolveBallArrowType(brain.shot, brain.isWallHit, finalAiResult),
+          x1: ballStartPt.x,
+          y1: ballStartPt.y,
+          x2: ballEndPt.x,
+          y2: ballEndPt.y,
+          linkedItemId: "ball",
+        });
+
+        if (nextOpp1 !== courtState.opp1) {
+          const fromO1 = zoneToBoardCoords(courtState.opp1, "right");
+          const toO1 = zoneToBoardCoords(nextOpp1, "right");
+          aiStepDrawings.push({
+            id: `draw-o1-${Date.now()}`,
+            type: "arrow_run",
+            x1: fromO1.x,
+            y1: fromO1.y,
+            x2: toO1.x,
+            y2: toO1.y,
+            linkedItemId: "b1",
+          });
+        }
+        if (nextOpp2 !== courtState.opp2) {
+          const fromO2 = zoneToBoardCoords(courtState.opp2, "right");
+          const toO2 = zoneToBoardCoords(nextOpp2, "right");
+          aiStepDrawings.push({
+            id: `draw-o2-${Date.now()}`,
+            type: "arrow_run",
+            x1: fromO2.x,
+            y1: fromO2.y,
+            x2: toO2.x,
+            y2: toO2.y,
+            linkedItemId: "b2",
+          });
+        }
+
+        rallyKeyframesRef.current.push({
+          id: `kf-ai-${Date.now()}-${rallyKeyframesRef.current.length}`,
+          items: aiStartItems,
+          drawings: aiStepDrawings,
+        });
+
         setCourtState((prev) => {
           const nextState = {
             ...prev,
+            opp1: nextOpp1,
+            opp2: nextOpp2,
             ball: { side: "right" as const, zone: ballLandedAt, type: brain.shot },
           };
 
-          if (isAiServing) {
-            nextState[currentAiHitter] = currentAiHitter === "opp1" ? "B4" : "D4";
-          } else {
-            nextState[currentAiHitter] = ballLandedAt;
-            const pId = currentAiHitter === "opp1" ? "opp2" : "opp1";
-            let pTarget = brain.opp2Target || "C2";
-            const targetRow = pTarget[1];
-            const hitterCol = ballLandedAt[0];
-
-            if (hitterCol === "A" || hitterCol === "B") pTarget = "D" + targetRow;
-            else if (hitterCol === "D" || hitterCol === "E") pTarget = "B" + targetRow;
-            else pTarget = pId === "opp1" ? "B" + targetRow : "D" + targetRow;
-
-            nextState[pId] = pTarget;
-
-            if (staminaModeEnabled) {
-              const opp1Dist = getZoneDist(prev.opp1, nextState.opp1);
-              const opp2Dist = getZoneDist(prev.opp2, nextState.opp2);
-              setStamina((s) => ({
-                ...s,
-                opp1: Math.max(0, s.opp1 - opp1Dist + (opp1Dist > 0 ? 1 : 0)),
-                opp2: Math.max(0, s.opp2 - opp2Dist + (opp2Dist > 0 ? 1 : 0)),
-              }));
-            }
+          if (!isAiServing && staminaModeEnabled) {
+            const opp1Dist = getZoneDist(prev.opp1, nextOpp1);
+            const opp2Dist = getZoneDist(prev.opp2, nextOpp2);
+            setStamina((s) => ({
+              ...s,
+              opp1: Math.max(0, s.opp1 - opp1Dist + (opp1Dist > 0 ? 1 : 0)),
+              opp2: Math.max(0, s.opp2 - opp2Dist + (opp2Dist > 0 ? 1 : 0)),
+            }));
           }
+
           return nextState;
         });
 
@@ -1494,6 +1694,48 @@ export default function GameScreen() {
 
           const interceptYouRun = commandsRef.current.you.run || currentYouPos;
           const interceptPartnerRun = commandsRef.current.partner.run || currentPartnerPos;
+
+          // 📘 Rally-Rekorder: Spieler-Laufwege während des KI-Balls am letzten KI-Schritt ergänzen
+          const lastRallyFrame =
+            rallyKeyframesRef.current[rallyKeyframesRef.current.length - 1];
+          if (lastRallyFrame) {
+            if (interceptYouRun !== currentYouPos) {
+              const fromY = zoneToBoardCoords(currentYouPos, "left");
+              const toY = zoneToBoardCoords(interceptYouRun, "left");
+              lastRallyFrame.drawings = [
+                ...lastRallyFrame.drawings.filter(
+                  (d) => !(d.type === "arrow_run" && d.linkedItemId === "a1")
+                ),
+                {
+                  id: `draw-a1-int-${Date.now()}`,
+                  type: "arrow_run",
+                  x1: fromY.x,
+                  y1: fromY.y,
+                  x2: toY.x,
+                  y2: toY.y,
+                  linkedItemId: "a1",
+                },
+              ];
+            }
+            if (interceptPartnerRun !== currentPartnerPos) {
+              const fromP = zoneToBoardCoords(currentPartnerPos, "left");
+              const toP = zoneToBoardCoords(interceptPartnerRun, "left");
+              lastRallyFrame.drawings = [
+                ...lastRallyFrame.drawings.filter(
+                  (d) => !(d.type === "arrow_run" && d.linkedItemId === "a2")
+                ),
+                {
+                  id: `draw-a2-int-${Date.now()}`,
+                  type: "arrow_run",
+                  x1: fromP.x,
+                  y1: fromP.y,
+                  x2: toP.x,
+                  y2: toP.y,
+                  linkedItemId: "a2",
+                },
+              ];
+            }
+          }
 
           let isYouInZone = validInterceptZonesRef.current.includes(interceptYouRun);
           let isPartnerInZone = validInterceptZonesRef.current.includes(interceptPartnerRun);
@@ -2019,6 +2261,69 @@ export default function GameScreen() {
       }
     }
 
+    // 📘 Rally-Rekorder: Eigenen Spieler-Zug als Schritt fürs Playbook mitschneiden
+    const pStartItems = buildBoardItemsFromCourt(
+      courtState.you,
+      courtState.partner,
+      courtState.opp1,
+      courtState.opp2,
+      hitFromPos,
+      "left"
+    );
+    const pStepDrawings: PlaybookStudioDrawing[] = [];
+    const pBallStart = zoneToBoardCoords(hitFromPos, "left");
+    const pBallRawEnd = zoneToBoardCoords(targetPos, "right");
+    const pBallEnd =
+      currentTurnResult === "error_net"
+        ? {
+            x: BOARD_V_WIDTH / 2 - 8,
+            y: Math.round((pBallStart.y + pBallRawEnd.y) / 2),
+          }
+        : pBallRawEnd;
+
+    pStepDrawings.push({
+      id: `draw-p-ball-${Date.now()}`,
+      type: resolveBallArrowType(chosenShot, false, currentTurnResult),
+      x1: pBallStart.x,
+      y1: pBallStart.y,
+      x2: pBallEnd.x,
+      y2: pBallEnd.y,
+      linkedItemId: "ball",
+    });
+
+    if (recoveryYouRun !== courtState.you) {
+      const fromY = zoneToBoardCoords(courtState.you, "left");
+      const toY = zoneToBoardCoords(recoveryYouRun, "left");
+      pStepDrawings.push({
+        id: `draw-p-a1-${Date.now()}`,
+        type: "arrow_run",
+        x1: fromY.x,
+        y1: fromY.y,
+        x2: toY.x,
+        y2: toY.y,
+        linkedItemId: "a1",
+      });
+    }
+    if (recoveryPartnerRun !== courtState.partner) {
+      const fromP = zoneToBoardCoords(courtState.partner, "left");
+      const toP = zoneToBoardCoords(recoveryPartnerRun, "left");
+      pStepDrawings.push({
+        id: `draw-p-a2-${Date.now()}`,
+        type: "arrow_run",
+        x1: fromP.x,
+        y1: fromP.y,
+        x2: toP.x,
+        y2: toP.y,
+        linkedItemId: "a2",
+      });
+    }
+
+    rallyKeyframesRef.current.push({
+      id: `kf-p-${Date.now()}-${rallyKeyframesRef.current.length}`,
+      items: pStartItems,
+      drawings: pStepDrawings,
+    });
+
     setShotHistory((prev) => {
       const newHistory = [chosenShot, ...prev];
       return newHistory.slice(0, 2);
@@ -2086,11 +2391,88 @@ export default function GameScreen() {
     }, pFlightTime + 300);
   };
 
+  // --- AKTUELLEN BALLWECHSEL INS TACTICSBOARD-PLAYBOOK SPEICHERN ---
+  const handleSaveRallyToPlaybook = () => {
+    if (!isProUser || rallySaved) return;
+    const rawFrames = rallyKeyframesRef.current;
+    if (!rawFrames || rawFrames.length === 0) return;
+
+    const isTimeout =
+      turnMessage.includes("Time-Out") || turnMessage.includes("Tiempo agotado");
+    const wasAiTurn = !commands[hitterId].shot && !isTimeout;
+    const lastShotHit =
+      (wasAiTurn || isTimeout ? courtState.ball.type : commands[hitterId].shot) || "DRIVE";
+
+    const playerWonPoint =
+      turnResult && turnResult.startsWith("error") ? wasAiTurn : !wasAiTurn;
+
+    const scoreTag = playerWonPoint
+      ? `${playerScore + 1}:${aiScore}`
+      : `${playerScore}:${aiScore + 1}`;
+    const shotLabel = formatShotName(lastShotHit, lang);
+    const titlePrefix = playerWonPoint
+      ? `🏆 ${t("game_pb_win_prefix")}`
+      : `⚠️ ${t("game_pb_loss_prefix")}`;
+    const playTitle = `${titlePrefix} (${shotLabel}) ${scoreTag}`;
+
+    const clonedFrames: PlaybookKeyframe[] = rawFrames.map((f) => ({
+      id: f.id,
+      items: f.items.map((it) => ({ ...it })),
+      drawings: f.drawings.map((dr) => ({ ...dr })),
+    }));
+
+    const oppsAtNet =
+      parseInt(courtState.opp1[1] || "1", 10) >= 3 ||
+      parseInt(courtState.opp2[1] || "1", 10) >= 3;
+
+    // Bei einem direkten 1-Zug-Punktverlust sofort als regelbasierten Coach-Drill markieren
+    const autoMarkAsDrill = !playerWonPoint && clonedFrames.length === 1;
+    const drillPrompt = `${t("game_pb_drill_prompt_prefix")} ${shotLabel} ${t(
+      "game_pb_drill_prompt_suffix"
+    )}`;
+
+    const newEntry: PlaybookSavedPlay = {
+      id: `match-play-${Date.now()}`,
+      title: playTitle,
+      updatedAt: Date.now(),
+      items: clonedFrames[0].items.map((it) => ({ ...it })),
+      drawings: clonedFrames[0].drawings.map((dr) => ({ ...dr })),
+      keyframes: clonedFrames,
+      isDrill: autoMarkAsDrill,
+      drillPrompt,
+      drillExplanation: turnMessage || turnTitle || undefined,
+      drillTargetDepth: oppsAtNet ? "back" : "net",
+    };
+
+    const storageKey = getPlaybookStorageKey(userIdRef.current);
+    let existingList: PlaybookSavedPlay[] = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) existingList = JSON.parse(raw);
+    } catch {}
+
+    const nextList = [newEntry, ...existingList].slice(0, MAX_PLAYBOOK_ITEMS);
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(nextList));
+    } catch {}
+
+    if (userIdRef.current) {
+      supabase.auth
+        .updateUser({ data: { tactic_playbook: nextList } })
+        .catch(() => {});
+    }
+
+    setRallySaved(true);
+    showFlash(`📘 ${t("game_pb_saved_btn")}`, "text-cyan-400", 2000);
+  };
+
   const handleNextTurn = () => {
     if (!showResultOverlay) return;
 
     setShowResultOverlay(false);
     setActiveGearBoostMsg(null);
+    setRallySaved(false);
 
     let newPlayerScore = playerScore;
     let newAiScore = aiScore;
@@ -2410,6 +2792,10 @@ export default function GameScreen() {
     suppressFlash: boolean = false,
     isSecondServe: boolean = false
   ) => {
+    // Frischer Rally-Speicher für den neuen Punkt / 2. Aufschlag
+    rallyKeyframesRef.current = [];
+    setRallySaved(false);
+
     const pScore = newPScore ?? playerScore;
     const aScore = newAScore ?? aiScore;
     const stats = newStats ?? matchStats;
@@ -2646,6 +3032,28 @@ export default function GameScreen() {
     if (needsSupporterConfirm) updateCommand(suppId, { run: courtState[suppId] });
     else if (canSubmit) handleSubmit();
   };
+
+  // Prüft, ob der aktuelle Punkt beendet ist und ins Playbook exportiert werden kann
+  const overlayIsTimeout =
+    turnMessage.includes("Time-Out") || turnMessage.includes("Tiempo agotado");
+  const overlayWasAiTurn = !commands[hitterId].shot && !overlayIsTimeout;
+  const overlayLastShot =
+    overlayWasAiTurn || overlayIsTimeout ? courtState.ball.type : commands[hitterId].shot;
+  const isFirstServeFaultOverlay =
+    overlayLastShot === "AUFSCHLAG" &&
+    Boolean(turnResult && turnResult.startsWith("error")) &&
+    !overlayIsTimeout &&
+    serveNumber === 1;
+  const isPointEndedOverlay = Boolean(
+    (turnResult && turnResult.startsWith("error")) ||
+      turnResult === "perfect" ||
+      turnMessage.includes("PUNKT GEWONNEN")
+  );
+  const canSaveRallyToPlaybook =
+    isProUser &&
+    isPointEndedOverlay &&
+    !isFirstServeFaultOverlay &&
+    rallyKeyframesRef.current.length > 0;
 
   const StatCell = ({
     val,
@@ -3037,7 +3445,7 @@ export default function GameScreen() {
             let icon = "✓";
 
             const firstChar = rawText.charAt(0);
-            if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡", "💡"].includes(firstChar)) {
+            if (["⭐", "❌", "⚠️", "✓", "🏆", "💥", "🎯", "🛡️", "⚡", "💡", "📘"].includes(firstChar)) {
               icon = firstChar;
               rawText = rawText.slice(1).trim();
             } else if (
@@ -4005,7 +4413,7 @@ export default function GameScreen() {
             } left-4 right-4 lg:left-1/2 lg:-translate-x-1/2 lg:w-full lg:max-w-5xl z-50 bg-[#050b18]/95 backdrop-blur-xl border border-slate-700 p-4 sm:p-6 rounded-2xl shadow-[0_-10px_50px_rgba(0,0,0,0.9)] pointer-events-auto`}
           >
             <div
-              className={`flex flex-col md:flex-row gap-6 items-center ${
+              className={`flex flex-col md:flex-row gap-4 sm:gap-6 items-center ${
                 showExplanations ? "justify-between" : "justify-center"
               }`}
             >
@@ -4022,18 +4430,34 @@ export default function GameScreen() {
                 </div>
               )}
 
-              <button
-                onClick={handleNextTurn}
-                className={`w-full ${
-                  showExplanations ? "md:w-auto" : "max-w-md"
-                } px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}
-              >
-                {turnResult && turnResult.startsWith("error")
-                  ? t("game_next_point_btn")
-                  : turnResult === "perfect"
-                  ? t("game_point_won_btn")
-                  : t("game_next_action_ai_btn")}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto items-stretch sm:items-center justify-center shrink-0">
+                {canSaveRallyToPlaybook && (
+                  <button
+                    onClick={handleSaveRallyToPlaybook}
+                    disabled={rallySaved}
+                    className={`w-full sm:w-auto px-5 py-4 sm:py-5 font-black text-xs tracking-[0.14em] uppercase rounded-xl border transition-all whitespace-nowrap ${
+                      rallySaved
+                        ? "bg-emerald-950/60 border-emerald-500/50 text-emerald-300 cursor-default"
+                        : "bg-cyan-950/60 hover:bg-cyan-900/80 border-cyan-500/50 text-cyan-300 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                    }`}
+                  >
+                    {rallySaved ? t("game_pb_saved_btn") : t("game_pb_save_btn")}
+                  </button>
+                )}
+
+                <button
+                  onClick={handleNextTurn}
+                  className={`w-full ${
+                    showExplanations ? "sm:w-auto" : "max-w-md"
+                  } px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}
+                >
+                  {turnResult && turnResult.startsWith("error")
+                    ? t("game_next_point_btn")
+                    : turnResult === "perfect"
+                    ? t("game_point_won_btn")
+                    : t("game_next_action_ai_btn")}
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
