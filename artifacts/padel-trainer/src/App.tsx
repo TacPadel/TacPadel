@@ -1520,11 +1520,6 @@ export default function App(): React.JSX.Element {
 
       setRoundsPlayed((r) => r + 1);
 
-      // Punkte-Ausbeute:
-      // - Schwächen-Coach: 40 Pkt. (1. Versuch) / 20 Pkt. (ab 2. Versuch)
-      // - Simulation: +20 Punkte
-      // - Schlag: 100 Pkt. (1. Versuch) / 50 Pkt. (ab 2. Versuch)
-      // - Ab Schlagrichtung (Schlagrichtung, Laufrichtung, Spielzug): 50 Pkt. (1. Versuch) / 25 Pkt. (ab 2. Versuch)
       let pointsEarned = 0;
       if (isWeaknessMode) {
         pointsEarned = currentAttempt === 1 ? 40 : 20;
@@ -1592,7 +1587,6 @@ export default function App(): React.JSX.Element {
         return;
       }
 
-      // Alle 4 Schritte abgeschlossen → Crashkurs beenden & Gäste-Einladung mit 1500-Bonus zeigen
       setIsCrashCourse(false);
       setLevel("Schlag");
       initPoolForLevel("Schlag");
@@ -1954,6 +1948,7 @@ export default function App(): React.JSX.Element {
                 userId={user?.id}
                 userName={finalUserName === "Gast" ? t("guest_name") : finalUserName}
                 totalPoints={user ? totalPoints : 0}
+                highestScores={highestScores}
                 onStartWeaknessTraining={startWeaknessTraining}
                 onNavigateTab={(target) => handleTabChange(target)}
               />
