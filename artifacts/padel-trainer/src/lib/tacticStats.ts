@@ -53,6 +53,11 @@ export interface TacticCoachStats {
   byScenario: Record<number, ScenarioHistory>;
   // Zählt bestandene Stellungsspiel-Drills auf dem TacticsBoard
   boardDrillsCompleted: number;
+  // Kennzeichnet einmaligen Auto-Import aus historischen Supabase-Daten
+  backfilledMatch?: boolean;
+  backfilledTrainer?: boolean;
+  hasLiveMatch?: boolean;
+  hasLiveTrainer?: boolean;
 }
 
 export interface AxisComparison {
@@ -97,6 +102,8 @@ const QUALITY_SCORE_MAP: Record<QualityLevel, number> = {
   error: 0,
 };
 
+const clampPct = (val: number): number => Math.max(20, Math.min(95, Math.round(val)));
+
 const createEmptyBucket = (): ScoreBucket => ({ scoreSum: 0, count: 0 });
 
 const createEmptyModeStats = (): ModeStats => ({
@@ -126,6 +133,10 @@ export function createEmptyCoachStats(): TacticCoachStats {
     },
     byScenario: {},
     boardDrillsCompleted: 0,
+    backfilledMatch: false,
+    backfilledTrainer: false,
+    hasLiveMatch: false,
+    hasLiveTrainer: false,
   };
 }
 
@@ -151,6 +162,11 @@ function normalizeShotKey(shotType?: string | null): string {
 function addScore(bucket: ScoreBucket, score: number) {
   bucket.scoreSum += score;
   bucket.count += 1;
+}
+
+function addWeightedScore(bucket: ScoreBucket, pct: number, weight: number) {
+  bucket.scoreSum += pct * weight;
+  bucket.count += weight;
 }
 
 export function getBucketPct(bucket?: ScoreBucket | null): number | null {
@@ -180,11 +196,14 @@ function hydrateStats(raw: any): TacticCoachStats {
     return mode;
   };
 
+  const hydratedTrainer = hydrateMode(raw.trainer);
+  const hydratedMatch = hydrateMode(raw.match);
+
   return {
     version: 2,
     updatedAt: raw.updatedAt || Date.now(),
-    trainer: hydrateMode(raw.trainer),
-    match: hydrateMode(raw.match),
+    trainer: hydratedTrainer,
+    match: hydratedMatch,
     matchErrors: {
       tacticalErrors: raw.matchErrors?.tacticalErrors || 0,
       wobbles: raw.matchErrors?.wobbles || 0,
@@ -193,6 +212,16 @@ function hydrateStats(raw: any): TacticCoachStats {
     },
     byScenario: raw.byScenario || {},
     boardDrillsCompleted: raw.boardDrillsCompleted || 0,
+    backfilledMatch: Boolean(raw.backfilledMatch),
+    backfilledTrainer: Boolean(raw.backfilledTrainer),
+    hasLiveMatch:
+      typeof raw.hasLiveMatch === "boolean"
+        ? raw.hasLiveMatch
+        : hydratedMatch.totalTurns > 0 && !raw.backfilledMatch,
+    hasLiveTrainer:
+      typeof raw.hasLiveTrainer === "boolean"
+        ? raw.hasLiveTrainer
+        : hydratedTrainer.totalTurns > 0 && !raw.backfilledTrainer,
   };
 }
 
@@ -221,33 +250,202 @@ function persistCoachStats(userId: string | null | undefined, stats: TacticCoach
   }
 }
 
-export async function fetchCoachStats(userId?: string | null): Promise<TacticCoachStats> {
-  const local = loadLocalCoachStats(userId);
-  if (!userId) return local;
+// =========================================================================
+// 0. EINMALIGER AUTO-BACKFILL AUS SUPABASE MATCH_HISTORY & TRAINER-LEVELN
+// =========================================================================
+function applyTrainerLevelBackfill(
+  stats: TacticCoachStats,
+  highestScores?: Record<string, number>
+): boolean {
+  if (stats.backfilledTrainer || stats.trainer.totalTurns > 0) return false;
 
-  try {
-    const { data, error } = await supabase
-      .from("user_stats")
-      .select("tactic_stats")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (!error && data?.tactic_stats && (data.tactic_stats as any).version === 2) {
-      const remote = hydrateStats(data.tactic_stats);
-      const localVolume = local.trainer.totalTurns + local.match.totalTurns + local.boardDrillsCompleted;
-      const remoteVolume = remote.trainer.totalTurns + remote.match.totalTurns + remote.boardDrillsCompleted;
-
-      const winner = remoteVolume >= localVolume ? remote : local;
-      try {
-        localStorage.setItem(getStorageKey(userId), JSON.stringify(winner));
-      } catch {}
-      return winner;
-    }
-  } catch {
-    // Offline-Fallback: lokaler Stand bleibt aktiv
+  let scores: Record<string, number> = highestScores ? { ...highestScores } : {};
+  if (Object.keys(scores).length === 0) {
+    try {
+      const rawProg =
+        localStorage.getItem("tacpadel_progress") ||
+        localStorage.getItem("tacpadel_highest_scores");
+      if (rawProg) {
+        const parsed = JSON.parse(rawProg);
+        scores = parsed?.highestScores || parsed || {};
+      }
+    } catch {}
   }
 
-  return local;
+  const sSchlag = Math.min(10, Math.max(0, scores["Schlag"] || 0));
+  const sRichtung = Math.min(10, Math.max(0, scores["Schlagrichtung"] || 0));
+  const sLauf = Math.min(10, Math.max(0, scores["Laufrichtung"] || 0));
+  const sSpielzug = Math.min(10, Math.max(0, scores["Spielzug"] || 0));
+
+  if (sSchlag === 0 && sRichtung === 0 && sLauf === 0 && sSpielzug === 0) {
+    return false;
+  }
+
+  // Moderates Start-Gewicht (4 Züge), damit neue Trainer-Runden das Radar sofort weiterformen
+  const weight = 4;
+
+  const shotChoicePct =
+    sSchlag > 0 ? clampPct(55 + sSchlag * 3 + (sSpielzug >= 10 ? 5 : 0)) : null;
+  const placementPct =
+    sRichtung > 0 ? clampPct(52 + sRichtung * 3.2 + (sSpielzug >= 10 ? 5 : 0)) : null;
+  const positioningPct =
+    sLauf > 0 ? clampPct(52 + sLauf * 3.2 + (sSpielzug >= 10 ? 5 : 0)) : null;
+  const netPlayPct =
+    sSpielzug > 0
+      ? clampPct(54 + sSpielzug * 3)
+      : sRichtung >= 10
+      ? 72
+      : null;
+  const overheadPct =
+    sSpielzug > 0
+      ? clampPct(52 + sSpielzug * 3)
+      : sSchlag >= 10
+      ? 70
+      : null;
+  const defensePct =
+    sLauf > 0
+      ? clampPct(54 + sLauf * 3)
+      : sSchlag >= 10
+      ? 72
+      : null;
+
+  if (shotChoicePct !== null) addWeightedScore(stats.trainer.axes.shotChoice, shotChoicePct, weight);
+  if (placementPct !== null) addWeightedScore(stats.trainer.axes.placement, placementPct, weight);
+  if (positioningPct !== null) addWeightedScore(stats.trainer.axes.positioning, positioningPct, weight);
+  if (netPlayPct !== null) addWeightedScore(stats.trainer.axes.netPlay, netPlayPct, weight);
+  if (overheadPct !== null) addWeightedScore(stats.trainer.axes.overhead, overheadPct, weight);
+  if (defensePct !== null) addWeightedScore(stats.trainer.axes.defense, defensePct, weight);
+
+  stats.trainer.totalTurns = weight;
+  stats.backfilledTrainer = true;
+  stats.hasLiveTrainer = false;
+  return true;
+}
+
+async function applySupabaseMatchBackfill(
+  userId: string,
+  stats: TacticCoachStats
+): Promise<boolean> {
+  if (stats.backfilledMatch || stats.match.totalTurns > 0) return false;
+
+  try {
+    let { data: historyData, error } = await supabase
+      .from("match_history")
+      .select("result, aces, winners, unforced_errors, total_shots, shots_perfect, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    if (error) {
+      const fallback = await supabase
+        .from("match_history")
+        .select("result, aces, winners, unforced_errors, total_shots, shots_perfect")
+        .eq("user_id", userId)
+        .limit(25);
+      historyData = fallback.data as any;
+    }
+
+    if (!Array.isArray(historyData) || historyData.length === 0) {
+      return false;
+    }
+
+    const totalMatches = historyData.length;
+    const wins = historyData.filter((m: any) => m.result === "win").length;
+    const winRate = wins / totalMatches;
+
+    const totalShots = historyData.reduce((sum: number, m: any) => sum + (m.total_shots || 0), 0);
+    const perfectShots = historyData.reduce((sum: number, m: any) => sum + (m.shots_perfect || 0), 0);
+    const winners = historyData.reduce((sum: number, m: any) => sum + (m.winners || 0), 0);
+    const aces = historyData.reduce((sum: number, m: any) => sum + (m.aces || 0), 0);
+    const unforcedErrors = historyData.reduce(
+      (sum: number, m: any) => sum + (m.unforced_errors || 0),
+      0
+    );
+
+    const perfRatioPct = totalShots > 0 ? (perfectShots / totalShots) * 100 : null;
+    const basePrecision =
+      perfRatioPct !== null
+        ? clampPct(46 + perfRatioPct * 1.05)
+        : clampPct(50 + winRate * 30);
+
+    const errPerMatch = unforcedErrors / totalMatches;
+    const errPenalty = Math.min(24, Math.round(errPerMatch * 4));
+
+    const winShotsPerMatch = (winners + aces) / totalMatches;
+    const attackBonus = Math.min(20, Math.round(winShotsPerMatch * 3.5));
+
+    const shotChoicePct = clampPct(basePrecision + Math.round(winRate * 12) - Math.round(errPenalty * 0.5));
+    const placementPct = clampPct(basePrecision + 4 - errPenalty);
+    const positioningPct = clampPct(48 + winRate * 32 - Math.round(errPenalty * 0.6));
+    const netPlayPct = clampPct(basePrecision + Math.round(attackBonus * 0.7) - Math.round(errPenalty * 0.5));
+    const overheadPct = clampPct(basePrecision + attackBonus - Math.round(errPenalty * 0.4));
+    const defensePct = clampPct(50 + winRate * 28 - Math.round(errPenalty * 0.8));
+
+    // Moderates Start-Gewicht (3–6 Züge), damit 2–3 neue Matches das Spinnennetz spürbar weiterbewegen
+    const weight = Math.min(6, Math.max(3, Math.round(totalMatches / 2)));
+
+    addWeightedScore(stats.match.axes.shotChoice, shotChoicePct, weight);
+    addWeightedScore(stats.match.axes.placement, placementPct, weight);
+    addWeightedScore(stats.match.axes.positioning, positioningPct, weight);
+    addWeightedScore(stats.match.axes.netPlay, netPlayPct, weight);
+    addWeightedScore(stats.match.axes.overhead, overheadPct, weight);
+    addWeightedScore(stats.match.axes.defense, defensePct, weight);
+
+    stats.match.totalTurns = weight;
+    stats.matchErrors.unforcedErrors += unforcedErrors;
+    stats.backfilledMatch = true;
+    stats.hasLiveMatch = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchCoachStats(
+  userId?: string | null,
+  trainerHighestScores?: Record<string, number>
+): Promise<TacticCoachStats> {
+  let stats = loadLocalCoachStats(userId);
+
+  if (userId) {
+    try {
+      const { data, error } = await supabase
+        .from("user_stats")
+        .select("tactic_stats")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!error && data?.tactic_stats && (data.tactic_stats as any).version === 2) {
+        const remote = hydrateStats(data.tactic_stats);
+        const localVolume =
+          stats.trainer.totalTurns + stats.match.totalTurns + stats.boardDrillsCompleted;
+        const remoteVolume =
+          remote.trainer.totalTurns + remote.match.totalTurns + remote.boardDrillsCompleted;
+
+        stats = remoteVolume >= localVolume ? remote : stats;
+      }
+    } catch {
+      // Offline-Fallback: lokaler Stand bleibt aktiv
+    }
+  }
+
+  let didBackfill = false;
+  if (applyTrainerLevelBackfill(stats, trainerHighestScores)) {
+    didBackfill = true;
+  }
+  if (userId && (await applySupabaseMatchBackfill(userId, stats))) {
+    didBackfill = true;
+  }
+
+  if (didBackfill) {
+    persistCoachStats(userId, stats);
+  } else {
+    try {
+      localStorage.setItem(getStorageKey(userId), JSON.stringify(stats));
+    } catch {}
+  }
+
+  return stats;
 }
 
 // =========================================================================
@@ -272,6 +470,7 @@ export function recordTrainerAttempt(params: {
   const categoryAxis = getShotCategoryAxis(shotKey);
 
   stats.trainer.totalTurns += 1;
+  stats.hasLiveTrainer = true;
 
   // 3 Taktik-Dimensionen
   if (params.needsShot) {
@@ -334,6 +533,7 @@ export function recordMatchTurn(params: {
     : null;
 
   stats.match.totalTurns += 1;
+  stats.hasLiveMatch = true;
 
   // 3 Taktik-Dimensionen im Match
   addScore(stats.match.axes.shotChoice, shotScore);
@@ -383,6 +583,7 @@ export function recordMatchDefenseError(params: {
   const stats = loadLocalCoachStats(params.userId);
 
   stats.match.totalTurns += 1;
+  stats.hasLiveMatch = true;
   addScore(stats.match.axes.positioning, 0);
   addScore(stats.match.axes.defense, params.reason === "missed_time" ? 25 : 0);
   stats.matchErrors.positioningErrors += 1;
@@ -407,6 +608,7 @@ export function recordBoardDrill(params: {
   }
 
   stats.trainer.totalTurns += 1;
+  stats.hasLiveTrainer = true;
   addScore(stats.trainer.axes.positioning, clampedScore);
 
   persistCoachStats(params.userId, stats);
