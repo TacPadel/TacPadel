@@ -152,7 +152,6 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
   const frames = play.keyframes || [];
   let chosenItems = play.items;
 
-  // Bevorzuge den letzten Schritt, bei dem der Ball auf unserer Seite (links) liegt
   if (frames.length > 0) {
     const leftBallFrames = frames.filter((f) => {
       const b = f.items.find((i) => i.id === "ball");
@@ -176,7 +175,6 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
   const opp1Zone = boardCoordsToZone(b1.x, b1.y, "right");
   const opp2Zone = boardCoordsToZone(b2.x, b2.y, "right");
 
-  // Wenn Partner näher am Ball steht, tauschen wir für das 3D-Replay, damit "DU" immer der aktive Schläger bist
   const distA1 = Math.hypot(a1.x - ball.x, a1.y - ball.y);
   const distA2 = Math.hypot(a2.x - ball.x, a2.y - ball.y);
   if (distA2 + 12 < distA1) {
@@ -409,6 +407,155 @@ export function upsertPlaybookEntry(
     list: savePlaybookList(userId, next, maxSlots),
     limitReached: false,
   };
+}
+
+// =========================================================================
+// AUTOMATISCHE GAST-ÜBERNAHME BEIM LOGIN (PLAYBOOK + COACH-STATS)
+// =========================================================================
+export async function migrateGuestPlaybookToUser(
+  userId: string,
+  maxSlots: number = MAX_PLAYBOOK_ITEMS
+): Promise<number> {
+  if (!userId) return 0;
+
+  const guestKey = getPlaybookStorageKey(null);
+  let guestPlays: SavedPlay[] = [];
+  try {
+    const rawGuest = localStorage.getItem(guestKey);
+    if (!rawGuest) return 0;
+    const parsed = JSON.parse(rawGuest);
+    if (Array.isArray(parsed)) guestPlays = parsed;
+  } catch {
+    localStorage.removeItem(guestKey);
+    return 0;
+  }
+
+  if (guestPlays.length === 0) {
+    localStorage.removeItem(guestKey);
+    return 0;
+  }
+
+  const existingUserPlays = await loadPlaybook(userId, maxSlots);
+  const mergedMap = new Map<string, SavedPlay>();
+
+  [...existingUserPlays, ...guestPlays].forEach((p) => {
+    const cur = mergedMap.get(p.id);
+    if (!cur || (p.updatedAt || 0) > (cur.updatedAt || 0)) {
+      mergedMap.set(p.id, p);
+    }
+  });
+
+  const mergedList = Array.from(mergedMap.values())
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, Math.max(maxSlots, existingUserPlays.length + guestPlays.length));
+
+  savePlaybookList(userId, mergedList, Math.max(maxSlots, mergedList.length));
+  localStorage.removeItem(guestKey);
+
+  return guestPlays.length;
+}
+
+const MAX_KEYS = new Set(["version", "updatedAt", "lastUpdated", "timestamp"]);
+
+function isPlainObject(val: unknown): val is Record<string, any> {
+  return Boolean(val) && typeof val === "object" && !Array.isArray(val);
+}
+
+function deepMergeCoachStats(existing: any, incoming: any): any {
+  if (existing === undefined || existing === null) return incoming;
+  if (incoming === undefined || incoming === null) return existing;
+
+  if (typeof existing === "number" && typeof incoming === "number") {
+    return existing + incoming;
+  }
+  if (typeof existing === "boolean" && typeof incoming === "boolean") {
+    return existing || incoming;
+  }
+  if (Array.isArray(existing) && Array.isArray(incoming)) {
+    const combined = [...incoming, ...existing];
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+    for (const item of combined) {
+      const sig = typeof item === "object" ? JSON.stringify(item) : String(item);
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        deduped.push(item);
+      }
+    }
+    return deduped.slice(0, 120);
+  }
+  if (isPlainObject(existing) && isPlainObject(incoming)) {
+    const out: Record<string, any> = { ...existing };
+    for (const key of Object.keys(incoming)) {
+      if (MAX_KEYS.has(key) && typeof out[key] === "number" && typeof incoming[key] === "number") {
+        out[key] = Math.max(out[key], incoming[key]);
+      } else {
+        out[key] = deepMergeCoachStats(out[key], incoming[key]);
+      }
+    }
+    return out;
+  }
+  return existing;
+}
+
+export function migrateGuestCoachStatsToUser(userId: string): number {
+  if (!userId || typeof localStorage === "undefined") return 0;
+
+  let migratedCount = 0;
+
+  try {
+    const allKeys = Object.keys(localStorage);
+    const guestCoachKeys = allKeys.filter(
+      (k) =>
+        /^tacpadel_.*(coach|tactic_stats).*_guest$/i.test(k) &&
+        !k.includes("weekly_drills") &&
+        !k.includes("playbook")
+    );
+
+    for (const guestKey of guestCoachKeys) {
+      const rawGuest = localStorage.getItem(guestKey);
+      if (!rawGuest) {
+        localStorage.removeItem(guestKey);
+        continue;
+      }
+
+      let parsedGuest: any;
+      try {
+        parsedGuest = JSON.parse(rawGuest);
+      } catch {
+        localStorage.removeItem(guestKey);
+        continue;
+      }
+
+      const hasActivity =
+        isPlainObject(parsedGuest) &&
+        ((parsedGuest.trainer?.totalTurns || 0) > 0 ||
+          (parsedGuest.match?.totalTurns || 0) > 0 ||
+          Object.keys(parsedGuest).length > 0);
+
+      if (!hasActivity) {
+        localStorage.removeItem(guestKey);
+        continue;
+      }
+
+      const targetKey = guestKey.replace(/_guest$/, `_${userId}`);
+      let merged = parsedGuest;
+
+      try {
+        const rawUser = localStorage.getItem(targetKey);
+        if (rawUser) {
+          const parsedUser = JSON.parse(rawUser);
+          merged = deepMergeCoachStats(parsedUser, parsedGuest);
+        }
+      } catch {}
+
+      localStorage.setItem(targetKey, JSON.stringify(merged));
+      localStorage.removeItem(guestKey);
+      migratedCount++;
+    }
+  } catch {}
+
+  return migratedCount;
 }
 
 // =========================================================================

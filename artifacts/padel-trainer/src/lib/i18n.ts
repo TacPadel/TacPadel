@@ -1307,6 +1307,11 @@ export const TRANSLATIONS = {
     tb_anim_limit_reached: "Maximal {max} Animations-Schritte im Free-Modus.",
     coach_weekly_limit_reached: "Wochen-Limit erreicht (1/1) – nächste Woche wieder frei!",
     coach_weekly_free_badge: "1× / Woche frei",
+    pb_guest_banner_title: "Gastmodus: Lokal gespeichert (max. 2 Plätze)",
+    pb_guest_banner_desc: "Melde dich kostenlos an – deine Gast-Spielzüge & Coach-Daten werden automatisch übernommen (inkl. Cloud-Sync & 50 Plätzen).",
+    pb_guest_banner_btn: "Kostenlos sichern ➔",
+    pb_guest_limit_reached: "Gast-Limit (2/2) erreicht – kostenlos anmelden für 50 Plätze & Cloud-Sync!",
+    guest_migrated_toast: "Gast-Daten übernommen! Deine Spielzüge & Coach-Stats sind jetzt im Account gesichert.",
   },
 
   en: {
@@ -2446,6 +2451,11 @@ export const TRANSLATIONS = {
     tb_anim_limit_reached: "Maximum {max} animation steps in Free mode.",
     coach_weekly_limit_reached: "Weekly limit reached (1/1) – resets next week!",
     coach_weekly_free_badge: "1× / week free",
+    pb_guest_banner_title: "Guest Mode: Saved locally only (max. 2 slots)",
+    pb_guest_banner_desc: "Sign up for free – your guest plays & Coach stats transfer automatically (with Cloud Sync & 50 slots).",
+    pb_guest_banner_btn: "Save Free ➔",
+    pb_guest_limit_reached: "Guest limit (2/2) reached – sign up free for 50 slots & Cloud Sync!",
+    guest_migrated_toast: "Guest data imported! Your plays & Coach stats are now saved to your account.",
   },
 
   es: {
@@ -3585,6 +3595,11 @@ export const TRANSLATIONS = {
     tb_anim_limit_reached: "Máximo {max} pasos de animación en modo gratuito.",
     coach_weekly_limit_reached: "Límite semanal alcanzado (1/1) – ¡vuelve la próxima semana!",
     coach_weekly_free_badge: "1× / semana gratis",
+    pb_guest_banner_title: "Modo invitado: Guardado local (máx. 2 espacios)",
+    pb_guest_banner_desc: "Regístrate gratis: tus jugadas y datos del Coach se transfieren automáticamente (nube y 50 espacios).",
+    pb_guest_banner_btn: "Guardar gratis ➔",
+    pb_guest_limit_reached: "Límite de invitado (2/2) – ¡regístrate gratis para 50 espacios y nube!",
+    guest_migrated_toast: "¡Datos de invitado importados! Tus jugadas y datos del Coach ya están en tu cuenta.",
   },
 } as const;
 

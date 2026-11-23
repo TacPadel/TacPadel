@@ -1009,6 +1009,7 @@ export default function TacticsBoard() {
         if (targetPlay) {
           applySavedPlayToBoard(targetPlay);
           if (entitlements.canAccessStudio) {
+            setShowTactics(false);
             setActiveMode("studio");
             setIsPlaybookOpen(false);
           }
@@ -1030,8 +1031,17 @@ export default function TacticsBoard() {
     }
 
     loadBoardData();
+
+    const handlePlaybookUpdated = () => {
+      loadPlaybook(boardUserId).then((list) => {
+        if (active) setPlaybook(list);
+      });
+    };
+    window.addEventListener("tacpadel-playbook-updated", handlePlaybookUpdated);
+
     return () => {
       active = false;
+      window.removeEventListener("tacpadel-playbook-updated", handlePlaybookUpdated);
     };
   }, [
     boardUserId,
@@ -1110,6 +1120,13 @@ export default function TacticsBoard() {
       setCustomTarget(null);
     }
   }, [activeMode, activeDrillId]);
+
+  // Im Studio startet die Analyse immer ausgeschaltet (erst per Button aktivierbar)
+  useEffect(() => {
+    if (activeMode === "studio") {
+      setShowTactics(false);
+    }
+  }, [activeMode]);
 
   // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
   const effectiveFilters: TacticalFilters = useMemo(() => {
@@ -1522,9 +1539,11 @@ export default function TacticsBoard() {
 
     if (!existing && playbook.length >= entitlements.maxPlaybookSlots) {
       setPlaybookToast(
-        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+        entitlements.isGuest || !boardUserId
+          ? t("pb_guest_limit_reached")
+          : t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
       );
-      setTimeout(() => setPlaybookToast(null), 3000);
+      setTimeout(() => setPlaybookToast(null), 3500);
       return;
     }
 
@@ -2590,6 +2609,7 @@ export default function TacticsBoard() {
 
   const switchToStudioForNewDrill = () => {
     stopAnimation();
+    setShowTactics(false);
     setActiveMode("studio");
     setIsPlaybookOpen(true);
     setPlayAsDrill(entitlements.canCreateCustomDrills);
@@ -2717,6 +2737,7 @@ export default function TacticsBoard() {
               onClick={() => {
                 setDrillResult(null);
                 setShowDrillSolution(false);
+                setShowTactics(false);
                 setActiveMode("studio");
               }}
               className={`py-2 px-1.5 text-[9.5px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all truncate ${
@@ -3117,7 +3138,13 @@ export default function TacticsBoard() {
                     )}
 
                     {playbookToast && (
-                      <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
+                      <div
+                        className={`text-[11px] font-black rounded-lg px-3 py-1.5 border ${
+                          playbookToast === t("tb_pb_saved_msg")
+                            ? "text-emerald-400 bg-emerald-950/40 border-emerald-500/40"
+                            : "text-amber-300 bg-amber-950/40 border-amber-500/40"
+                        }`}
+                      >
                         {playbookToast}
                       </div>
                     )}

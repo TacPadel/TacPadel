@@ -25,7 +25,7 @@ interface PlaybookHubProps {
   initialSharedReplay?: { title: string; context: ReplayContext } | null;
   onClearSharedReplay?: () => void;
   onOpenInBoard: (playId: string) => void;
-  onNavigateTab: (tab: "trainer" | "game" | "board" | "coach") => void;
+  onNavigateTab: (tab: "trainer" | "game" | "board" | "coach" | "login") => void;
 }
 
 type HubFilter = "all" | PlaybookSource | "drills";
@@ -59,6 +59,7 @@ export default function PlaybookHub({
 }: PlaybookHubProps) {
   const { lang, t } = useTranslation();
   const { entitlements } = useEntitlements();
+  const isGuest = !userId;
 
   const [plays, setPlays] = useState<SavedPlay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,20 +89,32 @@ export default function PlaybookHub({
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), 3000);
   };
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    loadPlaybook(userId).then((list) => {
-      if (active) {
-        setPlays(list);
-        setLoading(false);
-      }
-    });
+
+    const fetchPlays = () => {
+      setLoading(true);
+      loadPlaybook(userId).then((list) => {
+        if (active) {
+          setPlays(list);
+          setLoading(false);
+        }
+      });
+    };
+
+    fetchPlays();
+
+    const handleUpdated = () => {
+      fetchPlays();
+    };
+    window.addEventListener("tacpadel-playbook-updated", handleUpdated);
+
     return () => {
       active = false;
+      window.removeEventListener("tacpadel-playbook-updated", handleUpdated);
     };
   }, [userId]);
 
@@ -272,7 +285,9 @@ export default function PlaybookHub({
     const res = upsertPlaybookEntry(userId, entry, entitlements.maxPlaybookSlots);
     if (res.limitReached) {
       showToast(
-        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+        isGuest
+          ? t("pb_guest_limit_reached")
+          : t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
       );
       return;
     }
@@ -364,8 +379,16 @@ export default function PlaybookHub({
           <p className="text-xs text-slate-400 leading-snug">{t("pb_replay_hint")}</p>
 
           {toast && (
-            <div className="text-xs font-black text-emerald-300 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
-              {toast}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-black text-emerald-300 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
+              <span>{toast}</span>
+              {isGuest && (
+                <button
+                  onClick={() => onNavigateTab("login")}
+                  className="px-2.5 py-1 rounded bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider"
+                >
+                  {t("pb_guest_banner_btn")}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -620,6 +643,30 @@ export default function PlaybookHub({
           </button>
         </div>
       </div>
+
+      {/* Gast-Cloud-Sync-Hinweis (2 lokale Plätze -> kostenlos anmelden für Cloud-Sync & 50 Plätze) */}
+      {isGuest && (
+        <div className="w-full bg-gradient-to-r from-amber-950/45 via-[#050b18] to-cyan-950/40 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="text-xl shrink-0">☁️</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                {t("pb_guest_banner_title")}
+              </span>
+              <p className="text-xs text-slate-300 leading-snug">
+                {t("pb_guest_banner_desc")}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigateTab("login")}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-[11px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.3)] shrink-0 transition-all"
+          >
+            {t("pb_guest_banner_btn")}
+          </button>
+        </div>
+      )}
 
       {/* Filter & Suche */}
       <div className="w-full bg-[#050b18]/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-3">

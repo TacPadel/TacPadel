@@ -32,6 +32,8 @@ import {
   createPlayFromTrainerScenario,
   upsertPlaybookEntry,
   decodeReplayFromParam,
+  migrateGuestPlaybookToUser,
+  migrateGuestCoachStatsToUser,
   ReplayContext,
 } from "./lib/playbook";
 
@@ -504,7 +506,7 @@ const getAdjacentZones = (zoneId: string) => {
 
 export default function App(): React.JSX.Element {
   const { lang, t } = useTranslation();
-  const { entitlements } = useEntitlements();
+  const { entitlements, loading: entitlementsLoading } = useEntitlements();
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const savedTab = localStorage.getItem("tacpadel_activeTab");
@@ -522,10 +524,11 @@ export default function App(): React.JSX.Element {
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
   const [selectedPublicUserTab, setSelectedPublicUserTab] = useState<"single" | "tournament">("single");
 
-  // Geteilter 3D-Replay-Link (?replay=...) + Trainer-Playbook-Status
+  // Geteilter 3D-Replay-Link (?replay=...) + Trainer-Playbook-Status + Gast-Migration
   const [sharedReplay, setSharedReplay] = useState<{ title: string; context: ReplayContext } | null>(null);
   const [savedTrainerScenarioToPb, setSavedTrainerScenarioToPb] = useState(false);
   const [pbLimitToast, setPbLimitToast] = useState<string | null>(null);
+  const [showGuestMigratedToast, setShowGuestMigratedToast] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("tacpadel_activeTab", activeTab);
@@ -816,6 +819,32 @@ export default function App(): React.JSX.Element {
 
     claimCrashCourseBonus();
   }, [user]);
+
+  // Übernimmt lokal erstellte Gast-Spielzüge & Gast-Coach-Daten automatisch beim Login
+  useEffect(() => {
+    if (!user?.id || entitlementsLoading || entitlements.isGuest) return;
+    let active = true;
+
+    const runGuestMigration = async () => {
+      const migratedPlays = await migrateGuestPlaybookToUser(
+        user.id,
+        entitlements.maxPlaybookSlots
+      );
+      const migratedCoach = migrateGuestCoachStatsToUser(user.id);
+
+      if (!active) return;
+      if (migratedPlays > 0 || migratedCoach > 0) {
+        window.dispatchEvent(new Event("tacpadel-playbook-updated"));
+        setShowGuestMigratedToast(true);
+        setTimeout(() => setShowGuestMigratedToast(false), 4800);
+      }
+    };
+
+    runGuestMigration();
+    return () => {
+      active = false;
+    };
+  }, [user?.id, entitlementsLoading, entitlements.isGuest, entitlements.maxPlaybookSlots]);
 
   // Öffnet ein per Link geteiltes Szenario direkt im Taktik-Trainer (?scenario=ID)
   const openSharedScenarioById = (targetId: number): boolean => {
@@ -1496,9 +1525,11 @@ export default function App(): React.JSX.Element {
     const res = upsertPlaybookEntry(user?.id, entry, entitlements.maxPlaybookSlots);
     if (res.limitReached) {
       setPbLimitToast(
-        t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
+        !user
+          ? t("pb_guest_limit_reached")
+          : t("pb_limit_reached").replace(/\{max\}/g, String(entitlements.maxPlaybookSlots))
       );
-      setTimeout(() => setPbLimitToast(null), 3200);
+      setTimeout(() => setPbLimitToast(null), 3500);
       return;
     }
     setSavedTrainerScenarioToPb(true);
@@ -1978,7 +2009,7 @@ export default function App(): React.JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* --- PLAYBOOK LIMIT-TOAST (Falls Free-Limit erreicht) --- */}
+      {/* --- PLAYBOOK LIMIT-TOAST (Falls Gast- oder Free-Limit erreicht) --- */}
       <AnimatePresence>
         {pbLimitToast && (
           <motion.div
@@ -1990,6 +2021,23 @@ export default function App(): React.JSX.Element {
             <span className="text-lg">📘</span>
             <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
               {pbLimitToast}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- GAST-MIGRATION-TOAST NACH LOGIN --- */}
+      <AnimatePresence>
+        {showGuestMigratedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[180] w-[92%] max-w-md bg-[#050b18]/95 border border-cyan-400/70 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(6,182,212,0.4)] flex items-center justify-center gap-2.5 text-center"
+          >
+            <span className="text-lg">☁️</span>
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-wider">
+              {t("guest_migrated_toast")}
             </span>
           </motion.div>
         )}
