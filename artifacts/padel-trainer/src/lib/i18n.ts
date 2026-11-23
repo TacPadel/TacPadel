@@ -1252,6 +1252,8 @@ export const TRANSLATIONS = {
     tb_pb_depth_net: "Netz",
     tb_pb_drill_auto_sol: "✓ Musterlösung wird automatisch aus Schritt 2 / Laufpfeilen übernommen.",
     tb_pb_drill_badge: "Drill",
+    coach_backfill_badge: "📊 Basis-Kalibrierung aktiv",
+    coach_backfill_desc: "Aus deinen bisherigen Matches & Leveln importiert – neue Runden ergänzen Schlag- & Wackler-Details.",
   },
 
   en: {
@@ -2336,6 +2338,8 @@ export const TRANSLATIONS = {
     tb_pb_depth_net: "Net",
     tb_pb_drill_auto_sol: "✓ Exact solution is automatically taken from Step 2 / run arrows.",
     tb_pb_drill_badge: "Drill",
+    coach_backfill_badge: "📊 Baseline Calibration Active",
+    coach_backfill_desc: "Imported from your past matches & levels – new rounds will add shot & wobble details.",
   },
 
   es: {
@@ -3420,7 +3424,8 @@ export const TRANSLATIONS = {
     tb_pb_depth_net: "Red",
     tb_pb_drill_auto_sol: "✓ La solución se toma automáticamente del Paso 2 / flechas de carrera.",
     tb_pb_drill_badge: "Drill",
-
+    coach_backfill_badge: "📊 Calibración Base Activa",
+    coach_backfill_desc: "Importado de tus partidos y niveles anteriores: las nuevas rondas añadirán detalles de golpes y fallos.",
   },
 } as const;
 
