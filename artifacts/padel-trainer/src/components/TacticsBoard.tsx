@@ -34,6 +34,9 @@ interface TacticalFilters {
 // Typen für das Tactical Studio (Zeichnungen & Rekorder)
 type StudioTool = "move" | "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_glass" | "zone_circle";
 type DrawingType = Exclude<StudioTool, "move">;
+type BoardMode = "tactics" | "drill" | "studio" | "3d";
+type DrillCategory = "all" | "standard" | "playbook";
+type DrillDepth = "back" | "mid" | "net";
 
 interface StudioDrawing {
   id: string;
@@ -52,7 +55,7 @@ interface BoardKeyframe {
   drawings: StudioDrawing[];
 }
 
-// Gespeicherter Spielzug im Playbook
+// Gespeicherter Spielzug im Playbook (optional direkt als Coach-Drill nutzbar)
 interface SavedPlay {
   id: string;
   title: string;
@@ -60,16 +63,33 @@ interface SavedPlay {
   items: DraggableItem[];
   drawings: StudioDrawing[];
   keyframes: BoardKeyframe[];
+  isDrill?: boolean;
+  drillPrompt?: string;
+  drillExplanation?: string;
+  drillTargetDepth?: DrillDepth;
 }
 
-// Interaktiver Stellungsspiel-Drill auf dem Board
+// Kuratierter Standard-Stellungsspiel-Drill
 interface BoardDrill {
   id: string;
   titleKey: TranslationKey;
   promptKey: TranslationKey;
   explKey: TranslationKey;
-  targetDepth: "back" | "mid" | "net";
+  targetDepth: DrillDepth;
   items: DraggableItem[];
+}
+
+// Vereinheitlichtes Drill-Format (Standard + eigene Playbook-Drills)
+interface UnifiedDrill {
+  id: string;
+  source: "standard" | "playbook";
+  title: string;
+  prompt: string;
+  explanation: string;
+  targetDepth: DrillDepth;
+  startItems: DraggableItem[];
+  solutionItems?: DraggableItem[];
+  solutionDrawings?: StudioDrawing[];
 }
 
 interface DrillCheckResult {
@@ -237,6 +257,52 @@ const applyDrawingsToItems = (
   });
 
   return next;
+};
+
+// Prüft, ob zwei Aufstellungen sich bei A1 oder A2 spürbar unterscheiden
+const hasTeamAMoved = (a: DraggableItem[], b: DraggableItem[]): boolean => {
+  return ["a1", "a2"].some((id) => {
+    const p1 = a.find((i) => i.id === id);
+    const p2 = b.find((i) => i.id === id);
+    if (!p1 || !p2) return false;
+    return Math.hypot(p1.x - p2.x, p1.y - p2.y) > 15;
+  });
+};
+
+// Wandelt einen Playbook-Spielzug in einen interaktiven Coach-Drill um
+const convertPlayToUnifiedDrill = (
+  play: SavedPlay,
+  t: (key: TranslationKey) => string
+): UnifiedDrill => {
+  const frames = play.keyframes || [];
+  const startItems = frames.length > 0 ? cloneItems(frames[0].items) : cloneItems(play.items);
+  const step1Drawings =
+    frames.length > 0 ? cloneDrawings(frames[0].drawings || []) : cloneDrawings(play.drawings || []);
+
+  let solutionItems: DraggableItem[] | undefined;
+
+  if (frames.length >= 2) {
+    solutionItems = cloneItems(frames[1].items);
+  } else if (step1Drawings.some((d) => d.type === "arrow_run")) {
+    const derived = applyDrawingsToItems(startItems, step1Drawings);
+    if (hasTeamAMoved(startItems, derived)) {
+      solutionItems = derived;
+    }
+  } else if (frames.length === 1 && hasTeamAMoved(frames[0].items, play.items)) {
+    solutionItems = cloneItems(play.items);
+  }
+
+  return {
+    id: `pb_${play.id}`,
+    source: "playbook",
+    title: play.title,
+    prompt: play.drillPrompt?.trim() || t("tb_drill_custom_default_prompt"),
+    explanation: play.drillExplanation?.trim() || t("tb_drill_custom_default_expl"),
+    targetDepth: play.drillTargetDepth || "back",
+    startItems,
+    solutionItems,
+    solutionDrawings: step1Drawings.length > 0 ? step1Drawings : undefined,
+  };
 };
 
 // Konvertiert Zonen (A1–E5) aus dem Trainer exakt in Board-Koordinaten
@@ -839,7 +905,7 @@ function TrajectoryView3D() {
 }
 
 // ==========================================
-// HAUPT-KOMPONENTE (2D COACH-LABOR & VEREINTES STUDIO)
+// HAUPT-KOMPONENTE (2D, COACH-DRILL, STUDIO & 3D)
 // ==========================================
 export default function TacticsBoard() {
   const { lang, t } = useTranslation();
@@ -857,17 +923,19 @@ export default function TacticsBoard() {
   const [customTarget, setCustomTarget] = useState<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<number>(0);
 
-  // --- DYNAMISCHER SCHALTER: 2D | [STUDIO] | 3D ---
-  const [activeMode, setActiveMode] = useState<"tactics" | "studio" | "3d">("tactics");
+  // --- DYNAMISCHER HAUPTSCHALTER: 2D | [DRILL] | [STUDIO] | 3D ---
+  const [activeMode, setActiveMode] = useState<BoardMode>("tactics");
 
   // --- STILLSCHWEIGENDE FEATURE-FREISCHALTUNG (ohne sichtbare Schranken-Hinweise) ---
   const [isProUser, setIsProUser] = useState<boolean>(false);
   const [boardUserId, setBoardUserId] = useState<string | null>(null);
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
 
-  // --- INTERAKTIVER STELLUNGSSPIEL-DRILL (Nur im 2D-Taktik-Modus) ---
-  const [activeDrillIdx, setActiveDrillIdx] = useState<number | null>(null);
+  // --- COACH-DRILL TAB STATES (Standard + eigene Playbook-Drills) ---
+  const [drillCategory, setDrillCategory] = useState<DrillCategory>("all");
+  const [activeDrillIdx, setActiveDrillIdx] = useState<number>(0);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
+  const [showDrillSolution, setShowDrillSolution] = useState<boolean>(false);
 
   // --- MULTI-STEP KEYFRAME ANIMATION (Exklusiv im Studio, inkl. Lob & Scheibe) ---
   const [keyframes, setKeyframes] = useState<BoardKeyframe[]>([]);
@@ -879,10 +947,14 @@ export default function TacticsBoard() {
   const animRafRef = useRef<number | null>(null);
   const playbackFramesRef = useRef<BoardKeyframe[]>([]);
 
-  // --- MEIN PLAYBOOK (Exklusiv im Studio, Lokal + Supabase Sync) ---
+  // --- MEIN PLAYBOOK (Exklusiv im Studio, Lokal + Supabase Sync + Drill-Export) ---
   const [isPlaybookOpen, setIsPlaybookOpen] = useState<boolean>(false);
   const [playbook, setPlaybook] = useState<SavedPlay[]>([]);
   const [playTitle, setPlayTitle] = useState<string>("");
+  const [playAsDrill, setPlayAsDrill] = useState<boolean>(false);
+  const [playDrillPrompt, setPlayDrillPrompt] = useState<string>("");
+  const [playDrillExpl, setPlayDrillExpl] = useState<string>("");
+  const [playDrillDepth, setPlayDrillDepth] = useState<DrillDepth>("back");
   const [playbookToast, setPlaybookToast] = useState<string | null>(null);
 
   // --- TACTICAL STUDIO STATES (Zeichnen, Aufnehmen, Teilen) ---
@@ -988,18 +1060,62 @@ export default function TacticsBoard() {
     checkAccessAndLoadData();
   }, []);
 
-  // Falls Zugriff entzogen wird, sicher aus Studio/Drill/Playbook zurückfallen
+  // Falls Zugriff entzogen wird, sicher auf 2D Taktik zurückfallen
   useEffect(() => {
     if (!isProUser) {
-      if (activeMode === "studio") setActiveMode("tactics");
-      if (activeDrillIdx !== null) {
-        setActiveDrillIdx(null);
-        setDrillResult(null);
-      }
+      if (activeMode === "studio" || activeMode === "drill") setActiveMode("tactics");
       if (isPlaybookOpen) setIsPlaybookOpen(false);
       if (isPlaying) setIsPlaying(false);
     }
-  }, [isProUser, activeMode, activeDrillIdx, isPlaybookOpen, isPlaying]);
+  }, [isProUser, activeMode, isPlaybookOpen, isPlaying]);
+
+  // --- VEREINHEITLICHTE DRILL-LISTE (Standard + Playbook-Drills) ---
+  const standardDrills: UnifiedDrill[] = useMemo(
+    () =>
+      BOARD_DRILLS.map((d) => ({
+        id: d.id,
+        source: "standard",
+        title: t(d.titleKey),
+        prompt: t(d.promptKey),
+        explanation: t(d.explKey),
+        targetDepth: d.targetDepth,
+        startItems: cloneItems(d.items),
+      })),
+    [lang]
+  );
+
+  const playbookDrills: UnifiedDrill[] = useMemo(
+    () =>
+      playbook
+        .filter((p) => Boolean(p.isDrill))
+        .map((p) => convertPlayToUnifiedDrill(p, t)),
+    [playbook, lang]
+  );
+
+  const filteredDrills: UnifiedDrill[] = useMemo(() => {
+    if (drillCategory === "standard") return standardDrills;
+    if (drillCategory === "playbook") return playbookDrills;
+    return [...playbookDrills, ...standardDrills];
+  }, [drillCategory, standardDrills, playbookDrills]);
+
+  const safeDrillIdx =
+    filteredDrills.length > 0 ? Math.min(activeDrillIdx, filteredDrills.length - 1) : 0;
+  const activeDrill: UnifiedDrill | null =
+    isProUser && activeMode === "drill" ? filteredDrills[safeDrillIdx] || null : null;
+
+  // Lädt die Startaufstellung automatisch, sobald ein neuer Drill oder der Drill-Tab aktiviert wird
+  const activeDrillId = activeDrill?.id || null;
+  useEffect(() => {
+    if (activeMode === "drill" && activeDrill) {
+      setItems(cloneItems(activeDrill.startItems));
+      setDrillResult(null);
+      setShowDrillSolution(false);
+      setShowTactics(true);
+      setLoadedTrainerScenario(null);
+      setSelectedScenarioKey("custom");
+      setCustomTarget(null);
+    }
+  }, [activeMode, activeDrillId]);
 
   // Basis-Nutzer erhalten eine saubere Kern-Analyse (Gummiband inkl. Tiefen-Riss + Zielvektor)
   const effectiveFilters: TacticalFilters = useMemo(() => {
@@ -1030,8 +1146,6 @@ export default function TacticsBoard() {
     [items, effectiveFilters, selectedScenarioKey, customTarget, isProUser, lang]
   );
 
-  const activeDrill =
-    activeMode === "tactics" && activeDrillIdx !== null ? BOARD_DRILLS[activeDrillIdx] : null;
   const allDrawingsToRender = currentDraft ? [...drawings, currentDraft] : drawings;
 
   const liveStateRef = useRef({
@@ -1056,7 +1170,7 @@ export default function TacticsBoard() {
     };
   }, [items, allDrawingsToRender, showTactics, effectiveFilters, analysis, studioTitle, ballScale]);
 
-  // Prüft, ob am aktuell ausgewählten Schritt ungespeicherte Änderungen (Positionen oder Zeichnungen) vorliegen
+  // Prüft, ob am aktuell ausgewählten Schritt ungespeicherte Änderungen vorliegen
   const isActiveStepDirty = useMemo(() => {
     if (activeStepIdx === null || isPlaying) return false;
     const kf = keyframes[activeStepIdx];
@@ -1087,7 +1201,16 @@ export default function TacticsBoard() {
     });
   }, [activeStepIdx, keyframes, items, drawings, isPlaying]);
 
-  // Abspielbar sobald mindestens 2 Schritte ODER mindestens 1 Schritt/Board mit Pfeil existiert
+  // Prüft, ob der aktuelle Studio-Entwurf automatisch eine exakte Drill-Musterlösung erzeugt
+  const currentStudioHasAutoSolution = useMemo(() => {
+    if (keyframes.length >= 2) return true;
+    if (keyframes.length === 1) {
+      if ((keyframes[0].drawings || []).some((d) => d.type === "arrow_run")) return true;
+      if (hasTeamAMoved(keyframes[0].items, items)) return true;
+    }
+    return drawings.some((d) => d.type === "arrow_run");
+  }, [keyframes, drawings, items]);
+
   const canPlayAnimation = useMemo(() => {
     if (keyframes.length >= 2) return true;
     if (
@@ -1099,7 +1222,7 @@ export default function TacticsBoard() {
     return drawings.some((d) => d.type !== "zone_circle");
   }, [keyframes, drawings]);
 
-  // --- KEYFRAME ANIMATIONS-STEUERUNG (Figuren + Ball gleiten exakt entlang Gerade, Lob-Kurve & Scheiben-Abpraller) ---
+  // --- KEYFRAME ANIMATIONS-STEUERUNG ---
   const stopAnimation = useCallback(() => {
     if (animRafRef.current !== null) {
       cancelAnimationFrame(animRafRef.current);
@@ -1290,7 +1413,7 @@ export default function TacticsBoard() {
     };
   }, [isPlaying, playSpeed, keyframes.length]);
 
-  // Keyframe-Aktionen: Speichert Schritt, rückt Figuren entlang der Pfeile vor & leert Pfeile für nächsten Schritt
+  // Keyframe-Aktionen
   const handleAddKeyframe = () => {
     stopAnimation();
     const newFrame: BoardKeyframe = {
@@ -1361,7 +1484,7 @@ export default function TacticsBoard() {
     setDrawings([]);
   };
 
-  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Studio) ---
+  // --- PLAYBOOK SPEICHERN, LADEN & LÖSCHEN (Studio + Coach-Drill-Verbindung) ---
   const persistPlaybook = useCallback(
     (nextList: SavedPlay[]) => {
       const trimmed = nextList.slice(0, MAX_PLAYBOOK_ITEMS);
@@ -1409,6 +1532,10 @@ export default function TacticsBoard() {
       items: cloneItems(items),
       drawings: cloneDrawings(drawings),
       keyframes: cloneKeyframes(syncedKeyframes),
+      isDrill: playAsDrill,
+      drillPrompt: playAsDrill ? playDrillPrompt.trim() : undefined,
+      drillExplanation: playAsDrill ? playDrillExpl.trim() : undefined,
+      drillTargetDepth: playAsDrill ? playDrillDepth : undefined,
     };
 
     const nextList = [
@@ -1425,8 +1552,6 @@ export default function TacticsBoard() {
 
   const handleLoadPlay = (play: SavedPlay) => {
     stopAnimation();
-    setActiveDrillIdx(null);
-    setDrillResult(null);
     setLoadedTrainerScenario(null);
     setSelectedScenarioKey("custom");
     setCustomTarget(null);
@@ -1449,6 +1574,10 @@ export default function TacticsBoard() {
 
     setPlayTitle(play.title);
     setStudioTitle(play.title);
+    setPlayAsDrill(Boolean(play.isDrill));
+    setPlayDrillPrompt(play.drillPrompt || "");
+    setPlayDrillExpl(play.drillExplanation || "");
+    setPlayDrillDepth(play.drillTargetDepth || "back");
   };
 
   const handleDeletePlay = (playId: string) => {
@@ -1464,8 +1593,6 @@ export default function TacticsBoard() {
   const handleScenarioChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const key = e.target.value;
     stopAnimation();
-    setActiveDrillIdx(null);
-    setDrillResult(null);
     setSelectedScenarioKey(key);
     setCustomTarget(null);
 
@@ -1489,20 +1616,20 @@ export default function TacticsBoard() {
     }
   };
 
-  // --- COACH-DRILL STARTEN & PRÜFEN ---
-  const startBoardDrill = (index: number = 0) => {
-    if (!isProUser) return;
-    stopAnimation();
-    setIsPlaybookOpen(false);
-    const safeIdx = index % BOARD_DRILLS.length;
-    const drill = BOARD_DRILLS[safeIdx];
-    setActiveDrillIdx(safeIdx);
+  // --- COACH-DRILL NAVIGATION & PRÜFUNG ---
+  const handleSelectDrillCategory = (cat: DrillCategory) => {
+    setDrillCategory(cat);
+    setActiveDrillIdx(0);
     setDrillResult(null);
-    setLoadedTrainerScenario(null);
-    setSelectedScenarioKey("custom");
-    setCustomTarget(null);
-    setShowTactics(true);
-    setItems(cloneItems(drill.items));
+    setShowDrillSolution(false);
+  };
+
+  const handleStepDrill = (delta: number) => {
+    if (filteredDrills.length === 0) return;
+    const nextIdx = (safeDrillIdx + delta + filteredDrills.length) % filteredDrills.length;
+    setActiveDrillIdx(nextIdx);
+    setDrillResult(null);
+    setShowDrillSolution(false);
   };
 
   const evaluateActiveDrill = () => {
@@ -1514,39 +1641,72 @@ export default function TacticsBoard() {
 
     const lateralGap = Math.abs(a1.y - a2.y);
     const depthGap = Math.abs(a1.x - a2.x);
-    const avgX = (a1.x + a2.x) / 2;
-    const avgY = (a1.y + a2.y) / 2;
+    let checks: { label: string; ok: boolean }[] = [];
 
-    const cone = getDangerAngleCone(ball);
+    if (activeDrill.solutionItems) {
+      // Exakte Musterlösungs-Prüfung (aus Schritt 2 oder Laufpfeilen des Playbooks)
+      const solA1 = activeDrill.solutionItems.find((i) => i.id === "a1");
+      const solA2 = activeDrill.solutionItems.find((i) => i.id === "a2");
 
-    const middleOk = lateralGap >= 85 && lateralGap <= 178;
-    const parallelOk = depthGap <= 78;
-    const depthOk =
-      activeDrill.targetDepth === "back"
-        ? avgX <= 175
-        : activeDrill.targetDepth === "net"
-        ? avgX >= 245
-        : avgX >= 145 && avgX <= 260;
-    const angleOk = Math.abs(avgY - cone.bisectorY) <= 78;
+      const distA1 = solA1 ? Math.hypot(a1.x - solA1.x, a1.y - solA1.y) : 999;
+      const distA2 = solA2 ? Math.hypot(a2.x - solA2.x, a2.y - solA2.y) : 999;
+      const solLateralGap = solA1 && solA2 ? Math.abs(solA1.y - solA2.y) : 140;
+      const solDepthGap = solA1 && solA2 ? Math.abs(solA1.x - solA2.x) : 0;
 
-    const checks = [
-      { label: t("tb_drill_chk_middle"), ok: middleOk },
-      { label: t("tb_drill_chk_parallel"), ok: parallelOk },
-      {
-        label:
-          activeDrill.targetDepth === "net"
-            ? t("tb_drill_chk_net")
-            : t("tb_drill_chk_back"),
-        ok: depthOk,
-      },
-      { label: t("tb_drill_chk_angle"), ok: angleOk },
-    ];
+      const a1Ok = distA1 <= 65;
+      const a2Ok = distA2 <= 65;
+      const middleOk =
+        (lateralGap >= 85 && lateralGap <= 178) ||
+        Math.abs(lateralGap - solLateralGap) <= 50;
+      const parallelOk =
+        depthGap <= 78 || Math.abs(depthGap - solDepthGap) <= 50;
+
+      checks = [
+        { label: t("tb_drill_chk_a1_pos"), ok: a1Ok },
+        { label: t("tb_drill_chk_a2_pos"), ok: a2Ok },
+        { label: t("tb_drill_chk_middle"), ok: middleOk },
+        { label: t("tb_drill_chk_parallel"), ok: parallelOk },
+      ];
+    } else {
+      // Regelbasierte Padel-Prüfung (Standard-Drills & 1-Schritt-Playbook-Drills)
+      const avgX = (a1.x + a2.x) / 2;
+      const avgY = (a1.y + a2.y) / 2;
+      const cone = getDangerAngleCone(ball);
+
+      const middleOk = lateralGap >= 85 && lateralGap <= 178;
+      const parallelOk = depthGap <= 78;
+      const depthOk =
+        activeDrill.targetDepth === "back"
+          ? avgX <= 175
+          : activeDrill.targetDepth === "net"
+          ? avgX >= 245
+          : avgX >= 145 && avgX <= 260;
+      const angleOk = Math.abs(avgY - cone.bisectorY) <= 78;
+
+      const depthLabel =
+        activeDrill.targetDepth === "net"
+          ? t("tb_drill_chk_net")
+          : activeDrill.targetDepth === "mid"
+          ? t("tb_drill_chk_mid")
+          : t("tb_drill_chk_back");
+
+      checks = [
+        { label: t("tb_drill_chk_middle"), ok: middleOk },
+        { label: t("tb_drill_chk_parallel"), ok: parallelOk },
+        { label: depthLabel, ok: depthOk },
+        { label: t("tb_drill_chk_angle"), ok: angleOk },
+      ];
+    }
 
     const passedCount = checks.filter((c) => c.ok).length;
     const scorePct = Math.round((passedCount / checks.length) * 100);
     const passed = passedCount >= 3;
 
     setDrillResult({ scorePct, passed, checks });
+    if (activeDrill.solutionItems && !passed) {
+      setShowDrillSolution(true);
+    }
+
     recordBoardDrill({
       userId: boardUserId,
       scorePct,
@@ -1650,7 +1810,7 @@ export default function TacticsBoard() {
   );
 
   const handleSvgDoubleClick = (e: React.MouseEvent) => {
-    if (!isProUser || activeDrill || isPlaying) return;
+    if (!isProUser || activeMode === "drill" || isPlaying) return;
     if (activeMode === "studio" && studioTool !== "move") return;
     const pt = getPoint(e);
     setCustomTarget({ x: pt.x, y: pt.y });
@@ -1663,7 +1823,7 @@ export default function TacticsBoard() {
       return;
     }
 
-    if (isProUser && !activeDrill && !isPlaying && "touches" in e) {
+    if (isProUser && activeMode !== "drill" && !isPlaying && "touches" in e) {
       const now = Date.now();
       const DOUBLE_TAP_DELAY = 300;
       if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
@@ -1687,7 +1847,8 @@ export default function TacticsBoard() {
         stopAnimation();
       }
 
-      if (activeDrill && !id.startsWith("a")) {
+      // Im Drill-Tab dürfen nur A1 & A2 verschoben werden
+      if (activeMode === "drill" && !id.startsWith("a")) {
         return;
       }
 
@@ -1704,14 +1865,15 @@ export default function TacticsBoard() {
 
       dragRef.current = { id, ox: pt.x - item.x, oy: pt.y - item.y, gapY, partnerId };
       setActiveId(id);
-      if (!activeDrill) {
+      if (activeMode !== "drill") {
         setSelectedScenarioKey("custom");
         setLoadedTrainerScenario(null);
       } else {
         setDrillResult(null);
+        setShowDrillSolution(false);
       }
     },
-    [items, getPoint, activeMode, studioTool, isProUser, activeDrill, isPlaying, stopAnimation, startStudioDrawing]
+    [items, getPoint, activeMode, studioTool, isProUser, isPlaying, stopAnimation, startStudioDrawing]
   );
 
   const onPointerMove = useCallback(
@@ -1735,7 +1897,7 @@ export default function TacticsBoard() {
         let minX = 16;
         let maxX = V_WIDTH - 16;
 
-        if (id === "ball" && effectiveFilters.showAttackArc) {
+        if (id === "ball" && effectiveFilters.showAttackArc && activeMode !== "drill") {
           const newX = Math.max(16, Math.min(V_WIDTH - 16, pt.x - ox));
           const newY = Math.max(16, Math.min(V_HEIGHT - 16, pt.y - oy));
           const ballRatio = Math.max(0, Math.min(1, newY / V_HEIGHT));
@@ -1790,7 +1952,7 @@ export default function TacticsBoard() {
         let newX = Math.max(minX, Math.min(maxX, pt.x - ox));
         let newY = Math.max(16, Math.min(V_HEIGHT - 16, pt.y - oy));
 
-        if (effectiveFilters.showAttackArc && itemToMove.isPlayer && !activeDrill) {
+        if (effectiveFilters.showAttackArc && itemToMove.isPlayer && activeMode !== "drill") {
           const ballItem = prev.find((i) => i.id === "ball");
           const isTeamAAttacking = ballItem ? ballItem.x > netX : false;
           const isTeamA = id.startsWith("a");
@@ -1823,7 +1985,7 @@ export default function TacticsBoard() {
         });
       });
     },
-    [getPoint, effectiveFilters, selectedScenarioKey, customTarget, currentDraft, netX, t, isProUser, activeDrill]
+    [getPoint, effectiveFilters, selectedScenarioKey, customTarget, currentDraft, netX, t, isProUser, activeMode]
   );
 
   const onPointerUp = useCallback(() => {
@@ -1857,8 +2019,12 @@ export default function TacticsBoard() {
 
   const reset = () => {
     stopAnimation();
-    setActiveDrillIdx(null);
-    setDrillResult(null);
+    if (activeMode === "drill" && activeDrill) {
+      setItems(cloneItems(activeDrill.startItems));
+      setDrillResult(null);
+      setShowDrillSolution(false);
+      return;
+    }
     setLoadedTrainerScenario(null);
     setSelectedScenarioKey("initial");
     setCustomTarget(null);
@@ -2383,6 +2549,15 @@ export default function TacticsBoard() {
   const ballItem = items.find((i) => i.id === "ball");
   const angleCone = ballItem ? getDangerAngleCone(ballItem) : null;
 
+  const switchToStudioForNewDrill = () => {
+    stopAnimation();
+    setActiveMode("studio");
+    setIsPlaybookOpen(true);
+    setPlayAsDrill(true);
+    setDrillResult(null);
+    setShowDrillSolution(false);
+  };
+
   return (
     <div className="flex flex-col items-center gap-4 w-full h-full flex-1 py-4 overflow-hidden">
       {/* ================================================================= */}
@@ -2447,12 +2622,12 @@ export default function TacticsBoard() {
       )}
 
       {/* ================================================================= */}
-      {/* DYNAMISCHER TOGGLE-SCHALTER (2D | [STUDIO] | 3D)                  */}
+      {/* DYNAMISCHER TOGGLE-SCHALTER (2D | [DRILL] | [STUDIO] | 3D)        */}
       {/* ================================================================= */}
       <div className="w-full max-w-5xl flex flex-col items-center mb-1 px-3">
         <div
           className={`bg-[#050b18] p-1.5 rounded-full shadow-lg border border-slate-800 grid ${
-            isProUser ? "grid-cols-3 max-w-lg" : "grid-cols-2 max-w-md"
+            isProUser ? "grid-cols-4 max-w-xl" : "grid-cols-2 max-w-md"
           } relative w-full`}
         >
           <button
@@ -2460,9 +2635,11 @@ export default function TacticsBoard() {
               if (isRecording) stopVideoRecording();
               stopAnimation();
               setIsPlaybookOpen(false);
+              setDrillResult(null);
+              setShowDrillSolution(false);
               setActiveMode("tactics");
             }}
-            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
+            className={`py-2 px-1.5 text-[9.5px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all truncate ${
               activeMode === "tactics"
                 ? "bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.5)]"
                 : "text-slate-400 hover:text-white"
@@ -2474,17 +2651,35 @@ export default function TacticsBoard() {
           {isProUser && (
             <button
               onClick={() => {
-                setActiveDrillIdx(null);
+                if (isRecording) stopVideoRecording();
+                stopAnimation();
+                setIsPlaybookOpen(false);
+                setActiveMode("drill");
+              }}
+              className={`py-2 px-1.5 text-[9.5px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all truncate ${
+                activeMode === "drill"
+                  ? "bg-gradient-to-r from-orange-500 to-amber-500 text-black shadow-[0_0_14px_rgba(249,115,22,0.55)]"
+                  : "text-orange-400 hover:text-orange-300"
+              }`}
+            >
+              {t("tb_mode_drill")}
+            </button>
+          )}
+
+          {isProUser && (
+            <button
+              onClick={() => {
                 setDrillResult(null);
+                setShowDrillSolution(false);
                 setActiveMode("studio");
               }}
-              className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
+              className={`py-2 px-1.5 text-[9.5px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all truncate ${
                 activeMode === "studio"
                   ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]"
                   : "text-pink-400 hover:text-pink-300"
               }`}
             >
-              <span>{t("tb_mode_studio_clean")}</span>
+              {t("tb_mode_studio_clean")}
             </button>
           )}
 
@@ -2493,15 +2688,17 @@ export default function TacticsBoard() {
               if (isRecording) stopVideoRecording();
               stopAnimation();
               setIsPlaybookOpen(false);
+              setDrillResult(null);
+              setShowDrillSolution(false);
               setActiveMode("3d");
             }}
-            className={`py-2 px-2 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all ${
+            className={`py-2 px-1.5 text-[9.5px] sm:text-xs font-black uppercase tracking-wider rounded-full transition-all truncate ${
               activeMode === "3d"
                 ? "bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.5)]"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            {t("tb_mode_3d")}
+            {isProUser ? t("tb_mode_3d_short") : t("tb_mode_3d")}
           </button>
         </div>
       </div>
@@ -2650,7 +2847,7 @@ export default function TacticsBoard() {
                   </button>
                 </div>
 
-                {/* 3. Integrierte Spielzug-Animation (Zeichnungen pro Schritt + Auto-Bewegung) */}
+                {/* 3. Integrierte Spielzug-Animation */}
                 <div className="pt-2.5 border-t border-slate-800/80 flex flex-col gap-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -2772,7 +2969,7 @@ export default function TacticsBoard() {
                   )}
                 </div>
 
-                {/* 4. Ausklappbares Playbook direkt im Studio-Block */}
+                {/* 4. Ausklappbares Playbook direkt im Studio-Block (inkl. Coach-Drill-Export) */}
                 {isPlaybookOpen && (
                   <div className="pt-3 border-t border-cyan-500/30 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -2803,6 +3000,74 @@ export default function TacticsBoard() {
                       </button>
                     </div>
 
+                    {/* Playbook -> Coach-Drill Option */}
+                    <div className="bg-[#030611] border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={playAsDrill}
+                          onChange={(e) => setPlayAsDrill(e.target.checked)}
+                          className="rounded text-orange-500 w-3.5 h-3.5"
+                        />
+                        <span className="text-[11px] font-black text-orange-300 uppercase tracking-wider">
+                          {t("tb_pb_as_drill")}
+                        </span>
+                      </label>
+
+                      {playAsDrill && (
+                        <div className="flex flex-col gap-2 pt-1.5 border-t border-slate-800/80">
+                          <input
+                            type="text"
+                            value={playDrillPrompt}
+                            onChange={(e) => setPlayDrillPrompt(e.target.value)}
+                            placeholder={t("tb_pb_drill_prompt_ph")}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={playDrillExpl}
+                            onChange={(e) => setPlayDrillExpl(e.target.value)}
+                            placeholder={t("tb_pb_drill_expl_ph")}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-orange-400 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none"
+                          />
+
+                          {currentStudioHasAutoSolution ? (
+                            <p className="text-[10px] font-bold text-emerald-400">
+                              {t("tb_pb_drill_auto_sol")}
+                            </p>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                {t("tb_pb_drill_depth_label")}
+                              </span>
+                              <div className="flex gap-1">
+                                {(
+                                  [
+                                    { id: "back", label: t("tb_pb_depth_back") },
+                                    { id: "mid", label: t("tb_pb_depth_mid") },
+                                    { id: "net", label: t("tb_pb_depth_net") },
+                                  ] as const
+                                ).map((opt) => (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setPlayDrillDepth(opt.id)}
+                                    className={`px-2 py-1 rounded text-[9px] font-black uppercase border transition-all ${
+                                      playDrillDepth === opt.id
+                                        ? "bg-orange-500/25 border-orange-400 text-orange-300"
+                                        : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
+                                    }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {playbookToast && (
                       <div className="text-[11px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-3 py-1.5">
                         {playbookToast}
@@ -2821,7 +3086,14 @@ export default function TacticsBoard() {
                             className="flex items-center justify-between gap-2 bg-[#030611] border border-slate-800 rounded-xl px-3 py-2"
                           >
                             <div className="flex flex-col min-w-0">
-                              <span className="text-xs font-bold text-white truncate">{play.title}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white truncate">{play.title}</span>
+                                {play.isDrill && (
+                                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-500/40 text-orange-300 shrink-0">
+                                    {t("tb_pb_drill_badge")}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[9px] text-slate-500 font-semibold">
                                 {play.keyframes?.length || 1} {t("tb_pb_steps_label")}
                               </span>
@@ -2851,98 +3123,176 @@ export default function TacticsBoard() {
           )}
 
           {/* ============================================================= */}
-          {/* AKTIVER STELLUNGSSPIEL-DRILL BANNER (NUR IN 2D TAKTIK)        */}
+          {/* COACH-DRILL COCKPIT (EIGENER HAUPT-TAB + PLAYBOOK-DRILLS)     */}
           {/* ============================================================= */}
-          {isProUser && activeDrill && (
-            <div className="w-full max-w-[600px] px-3">
-              <div className="bg-[#050b18] border border-orange-500/50 rounded-2xl p-4 shadow-[0_0_25px_rgba(249,115,22,0.18)] flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400 block">
-                      {t("tb_drill_badge")} {(activeDrillIdx ?? 0) + 1}/{BOARD_DRILLS.length}
-                    </span>
-                    <h4 className="text-sm sm:text-base font-black text-white">
-                      {t(activeDrill.titleKey)}
-                    </h4>
-                  </div>
+          {isProUser && activeMode === "drill" && (
+            <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
+              {/* Kategorie-Auswahl: Alle | Standard | Playbook */}
+              <div className="bg-[#050b18] border border-slate-800 rounded-xl p-1 grid grid-cols-3 gap-1">
+                {(
+                  [
+                    {
+                      id: "all" as DrillCategory,
+                      label: `${t("tb_drill_cat_all")} (${standardDrills.length + playbookDrills.length})`,
+                    },
+                    {
+                      id: "standard" as DrillCategory,
+                      label: `${t("tb_drill_cat_standard")} (${standardDrills.length})`,
+                    },
+                    {
+                      id: "playbook" as DrillCategory,
+                      label: `${t("tb_drill_cat_playbook")} (${playbookDrills.length})`,
+                    },
+                  ]
+                ).map((cat) => (
                   <button
-                    onClick={() => {
-                      setActiveDrillIdx(null);
-                      setDrillResult(null);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-400 hover:text-white"
+                    key={cat.id}
+                    onClick={() => handleSelectDrillCategory(cat.id)}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all truncate ${
+                      drillCategory === cat.id
+                        ? "bg-orange-500/25 border border-orange-400/70 text-orange-300"
+                        : "text-slate-400 hover:text-white border border-transparent"
+                    }`}
                   >
-                    ✕
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {!activeDrill ? (
+                <div className="bg-[#050b18] border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center gap-3">
+                  <span className="text-3xl">📘</span>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                    {t("tb_drill_empty_pb_title")}
+                  </h4>
+                  <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                    {t("tb_drill_empty_pb_desc")}
+                  </p>
+                  <button
+                    onClick={switchToStudioForNewDrill}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black text-xs uppercase tracking-wider transition-all"
+                  >
+                    {t("tb_drill_create_in_studio")}
                   </button>
                 </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {t(activeDrill.promptKey)}
-                </p>
-
-                {drillResult ? (
-                  <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between">
+              ) : (
+                <div className="bg-[#050b18] border border-orange-500/50 rounded-2xl p-4 shadow-[0_0_25px_rgba(249,115,22,0.18)] flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <span
-                        className={`text-xs font-black uppercase tracking-wider ${
-                          drillResult.passed ? "text-emerald-400" : "text-amber-400"
+                        className={`text-[9px] font-black uppercase tracking-[0.2em] block ${
+                          activeDrill.source === "playbook" ? "text-cyan-400" : "text-orange-400"
                         }`}
                       >
-                        {drillResult.passed ? t("tb_drill_passed") : t("tb_drill_failed")}
+                        {activeDrill.source === "playbook"
+                          ? t("tb_drill_custom_badge")
+                          : t("tb_drill_badge")}{" "}
+                        {safeDrillIdx + 1}/{filteredDrills.length}
                       </span>
-                      <span className="text-sm font-black text-white">{drillResult.scorePct}%</span>
+                      <h4 className="text-sm sm:text-base font-black text-white truncate">
+                        {activeDrill.title}
+                      </h4>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                      {drillResult.checks.map((c, idx) => (
-                        <div
-                          key={idx}
-                          className={`px-2.5 py-1.5 rounded-lg border font-bold ${
-                            c.ok
-                              ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-                              : "bg-red-950/40 border-red-500/40 text-red-300"
+                    {filteredDrills.length > 1 && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleStepDrill(-1)}
+                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
+                        >
+                          ←
+                        </button>
+                        <button
+                          onClick={() => handleStepDrill(1)}
+                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
+                        >
+                          →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">{activeDrill.prompt}</p>
+
+                  {drillResult ? (
+                    <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`text-xs font-black uppercase tracking-wider ${
+                            drillResult.passed ? "text-emerald-400" : "text-amber-400"
                           }`}
                         >
-                          {c.ok ? "✓" : "✗"} {c.label}
-                        </div>
-                      ))}
-                    </div>
+                          {drillResult.passed ? t("tb_drill_passed") : t("tb_drill_failed")}
+                        </span>
+                        <span className="text-sm font-black text-white">{drillResult.scorePct}%</span>
+                      </div>
 
-                    <p className="text-[11px] text-slate-400 leading-snug pt-1 border-t border-slate-800/80">
-                      💡 {t(activeDrill.explKey)}
-                    </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                        {drillResult.checks.map((c, idx) => (
+                          <div
+                            key={idx}
+                            className={`px-2.5 py-1.5 rounded-lg border font-bold ${
+                              c.ok
+                                ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                                : "bg-red-950/40 border-red-500/40 text-red-300"
+                            }`}
+                          >
+                            {c.ok ? "✓" : "✗"} {c.label}
+                          </div>
+                        ))}
+                      </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => startBoardDrill(((activeDrillIdx ?? 0) + 1) % BOARD_DRILLS.length)}
-                        className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-[11px] uppercase tracking-wider"
-                      >
-                        {t("tb_drill_next_btn")}
-                      </button>
-                      {!drillResult.passed && (
+                      <p className="text-[11px] text-slate-400 leading-snug pt-1 border-t border-slate-800/80">
+                        💡 {activeDrill.explanation}
+                      </p>
+
+                      <div className="flex flex-wrap gap-2">
+                        {activeDrill.solutionItems && (
+                          <button
+                            onClick={() => setShowDrillSolution((prev) => !prev)}
+                            className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                              showDrillSolution
+                                ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
+                                : "bg-slate-900 border-slate-700 text-slate-300 hover:text-white"
+                            }`}
+                          >
+                            {showDrillSolution ? t("tb_drill_hide_sol") : t("tb_drill_show_sol")}
+                          </button>
+                        )}
                         <button
-                          onClick={() => setDrillResult(null)}
-                          className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-200 font-black text-[11px] uppercase tracking-wider"
+                          onClick={() => handleStepDrill(1)}
+                          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-[11px] uppercase tracking-wider"
                         >
-                          {t("tb_drill_retry_btn")}
+                          {t("tb_drill_next_btn")}
                         </button>
-                      )}
+                        {!drillResult.passed && (
+                          <button
+                            onClick={() => {
+                              setDrillResult(null);
+                              setShowDrillSolution(false);
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-200 font-black text-[11px] uppercase tracking-wider"
+                          >
+                            {t("tb_drill_retry_btn")}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={evaluateActiveDrill}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-black text-xs uppercase tracking-widest transition-all"
-                  >
-                    {t("tb_drill_check_btn")}
-                  </button>
-                )}
-              </div>
+                  ) : (
+                    <button
+                      onClick={evaluateActiveDrill}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-black text-xs uppercase tracking-widest transition-all"
+                    >
+                      {t("tb_drill_check_btn")}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* --- DARK-MODE SZENARIO- & FILTER-PANEL --- */}
-          {showTactics && !activeDrill && (
+          {/* --- DARK-MODE SZENARIO- & FILTER-PANEL (NICHT IM DRILL-TAB) --- */}
+          {showTactics && activeMode !== "drill" && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-3">
               <div className="p-3.5 sm:p-4 bg-[#050b18]/95 border border-slate-800 rounded-xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -3108,7 +3458,7 @@ export default function TacticsBoard() {
                   ? "border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]"
                   : isPlaying
                   ? "border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-                  : activeDrill
+                  : activeMode === "drill"
                   ? "border-orange-500/70 shadow-[0_0_20px_rgba(249,115,22,0.3)]"
                   : activeMode === "studio"
                   ? "border-pink-500/60"
@@ -3259,7 +3609,7 @@ export default function TacticsBoard() {
                       </g>
                     )}
 
-                    {effectiveFilters.showAttackArc && (
+                    {effectiveFilters.showAttackArc && activeMode !== "drill" && (
                       <>
                         <path
                           d={`M ${getArcX(20, true)} 20 Q ${getControlPointX(true)} ${V_HEIGHT / 2} ${getArcX(V_HEIGHT - 20, true)} ${V_HEIGHT - 20}`}
@@ -3375,7 +3725,7 @@ export default function TacticsBoard() {
                       />
                     )}
 
-                    {analysis && effectiveFilters.showBallVector && !activeDrill && (
+                    {analysis && effectiveFilters.showBallVector && activeMode !== "drill" && (
                       <>
                         <line
                           x1={items.find((i) => i.id === "ball")?.x || 0}
@@ -3396,7 +3746,7 @@ export default function TacticsBoard() {
 
                     {analysis &&
                       effectiveFilters.showMovements &&
-                      !activeDrill &&
+                      activeMode !== "drill" &&
                       items
                         .filter((item) => item.isPlayer)
                         .map((player) => {
@@ -3422,6 +3772,57 @@ export default function TacticsBoard() {
                         })}
                   </>
                 )}
+
+                {/* MUSTERLÖSUNGS-OVERLAY FÜR PLAYBOOK-DRILLS (Ziel-Ringe für A1 & A2) */}
+                {isProUser &&
+                  activeMode === "drill" &&
+                  showDrillSolution &&
+                  activeDrill?.solutionItems && (
+                    <g style={{ pointerEvents: "none" }}>
+                      {["a1", "a2"].map((pid) => {
+                        const sol = activeDrill.solutionItems?.find((i) => i.id === pid);
+                        const cur = items.find((i) => i.id === pid);
+                        if (!sol) return null;
+                        return (
+                          <g key={`sol-${pid}`}>
+                            {cur && Math.hypot(sol.x - cur.x, sol.y - cur.y) > 20 && (
+                              <line
+                                x1={cur.x}
+                                y1={cur.y}
+                                x2={sol.x}
+                                y2={sol.y}
+                                stroke="#34d399"
+                                strokeWidth="3"
+                                strokeDasharray="6 4"
+                                opacity="0.75"
+                              />
+                            )}
+                            <circle
+                              cx={sol.x}
+                              cy={sol.y}
+                              r="22"
+                              fill="rgba(52, 211, 153, 0.2)"
+                              stroke="#34d399"
+                              strokeWidth="3"
+                              strokeDasharray="5 3"
+                            />
+                            <text
+                              x={sol.x}
+                              y={sol.y}
+                              transform={`rotate(90 ${sol.x} ${sol.y})`}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fill="#a7f3d0"
+                              fontSize="10"
+                              fontWeight="bold"
+                            >
+                              {sol.label}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </g>
+                  )}
 
                 {/* EINGEZEICHNETE TACTICAL STUDIO PFEILE & ZONEN (Gerade, Lob-Kurve, Scheibe & Zone) */}
                 {isProUser &&
@@ -3510,7 +3911,7 @@ export default function TacticsBoard() {
                   const baseR = item.isPlayer ? 16 : 10 * ballScale;
                   const r = isDragging ? baseR * 1.15 : baseR;
                   const isActivePlayer = showTactics && analysis && analysis.activePlayerId === item.id;
-                  const isDrillMovable = !activeDrill || item.id.startsWith("a");
+                  const isDrillMovable = activeMode !== "drill" || item.id.startsWith("a");
 
                   return (
                     <g
@@ -3523,7 +3924,6 @@ export default function TacticsBoard() {
                       onTouchStart={(e) => onPointerDown(item.id, e)}
                     >
                       <circle cx={item.x} cy={item.y} r={baseR + 12} fill="transparent" />
-                      {/* Dezenter Bodenschatten beim hohen Lob */}
                       {!item.isPlayer && ballScale > 1.08 && (
                         <circle cx={item.x - 6} cy={item.y + 6} r={9} fill="rgba(0,0,0,0.32)" />
                       )}
@@ -3567,7 +3967,7 @@ export default function TacticsBoard() {
               </g>
             </svg>
 
-            {showTactics && analysis && !activeDrill && (
+            {showTactics && analysis && activeMode !== "drill" && (
               <div
                 className={`mt-4 p-4 sm:p-5 rounded-2xl text-white shadow-2xl border w-full max-w-[600px] transition-all duration-300 ${analysis.color}`}
               >
@@ -3691,40 +4091,16 @@ export default function TacticsBoard() {
               {t("tb_btn_reset_pos")}
             </button>
 
-            <button
-              onClick={() => {
-                if (activeDrill) {
-                  setActiveDrillIdx(null);
-                  setDrillResult(null);
-                }
-                setShowTactics(!showTactics);
-              }}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all shadow-md ${
-                showTactics && !activeDrill
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                  : "bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700"
-              }`}
-            >
-              {showTactics ? t("tb_btn_analysis_off") : t("tb_btn_analysis_on")}
-            </button>
-
-            {isProUser && activeMode === "tactics" && (
+            {activeMode !== "drill" && (
               <button
-                onClick={() => {
-                  if (activeDrill) {
-                    setActiveDrillIdx(null);
-                    setDrillResult(null);
-                  } else {
-                    startBoardDrill(0);
-                  }
-                }}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all shadow-md ${
-                  activeDrill
-                    ? "bg-orange-500 text-black hover:bg-orange-400"
-                    : "bg-gradient-to-r from-orange-600 to-amber-500 text-black hover:from-orange-500 hover:to-amber-400"
+                onClick={() => setShowTactics(!showTactics)}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all shadow-md ${
+                  showTactics
+                    ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                    : "bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700"
                 }`}
               >
-                {activeDrill ? t("tb_btn_exit_drill") : t("tb_btn_coach_drill")}
+                {showTactics ? t("tb_btn_analysis_off") : t("tb_btn_analysis_on")}
               </button>
             )}
           </div>
