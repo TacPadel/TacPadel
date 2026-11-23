@@ -1254,6 +1254,12 @@ export const TRANSLATIONS = {
     tb_pb_drill_badge: "Drill",
     coach_backfill_badge: "📊 Basis-Kalibrierung aktiv",
     coach_backfill_desc: "Aus deinen bisherigen Matches & Leveln importiert – neue Runden ergänzen Schlag- & Wackler-Details.",
+    game_pb_save_btn: "📘 Ins Playbook",
+    game_pb_saved_btn: "✓ Im Playbook",
+    game_pb_win_prefix: "Punkt",
+    game_pb_loss_prefix: "Lernpunkt",
+    game_pb_drill_prompt_prefix: "Gegner spielt",
+    game_pb_drill_prompt_suffix: "– bringe A1 & A2 in die optimale Abdeckung!",
   },
 
   en: {
@@ -2340,6 +2346,12 @@ export const TRANSLATIONS = {
     tb_pb_drill_badge: "Drill",
     coach_backfill_badge: "📊 Baseline Calibration Active",
     coach_backfill_desc: "Imported from your past matches & levels – new rounds will add shot & wobble details.",
+    game_pb_save_btn: "📘 Save to Playbook",
+    game_pb_saved_btn: "✓ Saved",
+    game_pb_win_prefix: "Point",
+    game_pb_loss_prefix: "Review",
+    game_pb_drill_prompt_prefix: "Opponent plays",
+    game_pb_drill_prompt_suffix: "– move A1 & A2 into optimal coverage!",
   },
 
   es: {
@@ -3426,6 +3438,12 @@ export const TRANSLATIONS = {
     tb_pb_drill_badge: "Drill",
     coach_backfill_badge: "📊 Calibración Base Activa",
     coach_backfill_desc: "Importado de tus partidos y niveles anteriores: las nuevas rondas añadirán detalles de golpes y fallos.",
+    game_pb_save_btn: "📘 Al Playbook",
+    game_pb_saved_btn: "✓ Guardado",
+    game_pb_win_prefix: "Punto",
+    game_pb_loss_prefix: "Repaso",
+    game_pb_drill_prompt_prefix: "El rival juega",
+    game_pb_drill_prompt_suffix: "– ¡coloca a A1 y A2 en la cobertura óptima!",
   },
 } as const;
 
