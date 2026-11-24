@@ -878,7 +878,7 @@ function TrajectoryView3D() {
 // ==========================================
 export default function TacticsBoard() {
   const { lang, t } = useTranslation();
-  const { userId: boardUserId, entitlements } = useEntitlements();
+  const { userId: boardUserId, entitlements, loading: entitlementsLoading } = useEntitlements();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -894,7 +894,17 @@ export default function TacticsBoard() {
   const lastTapRef = useRef<number>(0);
 
   // --- DYNAMISCHER HAUPTSCHALTER: 2D | [DRILL] | [STUDIO] | 3D ---
-  const [activeMode, setActiveMode] = useState<BoardMode>("tactics");
+  const [activeMode, setActiveMode] = useState<BoardMode>(() => {
+    try {
+      if (
+        sessionStorage.getItem("tacpadel_open_play_id") ||
+        sessionStorage.getItem("tacpadel_open_board_mode") === "studio"
+      ) {
+        return "studio";
+      }
+    } catch {}
+    return "tactics";
+  });
 
   // --- COACH-SCHWÄCHEN-POOL FÜR 2D-VORLAGEN ---
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
@@ -989,6 +999,7 @@ export default function TacticsBoard() {
 
   // Lädt Playbook, prüft Auto-Load aus dem Playbook Hub und holt Coach-Schwächen
   useEffect(() => {
+    if (entitlementsLoading) return;
     let active = true;
 
     async function loadBoardData() {
@@ -997,14 +1008,18 @@ export default function TacticsBoard() {
       setPlaybook(mergedPlaybook);
 
       let pendingPlayId: string | null = null;
+      let pendingMode: string | null = null;
       try {
         pendingPlayId = sessionStorage.getItem("tacpadel_open_play_id");
-        if (pendingPlayId) {
-          sessionStorage.removeItem("tacpadel_open_play_id");
-        }
+        pendingMode = sessionStorage.getItem("tacpadel_open_board_mode");
       } catch {}
 
       if (pendingPlayId) {
+        try {
+          sessionStorage.removeItem("tacpadel_open_play_id");
+          sessionStorage.removeItem("tacpadel_open_board_mode");
+        } catch {}
+
         const targetPlay = mergedPlaybook.find((p) => p.id === pendingPlayId);
         if (targetPlay) {
           applySavedPlayToBoard(targetPlay);
@@ -1013,6 +1028,16 @@ export default function TacticsBoard() {
             setActiveMode("studio");
             setIsPlaybookOpen(false);
           }
+        }
+      } else if (pendingMode === "studio") {
+        try {
+          sessionStorage.removeItem("tacpadel_open_board_mode");
+        } catch {}
+
+        if (entitlements.canAccessStudio) {
+          setShowTactics(false);
+          setActiveMode("studio");
+          setIsPlaybookOpen(false);
         }
       }
 
@@ -1045,6 +1070,7 @@ export default function TacticsBoard() {
     };
   }, [
     boardUserId,
+    entitlementsLoading,
     entitlements.canAccessStudio,
     entitlements.hasAdvancedBoardOverlays,
     applySavedPlayToBoard,
