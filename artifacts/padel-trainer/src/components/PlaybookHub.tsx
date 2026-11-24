@@ -6,6 +6,7 @@ import ScenarioCourt25 from "./ScenarioCourt25";
 import { SHOT_TYPES, TurnResult, evaluatePlayerShot } from "../engine/GameLogic";
 import { useTranslation, formatShotName } from "../lib/i18n";
 import { useEntitlements } from "../lib/entitlements";
+import { enrichPlayAsDrill } from "../lib/drillGenerator";
 import {
   SavedPlay,
   ReplayContext,
@@ -174,15 +175,27 @@ export default function PlaybookHub({
 
   const handleToggleDrill = (playId: string) => {
     if (!entitlements.canCreateCustomDrills) return;
-    const next = plays.map((p) =>
-      p.id === playId ? { ...p, isDrill: !p.isDrill, updatedAt: Date.now() } : p
-    );
+    let turnedOn = false;
+
+    const next = plays.map((p) => {
+      if (p.id !== playId) return p;
+      if (!p.isDrill) {
+        turnedOn = true;
+        return enrichPlayAsDrill(p, lang);
+      }
+      return { ...p, isDrill: false, updatedAt: Date.now() };
+    });
+
     const saved = savePlaybookList(
       userId,
       next,
       Math.max(next.length, entitlements.maxPlaybookSlots)
     );
     setPlays(saved);
+
+    if (turnedOn) {
+      showToast(t("pb_hub_drill_auto_toast"));
+    }
   };
 
   const handleDeletePlay = (playId: string) => {
