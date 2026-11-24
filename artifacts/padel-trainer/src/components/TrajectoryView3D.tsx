@@ -3,36 +3,40 @@ import ScenarioCourt4D from "./ScenarioCourt4D";
 import { useTranslation } from "../lib/i18n";
 import { V_WIDTH, V_HEIGHT } from "../lib/tacticsMath";
 import {
+  ATTACK_PRESETS,
   DEFENSE_PRESETS,
+  AttackShotType,
   DefenseShotType,
-  calculateGlassDefenseTrajectory,
+  LabMode,
+  LabShotType,
+  calculateLabTrajectory,
   evaluatePlayerDefensePosition,
 } from "../lib/glassPhysics";
 
 export default function TrajectoryView3D() {
   const { lang, t } = useTranslation();
 
-  const [labMode, setLabMode] = useState<"attack" | "defense">("attack");
+  const [labMode, setLabMode] = useState<LabMode>("attack");
 
   // --- ANGRIFFS-MODUS STATES ---
-  const [shotType, setShotType] = useState("BAJADA");
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-
-  const [playerPos, setPlayerPos] = useState({ x: 140, y: 260 });
-  const [targetPos, setTargetPos] = useState({ x: 620, y: 120 });
+  const [atkShotType, setAtkShotType] = useState<AttackShotType>(ATTACK_PRESETS[0].shotType);
+  const [atkPlayerPos, setAtkPlayerPos] = useState(ATTACK_PRESETS[0].playerPos);
+  const [atkTargetPos, setAtkTargetPos] = useState(ATTACK_PRESETS[0].targetPos);
+  const [atkActivePreset, setAtkActivePreset] = useState<string>(ATTACK_PRESETS[0].id);
 
   // --- SCHEIBENSPIEL-MODUS (VERTEIDIGUNG) STATES ---
-  const [defShotType, setDefShotType] = useState<DefenseShotType>("FLAT");
+  const [defShotType, setDefShotType] = useState<DefenseShotType>(DEFENSE_PRESETS[2].shotType);
   const [defOppPos, setDefOppPos] = useState(DEFENSE_PRESETS[2].oppPos);
   const [defBouncePos, setDefBouncePos] = useState(DEFENSE_PRESETS[2].bouncePos);
   const [defPlayerPos, setDefPlayerPos] = useState(DEFENSE_PRESETS[2].playerPos);
   const [defActivePreset, setDefActivePreset] = useState<string>(DEFENSE_PRESETS[2].id);
-  const [defSpeed, setDefSpeed] = useState<0.4 | 1>(0.4);
   const [defQuizMode, setDefQuizMode] = useState<boolean>(false);
-  const [defIsPlaying, setDefIsPlaying] = useState<boolean>(false);
-  const [defHasFinished, setDefHasFinished] = useState<boolean>(false);
-  const [defReplayKey, setDefReplayKey] = useState<number>(0);
+
+  // --- GEMEINSAME SIMULATIONS-STEUERUNG ---
+  const [playbackSpeed, setPlaybackSpeed] = useState<0.4 | 1>(0.4);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [hasFinished, setHasFinished] = useState<boolean>(false);
+  const [replayKey, setReplayKey] = useState<number>(0);
 
   const [activeDrag, setActiveDrag] = useState<"player" | "target" | "opp" | null>(null);
 
@@ -53,22 +57,54 @@ export default function TrajectoryView3D() {
     y: ((meterX + 5) / 10) * V_HEIGHT,
   });
 
-  const playerCoords = getMetersFromXY(playerPos.x, playerPos.y);
-  const targetCoords = getMetersFromXY(targetPos.x, targetPos.y);
+  const atkPlayerCoords = getMetersFromXY(atkPlayerPos.x, atkPlayerPos.y);
+  const atkTargetCoords = getMetersFromXY(atkTargetPos.x, atkTargetPos.y);
 
   const defOppCoords = getMetersFromXY(defOppPos.x, defOppPos.y);
   const defBounceCoords = getMetersFromXY(defBouncePos.x, defBouncePos.y);
   const defPlayerCoords = getMetersFromXY(defPlayerPos.x, defPlayerPos.y);
 
-  // Live-Berechnung der 3D-Scheibenphysik
-  const defenseSim = useMemo(
-    () => calculateGlassDefenseTrajectory(defOppCoords, defBounceCoords, defShotType, lang),
-    [defOppCoords.x, defOppCoords.z, defBounceCoords.x, defBounceCoords.z, defShotType, lang]
-  );
+  const activeShotType: LabShotType = labMode === "attack" ? atkShotType : defShotType;
+
+  // Live-Berechnung der einheitlichen 3D-Physik für Angriff & Verteidigung
+  const activeSimulation = useMemo(() => {
+    if (labMode === "attack") {
+      return calculateLabTrajectory({
+        mode: "attack",
+        startPos: atkPlayerCoords,
+        bouncePos: atkTargetCoords,
+        shotType: atkShotType,
+        lang,
+      });
+    }
+    return calculateLabTrajectory({
+      mode: "defense",
+      startPos: defOppCoords,
+      bouncePos: defBounceCoords,
+      shotType: defShotType,
+      lang,
+    });
+  }, [
+    labMode,
+    atkPlayerCoords.x,
+    atkPlayerCoords.z,
+    atkTargetCoords.x,
+    atkTargetCoords.z,
+    atkShotType,
+    defOppCoords.x,
+    defOppCoords.z,
+    defBounceCoords.x,
+    defBounceCoords.z,
+    defShotType,
+    lang,
+  ]);
 
   const defenseEval = useMemo(
-    () => evaluatePlayerDefensePosition(defPlayerCoords, defenseSim, lang),
-    [defPlayerCoords.x, defPlayerCoords.z, defenseSim, lang]
+    () =>
+      labMode === "defense"
+        ? evaluatePlayerDefensePosition(defPlayerCoords, activeSimulation, lang)
+        : null,
+    [labMode, defPlayerCoords.x, defPlayerCoords.z, activeSimulation, lang]
   );
 
   const getPoint = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -119,15 +155,16 @@ export default function TrajectoryView3D() {
       const pt = getPoint(e);
 
       if (labMode === "attack") {
+        setAtkActivePreset("");
         if (activeDrag === "player") {
-          setPlayerPos({
-            x: Math.max(16, Math.min(NET_X - 16, pt.x)),
-            y: Math.max(16, Math.min(V_HEIGHT - 16, pt.y)),
+          setAtkPlayerPos({
+            x: Math.max(18, Math.min(NET_X - 18, pt.x)),
+            y: Math.max(18, Math.min(V_HEIGHT - 18, pt.y)),
           });
         } else if (activeDrag === "target") {
-          setTargetPos({
-            x: Math.max(NET_X + 16, Math.min(V_WIDTH - 16, pt.x)),
-            y: Math.max(16, Math.min(V_HEIGHT - 16, pt.y)),
+          setAtkTargetPos({
+            x: Math.max(NET_X + 20, Math.min(V_WIDTH - 18, pt.x)),
+            y: Math.max(18, Math.min(V_HEIGHT - 18, pt.y)),
           });
         }
       } else {
@@ -155,14 +192,13 @@ export default function TrajectoryView3D() {
 
   const onPointerUp = useCallback(() => setActiveDrag(null), []);
 
-  const handleSimulateAttack = () => {
-    setIsSimulating(true);
-    setTimeout(() => setHasSubmitted(true), 1500);
-  };
-
-  const handleBackAttack = () => {
-    setHasSubmitted(false);
-    setIsSimulating(false);
+  const handleApplyAttackPreset = (presetId: string) => {
+    const preset = ATTACK_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setAtkActivePreset(preset.id);
+    setAtkShotType(preset.shotType);
+    setAtkPlayerPos(preset.playerPos);
+    setAtkTargetPos(preset.targetPos);
   };
 
   const handleApplyDefensePreset = (presetId: string) => {
@@ -175,55 +211,115 @@ export default function TrajectoryView3D() {
     setDefPlayerPos(preset.playerPos);
   };
 
-  const handleStartDefenseSim = (overrideShot?: DefenseShotType) => {
-    if (overrideShot) setDefShotType(overrideShot);
-    setDefHasFinished(false);
-    setDefIsPlaying(true);
-    setDefReplayKey((k) => k + 1);
+  const handleStartSim = (overrideShot?: LabShotType) => {
+    if (overrideShot) {
+      if (labMode === "attack") setAtkShotType(overrideShot as AttackShotType);
+      else setDefShotType(overrideShot as DefenseShotType);
+    }
+    setHasFinished(false);
+    setIsPlaying(true);
+    setReplayKey((k) => k + 1);
   };
 
-  const handleBackToDefensePlan = () => {
-    setDefIsPlaying(false);
-    setDefHasFinished(false);
+  const handleBackToPlan = () => {
+    setIsPlaying(false);
+    setHasFinished(false);
   };
 
-  const isDefenseSimView = labMode === "defense" && (defIsPlaying || defHasFinished);
-  const showHudPanel = labMode === "attack" ? !isSimulating : !isDefenseSimView;
+  const isSimView = isPlaying || hasFinished;
+  const hidePreview = labMode === "defense" && defQuizMode;
 
-  // 2D-Preview-Polylinie für den Scheiben-Rebound im Mini-Radar
-  const defenseRadarPath = useMemo(() => {
-    if (labMode !== "defense" || defQuizMode) return "";
+  // 2D-Preview-Polylinie im Mini-Radar (für Angriff & Verteidigung)
+  const radarPreviewPath = useMemo(() => {
+    if (hidePreview) return "";
     const pts: string[] = [];
-    const opp2d = getXYFromMeters(defOppCoords.x, defOppCoords.z);
-    const b2d = getXYFromMeters(defBounceCoords.x, defBounceCoords.z);
-    pts.push(`${opp2d.x},${opp2d.y}`, `${b2d.x},${b2d.y}`);
-    defenseSim.glassHits.forEach((hit) => {
+    const start2d =
+      labMode === "attack"
+        ? getXYFromMeters(atkPlayerCoords.x, atkPlayerCoords.z)
+        : getXYFromMeters(defOppCoords.x, defOppCoords.z);
+    const bounce2d = getXYFromMeters(activeSimulation.firstBounce.x, activeSimulation.firstBounce.z);
+    pts.push(`${start2d.x},${start2d.y}`, `${bounce2d.x},${bounce2d.y}`);
+
+    activeSimulation.glassHits.forEach((hit) => {
       const h2d = getXYFromMeters(hit.point.x, hit.point.z);
       pts.push(`${h2d.x},${h2d.y}`);
     });
-    const sw2d = getXYFromMeters(defenseSim.sweetspot.x, defenseSim.sweetspot.z);
-    pts.push(`${sw2d.x},${sw2d.y}`);
-    return pts.join(" ");
-  }, [labMode, defQuizMode, defOppCoords.x, defOppCoords.z, defBounceCoords.x, defBounceCoords.z, defenseSim]);
 
-  const defShotOptions: { id: DefenseShotType; label: string }[] = [
+    const endPt = activeSimulation.exitedCourt
+      ? activeSimulation.samples[activeSimulation.samples.length - 1]?.pos || activeSimulation.sweetspot
+      : activeSimulation.sweetspot;
+    const end2d = getXYFromMeters(endPt.x, endPt.z);
+    pts.push(`${end2d.x},${end2d.y}`);
+    return pts.join(" ");
+  }, [
+    hidePreview,
+    labMode,
+    atkPlayerCoords.x,
+    atkPlayerCoords.z,
+    defOppCoords.x,
+    defOppCoords.z,
+    activeSimulation,
+  ]);
+
+  const atkShotOptions: { id: AttackShotType; short: string; label: string }[] = [
+    {
+      id: "VIBORA",
+      short: "VÍBORA",
+      label: lang === "en" ? "🐍 Víbora (Slice drops)" : lang === "es" ? "🐍 Víbora (cae)" : "🐍 Víbora (Slice fällt ab)",
+    },
+    {
+      id: "BAJADA",
+      short: "BAJADA",
+      label: lang === "en" ? "🌀 Bajada (Topspin kicks)" : lang === "es" ? "🌀 Bajada (liftada)" : "🌀 Bajada (Topspin)",
+    },
+    {
+      id: "SMASH_POR3",
+      short: "POR 3",
+      label: lang === "en" ? "💥 Smash Por 3 (Kick)" : lang === "es" ? "💥 Remate x3 (Kick)" : "💥 Smash Por 3 (Kick)",
+    },
+    {
+      id: "VOLLEY",
+      short: "VOLLEY",
+      label: lang === "en" ? "⚡ Volley (Flat/Fence)" : lang === "es" ? "⚡ Volea (Reja)" : "⚡ Volley (Direkt/Gitter)",
+    },
+    {
+      id: "LOB",
+      short: "LOB",
+      label: lang === "en" ? "🎈 Deep Lob" : lang === "es" ? "🎈 Globo" : "🎈 Tiefer Lob",
+    },
+  ];
+
+  const defShotOptions: { id: DefenseShotType; short: string; label: string }[] = [
     {
       id: "SLICE",
+      short: "SLICE",
       label: lang === "en" ? "🔪 Slice (drops)" : lang === "es" ? "🔪 Cortado (cae)" : "🔪 Slice (fällt ab)",
     },
     {
       id: "FLAT",
+      short: "FLAT",
       label: lang === "en" ? "🎾 Flat (neutral)" : lang === "es" ? "🎾 Plano (neutro)" : "🎾 Glatt (neutral)",
     },
     {
       id: "TOPSPIN",
+      short: "TOPSPIN",
       label: lang === "en" ? "🌀 Topspin (kicks)" : lang === "es" ? "🌀 Liftado (sale)" : "🌀 Topspin (springt raus)",
     },
     {
       id: "LOB",
+      short: "LOB",
       label: lang === "en" ? "🎈 Deep Lob" : lang === "es" ? "🎈 Globo" : "🎈 Tiefer Lob",
     },
   ];
+
+  const ratingBadgeClass =
+    activeSimulation.attackRating === "winner"
+      ? "bg-emerald-950/60 border-emerald-400/60 text-emerald-300"
+      : activeSimulation.attackRating === "pressure"
+      ? "bg-cyan-950/60 border-cyan-400/60 text-cyan-300"
+      : activeSimulation.attackRating === "risky"
+      ? "bg-amber-950/60 border-amber-400/60 text-amber-300"
+      : "bg-slate-900/80 border-slate-700 text-slate-300";
 
   return (
     <div className="w-full max-w-5xl flex-1 flex flex-col h-full px-2 mb-4">
@@ -231,39 +327,34 @@ export default function TrajectoryView3D() {
         <div className="absolute inset-0 pointer-events-auto">
           <ScenarioCourt4D
             level="Schlagrichtung"
-            isPreparingShot={labMode === "attack" && isSimulating && !hasSubmitted}
             positions={{
-              you: `EXACT_${playerCoords.x}_${playerCoords.z}`,
+              you: "C2",
               partner: "EXACT_1000_1000",
               opp1: "EXACT_1000_1000",
               opp2: "EXACT_1000_1000",
-              ball: { side: "left", zone: `EXACT_${playerCoords.x}_${playerCoords.z}`, type: shotType },
+              ball: { side: "left", zone: "C2", type: activeShotType },
             }}
-            selectedZone={`EXACT_${targetCoords.x}_${targetCoords.z}`}
-            exactCoords={labMode === "attack" ? { you: playerCoords, target: targetCoords } : undefined}
-            defenseLab={
-              labMode === "defense"
-                ? {
-                    active: true,
-                    isPlaying: defIsPlaying,
-                    hasFinished: defHasFinished,
-                    playbackSpeed: defSpeed,
-                    replayKey: defReplayKey,
-                    showPreviewGuide: !defQuizMode,
-                    shotType: defShotType,
-                    oppPos: defOppCoords,
-                    playerPos: defPlayerCoords,
-                    simulation: defenseSim,
-                    onFinished: () => {
-                      setDefIsPlaying(false);
-                      setDefHasFinished(true);
-                    },
-                  }
-                : undefined
-            }
+            selectedZone={null}
+            trajectoryLab={{
+              active: true,
+              mode: labMode,
+              isPlaying,
+              hasFinished,
+              playbackSpeed,
+              replayKey,
+              showPreviewGuide: !hidePreview,
+              shotType: activeShotType,
+              playerPos: labMode === "attack" ? atkPlayerCoords : defPlayerCoords,
+              oppPos: labMode === "defense" ? defOppCoords : undefined,
+              simulation: activeSimulation,
+              onFinished: () => {
+                setIsPlaying(false);
+                setHasFinished(true);
+              },
+            }}
             hidePlayerLabels={true}
-            hasSubmitted={labMode === "attack" && hasSubmitted}
-            bestZones={[`EXACT_${targetCoords.x}_${targetCoords.z}`]}
+            hasSubmitted={false}
+            bestZones={[]}
             onZoneClick={() => {}}
             activeChar="you"
             hitterId="you"
@@ -273,28 +364,28 @@ export default function TrajectoryView3D() {
         </div>
 
         {/* PLANUNGS-HUD (ANGRIFF ODER SCHEIBENSPIEL) */}
-        {showHudPanel && (
+        {!isSimView && (
           <div className="absolute top-2 left-2 z-10 w-[calc(100%-16px)] max-w-[310px] sm:max-w-none sm:w-80 bg-black/85 sm:bg-black/75 backdrop-blur-xl border border-white/10 rounded-2xl p-3 sm:p-3.5 shadow-2xl flex flex-col gap-2 pointer-events-auto max-h-[calc(100%-16px)] overflow-y-auto">
             {/* Modus-Umschalter: Angriff vs. Scheibenspiel */}
             <div className="grid grid-cols-2 gap-1 bg-slate-950/90 p-1 rounded-xl border border-slate-800">
               <button
                 onClick={() => {
-                  setDefIsPlaying(false);
-                  setDefHasFinished(false);
+                  setIsPlaying(false);
+                  setHasFinished(false);
                   setLabMode("attack");
                 }}
                 className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
                   labMode === "attack"
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-gradient-to-r from-orange-600 to-amber-500 text-black shadow-md"
+                    : "text-orange-300 hover:text-white"
                 }`}
               >
-                {lang === "en" ? "⚔️ Attack" : lang === "es" ? "⚔️ Ataque" : "⚔️ Angriff"}
+                {lang === "en" ? "⚔️ Attack Lab" : lang === "es" ? "⚔️ Ataque" : "⚔️ Angriff"}
               </button>
               <button
                 onClick={() => {
-                  setHasSubmitted(false);
-                  setIsSimulating(false);
+                  setIsPlaying(false);
+                  setHasFinished(false);
                   setLabMode("defense");
                 }}
                 className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
@@ -308,11 +399,29 @@ export default function TrajectoryView3D() {
             </div>
 
             {labMode === "attack" ? (
-              <div>
-                <span className="text-[#5cd6ff] text-[9px] font-black uppercase tracking-widest block">
-                  {t("tb_radar_badge")}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-orange-400 text-[9px] font-black uppercase tracking-widest">
+                  {lang === "en"
+                    ? "3D ATTACK & POR-3 LAB"
+                    : lang === "es"
+                    ? "LABORATORIO 3D DE ATAQUE Y X3"
+                    : "3D ANGRIFFS- & POR-3-LABOR"}
                 </span>
-                <h3 className="text-white text-xs sm:text-sm font-bold">{t("tb_radar_title")}</h3>
+                <div className="grid grid-cols-2 gap-1">
+                  {ATTACK_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => handleApplyAttackPreset(preset.id)}
+                      className={`py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all truncate ${
+                        atkActivePreset === preset.id
+                          ? "bg-orange-500/25 border-orange-400 text-orange-200"
+                          : "bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {preset.labels[lang] || preset.labels.de}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -332,11 +441,10 @@ export default function TrajectoryView3D() {
                         : "bg-slate-900 border-slate-700 text-slate-400 hover:text-white"
                     }`}
                   >
-                    {lang === "en" ? "🎯 Test" : lang === "es" ? "🎯 Test" : "🎯 Test"}
+                    🎯 Test
                   </button>
                 </div>
 
-                {/* 4 Scheiben-Presets */}
                 <div className="grid grid-cols-2 gap-1">
                   {DEFENSE_PRESETS.map((preset) => (
                     <button
@@ -376,45 +484,57 @@ export default function TrajectoryView3D() {
                   <line x1={NET_X - 6.95 * 38} y1={V_HEIGHT / 2} x2={NET_X} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
                   <line x1={NET_X} y1={V_HEIGHT / 2} x2={NET_X + 6.95 * 38} y2={V_HEIGHT / 2} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
 
+                  {/* Glas-Highlight auf der Ziel-Hälfte */}
+                  {labMode === "attack" ? (
+                    <polyline
+                      points={`600,10 750,10 750,${V_HEIGHT - 10} 600,${V_HEIGHT - 10}`}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth={5}
+                      opacity={0.75}
+                    />
+                  ) : (
+                    <polyline
+                      points={`160,10 10,10 10,${V_HEIGHT - 10} 160,${V_HEIGHT - 10}`}
+                      fill="none"
+                      stroke="#22d3ee"
+                      strokeWidth={5}
+                      opacity={0.75}
+                    />
+                  )}
+
+                  {/* Live-Rebound-Vorschau (inkl. Orange bei Por 3/4) */}
+                  {radarPreviewPath && (
+                    <polyline
+                      points={radarPreviewPath}
+                      fill="none"
+                      stroke={activeSimulation.exitedCourt ? "#f97316" : "#c084fc"}
+                      strokeWidth="5"
+                      strokeDasharray="8 5"
+                      opacity={0.85}
+                    />
+                  )}
+
                   {labMode === "attack" ? (
                     <>
-                      <line x1={playerPos.x} y1={playerPos.y} x2={targetPos.x} y2={targetPos.y} stroke="#f1c40f" strokeWidth="6" strokeDasharray="8 6" opacity={0.8} />
+                      {/* 1. Aufprall-Ziel (Gelb/Orange) */}
                       <g style={{ cursor: activeDrag === "target" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("target", e)} onTouchStart={(e) => onPointerDown("target", e)}>
-                        <circle cx={targetPos.x} cy={targetPos.y} r={40} fill="transparent" />
-                        <circle cx={targetPos.x} cy={targetPos.y} r="16" fill="none" stroke="#f1c40f" strokeWidth="3" className="animate-pulse" />
-                        <circle cx={targetPos.x} cy={targetPos.y} r="6" fill="#f1c40f" />
+                        <circle cx={atkTargetPos.x} cy={atkTargetPos.y} r={42} fill="transparent" />
+                        <circle cx={atkTargetPos.x} cy={atkTargetPos.y} r="16" fill="none" stroke="#facc15" strokeWidth="3.5" className="animate-pulse" />
+                        <circle cx={atkTargetPos.x} cy={atkTargetPos.y} r="6" fill="#facc15" />
                       </g>
+
+                      {/* Deine Figur (Rot) */}
                       <g style={{ cursor: activeDrag === "player" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("player", e)} onTouchStart={(e) => onPointerDown("player", e)}>
-                        <circle cx={playerPos.x} cy={playerPos.y} r={40} fill="transparent" />
-                        <circle cx={playerPos.x} cy={playerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
-                        <text x={playerPos.x} y={playerPos.y} transform={`rotate(90 ${playerPos.x} ${playerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>
+                        <circle cx={atkPlayerPos.x} cy={atkPlayerPos.y} r={42} fill="transparent" />
+                        <circle cx={atkPlayerPos.x} cy={atkPlayerPos.y} r={activeDrag === "player" ? 22 : 18} fill="#e74c3c" stroke="#ffffff" strokeWidth="3" />
+                        <text x={atkPlayerPos.x} y={atkPlayerPos.y} transform={`rotate(90 ${atkPlayerPos.x} ${atkPlayerPos.y})`} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={12} fontWeight="bold" style={{ pointerEvents: "none" }}>
                           {t("tb_radar_you")}
                         </text>
                       </g>
                     </>
                   ) : (
                     <>
-                      {/* Glas-Highlight auf deiner Seite (Rückscheibe + hintere Seitenscheiben) */}
-                      <polyline
-                        points={`160,10 10,10 10,${V_HEIGHT - 10} 160,${V_HEIGHT - 10}`}
-                        fill="none"
-                        stroke="#22d3ee"
-                        strokeWidth={5}
-                        opacity={0.75}
-                      />
-
-                      {/* Live-Rebound-Vorschau (im Quiz-Modus versteckt) */}
-                      {defenseRadarPath && (
-                        <polyline
-                          points={defenseRadarPath}
-                          fill="none"
-                          stroke="#c084fc"
-                          strokeWidth="5"
-                          strokeDasharray="8 5"
-                          opacity={0.85}
-                        />
-                      )}
-
                       {/* Gegner (Gelb) */}
                       <g style={{ cursor: activeDrag === "opp" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("opp", e)} onTouchStart={(e) => onPointerDown("opp", e)}>
                         <circle cx={defOppPos.x} cy={defOppPos.y} r={42} fill="transparent" />
@@ -424,7 +544,7 @@ export default function TrajectoryView3D() {
                         </text>
                       </g>
 
-                      {/* 1. Boden-Aufprallpunkt (Lila/Gelb) */}
+                      {/* 1. Boden-Aufprallpunkt */}
                       <g style={{ cursor: activeDrag === "target" ? "grabbing" : "grab" }} onMouseDown={(e) => onPointerDown("target", e)} onTouchStart={(e) => onPointerDown("target", e)}>
                         <circle cx={defBouncePos.x} cy={defBouncePos.y} r={40} fill="transparent" />
                         <circle cx={defBouncePos.x} cy={defBouncePos.y} r="16" fill="none" stroke="#c084fc" strokeWidth="3.5" className="animate-pulse" />
@@ -445,147 +565,132 @@ export default function TrajectoryView3D() {
               </svg>
             </div>
 
-            {labMode === "attack" ? (
-              <>
-                <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-white/80 font-bold px-1">
-                  <span>
-                    {t("tb_radar_pos")}{" "}
-                    <span className="text-[#e74c3c] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">
-                      X:{playerCoords.x} Z:{playerCoords.z}
-                    </span>
-                  </span>
-                  <span>
-                    {t("tb_radar_target")}{" "}
-                    <span className="text-[#f1c40f] ml-1 bg-black/50 px-1.5 py-0.5 rounded border border-white/20 font-mono tracking-tighter">
-                      X:{targetCoords.x} Z:{targetCoords.z}
-                    </span>
-                  </span>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                  <select
-                    value={shotType}
-                    onChange={(e) => setShotType(e.target.value)}
-                    className="w-full bg-white/10 text-white text-xs font-bold p-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    <option value="BAJADA" className="text-black">{t("tb_shot_topspin")}</option>
-                    <option value="VIBORA" className="text-black">{t("tb_shot_slice")}</option>
-                    <option value="SMASH" className="text-black">{t("tb_shot_flat")}</option>
-                    <option value="LOB" className="text-black">{t("tb_shot_lob")}</option>
-                  </select>
-                  <button
-                    onClick={handleSimulateAttack}
-                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold py-2 px-3 rounded-lg shadow-md transition-transform active:scale-95 whitespace-nowrap"
-                  >
-                    {t("tb_btn_simulate")}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {!defQuizMode && (
-                  <div className="text-[10px] font-black text-cyan-300 bg-cyan-950/40 border border-cyan-500/30 rounded-lg px-2.5 py-1 text-center uppercase tracking-wider">
-                    {defenseSim.patternLabel}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-1.5">
-                  <select
-                    value={defShotType}
-                    onChange={(e) => setDefShotType(e.target.value as DefenseShotType)}
-                    className="flex-1 bg-white/10 text-white text-[11px] font-bold p-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                  >
-                    {defShotOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id} className="text-black">
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => setDefSpeed((s) => (s === 0.4 ? 1 : 0.4))}
-                    className="px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 text-[10px] font-black shrink-0"
-                  >
-                    {defSpeed}x
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => handleStartDefenseSim()}
-                  className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white text-xs font-black uppercase tracking-widest py-2.5 px-3 rounded-xl shadow-lg transition-transform active:scale-95"
-                >
-                  {defQuizMode
-                    ? lang === "en"
-                      ? "🎯 Check Position & Play"
-                      : lang === "es"
-                      ? "🎯 Comprobar y Simular"
-                      : "🎯 Stellung prüfen & starten"
-                    : t("tb_btn_simulate")}
-                </button>
-              </>
+            {/* Live-Status-Badge (Ergebnis-Vorschau) */}
+            {!hidePreview && (
+              <div
+                className={`text-[10px] font-black rounded-lg px-2.5 py-1 text-center uppercase tracking-wider border ${
+                  labMode === "attack"
+                    ? ratingBadgeClass
+                    : "text-cyan-300 bg-cyan-950/40 border-cyan-500/30"
+                }`}
+              >
+                {activeSimulation.patternLabel}
+              </div>
             )}
+
+            {/* Schlag-Auswahl & Geschwindigkeit */}
+            <div className="flex items-center gap-1.5">
+              {labMode === "attack" ? (
+                <select
+                  value={atkShotType}
+                  onChange={(e) => setAtkShotType(e.target.value as AttackShotType)}
+                  className="flex-1 bg-white/10 text-white text-[11px] font-bold p-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
+                >
+                  {atkShotOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id} className="text-black">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={defShotType}
+                  onChange={(e) => setDefShotType(e.target.value as DefenseShotType)}
+                  className="flex-1 bg-white/10 text-white text-[11px] font-bold p-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                >
+                  {defShotOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id} className="text-black">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <button
+                onClick={() => setPlaybackSpeed((s) => (s === 0.4 ? 1 : 0.4))}
+                className="px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 text-[10px] font-black shrink-0"
+              >
+                {playbackSpeed}x
+              </button>
+            </div>
+
+            <button
+              onClick={() => handleStartSim()}
+              className={`w-full text-xs font-black uppercase tracking-widest py-2.5 px-3 rounded-xl shadow-lg transition-transform active:scale-95 ${
+                labMode === "attack"
+                  ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black"
+                  : "bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white"
+              }`}
+            >
+              {labMode === "defense" && defQuizMode
+                ? lang === "en"
+                  ? "🎯 Check Position & Play"
+                  : lang === "es"
+                  ? "🎯 Comprobar y Simular"
+                  : "🎯 Stellung prüfen & starten"
+                : t("tb_btn_simulate")}
+            </button>
           </div>
         )}
 
-        {/* ANGRIFFS-MODUS ZURÜCK-BUTTON */}
-        {labMode === "attack" && isSimulating && (
-          <button
-            onClick={handleBackAttack}
-            className="absolute top-4 left-4 z-10 bg-gray-900/80 backdrop-blur-md border border-white/20 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold shadow-lg hover:bg-gray-800 transition-colors pointer-events-auto animate-in fade-in"
-          >
-            {t("tb_btn_back_plan")}
-          </button>
-        )}
-
-        {/* SCHEIBENSPIEL-SIMULATIONS-STEUERLEISTE (MIT LIVE-SPIN-VERGLEICH & ZEITLUPE) */}
-        {isDefenseSimView && (
+        {/* SIMULATIONS-STEUERLEISTE (FÜR ANGRIFF & SCHEIBENSPIEL) */}
+        {isSimView && (
           <>
             <div className="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={handleBackToDefensePlan}
+                  onClick={handleBackToPlan}
                   className="bg-slate-950/90 backdrop-blur-md border border-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-black shadow-lg hover:bg-slate-800 transition-colors"
                 >
                   {t("tb_btn_back_plan")}
                 </button>
                 <button
-                  onClick={() => handleStartDefenseSim()}
+                  onClick={() => handleStartSim()}
                   className="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-xs font-black shadow-lg transition-colors"
                 >
                   🔁 Replay
                 </button>
                 <button
-                  onClick={() => setDefSpeed((s) => (s === 0.4 ? 1 : 0.4))}
+                  onClick={() => setPlaybackSpeed((s) => (s === 0.4 ? 1 : 0.4))}
                   className="bg-slate-950/90 border border-cyan-500/50 text-cyan-300 px-2.5 py-1.5 rounded-lg text-xs font-black"
                 >
-                  {defSpeed}x
+                  {playbackSpeed}x
                 </button>
               </div>
 
-              {/* Direkter Spin-Vergleich aus exakt derselben Position */}
-              <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-xl border border-slate-700">
-                {(["SLICE", "FLAT", "TOPSPIN", "LOB"] as DefenseShotType[]).map((sType) => (
+              {/* Direkter Live-Schlag-/Spin-Vergleich aus exakt derselben Position */}
+              <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-xl border border-slate-700 overflow-x-auto max-w-full">
+                {(labMode === "attack" ? atkShotOptions : defShotOptions).map((opt) => (
                   <button
-                    key={sType}
-                    onClick={() => handleStartDefenseSim(sType)}
-                    className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                      defShotType === sType
-                        ? "bg-purple-600 text-white"
+                    key={opt.id}
+                    onClick={() => handleStartSim(opt.id)}
+                    className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                      activeShotType === opt.id
+                        ? labMode === "attack"
+                          ? "bg-orange-500 text-black"
+                          : "bg-purple-600 text-white"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    {sType}
+                    {opt.short}
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Coach-Auswertung & Legende nach Ende des Ballflugs (Kamera frei drehbar) */}
-            {defHasFinished && (
+            {hasFinished && (
               <div className="absolute bottom-3 left-3 right-3 z-20 bg-[#050b18]/92 backdrop-blur-xl border border-cyan-500/40 rounded-2xl p-3 sm:p-4 shadow-2xl pointer-events-auto flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                    🛡️ {defenseSim.patternLabel}
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                      labMode === "attack"
+                        ? ratingBadgeClass
+                        : "bg-cyan-950/50 border-cyan-500/40 text-cyan-300"
+                    }`}
+                  >
+                    {labMode === "attack" ? "⚔️ " : "🛡️ "}
+                    {activeSimulation.patternLabel}
                   </span>
                   <span className="text-[9px] font-bold text-slate-400">
                     {lang === "en"
@@ -596,7 +701,7 @@ export default function TrajectoryView3D() {
                   </span>
                 </div>
 
-                {defQuizMode && (
+                {labMode === "defense" && defQuizMode && defenseEval && (
                   <div
                     className={`text-xs font-black px-3 py-1.5 rounded-lg border ${
                       defenseEval.status === "perfect"
@@ -616,14 +721,39 @@ export default function TrajectoryView3D() {
                 )}
 
                 <p className="text-xs text-slate-200 leading-snug">
-                  💡 {defenseSim.coachTip}
+                  💡 {activeSimulation.coachTip}
                 </p>
 
                 <div className="flex flex-wrap gap-3 text-[9px] font-bold text-slate-400 pt-1 border-t border-slate-800">
-                  <span className="text-yellow-400">● {lang === "en" ? "Approach" : lang === "es" ? "Vuelo" : "Anflug"}</span>
-                  <span className="text-purple-400">● {lang === "en" ? "To Glass" : lang === "es" ? "Al cristal" : "Zur Scheibe"}</span>
-                  <span className="text-cyan-400">● {lang === "en" ? "Rebound" : lang === "es" ? "Rebote" : "Abpraller"}</span>
-                  <span className="text-emerald-400">● {lang === "en" ? "Sweetspot & Stand" : lang === "es" ? "Punto óptimo" : "Treffpunkt & Standzone"}</span>
+                  <span className="text-yellow-400">
+                    ● {lang === "en" ? "Approach" : lang === "es" ? "Vuelo" : "Anflug"}
+                  </span>
+                  <span className="text-purple-400">
+                    ● {lang === "en" ? "To Glass" : lang === "es" ? "Al cristal" : "Zur Scheibe"}
+                  </span>
+                  <span className="text-cyan-400">
+                    ● {lang === "en" ? "Rebound" : lang === "es" ? "Rebote" : "Abpraller"}
+                  </span>
+                  {activeSimulation.exitedCourt ? (
+                    <span className="text-orange-400">
+                      ● {activeSimulation.exitedCourt === "por_3" ? "Por 3 Exit (3m)" : "Por 4 Exit (4m)"}
+                    </span>
+                  ) : (
+                    <span className={labMode === "attack" ? "text-amber-400" : "text-emerald-400"}>
+                      ●{" "}
+                      {labMode === "attack"
+                        ? lang === "en"
+                          ? "Opponent Rebound Height"
+                          : lang === "es"
+                          ? "Altura de rebote rival"
+                          : "Gegner-Rebound-Höhe"
+                        : lang === "en"
+                        ? "Sweetspot & Stand"
+                        : lang === "es"
+                        ? "Punto óptimo"
+                        : "Treffpunkt & Standzone"}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
