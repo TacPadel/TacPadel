@@ -40,7 +40,8 @@ import RatingPromptModal, { shouldShowRatingPrompt } from "./RatingPromptModal";
 
 // --- IMPORTE ---
 import { AiProfile, AI_PROFILES } from "../engine/AiProfiles";
-import { TOURNAMENTS } from "../engine/Tournaments";
+import { TOURNAMENTS as LEGACY_TOURNAMENTS } from "../engine/Tournaments";
+import { TOURNAMENTS as SEASON1_TOURNAMENTS } from "../engine/TournamentsSeason1";
 import {
   calculateLoadoutStats,
   SHOP_PARTNERS,
@@ -48,6 +49,9 @@ import {
   addMatchXpToEquippedLoadout,
 } from "../lib/loadout";
 import { useTranslation, formatShotName } from "../lib/i18n";
+
+// Kombiniert Season 1 (Priorität) + eventuelle Alt-Turniere für sicheres ID-Lookup
+const ALL_TOURNAMENTS = [...SEASON1_TOURNAMENTS, ...LEGACY_TOURNAMENTS];
 
 const buildBoardItemsFromCourt = (
   youZone: string,
@@ -412,7 +416,7 @@ const evaluateMatchTurnForCoach = (params: {
 };
 
 const getContinueFee = (tourId: string, currentRound: number) => {
-  const tour = TOURNAMENTS.find((t) => t.id === tourId);
+  const tour = ALL_TOURNAMENTS.find((t) => t.id === tourId);
   if (!tour || currentRound > 2) return null;
 
   const baseFee = tour.entryFee === 0 ? 50 : tour.entryFee;
@@ -456,6 +460,16 @@ export default function GameScreen() {
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
   const [activeTournamentRound, setActiveTournamentRound] = useState<number>(1);
   const [activeTournamentDifficulty, setActiveTournamentDifficulty] = useState<number>(0);
+
+  // Synchrone Refs gegen Stale-Closures direkt beim Starten / Speichern von Turnier-Matches
+  const activeTournamentIdRef = useRef<string | null>(null);
+  const activeTournamentRoundRef = useRef<number>(1);
+  const activeTournamentDifficultyRef = useRef<number>(0);
+  useEffect(() => {
+    activeTournamentIdRef.current = activeTournamentId;
+    activeTournamentRoundRef.current = activeTournamentRound;
+    activeTournamentDifficultyRef.current = activeTournamentDifficulty;
+  }, [activeTournamentId, activeTournamentRound, activeTournamentDifficulty]);
 
   const [earnedTP, setEarnedTP] = useState<number>(0);
   const [earnedItemXp, setEarnedItemXp] = useState<number>(0);
@@ -599,7 +613,9 @@ export default function GameScreen() {
 
   const triggerProfiBanner = () => {
     const isProfiMatch =
-      activeTournamentId !== null ? activeTournamentDifficulty >= 4000 : tacScore >= 4000;
+      activeTournamentIdRef.current !== null
+        ? activeTournamentDifficultyRef.current >= 4000
+        : tacScore >= 4000;
     const isRookieMatch = !isProfiMatch && tacScore < 2000;
 
     if (isProfiMatch) {
@@ -982,9 +998,16 @@ export default function GameScreen() {
       rallyKeyframesRef.current = [];
       setRallySaved(false);
 
-      setActiveTournamentId(parsed.tournamentId || null);
-      setActiveTournamentRound(parsed.tournamentRound || 1);
-      setActiveTournamentDifficulty(parsed.tournamentDifficulty || 0);
+      const loadedTourId = parsed.tournamentId || null;
+      const loadedTourRound = Number(parsed.tournamentRound) || 1;
+      const loadedTourDiff = Number(parsed.tournamentDifficulty) || 0;
+
+      activeTournamentIdRef.current = loadedTourId;
+      activeTournamentRoundRef.current = loadedTourRound;
+      activeTournamentDifficultyRef.current = loadedTourDiff;
+      setActiveTournamentId(loadedTourId);
+      setActiveTournamentRound(loadedTourRound);
+      setActiveTournamentDifficulty(loadedTourDiff);
 
       if (parsed.activeAiProfile) setActiveAiProfile(parsed.activeAiProfile);
 
@@ -1012,8 +1035,8 @@ export default function GameScreen() {
           setStamina({
             you: MAX_PLAYER_STAMINA,
             partner: MAX_PLAYER_STAMINA,
-            opp1: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000),
-            opp2: getAiMaxStamina(parsed.tournamentDifficulty || parsed.tacScore || 3000),
+            opp1: getAiMaxStamina(loadedTourDiff || parsed.tacScore || 3000),
+            opp2: getAiMaxStamina(loadedTourDiff || parsed.tacScore || 3000),
           });
       }
 
@@ -1053,9 +1076,15 @@ export default function GameScreen() {
     setIsTourOpen(false);
     setIsMenuOpen(false);
 
+    const safeRound = Number(round) || 1;
+    const safeDifficulty = Number(difficulty) || 0;
+    activeTournamentIdRef.current = tourId;
+    activeTournamentRoundRef.current = safeRound;
+    activeTournamentDifficultyRef.current = safeDifficulty;
+
     setActiveTournamentId(tourId);
-    setActiveTournamentRound(round);
-    setActiveTournamentDifficulty(difficulty);
+    setActiveTournamentRound(safeRound);
+    setActiveTournamentDifficulty(safeDifficulty);
 
     const selectedProfile = isRematch
       ? activeAiProfile
@@ -1103,15 +1132,15 @@ export default function GameScreen() {
       })();
     }
 
-    const baseDifficulty = difficulty > 0 ? difficulty : tacScore;
-    const roundDifficultyBonus = (round - 1) * 100;
+    const baseDifficulty = safeDifficulty > 0 ? safeDifficulty : tacScore;
+    const roundDifficultyBonus = (safeRound - 1) * 100;
     const aiTargetScore = baseDifficulty + roundDifficultyBonus;
 
     if (staminaModeEnabled) {
       let startYou = MAX_PLAYER_STAMINA;
       let startPartner = MAX_PLAYER_STAMINA;
 
-      if (round > 1) {
+      if (safeRound > 1) {
         const savedTourStamina = JSON.parse(localStorage.getItem("tacpadel_tour_stamina") || "{}");
         const prevStamina = savedTourStamina[tourId];
 
@@ -1143,10 +1172,10 @@ export default function GameScreen() {
     setIsIntroPlaying(true);
 
     let roundName = t("game_round_qf");
-    if (round === 2) roundName = t("game_round_sf");
-    if (round === 3) roundName = t("game_round_f");
+    if (safeRound === 2) roundName = t("game_round_sf");
+    if (safeRound === 3) roundName = t("game_round_f");
 
-    if (round > 1 && staminaModeEnabled) {
+    if (safeRound > 1 && staminaModeEnabled) {
       showFlash(
         `🏆 ${roundName} ${t("game_round_started")} ${t("game_stamina_regen_info")}`,
         "text-amber-400",
@@ -1173,6 +1202,10 @@ export default function GameScreen() {
 
   const startNewGame = () => {
     refreshLoadoutAndPartner();
+    activeTournamentIdRef.current = null;
+    activeTournamentRoundRef.current = 1;
+    activeTournamentDifficultyRef.current = 0;
+
     setActiveTournamentId(null);
     setActiveTournamentRound(1);
     setActiveTournamentDifficulty(0);
@@ -1865,10 +1898,15 @@ export default function GameScreen() {
   };
 
   const handleBuySecondChance = async () => {
-    if (!activeTournamentId || isProcessingRetry) return;
+    const currentTourId = activeTournamentIdRef.current || activeTournamentId;
+    const currentRoundNum =
+      Number(activeTournamentRoundRef.current || activeTournamentRound) || 1;
+    const currentDiff = Number(activeTournamentDifficultyRef.current || activeTournamentDifficulty) || 0;
+
+    if (!currentTourId || isProcessingRetry) return;
 
     setIsProcessingRetry(true);
-    const fee = getContinueFee(activeTournamentId, activeTournamentRound);
+    const fee = getContinueFee(currentTourId, currentRoundNum);
 
     if (fee === null) {
       setIsProcessingRetry(false);
@@ -1881,7 +1919,7 @@ export default function GameScreen() {
       } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Kein User gefunden");
 
-      const newTacPoints = currentTacPoints - fee;
+      const newTacPoints = Math.max(0, currentTacPoints - fee);
 
       const { error: pointsError } = await supabase
         .from("user_stats")
@@ -1892,23 +1930,21 @@ export default function GameScreen() {
 
       const { error: progressError } = await supabase
         .from("tour_progress")
-        .update({ retry_used: true, status: "active", current_round: activeTournamentRound })
+        .update({ retry_used: true, status: "active", current_round: currentRoundNum })
         .eq("user_id", session.user.id)
-        .eq("tournament_id", activeTournamentId);
+        .eq("tournament_id", currentTourId);
 
       if (progressError) throw progressError;
 
       localStorage.setItem("tacpadel_tac_points", newTacPoints.toString());
       setCurrentTacPoints(newTacPoints);
+      window.dispatchEvent(
+        new CustomEvent("tacpadel-stats-updated", { detail: { tac_points: newTacPoints } })
+      );
       setRetryUsed(true);
       setIsProcessingRetry(false);
 
-      handleStartTournamentMatch(
-        activeTournamentId,
-        activeTournamentRound,
-        activeTournamentDifficulty,
-        true
-      );
+      handleStartTournamentMatch(currentTourId, currentRoundNum, currentDiff, true);
     } catch (error) {
       console.error("Fehler beim Kauf der zweiten Chance:", error);
       setIsProcessingRetry(false);
@@ -2404,12 +2440,16 @@ export default function GameScreen() {
 
     if (res.limitReached) {
       showFlash(
-        `📘 ${t("pb_limit_reached").replace(
-          /\{max\}/g,
-          String(entitlements.maxPlaybookSlots)
-        )}`,
+        `📘 ${
+          entitlements.isGuest || !userIdRef.current
+            ? t("pb_guest_limit_reached")
+            : t("pb_limit_reached").replace(
+                /\{max\}/g,
+                String(entitlements.maxPlaybookSlots)
+              )
+        }`,
         "text-amber-400",
-        3000
+        3500
       );
       return;
     }
@@ -2529,20 +2569,24 @@ export default function GameScreen() {
       const playerWon = newPlayerScore > newAiScore;
       const diff = Math.abs(newPlayerScore - newAiScore);
 
-      if (activeTournamentId) {
+      const currentTourId = activeTournamentIdRef.current || activeTournamentId;
+      const currentRoundNum =
+        Number(activeTournamentRoundRef.current || activeTournamentRound) || 1;
+
+      if (currentTourId) {
         let scoreChange = 0;
         let tpReward = 0;
-        const tour = TOURNAMENTS.find((t) => t.id === activeTournamentId);
-        const totalReward = tour ? tour.tacPointsReward : 0;
+        const tour = ALL_TOURNAMENTS.find((tr) => tr.id === currentTourId);
+        const totalReward = Number(tour?.tacPointsReward) || 0;
 
         if (playerWon) {
-          if (activeTournamentRound === 1) {
+          if (currentRoundNum === 1) {
             scoreChange = 50;
             tpReward = Math.round(totalReward * 0.2);
-          } else if (activeTournamentRound === 2) {
+          } else if (currentRoundNum === 2) {
             scoreChange = 75;
             tpReward = Math.round(totalReward * 0.3);
-          } else if (activeTournamentRound === 3) {
+          } else if (currentRoundNum >= 3) {
             scoreChange = 100;
             tpReward = Math.round(totalReward * 0.5);
           }
@@ -2564,68 +2608,105 @@ export default function GameScreen() {
               data: { session },
             } = await supabase.auth.getSession();
             if (session?.user) {
-              await supabase.auth
-                .updateUser({ data: { item_progress: xpResult.progressMap } })
-                .catch(() => {});
-
-              const { data: statsData } = await supabase
+              const { data: statsData, error: fetchStatsErr } = await supabase
                 .from("user_stats")
                 .select("tac_points")
                 .eq("id", session.user.id)
-                .single();
-              let updatedTp =
-                statsData?.tac_points ||
-                parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+                .maybeSingle();
 
-              updatedTp += tpReward;
+              if (fetchStatsErr) {
+                console.error("Fehler beim Laden der TacPoints:", fetchStatsErr);
+              }
+
+              const localTp = parseInt(localStorage.getItem("tacpadel_tac_points") || "0", 10);
+              const safeLocalTp = Number.isFinite(localTp) ? localTp : 0;
+              const baseTp =
+                typeof statsData?.tac_points === "number" &&
+                Number.isFinite(statsData.tac_points)
+                  ? statsData.tac_points
+                  : safeLocalTp;
+
+              const updatedTp = Math.max(0, Math.round(baseTp + tpReward));
               localStorage.setItem("tacpadel_tac_points", updatedTp.toString());
               setCurrentTacPoints(updatedTp);
+
+              // Zuerst user_stats direkt sichern (vor auth.updateUser)
+              const { error: upsertStatsErr } = await supabase
+                .from("user_stats")
+                .upsert(
+                  {
+                    id: session.user.id,
+                    email: session.user.email,
+                    points: finalScore,
+                    tac_points: updatedTp,
+                  },
+                  { onConflict: "id" }
+                );
+
+              if (upsertStatsErr) {
+                console.error("Upsert user_stats fehlgeschlagen, Fallback auf Update:", upsertStatsErr);
+                const { error: updateStatsErr } = await supabase
+                  .from("user_stats")
+                  .update({ points: finalScore, tac_points: updatedTp })
+                  .eq("id", session.user.id);
+                if (updateStatsErr) {
+                  console.error("Update user_stats fehlgeschlagen:", updateStatsErr);
+                }
+              }
+
+              window.dispatchEvent(
+                new CustomEvent("tacpadel-stats-updated", {
+                  detail: { points: finalScore, tac_points: updatedTp },
+                })
+              );
 
               const matchResult = playerWon ? "win" : "loss";
 
               if (playerWon) {
-                if (activeTournamentRound < 3 && staminaModeEnabled) {
+                if (currentRoundNum < 3 && staminaModeEnabled) {
                   const currentStamina = staminaRef.current;
                   const savedTourStamina = JSON.parse(
                     localStorage.getItem("tacpadel_tour_stamina") || "{}"
                   );
-                  savedTourStamina[activeTournamentId] = {
+                  savedTourStamina[currentTourId] = {
                     you: currentStamina.you,
                     partner: currentStamina.partner,
                   };
                   localStorage.setItem("tacpadel_tour_stamina", JSON.stringify(savedTourStamina));
                 }
 
-                if (activeTournamentRound === 3) {
+                if (currentRoundNum >= 3) {
                   const savedTourStamina = JSON.parse(
                     localStorage.getItem("tacpadel_tour_stamina") || "{}"
                   );
-                  if (savedTourStamina[activeTournamentId]) {
-                    delete savedTourStamina[activeTournamentId];
+                  if (savedTourStamina[currentTourId]) {
+                    delete savedTourStamina[currentTourId];
                     localStorage.setItem(
                       "tacpadel_tour_stamina",
                       JSON.stringify(savedTourStamina)
                     );
                   }
-                  await supabase
+                  const { error: tpWinErr } = await supabase
                     .from("tour_progress")
                     .update({ status: "won" })
                     .eq("user_id", session.user.id)
-                    .eq("tournament_id", activeTournamentId);
+                    .eq("tournament_id", currentTourId);
+                  if (tpWinErr) console.error("tour_progress win error:", tpWinErr);
                 } else {
-                  await supabase
+                  const { error: tpNextErr } = await supabase
                     .from("tour_progress")
-                    .update({ current_round: activeTournamentRound + 1, status: "active" })
+                    .update({ current_round: currentRoundNum + 1, status: "active" })
                     .eq("user_id", session.user.id)
-                    .eq("tournament_id", activeTournamentId);
+                    .eq("tournament_id", currentTourId);
+                  if (tpNextErr) console.error("tour_progress next error:", tpNextErr);
                 }
               } else {
-                if (activeTournamentRound === 3 || retryUsed) {
+                if (currentRoundNum >= 3 || retryUsed) {
                   const savedTourStamina = JSON.parse(
                     localStorage.getItem("tacpadel_tour_stamina") || "{}"
                   );
-                  if (savedTourStamina[activeTournamentId]) {
-                    delete savedTourStamina[activeTournamentId];
+                  if (savedTourStamina[currentTourId]) {
+                    delete savedTourStamina[currentTourId];
                     localStorage.setItem(
                       "tacpadel_tour_stamina",
                       JSON.stringify(savedTourStamina)
@@ -2634,12 +2715,7 @@ export default function GameScreen() {
                 }
               }
 
-              await supabase
-                .from("user_stats")
-                .update({ points: finalScore, tac_points: updatedTp })
-                .eq("id", session.user.id);
-
-              await supabase.from("match_history").insert({
+              const { error: histErr } = await supabase.from("match_history").insert({
                 user_id: session.user.id,
                 points: finalScore,
                 result: matchResult,
@@ -2652,6 +2728,12 @@ export default function GameScreen() {
                 match_type: "tournament",
                 tac_points: updatedTp,
               });
+              if (histErr) console.error("match_history insert error:", histErr);
+
+              // Item-XP erst nach den kritischen DB-Writes sichern
+              supabase.auth
+                .updateUser({ data: { item_progress: xpResult.progressMap } })
+                .catch(() => {});
             }
           } catch (err) {
             console.error("Fehler beim Speichern des Turnier-Ergebnisses:", err);
@@ -2677,13 +2759,17 @@ export default function GameScreen() {
               data: { session },
             } = await supabase.auth.getSession();
             if (session?.user) {
-              await supabase.auth
-                .updateUser({ data: { item_progress: xpResult.progressMap } })
-                .catch(() => {});
               await supabase
                 .from("user_stats")
                 .update({ points: finalScore })
                 .eq("id", session.user.id);
+
+              window.dispatchEvent(
+                new CustomEvent("tacpadel-stats-updated", {
+                  detail: { points: finalScore },
+                })
+              );
+
               const matchResult = playerWon ? "win" : "loss";
 
               await supabase.from("match_history").insert({
@@ -2698,6 +2784,10 @@ export default function GameScreen() {
                 duration_seconds: matchSecondsRef.current,
                 match_type: "single",
               });
+
+              supabase.auth
+                .updateUser({ data: { item_progress: xpResult.progressMap } })
+                .catch(() => {});
             }
           } catch (err) {
             console.error("Fehler beim Speichern des Match-Ergebnisses:", err);
@@ -2886,13 +2976,16 @@ export default function GameScreen() {
     setCourtState(nextCourt);
     setPhase(nextPhase);
 
+    const curTourId = activeTournamentIdRef.current;
+    const curTourRound = activeTournamentRoundRef.current;
+    const curTourDiff = activeTournamentDifficultyRef.current;
+
     let newStamina = staminaRef.current;
     if (staminaModeEnabled) {
       const isNewMatch = totalPointsForServe === 0 && !isSecondServe;
       if (!isNewMatch) {
-        const aiTargetScore = activeTournamentId
-          ? (activeTournamentDifficulty > 0 ? activeTournamentDifficulty : tacScore) +
-            (activeTournamentRound - 1) * 100
+        const aiTargetScore = curTourId
+          ? (curTourDiff > 0 ? curTourDiff : tacScore) + (curTourRound - 1) * 100
           : tacScore;
         const currentLoadout = calculateLoadoutStats();
         const playerRegenPerPoint = Number(
@@ -2941,9 +3034,9 @@ export default function GameScreen() {
         phase: nextPhase,
         matchStats: stats,
         stamina: staminaModeEnabled ? newStamina : undefined,
-        tournamentId: activeTournamentId,
-        tournamentRound: activeTournamentRound,
-        tournamentDifficulty: activeTournamentDifficulty,
+        tournamentId: curTourId,
+        tournamentRound: curTourRound,
+        tournamentDifficulty: curTourDiff,
         activeAiProfile,
         matchSeconds: matchSecondsRef.current,
         lockedLoadout: matchLockedLoadout,
@@ -3033,7 +3126,7 @@ export default function GameScreen() {
   };
 
   const currentTour = activeTournamentId
-    ? TOURNAMENTS.find((t) => t.id === activeTournamentId)
+    ? ALL_TOURNAMENTS.find((tr) => tr.id === activeTournamentId)
     : null;
   const currentArenaModel = currentTour?.arenaModel || "/TacPadel.glb";
   const focusShotType = getFocusShotType(activeLoadout.shot.id);
@@ -3058,7 +3151,7 @@ export default function GameScreen() {
       if (parsed.userId === userId) {
         hasValidSave = true;
         if (parsed.tournamentId) {
-          const tour = TOURNAMENTS.find((tr) => tr.id === parsed.tournamentId);
+          const tour = ALL_TOURNAMENTS.find((tr) => tr.id === parsed.tournamentId);
           const rName =
             parsed.tournamentRound === 3
               ? t("game_round_f")
@@ -3778,6 +3871,7 @@ export default function GameScreen() {
                       const tourIdToClean = activeTournamentId;
                       setIsTourOpen(true);
                       setShowGameOverUI(false);
+                      activeTournamentIdRef.current = null;
                       setActiveTournamentId(null);
 
                       if (playerScore < aiScore) {
@@ -4402,7 +4496,13 @@ export default function GameScreen() {
                     showExplanations ? "sm:w-auto" : "max-w-md"
                   } px-10 py-5 bg-white hover:bg-slate-200 text-black font-black text-xs tracking-[0.2em] uppercase rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 whitespace-nowrap`}
                 >
-                  {turnResult && turnResult.startsWith("error")
+                  {isFirstServeFaultOverlay
+                    ? lang === "en"
+                      ? "2ND SERVE →"
+                      : lang === "es"
+                      ? "2.º SAQUE →"
+                      : "2. AUFSCHLAG →"
+                    : turnResult && turnResult.startsWith("error")
                     ? t("game_next_point_btn")
                     : turnResult === "perfect"
                     ? t("game_point_won_btn")
