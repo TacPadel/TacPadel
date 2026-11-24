@@ -313,7 +313,30 @@ function TrajectoryLabScene({
               ? "#f97316"
               : "#22d3ee";
           return (
-            <mesh key={`${entry.kind}-${idx}`} geometry={entry.geo}> <meshStandardMaterial color={color} emissive={color} emissiveIntensity={entry.kind === "por_exit" ? 0.95 : 0.65} transparent opacity={lab.hasFinished \vert{}\vert{} lab.isPlaying ? 0.94 : 0.45} /> </mesh> ); })}  {/* 5. Leuchtende Aufprallringe direkt auf Rück- & Seitenscheibe */} {showTrajectory && simulation.glassHits.map((hit, idx) => { const isBack = hit.wall === "back"; const pos: [number, number, number] = isBack ? [hit.point.x, hit.point.y, backWallRingZ] : [hit.wall === "side_right" ? 4.88 : -4.88, hit.point.y, hit.point.z]; const rot: [number, number, number] = isBack ? [0, 0, 0] : [0, Math.PI / 2, 0]; const ringColor = hit.isMesh ? "#f97316" : idx === 0 ? "#c084fc" : "#22d3ee";  return ( <group key={`glass-hit-${idx}`} position={pos} rotation={rot}>
+            <mesh key={`${entry.kind}-${idx}`} geometry={entry.geo}>
+              <meshStandardMaterial
+                color={color}
+                emissive={color}
+                emissiveIntensity={entry.kind === "por_exit" ? 0.95 : 0.65}
+                transparent
+                opacity={lab.hasFinished || lab.isPlaying ? 0.94 : 0.45}
+              />
+            </mesh>
+          );
+        })}
+
+      {/* 5. Leuchtende Aufprallringe direkt auf Rück- & Seitenscheibe */}
+      {showTrajectory &&
+        simulation.glassHits.map((hit, idx) => {
+          const isBack = hit.wall === "back";
+          const pos: [number, number, number] = isBack
+            ? [hit.point.x, hit.point.y, backWallRingZ]
+            : [hit.wall === "side_right" ? 4.88 : -4.88, hit.point.y, hit.point.z];
+          const rot: [number, number, number] = isBack ? [0, 0, 0] : [0, Math.PI / 2, 0];
+          const ringColor = hit.isMesh ? "#f97316" : idx === 0 ? "#c084fc" : "#22d3ee";
+
+          return (
+            <group key={`glass-hit-${idx}`} position={pos} rotation={rot}>
               <mesh>
                 <ringGeometry args={[0.22, 0.36, 32]} />
                 <meshBasicMaterial color={ringColor} transparent opacity={0.95} side={THREE.DoubleSide} />
