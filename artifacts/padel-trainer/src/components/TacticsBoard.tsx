@@ -12,6 +12,14 @@ import {
 } from "../lib/tacticStats";
 import { useEntitlements } from "../lib/entitlements";
 import {
+  STANDARD_DRILL_IDS,
+  StandardDrillId,
+  GeneratedDrill,
+  generateStandardDrill,
+  buildPlaybookDrill,
+  generateSmartDrillMeta,
+} from "../lib/drillGenerator";
+import {
   BOARD_V_WIDTH,
   BOARD_V_HEIGHT,
   DrillDepth,
@@ -42,28 +50,9 @@ type StudioTool = "move" | "arrow_run" | "arrow_ball" | "arrow_lob" | "arrow_gla
 type BoardMode = "tactics" | "drill" | "studio" | "3d";
 type DrillCategory = "all" | "standard" | "playbook";
 
-// Kuratierter Standard-Stellungsspiel-Drill
-interface BoardDrill {
-  id: string;
-  titleKey: TranslationKey;
-  promptKey: TranslationKey;
-  explKey: TranslationKey;
-  targetDepth: DrillDepth;
-  items: DraggableItem[];
-}
-
-// Vereinheitlichtes Drill-Format (Standard + eigene Playbook-Drills)
-interface UnifiedDrill {
-  id: string;
-  source: "standard" | "playbook";
-  title: string;
-  prompt: string;
-  explanation: string;
-  targetDepth: DrillDepth;
-  startItems: DraggableItem[];
-  solutionItems?: DraggableItem[];
-  solutionDrawings?: StudioDrawing[];
-}
+type DrillSlot =
+  | { source: "standard"; id: StandardDrillId }
+  | { source: "playbook"; id: string; play: SavedPlay };
 
 interface DrillCheckResult {
   scorePct: number;
@@ -238,42 +227,6 @@ const hasTeamAMoved = (a: DraggableItem[], b: DraggableItem[]): boolean => {
   });
 };
 
-// Wandelt einen Playbook-Spielzug in einen interaktiven Coach-Drill um
-const convertPlayToUnifiedDrill = (
-  play: SavedPlay,
-  t: (key: TranslationKey) => string
-): UnifiedDrill => {
-  const frames = play.keyframes || [];
-  const startItems = frames.length > 0 ? cloneItems(frames[0].items) : cloneItems(play.items);
-  const step1Drawings =
-    frames.length > 0 ? cloneDrawings(frames[0].drawings || []) : cloneDrawings(play.drawings || []);
-
-  let solutionItems: DraggableItem[] | undefined;
-
-  if (frames.length >= 2) {
-    solutionItems = cloneItems(frames[1].items);
-  } else if (step1Drawings.some((d) => d.type === "arrow_run")) {
-    const derived = applyDrawingsToItems(startItems, step1Drawings);
-    if (hasTeamAMoved(startItems, derived)) {
-      solutionItems = derived;
-    }
-  } else if (frames.length === 1 && hasTeamAMoved(frames[0].items, play.items)) {
-    solutionItems = cloneItems(play.items);
-  }
-
-  return {
-    id: `pb_${play.id}`,
-    source: "playbook",
-    title: play.title,
-    prompt: play.drillPrompt?.trim() || t("tb_drill_custom_default_prompt"),
-    explanation: play.drillExplanation?.trim() || t("tb_drill_custom_default_expl"),
-    targetDepth: play.drillTargetDepth || "back",
-    startItems,
-    solutionItems,
-    solutionDrawings: step1Drawings.length > 0 ? step1Drawings : undefined,
-  };
-};
-
 // Konvertiert Zonen (A1–E5) aus dem Trainer exakt in Board-Koordinaten
 const zoneToBoardCoords = (zoneId: string, side: "left" | "right"): { x: number; y: number } => {
   if (!zoneId || zoneId.length < 2) {
@@ -390,66 +343,6 @@ const SCENARIOS: Record<
     },
   },
 };
-
-// KURATIERTE STELLUNGSSPIEL-DRILLS FÜR DAS BOARD (100 % i18n)
-const BOARD_DRILLS: BoardDrill[] = [
-  {
-    id: "drill_rubberband_defense",
-    titleKey: "tb_drill_1_title",
-    promptKey: "tb_drill_1_prompt",
-    explKey: "tb_drill_1_expl",
-    targetDepth: "back",
-    items: [
-      { id: "a1", x: 90, y: 80, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 300, y: 315, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: 455, y: 90, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 470, y: 245, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 445, y: 85, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-  },
-  {
-    id: "drill_net_shift_right",
-    titleKey: "tb_drill_2_title",
-    promptKey: "tb_drill_2_prompt",
-    explKey: "tb_drill_2_expl",
-    targetDepth: "net",
-    items: [
-      { id: "a1", x: 160, y: 65, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 205, y: 325, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: 675, y: 120, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 690, y: 305, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 680, y: 315, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-  },
-  {
-    id: "drill_bandeja_block",
-    titleKey: "tb_drill_3_title",
-    promptKey: "tb_drill_3_prompt",
-    explKey: "tb_drill_3_expl",
-    targetDepth: "back",
-    items: [
-      { id: "a1", x: 195, y: 42, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 95, y: 338, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: 495, y: 125, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 545, y: 295, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 540, y: 295, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-  },
-  {
-    id: "drill_after_lob_take_net",
-    titleKey: "tb_drill_4_title",
-    promptKey: "tb_drill_4_prompt",
-    explKey: "tb_drill_4_expl",
-    targetDepth: "net",
-    items: [
-      { id: "a1", x: 95, y: 115, color: "#e74c3c", label: "A1", isPlayer: true },
-      { id: "a2", x: 105, y: 275, color: "#e74c3c", label: "A2", isPlayer: true },
-      { id: "b1", x: 705, y: 75, color: "#f1c40f", label: "B1", isPlayer: true },
-      { id: "b2", x: 690, y: 235, color: "#f1c40f", label: "B2", isPlayer: true },
-      { id: "ball", x: 700, y: 70, color: "#2ecc71", label: "●", isPlayer: false },
-    ],
-  },
-];
 
 // HILFSFUNKTION: Kapselt die Ziel-Berechnung für beide Systeme (inkl. Tiefen-Riss-Erkennung)
 const getTacticalTargetAndRec = (
@@ -909,9 +802,10 @@ export default function TacticsBoard() {
   // --- COACH-SCHWÄCHEN-POOL FÜR 2D-VORLAGEN ---
   const [weaknessPool, setWeaknessPool] = useState<TrainerScenario[]>([]);
 
-  // --- COACH-DRILL TAB STATES (Standard + eigene Playbook-Drills) ---
+  // --- COACH-DRILL TAB STATES (Dynamisch gemischte Standard- + eigene Playbook-Drills) ---
   const [drillCategory, setDrillCategory] = useState<DrillCategory>("all");
   const [activeDrillIdx, setActiveDrillIdx] = useState<number>(0);
+  const [drillVariantSeed, setDrillVariantSeed] = useState<number>(0);
   const [drillResult, setDrillResult] = useState<DrillCheckResult | null>(null);
   const [showDrillSolution, setShowDrillSolution] = useState<boolean>(false);
 
@@ -1097,44 +991,52 @@ export default function TacticsBoard() {
     drillCategory,
   ]);
 
-  // --- VEREINHEITLICHTE DRILL-LISTE (Standard + eigene Playbook-Drills) ---
-  const standardDrills: UnifiedDrill[] = useMemo(
-    () =>
-      BOARD_DRILLS.map((d) => ({
-        id: d.id,
-        source: "standard",
-        title: t(d.titleKey),
-        prompt: t(d.promptKey),
-        explanation: t(d.explKey),
-        targetDepth: d.targetDepth,
-        startItems: cloneItems(d.items),
-      })),
-    [lang]
-  );
-
-  const playbookDrills: UnifiedDrill[] = useMemo(() => {
+  // --- DYNAMISCHE DRILL-SLOTS (Standard + eigene Playbook-Drills) ---
+  const playbookDrillEntries = useMemo(() => {
     if (!entitlements.canCreateCustomDrills) return [];
-    return playbook
-      .filter((p) => Boolean(p.isDrill))
-      .map((p) => convertPlayToUnifiedDrill(p, t));
-  }, [playbook, lang, entitlements.canCreateCustomDrills]);
+    return playbook.filter((p) => Boolean(p.isDrill));
+  }, [playbook, entitlements.canCreateCustomDrills]);
 
-  const filteredDrills: UnifiedDrill[] = useMemo(() => {
-    if (!entitlements.canCreateCustomDrills) return standardDrills;
-    if (drillCategory === "standard") return standardDrills;
-    if (drillCategory === "playbook") return playbookDrills;
-    return [...playbookDrills, ...standardDrills];
-  }, [drillCategory, standardDrills, playbookDrills, entitlements.canCreateCustomDrills]);
+  const drillSlots: DrillSlot[] = useMemo(() => {
+    const stdSlots: DrillSlot[] = STANDARD_DRILL_IDS.map((id) => ({
+      source: "standard",
+      id,
+    }));
+    const pbSlots: DrillSlot[] = playbookDrillEntries.map((play) => ({
+      source: "playbook",
+      id: `pb_${play.id}`,
+      play,
+    }));
+
+    if (!entitlements.canCreateCustomDrills) return stdSlots;
+    if (drillCategory === "standard") return stdSlots;
+    if (drillCategory === "playbook") return pbSlots;
+    return [...pbSlots, ...stdSlots];
+  }, [drillCategory, playbookDrillEntries, entitlements.canCreateCustomDrills]);
 
   const safeDrillIdx =
-    filteredDrills.length > 0 ? Math.min(activeDrillIdx, filteredDrills.length - 1) : 0;
-  const activeDrill: UnifiedDrill | null =
-    entitlements.canAccessDrills && activeMode === "drill"
-      ? filteredDrills[safeDrillIdx] || null
-      : null;
+    drillSlots.length > 0 ? Math.min(activeDrillIdx, drillSlots.length - 1) : 0;
 
-  // Lädt die Startaufstellung automatisch, sobald ein neuer Drill oder der Drill-Tab aktiviert wird
-  const activeDrillId = activeDrill?.id || null;
+  // Würfelt beim Öffnen, Wechseln oder Klick auf "🎲 Neue Variante" eine frische Variante
+  const activeDrill: GeneratedDrill | null = useMemo(() => {
+    if (!entitlements.canAccessDrills || activeMode !== "drill") return null;
+    const slot = drillSlots[safeDrillIdx];
+    if (!slot) return null;
+
+    if (slot.source === "standard") {
+      return generateStandardDrill(slot.id, lang);
+    }
+    return buildPlaybookDrill(slot.play, lang, { remix: drillVariantSeed > 0 });
+  }, [
+    entitlements.canAccessDrills,
+    activeMode,
+    drillSlots,
+    safeDrillIdx,
+    lang,
+    drillVariantSeed,
+  ]);
+
+  // Lädt die Startaufstellung automatisch, sobald ein neuer Drill oder eine neue Variante generiert wird
   useEffect(() => {
     if (activeMode === "drill" && activeDrill) {
       setItems(cloneItems(activeDrill.startItems));
@@ -1145,7 +1047,7 @@ export default function TacticsBoard() {
       setSelectedScenarioKey("custom");
       setCustomTarget(null);
     }
-  }, [activeMode, activeDrillId]);
+  }, [activeMode, activeDrill]);
 
   // Im Studio startet die Analyse immer ausgeschaltet (erst per Button aktivierbar)
   useEffect(() => {
@@ -1553,6 +1455,22 @@ export default function TacticsBoard() {
     [boardUserId, entitlements.maxPlaybookSlots]
   );
 
+  // Generiert Aufgabe, Erklärung & Zieltiefe automatisch aus dem aktuellen Studio-Spielzug
+  const handleAutoFillDrillMeta = () => {
+    const smart = generateSmartDrillMeta(
+      {
+        title: playTitle || studioTitle,
+        items,
+        drawings,
+        keyframes,
+      },
+      lang
+    );
+    setPlayDrillPrompt(smart.prompt);
+    setPlayDrillExpl(smart.explanation);
+    setPlayDrillDepth(smart.targetDepth);
+  };
+
   const handleSaveToPlaybook = () => {
     if (!entitlements.canAccessStudio) return;
     stopAnimation();
@@ -1590,6 +1508,28 @@ export default function TacticsBoard() {
       ? playAsDrill
       : Boolean(existing?.isDrill);
 
+    const autoMeta = effectiveIsDrill
+      ? generateSmartDrillMeta(
+          {
+            title: cleanTitle,
+            items,
+            drawings,
+            keyframes: syncedKeyframes,
+          },
+          lang
+        )
+      : null;
+
+    const finalPrompt = effectiveIsDrill
+      ? playDrillPrompt.trim() || autoMeta?.prompt
+      : existing?.drillPrompt;
+    const finalExpl = effectiveIsDrill
+      ? playDrillExpl.trim() || autoMeta?.explanation
+      : existing?.drillExplanation;
+    const finalDepth = effectiveIsDrill
+      ? playDrillDepth || autoMeta?.targetDepth
+      : existing?.drillTargetDepth;
+
     const savedEntry: SavedPlay = {
       id: existing ? existing.id : `play-${Date.now()}`,
       title: cleanTitle,
@@ -1598,9 +1538,9 @@ export default function TacticsBoard() {
       drawings: cloneDrawings(drawings),
       keyframes: cloneKeyframes(syncedKeyframes),
       isDrill: effectiveIsDrill,
-      drillPrompt: effectiveIsDrill ? playDrillPrompt.trim() : existing?.drillPrompt,
-      drillExplanation: effectiveIsDrill ? playDrillExpl.trim() : existing?.drillExplanation,
-      drillTargetDepth: effectiveIsDrill ? playDrillDepth : existing?.drillTargetDepth,
+      drillPrompt: finalPrompt,
+      drillExplanation: finalExpl,
+      drillTargetDepth: finalDepth,
       source: existing?.source || "studio",
       replayContext: existing?.replayContext,
     };
@@ -1613,6 +1553,11 @@ export default function TacticsBoard() {
     persistPlaybook(nextList);
     setPlayTitle(cleanTitle);
     setStudioTitle(cleanTitle);
+    if (effectiveIsDrill) {
+      if (finalPrompt) setPlayDrillPrompt(finalPrompt);
+      if (finalExpl) setPlayDrillExpl(finalExpl);
+      if (finalDepth) setPlayDrillDepth(finalDepth);
+    }
     setPlaybookToast(t("tb_pb_saved_msg"));
     setTimeout(() => setPlaybookToast(null), 2500);
   };
@@ -1662,14 +1607,16 @@ export default function TacticsBoard() {
   const handleSelectDrillCategory = (cat: DrillCategory) => {
     setDrillCategory(cat);
     setActiveDrillIdx(0);
+    setDrillVariantSeed(0);
     setDrillResult(null);
     setShowDrillSolution(false);
   };
 
   const handleStepDrill = (delta: number) => {
-    if (filteredDrills.length === 0) return;
-    const nextIdx = (safeDrillIdx + delta + filteredDrills.length) % filteredDrills.length;
+    if (drillSlots.length === 0) return;
+    const nextIdx = (safeDrillIdx + delta + drillSlots.length) % drillSlots.length;
     setActiveDrillIdx(nextIdx);
+    setDrillVariantSeed(0);
     setDrillResult(null);
     setShowDrillSolution(false);
   };
@@ -3062,7 +3009,7 @@ export default function TacticsBoard() {
                   )}
                 </div>
 
-                {/* 4. Ausklappbares Playbook direkt im Studio-Block (inkl. Coach-Drill-Export) */}
+                {/* 4. Ausklappbares Playbook direkt im Studio-Block (inkl. Auto-Drill-Text) */}
                 {isPlaybookOpen && (
                   <div className="pt-3 border-t border-cyan-500/30 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -3093,20 +3040,38 @@ export default function TacticsBoard() {
                       </button>
                     </div>
 
-                    {/* Playbook -> Coach-Drill Option (nur wenn Custom-Drills erlaubt) */}
+                    {/* Playbook -> Coach-Drill Option (inkl. Auto-Text-Generator) */}
                     {entitlements.canCreateCustomDrills && (
                       <div className="bg-[#030611] border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={playAsDrill}
-                            onChange={(e) => setPlayAsDrill(e.target.checked)}
-                            className="rounded text-orange-500 w-3.5 h-3.5"
-                          />
-                          <span className="text-[11px] font-black text-orange-300 uppercase tracking-wider">
-                            {t("tb_pb_as_drill")}
-                          </span>
-                        </label>
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={playAsDrill}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPlayAsDrill(checked);
+                                if (checked && !playDrillPrompt.trim() && !playDrillExpl.trim()) {
+                                  handleAutoFillDrillMeta();
+                                }
+                              }}
+                              className="rounded text-orange-500 w-3.5 h-3.5"
+                            />
+                            <span className="text-[11px] font-black text-orange-300 uppercase tracking-wider">
+                              {t("tb_pb_as_drill")}
+                            </span>
+                          </label>
+
+                          {playAsDrill && (
+                            <button
+                              type="button"
+                              onClick={handleAutoFillDrillMeta}
+                              className="px-2 py-1 rounded-md bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                            >
+                              {t("tb_drill_auto_gen_btn")}
+                            </button>
+                          )}
+                        </div>
 
                         {playAsDrill && (
                           <div className="flex flex-col gap-2 pt-1.5 border-t border-slate-800/80">
@@ -3224,7 +3189,7 @@ export default function TacticsBoard() {
           )}
 
           {/* ============================================================= */}
-          {/* COACH-DRILL COCKPIT (EIGENER HAUPT-TAB + PLAYBOOK-DRILLS)     */}
+          {/* COACH-DRILL COCKPIT (EIGENER HAUPT-TAB + DYNAMISCHE VARIANTEN)*/}
           {/* ============================================================= */}
           {entitlements.canAccessDrills && activeMode === "drill" && (
             <div className="w-full max-w-[600px] px-3 flex flex-col gap-2.5 animate-in fade-in">
@@ -3235,15 +3200,15 @@ export default function TacticsBoard() {
                     [
                       {
                         id: "all" as DrillCategory,
-                        label: `${t("tb_drill_cat_all")} (${standardDrills.length + playbookDrills.length})`,
+                        label: `${t("tb_drill_cat_all")} (${STANDARD_DRILL_IDS.length + playbookDrillEntries.length})`,
                       },
                       {
                         id: "standard" as DrillCategory,
-                        label: `${t("tb_drill_cat_standard")} (${standardDrills.length})`,
+                        label: `${t("tb_drill_cat_standard")} (${STANDARD_DRILL_IDS.length})`,
                       },
                       {
                         id: "playbook" as DrillCategory,
-                        label: `${t("tb_drill_cat_playbook")} (${playbookDrills.length})`,
+                        label: `${t("tb_drill_cat_playbook")} (${playbookDrillEntries.length})`,
                       },
                     ]
                   ).map((cat) => (
@@ -3280,7 +3245,7 @@ export default function TacticsBoard() {
                 </div>
               ) : (
                 <div className="bg-[#050b18] border border-orange-500/50 rounded-2xl p-4 shadow-[0_0_25px_rgba(249,115,22,0.18)] flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <span
                         className={`text-[9px] font-black uppercase tracking-[0.2em] block ${
@@ -3290,29 +3255,39 @@ export default function TacticsBoard() {
                         {activeDrill.source === "playbook"
                           ? t("tb_drill_custom_badge")
                           : t("tb_drill_badge")}{" "}
-                        {safeDrillIdx + 1}/{filteredDrills.length}
+                        {safeDrillIdx + 1}/{drillSlots.length}
+                        {drillVariantSeed > 0 && ` • ${t("tb_drill_variant_label")} #${drillVariantSeed + 1}`}
                       </span>
                       <h4 className="text-sm sm:text-base font-black text-white truncate">
                         {activeDrill.title}
                       </h4>
                     </div>
 
-                    {filteredDrills.length > 1 && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleStepDrill(-1)}
-                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
-                        >
-                          ←
-                        </button>
-                        <button
-                          onClick={() => handleStepDrill(1)}
-                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
-                        >
-                          →
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => setDrillVariantSeed((s) => s + 1)}
+                        className="px-2.5 h-8 rounded-lg bg-cyan-950/60 hover:bg-cyan-600 border border-cyan-500/50 text-cyan-300 hover:text-white font-black text-[10px] uppercase tracking-wider transition-all whitespace-nowrap"
+                      >
+                        {t("tb_drill_shuffle_btn")}
+                      </button>
+
+                      {drillSlots.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => handleStepDrill(-1)}
+                            className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
+                          >
+                            ←
+                          </button>
+                          <button
+                            onClick={() => handleStepDrill(1)}
+                            className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-black text-xs"
+                          >
+                            →
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <p className="text-xs text-slate-300 leading-relaxed">{activeDrill.prompt}</p>
@@ -3362,6 +3337,12 @@ export default function TacticsBoard() {
                             {showDrillSolution ? t("tb_drill_hide_sol") : t("tb_drill_show_sol")}
                           </button>
                         )}
+                        <button
+                          onClick={() => setDrillVariantSeed((s) => s + 1)}
+                          className="px-3 py-2.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-600 border border-cyan-500/50 text-cyan-300 hover:text-white font-black text-[10px] uppercase tracking-wider transition-all"
+                        >
+                          {t("tb_drill_shuffle_btn")}
+                        </button>
                         <button
                           onClick={() => handleStepDrill(1)}
                           className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-[11px] uppercase tracking-wider"
