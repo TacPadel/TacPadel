@@ -32,6 +32,7 @@ import {
   createPlayFromTrainerScenario,
   upsertPlaybookEntry,
   decodeReplayFromParam,
+  fetchSharedReplayByCode,
   migrateGuestPlaybookToUser,
   migrateGuestCoachStatsToUser,
   ReplayContext,
@@ -524,7 +525,7 @@ export default function App(): React.JSX.Element {
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
   const [selectedPublicUserTab, setSelectedPublicUserTab] = useState<"single" | "tournament">("single");
 
-  // Geteilter 3D-Replay-Link (?replay=...) + Trainer-Playbook-Status + Gast-Migration
+  // Geteilter 3D-Replay-Link (?play=<code> oder ?replay=...) + Trainer-Playbook-Status + Gast-Migration
   const [sharedReplay, setSharedReplay] = useState<{ title: string; context: ReplayContext } | null>(null);
   const [savedTrainerScenarioToPb, setSavedTrainerScenarioToPb] = useState(false);
   const [pbLimitToast, setPbLimitToast] = useState<string | null>(null);
@@ -905,9 +906,22 @@ export default function App(): React.JSX.Element {
     return true;
   };
 
-  // Prüft beim App-Start sofort auf ?replay=... oder ?scenario=ID
+  // Prüft beim App-Start sofort auf ?play=<code>, ?replay=... oder ?scenario=ID
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+
+    const playCode = urlParams.get("play");
+    if (playCode) {
+      fetchSharedReplayByCode(playCode).then((decoded) => {
+        if (decoded) {
+          setSharedReplay(decoded);
+          setActiveTab("playbook");
+          setHasRestored(true);
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      });
+      return;
+    }
 
     const replayParam = urlParams.get("replay");
     if (replayParam) {
@@ -1251,6 +1265,21 @@ export default function App(): React.JSX.Element {
     const isNativeApp = Capacitor.isNativePlatform();
 
     const handleDeepLink = async (url: string) => {
+      // Kurzer 3D-Replay Challenge Deep-Link (?play=<code>)
+      if (url.includes('play=')) {
+        const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+        const playCode = new URLSearchParams(queryPart).get('play');
+        if (playCode) {
+          const decoded = await fetchSharedReplayByCode(playCode);
+          if (decoded) {
+            setSharedReplay(decoded);
+            setActiveTab("playbook");
+            setHasRestored(true);
+            return;
+          }
+        }
+      }
+
       // 3D-Replay Challenge Deep-Link (?replay=...)
       if (url.includes('replay=')) {
         const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';

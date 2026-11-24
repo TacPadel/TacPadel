@@ -34,6 +34,31 @@ export interface PlaybookKeyframe {
   drawings: PlaybookStudioDrawing[];
 }
 
+export interface ReplayStep {
+  actor: "you" | "partner" | "opp1" | "opp2";
+  shot: string;
+  fromZone: string;
+  toZone: string;
+  ballSideBefore: "left" | "right";
+  ballSideAfter: "left" | "right";
+  youBefore: string;
+  partnerBefore: string;
+  opp1Before: string;
+  opp2Before: string;
+  youAfter: string;
+  partnerAfter: string;
+  opp1After: string;
+  opp2After: string;
+}
+
+export interface ReplayActualMove {
+  actor: "you" | "partner" | "opp1" | "opp2";
+  shot: string;
+  targetZone: string;
+  runZone?: string;
+  outcome?: string;
+}
+
 export interface ReplayContext {
   you: string;
   partner: string;
@@ -43,6 +68,8 @@ export interface ReplayContext {
   ballSide: "left" | "right";
   incomingShot: string;
   note?: string;
+  steps?: ReplayStep[];
+  actualLastMove?: ReplayActualMove;
 }
 
 export interface SavedPlay {
@@ -67,6 +94,7 @@ export interface UpsertPlaybookResult {
 }
 
 const PLAYBOOK_TABLE = "playbook_entries";
+const SHARED_REPLAYS_TABLE = "shared_replays";
 
 export const getPlaybookStorageKey = (userId?: string | null) =>
   `tacpadel_playbook_v1_${userId || "guest"}`;
@@ -145,41 +173,205 @@ function detectShotFromText(text?: string): string {
   return "DRIVE";
 }
 
-// Baut aus jedem Playbook-Eintrag (Match, Trainer oder Studio) eine spielbare 3D-Replay-Situation
+function getZonesFromBoardItems(items: PlaybookDraggableItem[]) {
+  const a1 = items.find((i) => i.id === "a1") || { x: 120, y: 110 };
+  const a2 = items.find((i) => i.id === "a2") || { x: 120, y: 270 };
+  const b1 = items.find((i) => i.id === "b1") || { x: BOARD_V_WIDTH - 120, y: 110 };
+  const b2 = items.find((i) => i.id === "b2") || { x: BOARD_V_WIDTH - 120, y: 270 };
+  const ball = items.find((i) => i.id === "ball") || { x: a1.x, y: a1.y };
+  const ballSide: "left" | "right" = ball.x <= BOARD_V_WIDTH / 2 ? "left" : "right";
+
+  return {
+    a1,
+    a2,
+    b1,
+    b2,
+    ball,
+    ballSide,
+    you: boardCoordsToZone(a1.x, a1.y, "left"),
+    partner: boardCoordsToZone(a2.x, a2.y, "left"),
+    opp1: boardCoordsToZone(b1.x, b1.y, "right"),
+    opp2: boardCoordsToZone(b2.x, b2.y, "right"),
+    ballZone: boardCoordsToZone(ball.x, ball.y, ballSide),
+  };
+}
+
+// Konvertiert mehrstufige TacticsBoard-Keyframes sauber in abspielbare 3D-ReplaySteps
+function extractStepsFromKeyframes(play: SavedPlay): ReplayStep[] {
+  const frames = play.keyframes || [];
+  if (frames.length === 0) return [];
+
+  const steps: ReplayStep[] = [];
+  const defaultShot = detectShotFromText(`${play.title} ${play.drillPrompt || ""}`);
+
+  for (let i = 0; i < frames.length; i++) {
+    const cur = frames[i];
+    const next = frames[i + 1];
+    const before = getZonesFromBoardItems(cur.items || []);
+    const drawings = cur.drawings || [];
+
+    const ballArrow = drawings.find(
+      (d) =>
+        d.type === "arrow_ball" ||
+        d.type === "arrow_lob" ||
+        d.type === "arrow_glass"
+    );
+
+    if (!next && !ballArrow) continue;
+
+    const after = next ? getZonesFromBoardItems(next.items || []) : { ...before };
+
+    let toSide: "left" | "right" = next
+      ? after.ballSide
+      : ballArrow && ballArrow.x2 <= BOARD_V_WIDTH / 2
+      ? "left"
+      : "right";
+
+    let toZone = next ? after.ballZone : before.ballZone;
+    if (ballArrow) {
+      toSide = ballArrow.x2 <= BOARD_V_WIDTH / 2 ? "left" : "right";
+      toZone = boardCoordsToZone(ballArrow.x2, ballArrow.y2, toSide);
+    }
+
+    // Laufwege aus Zeichnungen übernehmen, falls kein Nachfolge-Keyframe existiert
+    let youAfter = after.you;
+    let partnerAfter = after.partner;
+    let opp1After = after.opp1;
+    let opp2After = after.opp2;
+
+    if (!next) {
+      drawings
+        .filter((d) => d.type === "arrow_run" && d.linkedItemId)
+        .forEach((d) => {
+          if (d.linkedItemId === "a1") youAfter = boardCoordsToZone(d.x2, d.y2, "left");
+          if (d.linkedItemId === "a2") partnerAfter = boardCoordsToZone(d.x2, d.y2, "left");
+          if (d.linkedItemId === "b1") opp1After = boardCoordsToZone(d.x2, d.y2, "right");
+          if (d.linkedItemId === "b2") opp2After = boardCoordsToZone(d.x2, d.y2, "right");
+        });
+    }
+
+    let actor: ReplayStep["actor"] = "you";
+    if (before.ballSide === "left") {
+      const dA1 = Math.hypot(before.a1.x - before.ball.x, before.a1.y - before.ball.y);
+      const dA2 = Math.hypot(before.a2.x - before.ball.x, before.a2.y - before.ball.y);
+      actor = dA2 + 10 < dA1 ? "partner" : "you";
+    } else {
+      const dB1 = Math.hypot(before.b1.x - before.ball.x, before.b1.y - before.ball.y);
+      const dB2 = Math.hypot(before.b2.x - before.ball.x, before.b2.y - before.ball.y);
+      actor = dB2 + 10 < dB1 ? "opp2" : "opp1";
+    }
+
+    let shot = defaultShot;
+    if (ballArrow?.type === "arrow_lob") shot = "LOB";
+    else if (ballArrow?.type === "arrow_glass") shot = "BAJADA";
+    else if (ballArrow?.type === "arrow_ball") {
+      const actorRow = parseInt(
+        (actor === "you"
+          ? before.you
+          : actor === "partner"
+          ? before.partner
+          : actor === "opp1"
+          ? before.opp1
+          : before.opp2)[1] || "2",
+        10
+      );
+      shot = actorRow >= 3 ? "VOLLEY" : "DRIVE";
+    }
+
+    steps.push({
+      actor,
+      shot,
+      fromZone: before.ballZone,
+      toZone,
+      ballSideBefore: before.ballSide,
+      ballSideAfter: toSide,
+      youBefore: before.you,
+      partnerBefore: before.partner,
+      opp1Before: before.opp1,
+      opp2Before: before.opp2,
+      youAfter,
+      partnerAfter,
+      opp1After,
+      opp2After,
+    });
+  }
+
+  return steps;
+}
+
+// Baut aus jedem Playbook-Eintrag (Match, Trainer oder Studio) eine abspielbare 3D-Replay-Challenge
 export function extractReplayContext(play: SavedPlay): ReplayContext {
   if (play.replayContext) {
-    return { ...play.replayContext };
+    return {
+      ...play.replayContext,
+      steps: play.replayContext.steps ? play.replayContext.steps.map((s) => ({ ...s })) : undefined,
+      actualLastMove: play.replayContext.actualLastMove
+        ? { ...play.replayContext.actualLastMove }
+        : undefined,
+    };
   }
 
-  const frames = play.keyframes || [];
-  let chosenItems = play.items;
-
-  if (frames.length > 0) {
-    const leftBallFrames = frames.filter((f) => {
-      const b = f.items.find((i) => i.id === "ball");
-      return b && b.x <= BOARD_V_WIDTH / 2;
-    });
-    if (leftBallFrames.length > 0) {
-      chosenItems = leftBallFrames[leftBallFrames.length - 1].items;
-    } else {
-      chosenItems = frames[0].items;
+  // Mehrstufige Studio-Spielzüge automatisch in Vorlauf-Animation + letzten Zug aufteilen
+  const studioSteps = extractStepsFromKeyframes(play);
+  if (studioSteps.length > 0) {
+    let lastTeamStepIdx = -1;
+    for (let i = studioSteps.length - 1; i >= 0; i--) {
+      if (studioSteps[i].actor === "you" || studioSteps[i].actor === "partner") {
+        lastTeamStepIdx = i;
+        break;
+      }
     }
+
+    if (lastTeamStepIdx >= 0) {
+      const decisionStep = studioSteps[lastTeamStepIdx];
+      const introSteps = studioSteps.slice(0, lastTeamStepIdx);
+      const prevStep = lastTeamStepIdx > 0 ? studioSteps[lastTeamStepIdx - 1] : null;
+      const isPartnerHitter = decisionStep.actor === "partner";
+
+      return {
+        you: isPartnerHitter ? decisionStep.partnerBefore : decisionStep.youBefore,
+        partner: isPartnerHitter ? decisionStep.youBefore : decisionStep.partnerBefore,
+        opp1: decisionStep.opp1Before,
+        opp2: decisionStep.opp2Before,
+        ballZone: isPartnerHitter ? decisionStep.partnerBefore : decisionStep.youBefore,
+        ballSide: "left",
+        incomingShot:
+          prevStep?.shot ||
+          (decisionStep.shot === "AUFSCHLAG" ? "PREPARE_SERVE" : "DRIVE"),
+        note: play.drillExplanation || play.drillPrompt,
+        steps: introSteps,
+        actualLastMove: {
+          actor: decisionStep.actor,
+          shot: decisionStep.shot,
+          targetZone: decisionStep.toZone,
+          runZone: isPartnerHitter ? decisionStep.partnerAfter : decisionStep.youAfter,
+        },
+      };
+    }
+
+    // Falls nur Gegner-Schläge gezeichnet wurden: alle abspielen und letzten Ball beantworten lassen
+    const finalOppStep = studioSteps[studioSteps.length - 1];
+    return {
+      you: finalOppStep.youAfter,
+      partner: finalOppStep.partnerAfter,
+      opp1: finalOppStep.opp1After,
+      opp2: finalOppStep.opp2After,
+      ballZone: finalOppStep.toZone,
+      ballSide: "left",
+      incomingShot: finalOppStep.shot || "DRIVE",
+      note: play.drillExplanation || play.drillPrompt,
+      steps: studioSteps,
+    };
   }
 
-  const a1 = chosenItems.find((i) => i.id === "a1") || { x: 120, y: 110 };
-  const a2 = chosenItems.find((i) => i.id === "a2") || { x: 120, y: 270 };
-  const b1 = chosenItems.find((i) => i.id === "b1") || { x: BOARD_V_WIDTH - 120, y: 110 };
-  const b2 = chosenItems.find((i) => i.id === "b2") || { x: BOARD_V_WIDTH - 120, y: 270 };
-  const ball = chosenItems.find((i) => i.id === "ball") || { x: a1.x, y: a1.y };
+  // Fallback für Einzelbild-Einträge ohne Keyframes
+  const snap = getZonesFromBoardItems(play.items || []);
+  let youZone = snap.you;
+  let partnerZone = snap.partner;
 
-  let youZone = boardCoordsToZone(a1.x, a1.y, "left");
-  let partnerZone = boardCoordsToZone(a2.x, a2.y, "left");
-  const opp1Zone = boardCoordsToZone(b1.x, b1.y, "right");
-  const opp2Zone = boardCoordsToZone(b2.x, b2.y, "right");
-
-  const distA1 = Math.hypot(a1.x - ball.x, a1.y - ball.y);
-  const distA2 = Math.hypot(a2.x - ball.x, a2.y - ball.y);
-  if (distA2 + 12 < distA1) {
+  const dA1 = Math.hypot(snap.a1.x - snap.ball.x, snap.a1.y - snap.ball.y);
+  const dA2 = Math.hypot(snap.a2.x - snap.ball.x, snap.a2.y - snap.ball.y);
+  if (dA2 + 12 < dA1) {
     const tmp = youZone;
     youZone = partnerZone;
     partnerZone = tmp;
@@ -190,8 +382,8 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
   return {
     you: youZone,
     partner: partnerZone,
-    opp1: opp1Zone,
-    opp2: opp2Zone,
+    opp1: snap.opp1,
+    opp2: snap.opp2,
     ballZone: youZone,
     ballSide: "left",
     incomingShot,
@@ -286,22 +478,76 @@ export function createPlayFromTrainerScenario(
       ballSide: "left",
       incomingShot: primaryShot === "AUFSCHLAG" ? "PREPARE_SERVE" : "DRIVE",
       note: desc,
+      actualLastMove: {
+        actor: "you",
+        shot: primaryShot,
+        targetZone: scenario.bestZones?.[0] || "C3",
+        runZone: scenario.laufZone,
+        outcome: expl,
+      },
     },
   };
 }
 
-// Konvertiert einen geteilten Replay-Link in einen speicherbaren Playbook-Eintrag
+// Konvertiert einen geteilten Replay-Link (inkl. aller Vorlauf-Schritte) in einen Playbook-Eintrag
 export function createPlayFromReplayContext(
   title: string,
   ctx: ReplayContext
 ): SavedPlay {
+  const buildFrameFromStep = (step: ReplayStep, idx: number): PlaybookKeyframe => {
+    const a1 = zoneToBoardCoords(step.youBefore, "left");
+    const a2 = zoneToBoardCoords(step.partnerBefore, "left");
+    const b1 = zoneToBoardCoords(step.opp1Before, "right");
+    const b2 = zoneToBoardCoords(step.opp2Before, "right");
+    const ball = zoneToBoardCoords(step.fromZone, step.ballSideBefore);
+
+    const items: PlaybookDraggableItem[] = [
+      { id: "a1", x: a1.x, y: a1.y, color: "#e74c3c", label: "A1", isPlayer: true },
+      { id: "a2", x: a2.x, y: a2.y, color: "#e74c3c", label: "A2", isPlayer: true },
+      { id: "b1", x: b1.x, y: b1.y, color: "#f1c40f", label: "B1", isPlayer: true },
+      { id: "b2", x: b2.x, y: b2.y, color: "#f1c40f", label: "B2", isPlayer: true },
+      { id: "ball", x: ball.x, y: ball.y, color: "#2ecc71", label: "●", isPlayer: false },
+    ];
+
+    const destPt = zoneToBoardCoords(step.toZone, step.ballSideAfter);
+    const upperShot = (step.shot || "").toUpperCase();
+    const arrowType: PlaybookStudioDrawing["type"] = upperShot.includes("LOB")
+      ? "arrow_lob"
+      : upperShot === "BAJADA"
+      ? "arrow_glass"
+      : "arrow_ball";
+
+    const drawings: PlaybookStudioDrawing[] = [
+      {
+        id: `sh-ball-${idx}-${Date.now()}`,
+        type: arrowType,
+        x1: ball.x,
+        y1: ball.y,
+        x2: destPt.x,
+        y2: destPt.y,
+        linkedItemId: "ball",
+      },
+    ];
+
+    return {
+      id: `kf-sh-${idx}-${Date.now()}`,
+      items,
+      drawings,
+    };
+  };
+
+  let keyframes: PlaybookKeyframe[] = [];
+  if (ctx.steps && ctx.steps.length > 0) {
+    keyframes = ctx.steps.map(buildFrameFromStep);
+  }
+
   const a1 = zoneToBoardCoords(ctx.you, "left");
   const a2 = zoneToBoardCoords(ctx.partner, "left");
   const b1 = zoneToBoardCoords(ctx.opp1, "right");
   const b2 = zoneToBoardCoords(ctx.opp2, "right");
   const ball = zoneToBoardCoords(ctx.ballZone || ctx.you, ctx.ballSide || "left");
 
-  const items: PlaybookDraggableItem[] = [
+  const finalItems: PlaybookDraggableItem[] = [
     { id: "a1", x: a1.x, y: a1.y, color: "#e74c3c", label: "A1", isPlayer: true },
     { id: "a2", x: a2.x, y: a2.y, color: "#e74c3c", label: "A2", isPlayer: true },
     { id: "b1", x: b1.x, y: b1.y, color: "#f1c40f", label: "B1", isPlayer: true },
@@ -309,18 +555,120 @@ export function createPlayFromReplayContext(
     { id: "ball", x: ball.x, y: ball.y, color: "#2ecc71", label: "●", isPlayer: false },
   ];
 
+  keyframes.push({
+    id: `kf-sh-end-${Date.now()}`,
+    items: finalItems,
+    drawings: [],
+  });
+
   return {
     id: `shared-play-${Date.now()}`,
     title: title || "Shared Play",
     updatedAt: Date.now(),
-    items,
-    drawings: [],
-    keyframes: [{ id: `kf-sh-${Date.now()}`, items, drawings: [] }],
+    items: keyframes[0].items,
+    drawings: keyframes[0].drawings,
+    keyframes,
     source: "match",
     isDrill: false,
     drillExplanation: ctx.note,
-    replayContext: { ...ctx },
+    replayContext: {
+      ...ctx,
+      steps: ctx.steps ? ctx.steps.map((s) => ({ ...s })) : undefined,
+      actualLastMove: ctx.actualLastMove ? { ...ctx.actualLastMove } : undefined,
+    },
   };
+}
+
+// =========================================================================
+// KURZE SUPABASE SHARE-LINKS (`?play=<code>` über `public.shared_replays`)
+// =========================================================================
+const SHARE_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
+
+function generateShortShareCode(len: number = 8): string {
+  let out = "";
+  const cryptoObj = typeof crypto !== "undefined" ? crypto : null;
+  if (cryptoObj && cryptoObj.getRandomValues) {
+    const buf = new Uint8Array(len);
+    cryptoObj.getRandomValues(buf);
+    for (let i = 0; i < len; i++) {
+      out += SHARE_CODE_CHARS[buf[i] % SHARE_CODE_CHARS.length];
+    }
+    return out;
+  }
+  for (let i = 0; i < len; i++) {
+    out += SHARE_CODE_CHARS[Math.floor(Math.random() * SHARE_CODE_CHARS.length)];
+  }
+  return out;
+}
+
+export async function createSharedReplayLink(params: {
+  title: string;
+  context: ReplayContext;
+  userId?: string | null;
+  baseUrl: string;
+}): Promise<{ url: string; shortCode: string | null }> {
+  const cleanTitle = (params.title || "TacPadel Challenge").slice(0, 120);
+  const cleanCtx: ReplayContext = {
+    ...params.context,
+    steps: params.context.steps ? params.context.steps.slice(-16) : undefined,
+  };
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = generateShortShareCode(8);
+    try {
+      const { error } = await supabase.from(SHARED_REPLAYS_TABLE).insert({
+        code,
+        title: cleanTitle,
+        replay_context: cleanCtx,
+        created_by: params.userId || null,
+      });
+
+      if (!error) {
+        return {
+          url: `${params.baseUrl}?play=${code}`,
+          shortCode: code,
+        };
+      }
+      // Nur bei Code-Kollision (23505) nochmal würfeln
+      if (error.code !== "23505") break;
+    } catch {
+      break;
+    }
+  }
+
+  // Sauberer Offline-/Fallback-Link ohne Datenverlust
+  const encoded = encodeReplayToParam(cleanTitle, cleanCtx);
+  return {
+    url: `${params.baseUrl}?replay=${encoded}`,
+    shortCode: null,
+  };
+}
+
+export async function fetchSharedReplayByCode(
+  code: string
+): Promise<{ title: string; context: ReplayContext } | null> {
+  const cleanCode = (code || "").trim().toLowerCase();
+  if (!cleanCode || cleanCode.length < 6 || cleanCode.length > 16) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from(SHARED_REPLAYS_TABLE)
+      .select("title, replay_context")
+      .eq("code", cleanCode)
+      .maybeSingle();
+
+    if (error || !data?.replay_context) return null;
+
+    const ctx = data.replay_context as ReplayContext;
+    if (!ctx.you || !ctx.partner || !ctx.opp1 || !ctx.opp2) return null;
+
+    return {
+      title: String(data.title || "Padel Challenge"),
+      context: ctx,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // =========================================================================
@@ -371,7 +719,6 @@ async function syncPlaybookListToSupabase(
       if (upsertErr) return false;
     }
 
-    // Gelöschte Einträge sauber aus der Tabelle entfernen
     const { data: existingRows, error: fetchErr } = await supabase
       .from(PLAYBOOK_TABLE)
       .select("id")
@@ -412,7 +759,6 @@ async function upsertSinglePlayToSupabase(
   }
 }
 
-// Lädt Playbook (Supabase `playbook_entries` + lokaler Cache + Auto-Umzug alter `user_metadata`-Spielzüge)
 export async function loadPlaybook(
   userId?: string | null,
   maxSlots: number = MAX_PLAYBOOK_ITEMS
@@ -444,7 +790,6 @@ export async function loadPlaybook(
       }
     } catch {}
 
-    // Einmalige Übernahme alter Spielzüge aus auth.user_metadata (hält das JWT-Token dauerhaft schlank)
     try {
       const {
         data: { session },
@@ -471,7 +816,6 @@ export async function loadPlaybook(
     localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(merged));
   } catch {}
 
-  // Falls noch Alt-Daten im JWT lagen oder Offline-Spielzüge in der DB fehlen -> einmalig hochsynchronisieren
   if (userId && dbReachable) {
     const dbIds = new Set(dbPlays.map((p) => p.id));
     const hasUnsyncedLocal = merged.some((p) => !dbIds.has(p.id));
@@ -696,7 +1040,7 @@ export function migrateGuestCoachStatsToUser(userId: string): number {
 }
 
 // =========================================================================
-// KOMPAKTER URL-CODEC FÜR "WIE WÜRDEST DU DAS SPIELEN?" (?replay=...)
+// LEGACY/OFFLINE URL-CODEC FÜR ?replay=... (ABWÄRTSKOMPATIBEL)
 // =========================================================================
 export function encodeReplayToParam(title: string, ctx: ReplayContext): string {
   const payload = {

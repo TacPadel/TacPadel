@@ -26,6 +26,8 @@ import {
   PlaybookDraggableItem,
   PlaybookStudioDrawing,
   PlaybookKeyframe,
+  ReplayContext,
+  ReplayStep,
   SavedPlay,
   zoneToBoardCoords,
   upsertPlaybookEntry,
@@ -453,8 +455,9 @@ export default function GameScreen() {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
 
-  // --- PLAYBOOK RALLY-REKORDER ---
+  // --- PLAYBOOK RALLY-REKORDER (Studio-Keyframes + parallele 3D-ReplaySteps) ---
   const rallyKeyframesRef = useRef<PlaybookKeyframe[]>([]);
+  const rallyStepsRef = useRef<ReplayStep[]>([]);
   const [rallySaved, setRallySaved] = useState<boolean>(false);
 
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null);
@@ -996,6 +999,7 @@ export default function GameScreen() {
 
       refreshLoadoutAndPartner();
       rallyKeyframesRef.current = [];
+      rallyStepsRef.current = [];
       setRallySaved(false);
 
       const loadedTourId = parsed.tournamentId || null;
@@ -1101,6 +1105,7 @@ export default function GameScreen() {
     setEarnedTP(0);
     setEarnedItemXp(0);
     rallyKeyframesRef.current = [];
+    rallyStepsRef.current = [];
     setRallySaved(false);
 
     if (isRematch) {
@@ -1221,6 +1226,7 @@ export default function GameScreen() {
     setEarnedTP(0);
     setEarnedItemXp(0);
     rallyKeyframesRef.current = [];
+    rallyStepsRef.current = [];
     setRallySaved(false);
 
     setMatchStats(initialStatsData);
@@ -1493,7 +1499,7 @@ export default function GameScreen() {
           else nextOpp2 = pTarget;
         }
 
-        // 📘 Rally-Rekorder: KI-Zug als Schritt fürs Playbook mitschneiden
+        // 📘 Rally-Rekorder: KI-Zug als Schritt fürs Playbook Studio mitschneiden
         const aiStartItems = buildBoardItemsFromCourt(
           courtState.you,
           courtState.partner,
@@ -1554,6 +1560,24 @@ export default function GameScreen() {
           id: `kf-ai-${Date.now()}-${rallyKeyframesRef.current.length}`,
           items: aiStartItems,
           drawings: aiStepDrawings,
+        });
+
+        // 🎬 Paralleler Zonen-Rekorder für animierte 3D-Replays
+        rallyStepsRef.current.push({
+          actor: currentAiHitter,
+          shot: brain.shot || "DRIVE",
+          fromZone: ballLandedAt,
+          toZone: aiDestZone,
+          ballSideBefore: "right",
+          ballSideAfter: "left",
+          youBefore: courtState.you,
+          partnerBefore: courtState.partner,
+          opp1Before: courtState.opp1,
+          opp2Before: courtState.opp2,
+          youAfter: courtState.you,
+          partnerAfter: courtState.partner,
+          opp1After: nextOpp1,
+          opp2After: nextOpp2,
         });
 
         setCourtState((prev) => {
@@ -1697,6 +1721,13 @@ export default function GameScreen() {
                 },
               ];
             }
+          }
+
+          // 🎬 Parallelen ReplayStep mit den tatsächlichen Laufwegen nach dem Abfangen aktualisieren
+          const lastReplayStep = rallyStepsRef.current[rallyStepsRef.current.length - 1];
+          if (lastReplayStep) {
+            lastReplayStep.youAfter = interceptYouRun;
+            lastReplayStep.partnerAfter = interceptPartnerRun;
           }
 
           let isYouInZone = validInterceptZonesRef.current.includes(interceptYouRun);
@@ -1901,7 +1932,8 @@ export default function GameScreen() {
     const currentTourId = activeTournamentIdRef.current || activeTournamentId;
     const currentRoundNum =
       Number(activeTournamentRoundRef.current || activeTournamentRound) || 1;
-    const currentDiff = Number(activeTournamentDifficultyRef.current || activeTournamentDifficulty) || 0;
+    const currentDiff =
+      Number(activeTournamentDifficultyRef.current || activeTournamentDifficulty) || 0;
 
     if (!currentTourId || isProcessingRetry) return;
 
@@ -2226,7 +2258,7 @@ export default function GameScreen() {
       }
     }
 
-    // 📘 Rally-Rekorder: Eigenen Spieler-Zug als Schritt fürs Playbook mitschneiden
+    // 📘 Rally-Rekorder: Eigenen Spieler-Zug als Schritt fürs Playbook Studio mitschneiden
     const pStartItems = buildBoardItemsFromCourt(
       courtState.you,
       courtState.partner,
@@ -2287,6 +2319,24 @@ export default function GameScreen() {
       id: `kf-p-${Date.now()}-${rallyKeyframesRef.current.length}`,
       items: pStartItems,
       drawings: pStepDrawings,
+    });
+
+    // 🎬 Paralleler Zonen-Rekorder für animierte 3D-Replays
+    rallyStepsRef.current.push({
+      actor: hitterId,
+      shot: chosenShot,
+      fromZone: hitFromPos,
+      toZone: targetPos,
+      ballSideBefore: "left",
+      ballSideAfter: "right",
+      youBefore: courtState.you,
+      partnerBefore: courtState.partner,
+      opp1Before: courtState.opp1,
+      opp2Before: courtState.opp2,
+      youAfter: recoveryYouRun,
+      partnerAfter: recoveryPartnerRun,
+      opp1After: courtState.opp1,
+      opp2After: courtState.opp2,
     });
 
     setShotHistory((prev) => {
@@ -2400,13 +2450,91 @@ export default function GameScreen() {
       "game_pb_drill_prompt_suffix"
     )}`;
 
-    // Schlüsselmoment für das 3D-Replay im Playbook Hub mitgeben
-    const replayYou = hitterId === "partner" ? courtState.partner : courtState.you;
-    const replayPartner = hitterId === "partner" ? courtState.you : courtState.partner;
-    const replayIncomingShot =
-      wasAiTurn || isTimeout
-        ? courtState.ball.type || "DRIVE"
-        : aiShotHistory[0] || "DRIVE";
+    // 3D-Replay-Context: komplette Vorlauf-Animation + exakter Entscheidungsmoment für den letzten Zug
+    const recordedSteps = rallyStepsRef.current.map((s) => ({ ...s }));
+    const lastRecordedStep = recordedSteps[recordedSteps.length - 1];
+
+    let builtReplayContext: ReplayContext;
+
+    if (
+      lastRecordedStep &&
+      (lastRecordedStep.actor === "you" || lastRecordedStep.actor === "partner")
+    ) {
+      // Punkt endete mit eigenem Schlag -> alle Schläge davor abspielen, dann genau diesen letzten Zug lösen lassen
+      const introSteps = recordedSteps.slice(0, -1);
+      const prevStep = introSteps[introSteps.length - 1];
+      const isPartnerActor = lastRecordedStep.actor === "partner";
+      const activeYouZone = isPartnerActor
+        ? lastRecordedStep.partnerBefore
+        : lastRecordedStep.youBefore;
+      const activePartnerZone = isPartnerActor
+        ? lastRecordedStep.youBefore
+        : lastRecordedStep.partnerBefore;
+
+      builtReplayContext = {
+        you: activeYouZone,
+        partner: activePartnerZone,
+        opp1: lastRecordedStep.opp1Before,
+        opp2: lastRecordedStep.opp2Before,
+        ballZone: activeYouZone,
+        ballSide: "left",
+        incomingShot:
+          prevStep?.shot ||
+          (lastRecordedStep.shot === "AUFSCHLAG"
+            ? "PREPARE_SERVE"
+            : aiShotHistory[0] || "DRIVE"),
+        note: turnMessage || turnTitle || undefined,
+        steps: introSteps,
+        actualLastMove: {
+          actor: lastRecordedStep.actor,
+          shot: lastRecordedStep.shot,
+          targetZone: lastRecordedStep.toZone,
+          runZone: isPartnerActor
+            ? lastRecordedStep.partnerAfter
+            : lastRecordedStep.youAfter,
+          outcome: turnMessage || turnTitle || undefined,
+        },
+      };
+    } else if (lastRecordedStep) {
+      // Punkt endete mit KI-Schlag -> gesamten Ballwechsel inkl. KI-Schlag abspielen, dann Antwort darauf lösen lassen
+      const distYou = getZoneDist(lastRecordedStep.youAfter, lastRecordedStep.toZone);
+      const distPartner = getZoneDist(lastRecordedStep.partnerAfter, lastRecordedStep.toZone);
+      const swapPartnerAsYou = distPartner < distYou;
+
+      builtReplayContext = {
+        you: swapPartnerAsYou ? lastRecordedStep.partnerAfter : lastRecordedStep.youAfter,
+        partner: swapPartnerAsYou ? lastRecordedStep.youAfter : lastRecordedStep.partnerAfter,
+        opp1: lastRecordedStep.opp1After,
+        opp2: lastRecordedStep.opp2After,
+        ballZone: lastRecordedStep.toZone,
+        ballSide: "left",
+        incomingShot: lastRecordedStep.shot || "DRIVE",
+        note: turnMessage || turnTitle || undefined,
+        steps: recordedSteps,
+        actualLastMove: {
+          actor: lastRecordedStep.actor,
+          shot: lastRecordedStep.shot,
+          targetZone: lastRecordedStep.toZone,
+          outcome: turnMessage || turnTitle || undefined,
+        },
+      };
+    } else {
+      const replayYou = hitterId === "partner" ? courtState.partner : courtState.you;
+      const replayPartner = hitterId === "partner" ? courtState.you : courtState.partner;
+      builtReplayContext = {
+        you: replayYou,
+        partner: replayPartner,
+        opp1: courtState.opp1,
+        opp2: courtState.opp2,
+        ballZone: replayYou,
+        ballSide: "left",
+        incomingShot:
+          wasAiTurn || isTimeout
+            ? courtState.ball.type || "DRIVE"
+            : aiShotHistory[0] || "DRIVE",
+        note: turnMessage || turnTitle || undefined,
+      };
+    }
 
     const newEntry: SavedPlay = {
       id: `match-play-${Date.now()}`,
@@ -2420,16 +2548,7 @@ export default function GameScreen() {
       drillPrompt,
       drillExplanation: turnMessage || turnTitle || undefined,
       drillTargetDepth: oppsAtNet ? "back" : "net",
-      replayContext: {
-        you: replayYou,
-        partner: replayPartner,
-        opp1: courtState.opp1,
-        opp2: courtState.opp2,
-        ballZone: replayYou,
-        ballSide: "left",
-        incomingShot: replayIncomingShot,
-        note: turnMessage || turnTitle || undefined,
-      },
+      replayContext: builtReplayContext,
     };
 
     const res = upsertPlaybookEntry(
@@ -2835,6 +2954,7 @@ export default function GameScreen() {
   ) => {
     // Frischer Rally-Speicher für den neuen Punkt / 2. Aufschlag
     rallyKeyframesRef.current = [];
+    rallyStepsRef.current = [];
     setRallySaved(false);
 
     const pScore = newPScore ?? playerScore;
