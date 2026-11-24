@@ -59,7 +59,15 @@ export interface ReplayActualMove {
   outcome?: string;
 }
 
+export interface ReplayTrainerEval {
+  scenarioId?: number;
+  validShots: string[];
+  bestZones: string[];
+  laufZone?: string;
+}
+
 export interface ReplayContext {
+  source?: PlaybookSource;
   you: string;
   partner: string;
   opp1: string;
@@ -70,6 +78,7 @@ export interface ReplayContext {
   note?: string;
   steps?: ReplayStep[];
   actualLastMove?: ReplayActualMove;
+  trainerEval?: ReplayTrainerEval;
 }
 
 export interface SavedPlay {
@@ -301,19 +310,29 @@ function extractStepsFromKeyframes(play: SavedPlay): ReplayStep[] {
 
 // Baut aus jedem Playbook-Eintrag (Match, Trainer oder Studio) eine abspielbare 3D-Replay-Challenge
 export function extractReplayContext(play: SavedPlay): ReplayContext {
+  const playSource = inferPlaySource(play);
+
   if (play.replayContext) {
     return {
       ...play.replayContext,
+      source: play.replayContext.source || playSource,
       steps: play.replayContext.steps ? play.replayContext.steps.map((s) => ({ ...s })) : undefined,
       actualLastMove: play.replayContext.actualLastMove
         ? { ...play.replayContext.actualLastMove }
+        : undefined,
+      trainerEval: play.replayContext.trainerEval
+        ? {
+            ...play.replayContext.trainerEval,
+            validShots: [...play.replayContext.trainerEval.validShots],
+            bestZones: [...play.replayContext.trainerEval.bestZones],
+          }
         : undefined,
     };
   }
 
   // Mehrstufige Studio-Spielzüge automatisch in Vorlauf-Animation + letzten Zug aufteilen
   const studioSteps = extractStepsFromKeyframes(play);
-  if (studioSteps.length > 0) {
+  if (studioSteps.length > 0 && playSource !== "trainer") {
     let lastTeamStepIdx = -1;
     for (let i = studioSteps.length - 1; i >= 0; i--) {
       if (studioSteps[i].actor === "you" || studioSteps[i].actor === "partner") {
@@ -329,6 +348,7 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
       const isPartnerHitter = decisionStep.actor === "partner";
 
       return {
+        source: playSource,
         you: isPartnerHitter ? decisionStep.partnerBefore : decisionStep.youBefore,
         partner: isPartnerHitter ? decisionStep.youBefore : decisionStep.partnerBefore,
         opp1: decisionStep.opp1Before,
@@ -352,6 +372,7 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
     // Falls nur Gegner-Schläge gezeichnet wurden: alle abspielen und letzten Ball beantworten lassen
     const finalOppStep = studioSteps[studioSteps.length - 1];
     return {
+      source: playSource,
       you: finalOppStep.youAfter,
       partner: finalOppStep.partnerAfter,
       opp1: finalOppStep.opp1After,
@@ -380,6 +401,7 @@ export function extractReplayContext(play: SavedPlay): ReplayContext {
   const incomingShot = detectShotFromText(`${play.title} ${play.drillPrompt || ""}`);
 
   return {
+    source: playSource,
     you: youZone,
     partner: partnerZone,
     opp1: snap.opp1,
@@ -470,14 +492,21 @@ export function createPlayFromTrainerScenario(
     drillTargetDepth:
       parseInt(scenario.laufZone?.[1] || "2", 10) >= 3 ? "net" : "back",
     replayContext: {
+      source: "trainer",
       you: scenario.positions.you,
       partner: scenario.positions.partner,
       opp1: scenario.positions.opp1,
       opp2: scenario.positions.opp2,
-      ballZone: scenario.positions.you,
-      ballSide: "left",
+      ballZone: scenario.positions.ball.zone || scenario.positions.you,
+      ballSide,
       incomingShot: primaryShot === "AUFSCHLAG" ? "PREPARE_SERVE" : "DRIVE",
       note: desc,
+      trainerEval: {
+        scenarioId: scenario.id,
+        validShots: [...scenario.validShots],
+        bestZones: [...(scenario.bestZones || [])],
+        laufZone: scenario.laufZone || undefined,
+      },
       actualLastMove: {
         actor: "you",
         shot: primaryShot,
@@ -489,7 +518,7 @@ export function createPlayFromTrainerScenario(
   };
 }
 
-// Konvertiert einen geteilten Replay-Link (inkl. aller Vorlauf-Schritte) in einen Playbook-Eintrag
+// Konvertiert einen geteilten Replay-Link (inkl. aller Vorlauf-Schritte & Trainer-Daten) in einen Playbook-Eintrag
 export function createPlayFromReplayContext(
   title: string,
   ctx: ReplayContext
@@ -568,13 +597,20 @@ export function createPlayFromReplayContext(
     items: keyframes[0].items,
     drawings: keyframes[0].drawings,
     keyframes,
-    source: "match",
+    source: ctx.source || "match",
     isDrill: false,
     drillExplanation: ctx.note,
     replayContext: {
       ...ctx,
       steps: ctx.steps ? ctx.steps.map((s) => ({ ...s })) : undefined,
       actualLastMove: ctx.actualLastMove ? { ...ctx.actualLastMove } : undefined,
+      trainerEval: ctx.trainerEval
+        ? {
+            ...ctx.trainerEval,
+            validShots: [...ctx.trainerEval.validShots],
+            bestZones: [...ctx.trainerEval.bestZones],
+          }
+        : undefined,
     },
   };
 }
@@ -611,6 +647,13 @@ export async function createSharedReplayLink(params: {
   const cleanCtx: ReplayContext = {
     ...params.context,
     steps: params.context.steps ? params.context.steps.slice(-16) : undefined,
+    trainerEval: params.context.trainerEval
+      ? {
+          ...params.context.trainerEval,
+          validShots: [...params.context.trainerEval.validShots],
+          bestZones: [...params.context.trainerEval.bestZones],
+        }
+      : undefined,
   };
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1045,6 +1088,7 @@ export function migrateGuestCoachStatsToUser(userId: string): number {
 export function encodeReplayToParam(title: string, ctx: ReplayContext): string {
   const payload = {
     t: title.slice(0, 48),
+    src: ctx.source || "match",
     y: ctx.you,
     p: ctx.partner,
     o1: ctx.opp1,
@@ -1079,9 +1123,15 @@ export function decodeReplayFromParam(
 
     if (!data?.y || !data?.p || !data?.o1 || !data?.o2) return null;
 
+    const src =
+      data.src === "trainer" || data.src === "studio" || data.src === "match"
+        ? (data.src as PlaybookSource)
+        : "match";
+
     return {
       title: String(data.t || "Padel Challenge"),
       context: {
+        source: src,
         you: String(data.y),
         partner: String(data.p),
         opp1: String(data.o1),

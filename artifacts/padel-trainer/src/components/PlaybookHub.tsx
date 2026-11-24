@@ -3,9 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Share } from "@capacitor/share";
 import ScenarioCourt25 from "./ScenarioCourt25";
+import ScenarioCourt3D from "./ScenarioCourt3D/ScenarioCourt3D";
+import { SCENARIOS } from "./Scenarios";
+import { AI_PROFILES } from "../engine/AiProfiles";
 import {
   SHOT_TYPES,
   TurnResult,
+  GamePhase,
   evaluatePlayerShot,
 } from "../engine/GameLogic";
 import { useTranslation, formatShotName } from "../lib/i18n";
@@ -15,6 +19,7 @@ import {
   SavedPlay,
   ReplayContext,
   ReplayStep,
+  ReplayTrainerEval,
   PlaybookSource,
   loadPlaybook,
   savePlaybookList,
@@ -40,8 +45,8 @@ interface ReplayEvalResult {
   title: string;
   message: string;
   shot: string;
-  targetZone: string;
-  runZone: string;
+  targetZone: string | null;
+  runZone: string | null;
 }
 
 interface PlaybookHubProps {
@@ -56,6 +61,31 @@ interface PlaybookHubProps {
 }
 
 const SHARE_BASE_URL = "https://tac-padel-api-server.vercel.app/";
+
+// Exakte Flugdauer passend zum 3-Sekunden-Timer von ScenarioCourt3D
+const getReplayStepDurationMs = (shot?: string): number => {
+  const s = (shot || "").toUpperCase();
+  if (["LOB", "CHIQUITA"].includes(s)) return 3400;
+  if (["SMASH", "VIBORA", "BAJADA"].includes(s)) return 2600;
+  return 3000;
+};
+
+// Nachbarzonen für faire Trainer-Toleranz (wie im Taktik-Trainer)
+const getAdjacentZones = (zoneId?: string): string[] => {
+  if (!zoneId || zoneId.length < 2) return [];
+  const letters = ["A", "B", "C", "D", "E"];
+  const letter = zoneId[0].toUpperCase();
+  const num = parseInt(zoneId[1], 10);
+  const idx = letters.indexOf(letter);
+  if (idx === -1 || isNaN(num)) return [];
+
+  const neighbors: string[] = [];
+  if (num > 1) neighbors.push(`${letter}${num - 1}`);
+  if (num < 5) neighbors.push(`${letter}${num + 1}`);
+  if (idx > 0) neighbors.push(`${letters[idx - 1]}${num}`);
+  if (idx < letters.length - 1) neighbors.push(`${letters[idx + 1]}${num}`);
+  return neighbors;
+};
 
 export default function PlaybookHub({
   userId,
@@ -132,6 +162,69 @@ export default function PlaybookHub({
     };
   }, [userId, entitlementsLoading, entitlements.maxPlaybookSlots]);
 
+  // Prüft, ob das aktive Replay ein Taktik-Trainer-Szenario ist (ScenarioCourt25)
+  const isTrainerReplay = Boolean(
+    activeReplay &&
+      activeReplay.context.source === "trainer" &&
+      (!activeReplay.context.steps || activeReplay.context.steps.length === 0)
+  );
+
+  // Löst Trainer-Lösungsdaten auf (inkl. Fallback für ältere gespeicherte Trainer-Einträge)
+  const resolvedTrainerEval: ReplayTrainerEval | null = useMemo(() => {
+    if (!activeReplay || !isTrainerReplay) return null;
+    if (activeReplay.context.trainerEval) return activeReplay.context.trainerEval;
+
+    if (activeReplay.sourcePlayId?.startsWith("trainer-play-")) {
+      const scId = parseInt(activeReplay.sourcePlayId.replace("trainer-play-", ""), 10);
+      const found = !isNaN(scId) ? SCENARIOS.find((s) => s.id === scId) : undefined;
+      if (found) {
+        return {
+          scenarioId: found.id,
+          validShots: [...found.validShots],
+          bestZones: [...(found.bestZones || [])],
+          laufZone: found.laufZone || undefined,
+        };
+      }
+    }
+
+    if (activeReplay.context.actualLastMove) {
+      return {
+        validShots: [activeReplay.context.actualLastMove.shot],
+        bestZones: activeReplay.context.actualLastMove.targetZone
+          ? [activeReplay.context.actualLastMove.targetZone]
+          : [],
+        laufZone: activeReplay.context.actualLastMove.runZone,
+      };
+    }
+
+    return null;
+  }, [activeReplay, isTrainerReplay]);
+
+  const trainerNeedsTarget = isTrainerReplay
+    ? Boolean(resolvedTrainerEval && resolvedTrainerEval.bestZones.length > 0)
+    : true;
+  const trainerNeedsRun = isTrainerReplay
+    ? Boolean(resolvedTrainerEval && resolvedTrainerEval.laufZone)
+    : true;
+
+  const trainerAcceptableZones = useMemo(() => {
+    if (!isTrainerReplay || !resolvedTrainerEval?.bestZones?.length) return [];
+    const neighbors: string[] = [];
+    resolvedTrainerEval.bestZones.forEach((z) => {
+      neighbors.push(...getAdjacentZones(z));
+    });
+    return Array.from(new Set(neighbors)).filter(
+      (z) => !resolvedTrainerEval.bestZones.includes(z)
+    );
+  }, [isTrainerReplay, resolvedTrainerEval]);
+
+  const trainerAcceptableLaufZones = useMemo(() => {
+    if (!isTrainerReplay || !resolvedTrainerEval?.laufZone) return [];
+    return getAdjacentZones(resolvedTrainerEval.laufZone).filter(
+      (z) => z !== resolvedTrainerEval.laufZone
+    );
+  }, [isTrainerReplay, resolvedTrainerEval]);
+
   // Startet ein 3D-Replay (mit automatischer Vorlauf-Animation, falls Schritte vorhanden sind)
   const openReplaySession = (state: ActiveReplayState) => {
     clearWatchTimers();
@@ -160,7 +253,7 @@ export default function PlaybookHub({
     return () => clearWatchTimers();
   }, [initialSharedReplay]);
 
-  // Step-by-Step 3D-Ballwechsel-Animation vor dem letzten Zug
+  // Step-by-Step 3D-Ballwechsel-Animation abgestimmt auf ScenarioCourt3D-Timer
   useEffect(() => {
     if (!activeReplay || replayPhase !== "watching") {
       clearWatchTimers();
@@ -177,9 +270,13 @@ export default function PlaybookHub({
     clearWatchTimers();
     setWatchAnimating(false);
 
+    const stepDurationMs = getReplayStepDurationMs(steps[watchStepIdx]?.shot);
+    const prepDelayMs = 350;
+    const settleDelayMs = 350;
+
     const tStart = setTimeout(() => {
       setWatchAnimating(true);
-    }, 260);
+    }, prepDelayMs);
 
     const tNext = setTimeout(() => {
       if (watchStepIdx + 1 < steps.length) {
@@ -189,7 +286,7 @@ export default function PlaybookHub({
         setWatchAnimating(false);
         setReplayPhase("solving");
       }
-    }, 2150);
+    }, prepDelayMs + stepDurationMs + settleDelayMs);
 
     watchTimersRef.current = [tStart, tNext];
     return () => clearWatchTimers();
@@ -228,8 +325,65 @@ export default function PlaybookHub({
   };
 
   const handleEvaluateReplayShot = () => {
-    if (!activeReplay || !chosenShot || !chosenTarget || !chosenRun) return;
+    if (!activeReplay || !chosenShot) return;
     const ctx = activeReplay.context;
+
+    // 1. TAKTIK-TRAINER-PRÜFUNG (für ScenarioCourt25-Spielzüge)
+    if (isTrainerReplay && resolvedTrainerEval) {
+      if (trainerNeedsTarget && !chosenTarget) return;
+      if (trainerNeedsRun && !chosenRun) return;
+
+      const shotOk = resolvedTrainerEval.validShots.some(
+        (valid) =>
+          valid === chosenShot ||
+          (chosenShot === "LOB" && valid.includes("LOB")) ||
+          (chosenShot === "VOLLEY" && valid.includes("VOLLEY"))
+      );
+      const targetOk =
+        !trainerNeedsTarget ||
+        Boolean(
+          chosenTarget &&
+            (resolvedTrainerEval.bestZones.includes(chosenTarget) ||
+              trainerAcceptableZones.includes(chosenTarget))
+        );
+      const runOk =
+        !trainerNeedsRun ||
+        Boolean(
+          chosenRun &&
+            (resolvedTrainerEval.laufZone === chosenRun ||
+              trainerAcceptableLaufZones.includes(chosenRun))
+        );
+
+      const allOk = shotOk && targetOk && runOk;
+      const anyOk = shotOk || (trainerNeedsTarget && targetOk) || (trainerNeedsRun && runOk);
+
+      const explText =
+        ctx.actualLastMove?.outcome ||
+        ctx.note ||
+        tr(
+          "Vergleiche deine Wahl mit den grün markierten Lösungszonen.",
+          "Compare your choice with the green solution zones.",
+          "Compara tu elección con las zonas verdes de solución."
+        );
+
+      setEvalResult({
+        result: allOk ? "perfect" : anyOk ? "recovery" : "error_wrong_zone",
+        title: allOk
+          ? tr("⭐ PERFEKTE TAKTIK!", "⭐ PERFECT TACTICS!", "⭐ ¡TÁCTICA PERFECTA!")
+          : anyOk
+          ? tr("⚠️ TEILWEISE RICHTIG", "⚠️ PARTIALLY CORRECT", "⚠️ PARCIALMENTE CORRECTO")
+          : tr("❌ NICHT OPTIMAL", "❌ NOT OPTIMAL", "❌ NO ES ÓPTIMO"),
+        message: explText,
+        shot: chosenShot,
+        targetZone: chosenTarget,
+        runZone: chosenRun,
+      });
+      setReplayPhase("result");
+      return;
+    }
+
+    // 2. 3D-MATCH-PRÜFUNG (für ScenarioCourt3D-Spielzüge)
+    if (!chosenTarget || !chosenRun) return;
     const isServe = ctx.incomingShot === "PREPARE_SERVE";
     const isReturn = ctx.incomingShot === "AUFSCHLAG";
 
@@ -462,25 +616,77 @@ export default function PlaybookHub({
   };
 
   // =========================================================================
-  // ANSICHT A: INTERAKTIVES 3D-REPLAY (ANIMATION -> LETZTEN ZUG LÖSEN)
+  // ANSICHT A: INTERAKTIVES 3D-REPLAY (SCENARIOCOURT25 FÜR TRAINER / 3D FÜR MATCH)
   // =========================================================================
   if (activeReplay) {
     const ctx = activeReplay.context;
     const steps = ctx.steps || [];
     const currentWatchStep = steps[watchStepIdx] || null;
-    const isWatching = replayPhase === "watching" && currentWatchStep !== null;
+    const isWatching = !isTrainerReplay && replayPhase === "watching" && currentWatchStep !== null;
     const isSolved = replayPhase === "result" && evalResult !== null;
 
-    const courtPositions = isWatching
+    const isWatchStepAi = Boolean(
+      isWatching &&
+        currentWatchStep &&
+        (currentWatchStep.actor === "opp1" || currentWatchStep.actor === "opp2")
+    );
+
+    const trainerCourtLevel =
+      trainerNeedsRun && trainerNeedsTarget
+        ? "Spielzug"
+        : trainerNeedsTarget
+        ? "Schlagrichtung"
+        : trainerNeedsRun
+        ? "Laufrichtung"
+        : "Schlag";
+
+    // Exakte Nachbildung des GameScreen-Timings (Prepare -> Flight) für ScenarioCourt3D
+    const courtPositions = isWatching && currentWatchStep
+      ? watchAnimating
+        ? isWatchStepAi
+          ? {
+              you: currentWatchStep.youBefore,
+              partner: currentWatchStep.partnerBefore,
+              opp1: currentWatchStep.opp1After,
+              opp2: currentWatchStep.opp2After,
+              ball: {
+                side: "right" as const,
+                zone: currentWatchStep.fromZone,
+                type: currentWatchStep.shot || "DRIVE",
+              },
+            }
+          : {
+              you: currentWatchStep.youAfter,
+              partner: currentWatchStep.partnerAfter,
+              opp1: currentWatchStep.opp1Before,
+              opp2: currentWatchStep.opp2Before,
+              ball: {
+                side: "left" as const,
+                zone: currentWatchStep.fromZone,
+                type: currentWatchStep.shot || "DRIVE",
+              },
+            }
+        : {
+            you: currentWatchStep.youBefore,
+            partner: currentWatchStep.partnerBefore,
+            opp1: currentWatchStep.opp1Before,
+            opp2: currentWatchStep.opp2Before,
+            ball: {
+              side: currentWatchStep.ballSideBefore,
+              zone: currentWatchStep.fromZone,
+              type: currentWatchStep.shot || "DRIVE",
+            },
+          }
+      : isSolved && evalResult && !isTrainerReplay
       ? {
-          you: currentWatchStep.youBefore,
-          partner: currentWatchStep.partnerBefore,
-          opp1: currentWatchStep.opp1Before,
-          opp2: currentWatchStep.opp2Before,
+          you: evalResult.runZone || ctx.you,
+          partner: ctx.partner,
+          opp1: ctx.opp1,
+          opp2: ctx.opp2,
           ball: {
-            side: currentWatchStep.ballSideBefore,
-            zone: currentWatchStep.fromZone,
-            type: currentWatchStep.shot || "DRIVE",
+            side: "left" as const,
+            zone: ctx.ballZone || ctx.you,
+            type: evalResult.shot,
           },
         }
       : {
@@ -489,19 +695,67 @@ export default function PlaybookHub({
           opp1: ctx.opp1,
           opp2: ctx.opp2,
           ball: {
-            side: "left" as const,
+            side: isTrainerReplay ? ctx.ballSide || "left" : ("left" as const),
             zone: ctx.ballZone || ctx.you,
-            type: chosenShot || ctx.incomingShot || "DRIVE",
+            type: chosenShot || (isTrainerReplay ? "Schlag" : ctx.incomingShot || "DRIVE"),
           },
         };
 
-    const courtSelectedZone = isWatching ? currentWatchStep.toZone : chosenTarget;
-    const courtSelectedLauf = isWatching ? currentWatchStep.youAfter : chosenRun;
+    const courtSelectedZone = isWatching
+      ? watchAnimating
+        ? currentWatchStep?.toZone || null
+        : null
+      : isSolved && evalResult
+      ? evalResult.targetZone
+      : chosenTarget;
+
+    const courtSelectedLauf = isWatching
+      ? watchAnimating
+        ? currentWatchStep?.youAfter || null
+        : null
+      : isSolved && evalResult
+      ? evalResult.runZone
+      : chosenRun;
+
+    const courtSelectedPartnerLauf =
+      isWatching && watchAnimating ? currentWatchStep?.partnerAfter || null : null;
+
     const courtHasSubmitted = isWatching ? watchAnimating : isSolved;
-    const courtHitterId = isWatching ? currentWatchStep.actor : "you";
+
+    const courtHitterId: "you" | "partner" | "opp1" | "opp2" =
+      isWatching && currentWatchStep ? currentWatchStep.actor : "you";
+
+    const courtActiveChar: "you" | "partner" | "opp1" | "opp2" =
+      isWatching && currentWatchStep ? currentWatchStep.actor : "you";
+
+    const courtIsAiActive = Boolean(isWatching && isWatchStepAi);
+
+    const courtPhase: GamePhase = isWatching
+      ? watchAnimating
+        ? "player_animating"
+        : isWatchStepAi
+        ? "ai_prepare"
+        : "player_planning"
+      : isSolved
+      ? "player_animating"
+      : "player_planning";
+
+    const courtTurnResult: TurnResult = isSolved && evalResult ? evalResult.result : null;
+
+    const activeTimerDuration =
+      isWatching && currentWatchStep
+        ? getReplayStepDurationMs(currentWatchStep.shot)
+        : isSolved && evalResult
+        ? getReplayStepDurationMs(evalResult.shot)
+        : 3000;
 
     const canSubmitSolution =
-      replayPhase === "solving" && Boolean(chosenShot && chosenTarget && chosenRun);
+      replayPhase === "solving" &&
+      Boolean(
+        chosenShot &&
+          (!trainerNeedsTarget || chosenTarget) &&
+          (!trainerNeedsRun || chosenRun)
+      );
 
     const evalBadgeStyle =
       evalResult?.result === "perfect"
@@ -524,7 +778,9 @@ export default function PlaybookHub({
         <div className="bg-[#050b18]/95 border border-cyan-500/40 rounded-2xl p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-2.5 shadow-xl">
           <div className="min-w-0 flex-1">
             <span className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-400 block">
-              {activeReplay.isExternalShare
+              {isTrainerReplay
+                ? tr("🧠 TAKTIK-TRAINER CHALLENGE", "🧠 TACTIC TRAINER CHALLENGE", "🧠 RETO ENTRENADOR TÁCTICO")
+                : activeReplay.isExternalShare
                 ? tr("🎾 GETEILTE 3D-CHALLENGE", "🎾 SHARED 3D CHALLENGE", "🎾 RETO 3D COMPARTIDO")
                 : tr("🎬 3D-PLAYBOOK REPLAY", "🎬 3D PLAYBOOK REPLAY", "🎬 REPLAY 3D PLAYBOOK")}
             </span>
@@ -534,7 +790,7 @@ export default function PlaybookHub({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {steps.length > 0 && (
+            {!isTrainerReplay && steps.length > 0 && (
               <button
                 onClick={handleReplayWatchAgain}
                 className="px-2.5 py-2 rounded-lg bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/50 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all"
@@ -566,8 +822,8 @@ export default function PlaybookHub({
           </div>
         </div>
 
-        {/* Status-Banner: Entweder Ballwechsel-Animation ODER Entscheidungs-Aufruf */}
-        {isWatching ? (
+        {/* Status-Banner: Ballwechsel-Animation ODER Entscheidungs-Aufruf */}
+        {isWatching && currentWatchStep ? (
           <div className="bg-[#050b18]/95 border border-purple-500/50 rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -604,7 +860,9 @@ export default function PlaybookHub({
                 ⚡ {tr("JETZT BIST DU DRAN!", "YOUR TURN!", "¡TU TURNO!")}
               </span>
               <p className="text-xs sm:text-sm font-bold text-white leading-snug">
-                {ctx.incomingShot === "PREPARE_SERVE"
+                {isTrainerReplay && ctx.note
+                  ? ctx.note
+                  : ctx.incomingShot === "PREPARE_SERVE"
                   ? tr(
                       "Wähle Laufweg, Aufschlag-Ziel und Aufschlag!",
                       "Choose run zone, serve target and serve!",
@@ -620,31 +878,75 @@ export default function PlaybookHub({
           </div>
         ) : null}
 
-        {/* 3D COURT */}
-        <div className="w-full h-[52vh] min-h-[400px] lg:h-[580px] bg-[#030611] rounded-2xl border border-slate-800 shadow-[0_0_30px_rgba(0,0,0,0.8)] relative overflow-hidden p-1">
+        {/* COURT-WEICHE: SCENARIOCOURT25 FÜR TRAINER-SPIELZÜGE | SCENARIOCOURT3D FÜR MATCH & STUDIO */}
+        <div className="w-full h-[54vh] min-h-[420px] lg:h-[600px] bg-[#030611] rounded-2xl border border-slate-800 shadow-[0_0_30px_rgba(0,0,0,0.8)] relative overflow-hidden">
           <div className="absolute inset-0 w-full h-full">
-            <ScenarioCourt25
-              key={`pb-court-${replayPhase}-${watchStepIdx}-${watchRunKey}`}
-              level="Spielzug"
-              positions={courtPositions}
-              selectedZone={courtSelectedZone}
-              hasSubmitted={courtHasSubmitted}
-              bestZones={[]}
-              acceptableZones={[]}
-              onZoneClick={(zoneId: string) => {
-                if (replayPhase === "solving") setChosenTarget(zoneId);
-              }}
-              profiMode={false}
-              selectedLaufZone={courtSelectedLauf}
-              perfectLaufZone={null}
-              acceptableLaufZones={[]}
-              onLaufZoneClick={(zoneId: string) => {
-                if (replayPhase === "solving") setChosenRun(zoneId);
-              }}
-              activeChar="you"
-              hitterId={courtHitterId as any}
-              feedbackMsg={null}
-            />
+            {isTrainerReplay ? (
+              <ScenarioCourt25
+                key={`pb-25-court-${activeReplay.sourcePlayId || activeReplay.title}`}
+                level={trainerCourtLevel as any}
+                positions={courtPositions}
+                selectedZone={trainerNeedsTarget ? chosenTarget : null}
+                hasSubmitted={isSolved}
+                bestZones={trainerNeedsTarget ? resolvedTrainerEval?.bestZones || [] : []}
+                acceptableZones={trainerNeedsTarget ? trainerAcceptableZones : []}
+                onZoneClick={(zoneId: string) => {
+                  if (replayPhase === "solving" && trainerNeedsTarget) setChosenTarget(zoneId);
+                }}
+                profiMode={trainerCourtLevel === "Spielzug" || trainerCourtLevel === "Laufrichtung"}
+                selectedLaufZone={trainerNeedsRun ? chosenRun : null}
+                perfectLaufZone={
+                  isSolved && trainerNeedsRun ? resolvedTrainerEval?.laufZone || null : null
+                }
+                acceptableLaufZones={trainerNeedsRun ? trainerAcceptableLaufZones : []}
+                onLaufZoneClick={(zoneId: string) => {
+                  if (replayPhase === "solving" && trainerNeedsRun) setChosenRun(zoneId);
+                }}
+                activeChar="you"
+                hitterId="you"
+                feedbackMsg={null}
+              />
+            ) : (
+              <ScenarioCourt3D
+                key={`pb-3d-court-${activeReplay.sourcePlayId || activeReplay.title}`}
+                arenaModel="/TacPadel.glb"
+                playIntro={false}
+                gameOver={false}
+                level="Spielzug"
+                positions={courtPositions}
+                hasSubmitted={courtHasSubmitted}
+                bestZones={[]}
+                acceptableZones={[]}
+                profiMode={false}
+                selectedZone={courtSelectedZone}
+                selectedLaufZone={courtSelectedLauf}
+                selectedPartnerZone={courtSelectedPartnerLauf}
+                activeChar={courtActiveChar}
+                hitterId={courtHitterId}
+                isTimerActive={false}
+                turnResult={courtTurnResult}
+                previewShot={replayPhase === "solving" ? chosenShot : null}
+                timerDuration={activeTimerDuration}
+                onZoneClick={(zoneId: string) => {
+                  if (replayPhase === "solving") setChosenTarget(zoneId);
+                }}
+                onLaufZoneClick={(zoneId: string) => {
+                  if (replayPhase === "solving") setChosenRun(zoneId);
+                }}
+                onPlayerClick={() => {}}
+                playerScore={0}
+                aiScore={0}
+                isAiActive={courtIsAiActive}
+                phase={courtPhase}
+                isTimerPhase={false}
+                isPlayerTeamServe={false}
+                hidePlayerLabels={false}
+                userTeamName={tr("Dein Team", "Your Team", "Tu Equipo")}
+                activeAiProfile={AI_PROFILES[0]}
+                targetScore={7}
+                matchTitle={tr("3D-REPLAY", "3D REPLAY", "REPLAY 3D")}
+              />
+            )}
           </div>
         </div>
 
@@ -654,7 +956,9 @@ export default function PlaybookHub({
             <div className="grid grid-cols-3 gap-2 flex-1 w-full">
               <div
                 className={`p-2 rounded-xl border text-center ${
-                  chosenRun
+                  !trainerNeedsRun
+                    ? "border-slate-800/60 bg-slate-900/30 opacity-40"
+                    : chosenRun
                     ? "border-purple-500/60 bg-purple-950/30"
                     : "border-purple-500/40 bg-purple-950/15 animate-pulse"
                 }`}
@@ -663,13 +967,15 @@ export default function PlaybookHub({
                   {t("trainer_step1_run")}
                 </div>
                 <div className="text-xs font-bold text-white truncate">
-                  {chosenRun || t("trainer_choose")}
+                  {!trainerNeedsRun ? "-" : chosenRun || t("trainer_choose")}
                 </div>
               </div>
 
               <div
                 className={`p-2 rounded-xl border text-center ${
-                  chosenTarget
+                  !trainerNeedsTarget
+                    ? "border-slate-800/60 bg-slate-900/30 opacity-40"
+                    : chosenTarget
                     ? "border-emerald-500/60 bg-emerald-950/30"
                     : "border-emerald-500/40 bg-emerald-950/15 animate-pulse"
                 }`}
@@ -678,7 +984,7 @@ export default function PlaybookHub({
                   {t("trainer_step2_target")}
                 </div>
                 <div className="text-xs font-bold text-white truncate">
-                  {chosenTarget || t("trainer_choose")}
+                  {!trainerNeedsTarget ? "-" : chosenTarget || t("trainer_choose")}
                 </div>
               </div>
 
@@ -710,7 +1016,7 @@ export default function PlaybookHub({
           </div>
         )}
 
-        {/* AUSWERTUNG + AUFDECKUNG DES ORIGINAL-ZUGS */}
+        {/* AUSWERTUNG + AUFDECKUNG DES ORIGINAL-ZUGS / MUSTERLÖSUNG */}
         {isSolved && evalResult && (
           <div className="bg-[#050b18]/95 border border-cyan-500/40 p-4 sm:p-5 rounded-2xl shadow-2xl flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -720,8 +1026,11 @@ export default function PlaybookHub({
                 {evalResult.title}
               </span>
               <span className="text-[11px] font-bold text-slate-400">
-                {formatShotName(evalResult.shot, lang)} → {evalResult.targetZone} ({tr("Lauf", "Run", "Carrera")}:{" "}
-                {evalResult.runZone})
+                {formatShotName(evalResult.shot, lang)}
+                {evalResult.targetZone ? ` → ${evalResult.targetZone}` : ""}
+                {evalResult.runZone
+                  ? ` (${tr("Lauf", "Run", "Carrera")}: ${evalResult.runZone})`
+                  : ""}
               </span>
             </div>
 
@@ -729,27 +1038,60 @@ export default function PlaybookHub({
               {evalResult.message}
             </p>
 
-            {/* Erst jetzt aufdecken: Wie der Punkt im Original-Match wirklich lief */}
-            {(ctx.actualLastMove || ctx.note) && (
-              <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
-                <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
-                  📋 {tr("SO LIEF DER ORIGINAL-PUNKT", "HOW THE ORIGINAL POINT WENT", "ASÍ FUE EL PUNTO ORIGINAL")}
+            {/* Musterlösung (Trainer) oder Original-Zug (Match/Studio) erst nach Tipp aufdecken */}
+            {isTrainerReplay && resolvedTrainerEval ? (
+              <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 flex flex-wrap gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {t("trainer_badge_shot")}{" "}
+                  <span className="text-white">
+                    {resolvedTrainerEval.validShots
+                      .map((s) => formatShotName(s, lang))
+                      .join(" / ")}
+                  </span>
                 </span>
-                {ctx.actualLastMove && (
-                  <p className="text-xs font-bold text-white">
-                    {actorLabel(ctx.actualLastMove.actor)}:{" "}
-                    <span className="text-cyan-300">
-                      {formatShotName(ctx.actualLastMove.shot, lang)} → {ctx.actualLastMove.targetZone}
+                {resolvedTrainerEval.bestZones.length > 0 && (
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    • {t("trainer_badge_target")}{" "}
+                    <span className="text-emerald-300">
+                      {resolvedTrainerEval.bestZones.join(", ")}
                     </span>
-                    {ctx.actualLastMove.runZone ? ` (${ctx.actualLastMove.runZone})` : ""}
-                  </p>
+                  </span>
                 )}
-                {(ctx.actualLastMove?.outcome || ctx.note) && (
-                  <p className="text-[11px] text-slate-400 leading-snug">
-                    {ctx.actualLastMove?.outcome || ctx.note}
-                  </p>
+                {resolvedTrainerEval.laufZone && (
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    • {t("trainer_badge_run")}{" "}
+                    <span className="text-purple-300">{resolvedTrainerEval.laufZone}</span>
+                  </span>
                 )}
               </div>
+            ) : (
+              (ctx.actualLastMove || ctx.note) && (
+                <div className="bg-[#030611] border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+                    📋{" "}
+                    {tr(
+                      "SO LIEF DER ORIGINAL-PUNKT",
+                      "HOW THE ORIGINAL POINT WENT",
+                      "ASÍ FUE EL PUNTO ORIGINAL"
+                    )}
+                  </span>
+                  {ctx.actualLastMove && (
+                    <p className="text-xs font-bold text-white">
+                      {actorLabel(ctx.actualLastMove.actor)}:{" "}
+                      <span className="text-cyan-300">
+                        {formatShotName(ctx.actualLastMove.shot, lang)} →{" "}
+                        {ctx.actualLastMove.targetZone}
+                      </span>
+                      {ctx.actualLastMove.runZone ? ` (${ctx.actualLastMove.runZone})` : ""}
+                    </p>
+                  )}
+                  {(ctx.actualLastMove?.outcome || ctx.note) && (
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      {ctx.actualLastMove?.outcome || ctx.note}
+                    </p>
+                  )}
+                </div>
+              )
             )}
 
             <div className="flex flex-wrap gap-2 pt-1">
@@ -760,7 +1102,7 @@ export default function PlaybookHub({
                 🔄 {tr("Nochmal lösen", "Try Again", "Reintentar")}
               </button>
 
-              {steps.length > 0 && (
+              {!isTrainerReplay && steps.length > 0 && (
                 <button
                   onClick={handleReplayWatchAgain}
                   className="py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 font-black text-xs uppercase tracking-wider"
@@ -1032,7 +1374,9 @@ export default function PlaybookHub({
                     }
                     className="py-2 px-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10px] uppercase tracking-wider transition-all"
                   >
-                    🎬 {tr("3D-Replay", "3D Replay", "Replay 3D")}
+                    {src === "trainer"
+                      ? `🧠 ${tr("Üben", "Practice", "Practicar")}`
+                      : `🎬 ${tr("3D-Replay", "3D Replay", "Replay 3D")}`}
                   </button>
 
                   <button
