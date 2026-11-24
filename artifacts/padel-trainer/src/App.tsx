@@ -589,6 +589,9 @@ export default function App(): React.JSX.Element {
     };
 
     fetchLeaderboards();
+
+    window.addEventListener("tacpadel-stats-updated", fetchLeaderboards);
+    return () => window.removeEventListener("tacpadel-stats-updated", fetchLeaderboards);
   }, []);
 
   const { points: totalPoints, addPoints } = usePoints();
@@ -597,22 +600,35 @@ export default function App(): React.JSX.Element {
   const [dbProfile, setDbProfile] = useState<{ display_name?: string, avatar_url?: string, tac_points?: number } | null>(null);
 
   useEffect(() => {
-    if (user?.id) {
-      const fetchDbProfile = async () => {
-        const { data } = await supabase
-          .from('user_stats')
-          .select('display_name, avatar_url, tac_points')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (data) {
-          setDbProfile(data);
-        }
-      };
-      fetchDbProfile();
-    } else {
+    if (!user?.id) {
       setDbProfile(null);
+      return undefined;
     }
+
+    const fetchDbProfile = async () => {
+      const { data } = await supabase
+        .from('user_stats')
+        .select('display_name, avatar_url, tac_points')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (data) {
+        setDbProfile(data);
+      }
+    };
+
+    fetchDbProfile();
+
+    const handleStatsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (typeof detail?.tac_points === "number") {
+        setDbProfile((prev) => ({ ...(prev || {}), tac_points: detail.tac_points }));
+      }
+      fetchDbProfile();
+    };
+
+    window.addEventListener("tacpadel-stats-updated", handleStatsUpdated);
+    return () => window.removeEventListener("tacpadel-stats-updated", handleStatsUpdated);
   }, [user]);
 
   const finalUserName = dbProfile?.display_name || user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Gast";
