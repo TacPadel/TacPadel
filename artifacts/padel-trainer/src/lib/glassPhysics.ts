@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import { AppLanguage } from "./i18n";
 
+export type LabMode = "attack" | "defense";
+
+export type AttackShotType = "VIBORA" | "BAJADA" | "SMASH_POR3" | "VOLLEY" | "LOB";
 export type DefenseShotType = "SLICE" | "FLAT" | "TOPSPIN" | "LOB";
+export type LabShotType = AttackShotType | DefenseShotType;
 
 export type GlassPattern =
   | "no_glass"
@@ -9,7 +13,11 @@ export type GlassPattern =
   | "side_only"
   | "back_to_side"
   | "side_to_back"
-  | "fence";
+  | "fence"
+  | "por_3"
+  | "por_4";
+
+export type AttackRating = "winner" | "pressure" | "neutral" | "risky";
 
 export interface GlassHit {
   point: THREE.Vector3;
@@ -19,7 +27,7 @@ export interface GlassHit {
 }
 
 export interface TrajectorySegment {
-  kind: "approach" | "to_glass" | "after_glass";
+  kind: "approach" | "to_glass" | "after_glass" | "por_exit";
   points: THREE.Vector3[];
   startTime: number;
   endTime: number;
@@ -31,19 +39,24 @@ export interface TrajectorySample {
   segmentKind: TrajectorySegment["kind"];
 }
 
-export interface DefenseSimulationResult {
+export interface LabSimulationResult {
+  mode: LabMode;
+  shotType: LabShotType;
   segments: TrajectorySegment[];
   samples: TrajectorySample[];
   totalDuration: number;
   firstBounce: THREE.Vector3;
   secondBounce: THREE.Vector3 | null;
   glassHits: GlassHit[];
+  exitPoint: THREE.Vector3 | null;
+  exitedCourt: "por_3" | "por_4" | null;
   sweetspot: THREE.Vector3;
   optimalStandPos: THREE.Vector3;
   pattern: GlassPattern;
   patternLabel: string;
   coachTip: string;
   isBajadaWindow: boolean;
+  attackRating?: AttackRating;
 }
 
 export interface DefensePositionEval {
@@ -62,7 +75,68 @@ export interface DefensePreset {
   playerPos: { x: number; y: number };
 }
 
-// 4 klassische Scheibenspiel-Situationen als 1-Klick-Presets für das 3D-Radar
+export interface AttackPreset {
+  id: string;
+  labels: Record<AppLanguage, string>;
+  shotType: AttackShotType;
+  // 2D-Radar-Koordinaten (V_WIDTH = 760, V_HEIGHT = 380)
+  playerPos: { x: number; y: number };
+  targetPos: { x: number; y: number };
+}
+
+// =========================================================================
+// 4 KLASSISCHE ANGRIFFS-PRESETS (INKL. POR-3 KICK SMASH & GITTER-VOLLEY)
+// =========================================================================
+export const ATTACK_PRESETS: AttackPreset[] = [
+  {
+    id: "attack_por3",
+    labels: {
+      de: "💥 Smash Por 3",
+      en: "💥 Smash x3",
+      es: "💥 Remate x3",
+    },
+    shotType: "SMASH_POR3",
+    playerPos: { x: 266, y: 114 }, // x: -2.0, z: +3.0
+    targetPos: { x: 616, y: 243 }, // x: +1.4, z: -6.2 -> perfektes Por-3-Fenster
+  },
+  {
+    id: "attack_vibora",
+    labels: {
+      de: "🐍 Víbora Ecke",
+      en: "🐍 Víbora Corner",
+      es: "🐍 Víbora Rincón",
+    },
+    shotType: "VIBORA",
+    playerPos: { x: 243, y: 122 }, // x: -1.8, z: +3.6
+    targetPos: { x: 676, y: 319 }, // x: +3.4, z: -7.8
+  },
+  {
+    id: "attack_fence",
+    labels: {
+      de: "⚡ Gitter-Volley",
+      en: "⚡ Fence Volley",
+      es: "⚡ Volea a Reja",
+    },
+    shotType: "VOLLEY",
+    playerPos: { x: 289, y: 133 }, // x: -1.5, z: +2.4
+    targetPos: { x: 517, y: 334 }, // x: +3.8, z: -3.6
+  },
+  {
+    id: "attack_bajada",
+    labels: {
+      de: "🔥 Bajada Tief",
+      en: "🔥 Deep Bajada",
+      es: "🔥 Bajada Fondo",
+    },
+    shotType: "BAJADA",
+    playerPos: { x: 95, y: 274 },  // x: +2.2, z: +7.5
+    targetPos: { x: 638, y: 179 }, // x: -0.3, z: -6.8
+  },
+];
+
+// =========================================================================
+// 4 KLASSISCHE SCHEIBENSPIEL-PRESETS (VERTEIDIGUNG)
+// =========================================================================
 export const DEFENSE_PRESETS: DefensePreset[] = [
   {
     id: "back_straight",
@@ -118,6 +192,8 @@ const GRAVITY = 9.81;
 const BALL_RADIUS = 0.06;
 const HALF_COURT_X = 4.92;
 const BACK_WALL_Z = 9.92;
+const SIDE_WALL_EXIT_HEIGHT = 3.02;
+const BACK_WALL_EXIT_HEIGHT = 4.02;
 
 interface ShotPhysicsProfile {
   startY: number;
@@ -128,9 +204,11 @@ interface ShotPhysicsProfile {
   glassTangentialKeep: number;
   glassVyFactor: number;
   glassVySpinKick: number;
+  backGlassSideKick?: number;
 }
 
-const SHOT_PROFILES: Record<DefenseShotType, ShotPhysicsProfile> = {
+const SHOT_PROFILES: Record<LabShotType, ShotPhysicsProfile> = {
+  // Verteidigungs-Spins
   SLICE: {
     startY: 1.55,
     baseSpeed: 12.2,
@@ -139,7 +217,7 @@ const SHOT_PROFILES: Record<DefenseShotType, ShotPhysicsProfile> = {
     glassHorizRest: 0.50,
     glassTangentialKeep: 0.82,
     glassVyFactor: 0.25,
-    glassVySpinKick: -1.45, // Unterschnitt zieht den Ball an der Scheibe nach unten
+    glassVySpinKick: -1.45,
   },
   FLAT: {
     startY: 1.45,
@@ -149,7 +227,7 @@ const SHOT_PROFILES: Record<DefenseShotType, ShotPhysicsProfile> = {
     glassHorizRest: 0.74,
     glassTangentialKeep: 0.88,
     glassVyFactor: 0.65,
-    glassVySpinKick: 0.0, // Sauberer Einfallswinkel = Ausfallswinkel
+    glassVySpinKick: 0.0,
   },
   TOPSPIN: {
     startY: 1.85,
@@ -159,7 +237,7 @@ const SHOT_PROFILES: Record<DefenseShotType, ShotPhysicsProfile> = {
     glassHorizRest: 0.86,
     glassTangentialKeep: 0.90,
     glassVyFactor: 0.72,
-    glassVySpinKick: 1.65, // Topspin drückt den Ball hoch & weit aus der Scheibe
+    glassVySpinKick: 1.65,
   },
   LOB: {
     startY: 1.15,
@@ -171,22 +249,76 @@ const SHOT_PROFILES: Record<DefenseShotType, ShotPhysicsProfile> = {
     glassVyFactor: 0.78,
     glassVySpinKick: 0.55,
   },
+  // Angriffs-Schläge
+  VIBORA: {
+    startY: 2.05,
+    baseSpeed: 13.4,
+    floorHorizKeep: 0.88,
+    floorBounceVy: 2.35,
+    glassHorizRest: 0.46,
+    glassTangentialKeep: 0.82,
+    glassVyFactor: 0.22,
+    glassVySpinKick: -1.55, // Zwingt den Ball am Glas steil nach unten
+  },
+  BAJADA: {
+    startY: 1.95,
+    baseSpeed: 13.8,
+    floorHorizKeep: 0.88,
+    floorBounceVy: 5.25,
+    glassHorizRest: 0.84,
+    glassTangentialKeep: 0.90,
+    glassVyFactor: 0.72,
+    glassVySpinKick: 1.55,
+  },
+  SMASH_POR3: {
+    startY: 2.65,
+    baseSpeed: 17.5,
+    floorHorizKeep: 0.76,
+    floorBounceVy: 8.5,
+    glassHorizRest: 0.62,
+    glassTangentialKeep: 0.92,
+    glassVyFactor: 0.68,
+    glassVySpinKick: 2.65,
+    backGlassSideKick: 1.65, // Seitlicher Kick nach Rückscheibe Richtung 3m-Seitenwand
+  },
+  VOLLEY: {
+    startY: 1.35,
+    baseSpeed: 12.6,
+    floorHorizKeep: 0.85,
+    floorBounceVy: 3.05,
+    glassHorizRest: 0.62,
+    glassTangentialKeep: 0.86,
+    glassVyFactor: 0.45,
+    glassVySpinKick: -0.6,
+  },
 };
 
-function getPatternText(
+function getDefensePatternText(
   pattern: GlassPattern,
-  shotType: DefenseShotType,
+  shotType: LabShotType,
   isBajadaWindow: boolean,
   lang: AppLanguage
 ): { label: string; tip: string } {
   if (lang === "en") {
+    if (pattern === "por_3") {
+      return {
+        label: "POR 3 • BALL EXITS COURT",
+        tip: "Ball clears the 3m side wall! Only way to save it is sprinting outside the court door.",
+      };
+    }
+    if (pattern === "por_4") {
+      return {
+        label: "POR 4 • OVER BACK GLASS",
+        tip: "Ball flies over the 4m back glass – immediate point winner.",
+      };
+    }
     if (pattern === "fence") {
       return {
         label: "SIDE MESH / FENCE",
-        tip: "Ball hits the metal fence (front side) – bounces unpredictably. Stay low, compact grip, react late.",
+        tip: "Ball hits the metal fence – bounces unpredictably. Stay low, compact grip, react late.",
       };
     }
-    if (pattern === "double_back_side" || pattern === "back_to_side") {
+    if (pattern === "back_to_side") {
       return {
         label: "DOUBLE GLASS: BACK → SIDE",
         tip: "Read the back glass first, then open toward the center – the second bounce feeds the ball right into your strike zone.",
@@ -199,7 +331,7 @@ function getPatternText(
       };
     }
     if (pattern === "back_only") {
-      if (shotType === "SLICE") {
+      if (shotType === "SLICE" || shotType === "VIBORA") {
         return {
           label: "BACK GLASS • SLICE DROP",
           tip: "Backspin makes the ball drop steeply off the glass. Bend your knees, stay close to the glass and lift a clean lob or chiquita.",
@@ -229,6 +361,18 @@ function getPatternText(
   }
 
   if (lang === "es") {
+    if (pattern === "por_3") {
+      return {
+        label: "POR 3 • SALE POR LATERAL",
+        tip: "¡La bola supera los 3m del lateral! Solo se puede salvar saliendo por la puerta.",
+      };
+    }
+    if (pattern === "por_4") {
+      return {
+        label: "POR 4 • SALE POR FONDO",
+        tip: "La bola supera los 4m del fondo: punto directo.",
+      };
+    }
     if (pattern === "fence") {
       return {
         label: "REJA METÁLICA",
@@ -248,7 +392,7 @@ function getPatternText(
       };
     }
     if (pattern === "back_only") {
-      if (shotType === "SLICE") {
+      if (shotType === "SLICE" || shotType === "VIBORA") {
         return {
           label: "PARED DE FONDO • CORTADO",
           tip: "El efecto cortado hace caer la bola rápido tras el cristal. Baja el centro de gravedad y levanta un globo o chiquita.",
@@ -278,6 +422,18 @@ function getPatternText(
   }
 
   // Deutsch
+  if (pattern === "por_3") {
+    return {
+      label: "POR 3 • BALL FLIEGT RAUS",
+      tip: "Der Ball fliegt über die 3-Meter-Seitenwand! Nur noch durch einen Sprint aus der Tür zu retten.",
+    };
+  }
+  if (pattern === "por_4") {
+    return {
+      label: "POR 4 • ÜBER RÜCKSCHEIBE",
+      tip: "Der Ball fliegt über die 4-Meter-Rückwand – direkter Punkt!",
+    };
+  }
   if (pattern === "fence") {
     return {
       label: "GITTER-TREFFER (SEITE)",
@@ -297,7 +453,7 @@ function getPatternText(
     };
   }
   if (pattern === "back_only") {
-    if (shotType === "SLICE") {
+    if (shotType === "SLICE" || shotType === "VIBORA") {
       return {
         label: "RÜCKSCHEIBE • SLICE FÄLLT AB",
         tip: "Achtung Unterschnitt: Der Ball fällt kurz nach dem Glas steil ab! Tief in die Knie, nah am Glas abholen und kontrolliert lobben.",
@@ -326,40 +482,253 @@ function getPatternText(
   };
 }
 
-// Berechnet die vollständige 3D-Verteidigungs-Flugbahn inkl. Spin, Doppelglas & optimalem Treffpunkt
-export function calculateGlassDefenseTrajectory(
-  oppPos: { x: number; z: number },
-  bouncePos: { x: number; z: number },
-  shotType: DefenseShotType,
+function getAttackEvaluation(
+  pattern: GlassPattern,
+  shotType: LabShotType,
+  bouncePos: THREE.Vector3,
+  sweetspot: THREE.Vector3,
   lang: AppLanguage
-): DefenseSimulationResult {
+): { label: string; tip: string; rating: AttackRating } {
+  const bounceDepth = Math.abs(bouncePos.z);
+
+  if (pattern === "por_3") {
+    return {
+      rating: "winner",
+      label:
+        lang === "en"
+          ? "POR 3 WINNER! (OVER 3M WALL)"
+          : lang === "es"
+          ? "¡GANADOR POR 3! (POR EL LATERAL)"
+          : "POR-3 WINNER! (ÜBER 3M-WAND)",
+      tip:
+        lang === "en"
+          ? "Perfect Kick Smash! The bounce depth and topspin angle send the ball cleanly out over the 3-meter side wall."
+          : lang === "es"
+          ? "¡Remate x3 perfecto! La profundidad del bote y el efecto sacan la bola limpia por encima de los 3 metros."
+          : "Perfekter Kick-Smash! Aufpralltiefe und Spin schicken den Ball sauber über die 3-Meter-Seitenwand aus dem Court.",
+    };
+  }
+
+  if (pattern === "por_4") {
+    return {
+      rating: "winner",
+      label:
+        lang === "en"
+          ? "POR 4 WINNER! (OVER BACK GLASS)"
+          : lang === "es"
+          ? "¡GANADOR POR 4! (POR EL FONDO)"
+          : "POR-4 WINNER! (ÜBER RÜCKWAND)",
+      tip:
+        lang === "en"
+          ? "Unstoppable power smash clearing the 4-meter back wall – instant point!"
+          : lang === "es"
+          ? "Remate imparable por encima de los 4 metros del fondo: ¡punto directo!"
+          : "Unaufhaltbarer Smash direkt über die 4-Meter-Rückwand – sofortiger Punktgewinn!",
+    };
+  }
+
+  if (pattern === "fence") {
+    return {
+      rating: "winner",
+      label:
+        lang === "en"
+          ? "METAL FENCE HIT • HUGE PRESSURE"
+          : lang === "es"
+          ? "IMPACTO EN REJA • MÁXIMA PRESIÓN"
+          : "GITTER-TREFFER • TOP-ANGRIFF",
+      tip:
+        lang === "en"
+          ? "Nasty angle into the metal mesh! Unpredictable bounce makes a clean counter almost impossible."
+          : lang === "es"
+          ? "¡Gran ángulo a la reja! El bote irregular complica muchísimo la devolución rival."
+          : "Starkes Ziel ins Metallgitter! Der unberechenbare Absprung macht einen sauberen Konter fast unmöglich.",
+    };
+  }
+
+  if (shotType === "SMASH_POR3") {
+    return {
+      rating: "risky",
+      label:
+        lang === "en"
+          ? "NO POR 3 • COUNTER RISK!"
+          : lang === "es"
+          ? "NO SALE X3 • ¡RIESGO DE CONTRA!"
+          : "KEIN POR 3 • KONTER-GEFAHR!",
+      tip:
+        lang === "en"
+          ? bounceDepth > 7.4
+            ? "Bounce was too close to the back glass! Aim ~3–4m before the back wall (around Z: -6.0) so the ball rises high before hitting the glass."
+            : "Bounce was too short or too central – aim slightly cross-court around Z: -6.0 to kick out over the 3m side wall."
+          : lang === "es"
+          ? bounceDepth > 7.4
+            ? "¡Bote demasiado pegado al fondo! Apunta a ~3–4 m de la pared (Z: -6.0) para que la bola suba antes del cristal."
+            : "Bote corto o muy centrado: busca un ángulo cruzado sobre Z: -6.0 para sacarla por 3."
+          : bounceDepth > 7.4
+          ? "Aufprall war zu nah an der Rückscheibe! Ziele ~3–4 m vor das Glas (ca. Z: -6.0), damit der Ball hoch genug an die Scheibe steigt."
+          : "Aufprall war zu kurz oder zu mittig – ziele leicht diagonal auf ca. Z: -6.0, damit der Kick über die 3m-Seitenwand rausfliegt.",
+    };
+  }
+
+  if (shotType === "LOB") {
+    if (bounceDepth >= 6.8) {
+      return {
+        rating: "pressure",
+        label:
+          lang === "en"
+            ? "DEEP LOB • NET CONQUERED"
+            : lang === "es"
+            ? "GLOBO PROFUNDO • RED CONQUISTADA"
+            : "TIEFER LOB • NETZ EROBERT",
+        tip:
+          lang === "en"
+            ? "Great depth! Forces opponents behind the service line so your team can take the net."
+            : lang === "es"
+            ? "¡Gran profundidad! Empuja al rival al fondo y te permite tomar la red."
+            : "Starke Länge! Drückt den Gegner komplett an die Rückscheibe – jetzt sofort ans Netz aufrücken.",
+      };
+    }
+    return {
+      rating: "risky",
+      label:
+        lang === "en"
+          ? "LOB TOO SHORT • SMASH DANGER"
+          : lang === "es"
+          ? "GLOBO CORTO • PELIGRO DE REMATE"
+          : "LOB ZU KURZ • SMASH-GEFAHR",
+      tip:
+        lang === "en"
+          ? "Short lob leaves an easy overhead smash in mid-court. Aim deeper toward the back glass!"
+          : lang === "es"
+          ? "Un globo corto regala un remate cómodo. ¡Busca más profundidad hacia el cristal de fondo!"
+          : "Zu kurzer Lob im Halbfeld – perfekte Einladung für einen gegnerischen Smash. Ziele tiefer ans Glas!",
+    };
+  }
+
+  if (pattern === "back_to_side" || pattern === "side_to_back") {
+    const lowDie = sweetspot.y < 1.05;
+    return {
+      rating: lowDie ? "winner" : "pressure",
+      label:
+        lang === "en"
+          ? "DOUBLE GLASS CORNER PRESSURE"
+          : lang === "es"
+          ? "PRESIÓN EN DOBLE PARED"
+          : "DOPPELGLAS-DRUCK IN DER ECKE",
+      tip:
+        lang === "en"
+          ? lowDie
+            ? "Deadly double-glass corner! Low rebound forces a difficult defensive dig."
+            : "Good double-glass angle that locks the opponent into the corner – follow up at the net."
+          : lang === "es"
+          ? lowDie
+            ? "¡Doble pared letal! El rebote bajo obliga al rival a defender muy forzado."
+            : "Buen ángulo de doble pared para encerrar al rival en el rincón y dominar en la red."
+          : lowDie
+          ? "Starkes Doppelglas! Der flache Rebound zwingt den Gegner tief in die Ecke ohne Konter-Chance."
+          : "Guter Doppelglas-Winkel – bindet den Gegner hinten in der Ecke, haltet vorne die Mitte dicht.",
+    };
+  }
+
+  if (pattern === "back_only") {
+    if ((shotType === "VIBORA" || shotType === "VOLLEY" || shotType === "SLICE") && sweetspot.y < 1.0) {
+      return {
+        rating: "winner",
+        label:
+          lang === "en"
+            ? "DEAD SLICE REBOUND • LETHAL"
+            : lang === "es"
+            ? "REBOTE BAJO CORTADO • LETAL"
+            : "FLACHER SLICE-REBOUND • TOP",
+        tip:
+          lang === "en"
+            ? "Ball dies steeply off the back glass – zero height for a counter-attack!"
+            : lang === "es"
+            ? "La bola muere abajo tras el cristal: imposible contraatacar."
+            : "Der Ball stirbt flach an der Scheibe ab – keine Höhe für eine gegnerische Bajada!",
+      };
+    }
+
+    if (sweetspot.y >= 1.22) {
+      return {
+        rating: "risky",
+        label:
+          lang === "en"
+            ? "HIGH REBOUND • BAJADA RISK!"
+            : lang === "es"
+            ? "REBOTE ALTO • ¡PELIGRO DE BAJADA!"
+            : "HOHER REBOUND • KONTER-GEFAHR!",
+        tip:
+          lang === "en"
+            ? "Warning: Topspin kicks the ball high off the back glass – this gives the opponent an attacking Bajada. Try Víbora/Slice or aim more into the side corner!"
+            : lang === "es"
+            ? "Cuidado: el rebote alto del cristal regala una bajada al rival. ¡Prueba con Víbora/cortado o busca el rincón!"
+            : "Achtung: Der Ball springt zu hoch aus der Rückscheibe heraus – perfektes Bajada-Fenster für den Gegner! Teste Víbora/Slice oder ziele mehr in die Ecke.",
+      };
+    }
+  }
+
+  return {
+    rating: "neutral",
+    label:
+      lang === "en"
+        ? "SOLID ATTACKING SHOT"
+        : lang === "es"
+        ? "GOLPE DE ATAQUE SÓLIDO"
+        : "SOLIDER ANGRIFFSSCHLAG",
+    tip:
+      lang === "en"
+        ? "Controlled depth. Keep the net with your partner and cover the center corridor."
+        : lang === "es"
+        ? "Profundidad controlada. Mantén la red con tu compañero cerrando el centro."
+        : "Saubere Kontrolle – haltet gemeinsam das Netz und macht die Mitte dicht.",
+  };
+}
+
+// =========================================================================
+// VEREINTE 3D-PHYSIK-ENGINE FÜR ANGRIFF & VERTEIDIGUNG (INKL. POR 3 / POR 4)
+// =========================================================================
+export function calculateLabTrajectory(params: {
+  mode: LabMode;
+  startPos: { x: number; z: number };
+  bouncePos: { x: number; z: number };
+  shotType: LabShotType;
+  lang: AppLanguage;
+}): LabSimulationResult {
+  const { mode, startPos, bouncePos, shotType, lang } = params;
+  const isAttack = mode === "attack";
   const profile = SHOT_PROFILES[shotType];
-  const pStart = new THREE.Vector3(oppPos.x, profile.startY, oppPos.z);
+
+  const pStart = new THREE.Vector3(startPos.x, profile.startY, startPos.z);
+
+  const clampedBounceZ = isAttack
+    ? Math.max(-BACK_WALL_Z + 0.2, Math.min(-0.6, bouncePos.z))
+    : Math.max(0.6, Math.min(BACK_WALL_Z - 0.2, bouncePos.z));
+
   const pBounce = new THREE.Vector3(
     Math.max(-HALF_COURT_X + 0.15, Math.min(HALF_COURT_X - 0.15, bouncePos.x)),
     BALL_RADIUS,
-    Math.max(0.6, Math.min(BACK_WALL_Z - 0.2, bouncePos.z))
+    clampedBounceZ
   );
 
   const dx = pBounce.x - pStart.x;
   const dz = pBounce.z - pStart.z;
   const horizDist = Math.max(1.5, Math.hypot(dx, dz));
 
-  // Flugzeit bis zum 1. Bodenkontakt (inkl. Garantie, dass der Ball sauber über das 0,92m-Netz fliegt)
-  let t0 = Math.max(0.55, horizDist / profile.baseSpeed);
+  // Flugzeit bis zum 1. Bodenkontakt (garantiert sauberes Überfliegen des 0,92m-Netzes)
+  let t0 = Math.max(0.45, horizDist / profile.baseSpeed);
   if (shotType === "LOB") {
     t0 = Math.max(1.45, Math.min(1.95, horizDist / profile.baseSpeed));
   }
 
   let vy0 = (pBounce.y - pStart.y + 0.5 * GRAVITY * t0 * t0) / t0;
 
-  if (pStart.z < 0 && pBounce.z > 0) {
-    const fracNet = Math.abs(pStart.z) / (pBounce.z - pStart.z);
-    for (let guard = 0; guard < 10; guard++) {
+  if (Math.sign(pStart.z) !== Math.sign(pBounce.z) && pBounce.z !== pStart.z) {
+    const fracNet = Math.abs(pStart.z) / Math.abs(pBounce.z - pStart.z);
+    for (let guard = 0; guard < 12; guard++) {
       const tNet = t0 * fracNet;
       const yNet = pStart.y + vy0 * tNet - 0.5 * GRAVITY * tNet * tNet;
       if (yNet >= 1.12) break;
-      t0 += 0.1;
+      t0 += 0.08;
       vy0 = (pBounce.y - pStart.y + 0.5 * GRAVITY * t0 * t0) / t0;
     }
   }
@@ -392,14 +761,19 @@ export function calculateGlassDefenseTrajectory(
   const glassHits: GlassHit[] = [];
   const toGlassPoints: THREE.Vector3[] = [pBounce.clone()];
   const afterGlassPoints: THREE.Vector3[] = [];
+  const porExitPoints: THREE.Vector3[] = [];
 
   let secondBounce: THREE.Vector3 | null = null;
+  let exitPoint: THREE.Vector3 | null = null;
+  let exitedCourt: "por_3" | "por_4" | null = null;
+
   const dt = 0.008;
-  const maxSimTime = 2.6;
+  const maxSimTime = 2.8;
   let elapsedAfterBounce = 0;
   let sampleAccum = 0;
 
-  // Kandidaten für den optimalen Treffpunkt (Sweetspot) sammeln
+  const targetBackZ = isAttack ? -BACK_WALL_Z : BACK_WALL_Z;
+
   const postGlassCandidates: {
     pos: THREE.Vector3;
     vx: number;
@@ -418,93 +792,137 @@ export function calculateGlassDefenseTrajectory(
       curPos.z + vz * dt
     );
 
-    // 1. Rückscheibe (z >= +9.92)
-    if (curPos.z >= BACK_WALL_Z && vz > 0) {
-      curPos.z = BACK_WALL_Z;
-      const hitPos = curPos.clone();
-      const totalTime = t0 + elapsedAfterBounce;
+    if (!exitedCourt) {
+      // 1. Rückscheibe (Angriff: z <= -9.92 | Verteidigung: z >= +9.92)
+      const hitBackWall = isAttack
+        ? curPos.z <= targetBackZ && vz < 0
+        : curPos.z >= targetBackZ && vz > 0;
 
-      if (glassHits.length === 0) {
-        toGlassPoints.push(hitPos);
-        afterGlassPoints.push(hitPos);
-      } else {
-        afterGlassPoints.push(hitPos);
+      if (hitBackWall) {
+        curPos.z = targetBackZ;
+        const hitPos = curPos.clone();
+        const totalTime = t0 + elapsedAfterBounce;
+
+        // POR 4: Ball fliegt über die 4m hohe Rückscheibe aus dem Court!
+        if (hitPos.y > BACK_WALL_EXIT_HEIGHT) {
+          exitedCourt = "por_4";
+          exitPoint = hitPos;
+          if (glassHits.length === 0) toGlassPoints.push(hitPos);
+          else afterGlassPoints.push(hitPos);
+          porExitPoints.push(hitPos);
+          samples.push({ time: totalTime, pos: hitPos, segmentKind: "por_exit" });
+          sampleAccum = 0;
+          continue;
+        }
+
+        if (glassHits.length === 0) {
+          toGlassPoints.push(hitPos);
+          afterGlassPoints.push(hitPos);
+        } else {
+          afterGlassPoints.push(hitPos);
+        }
+
+        glassHits.push({
+          point: hitPos,
+          wall: "back",
+          isMesh: false,
+          time: totalTime,
+        });
+
+        vz = (isAttack ? 1 : -1) * Math.abs(vz) * profile.glassHorizRest;
+        const sideKick = profile.backGlassSideKick || 0;
+        const kickDir = Math.abs(vx) > 0.35 ? Math.sign(vx) : curPos.x >= 0 ? 1 : -1;
+        vx = vx * profile.glassTangentialKeep + kickDir * sideKick;
+        vy = Math.max(-2.6, Math.min(7.2, vy * profile.glassVyFactor + profile.glassVySpinKick));
+
+        samples.push({ time: totalTime, pos: hitPos, segmentKind: "after_glass" });
+        sampleAccum = 0;
       }
 
-      glassHits.push({
-        point: hitPos,
-        wall: "back",
-        isMesh: false,
-        time: totalTime,
-      });
+      // 2. Rechte oder linke Seitenwand (|x| >= 4.92)
+      if (Math.abs(curPos.x) >= HALF_COURT_X && Math.sign(vx) === Math.sign(curPos.x)) {
+        const hitRight = curPos.x > 0;
+        curPos.x = hitRight ? HALF_COURT_X : -HALF_COURT_X;
+        const hitPos = curPos.clone();
+        const totalTime = t0 + elapsedAfterBounce;
 
-      vz = -Math.abs(vz) * profile.glassHorizRest;
-      vx = vx * profile.glassTangentialKeep;
-      vy = Math.max(-2.6, Math.min(4.8, vy * profile.glassVyFactor + profile.glassVySpinKick));
+        // POR 3: Ball überfliegt die 3-Meter-Seitenwand!
+        if (hitPos.y > SIDE_WALL_EXIT_HEIGHT) {
+          exitedCourt = "por_3";
+          exitPoint = hitPos;
+          if (glassHits.length === 0) toGlassPoints.push(hitPos);
+          else afterGlassPoints.push(hitPos);
+          porExitPoints.push(hitPos);
+          samples.push({ time: totalTime, pos: hitPos, segmentKind: "por_exit" });
+          sampleAccum = 0;
+          continue;
+        }
 
-      samples.push({ time: totalTime, pos: hitPos, segmentKind: "after_glass" });
-      sampleAccum = 0;
-    }
+        const isMesh = Math.abs(curPos.z) < 5.5;
 
-    // 2. Rechte oder linke Seitenwand (|x| >= 4.92)
-    if (Math.abs(curPos.x) >= HALF_COURT_X && Math.sign(vx) === Math.sign(curPos.x)) {
-      const hitRight = curPos.x > 0;
-      curPos.x = hitRight ? HALF_COURT_X : -HALF_COURT_X;
-      const hitPos = curPos.clone();
-      const totalTime = t0 + elapsedAfterBounce;
-      const isMesh = curPos.z < 4.0; // Vor den hinteren 6m (4m Vollglas + 2m Stufe) beginnt das Gitter
+        if (glassHits.length === 0) {
+          toGlassPoints.push(hitPos);
+          afterGlassPoints.push(hitPos);
+        } else {
+          afterGlassPoints.push(hitPos);
+        }
 
-      if (glassHits.length === 0) {
-        toGlassPoints.push(hitPos);
-        afterGlassPoints.push(hitPos);
-      } else {
-        afterGlassPoints.push(hitPos);
+        glassHits.push({
+          point: hitPos,
+          wall: hitRight ? "side_right" : "side_left",
+          isMesh,
+          time: totalTime,
+        });
+
+        const sideRest = isMesh ? 0.45 : profile.glassHorizRest;
+        vx = -Math.sign(curPos.x) * Math.abs(vx) * sideRest;
+        vz = vz * (isMesh ? 0.72 : profile.glassTangentialKeep);
+        vy = Math.max(
+          -2.4,
+          Math.min(4.6, vy * profile.glassVyFactor + (isMesh ? -0.8 : profile.glassVySpinKick * 0.6))
+        );
+
+        samples.push({ time: totalTime, pos: hitPos, segmentKind: "after_glass" });
+        sampleAccum = 0;
       }
-
-      glassHits.push({
-        point: hitPos,
-        wall: hitRight ? "side_right" : "side_left",
-        isMesh,
-        time: totalTime,
-      });
-
-      const sideRest = isMesh ? 0.45 : profile.glassHorizRest;
-      vx = -Math.sign(curPos.x) * Math.abs(vx) * sideRest;
-      vz = vz * (isMesh ? 0.72 : profile.glassTangentialKeep);
-      vy = Math.max(
-        -2.4,
-        Math.min(4.2, vy * profile.glassVyFactor + (isMesh ? -0.8 : profile.glassVySpinKick * 0.6))
-      );
-
-      samples.push({ time: totalTime, pos: hitPos, segmentKind: "after_glass" });
-      sampleAccum = 0;
     }
 
-    // 3. Zweiter Bodenkontakt -> spielbares Fenster endet hier
-    if (curPos.y <= BALL_RADIUS && vy < 0) {
-      curPos.y = BALL_RADIUS;
+    // 3. Zweiter Bodenkontakt (oder Auslauf außerhalb des Courts nach Por 3/4)
+    const outsideBounds =
+      exitedCourt !== null && (Math.abs(curPos.x) > 8.6 || Math.abs(curPos.z) > 13.0);
+
+    if ((curPos.y <= BALL_RADIUS && vy < 0) || outsideBounds) {
+      curPos.y = Math.max(BALL_RADIUS, curPos.y);
       secondBounce = curPos.clone();
       const totalTime = t0 + elapsedAfterBounce;
 
-      if (glassHits.length === 0) {
+      if (exitedCourt) {
+        porExitPoints.push(secondBounce);
+      } else if (glassHits.length === 0) {
         toGlassPoints.push(secondBounce);
       } else {
         afterGlassPoints.push(secondBounce);
       }
+
       samples.push({
         time: totalTime,
         pos: secondBounce,
-        segmentKind: glassHits.length === 0 ? "to_glass" : "after_glass",
+        segmentKind: exitedCourt
+          ? "por_exit"
+          : glassHits.length === 0
+          ? "to_glass"
+          : "after_glass",
       });
       break;
     }
 
-    // Sweetspot-Bewertung (sobald der Ball die letzte relevante Scheibe verlassen hat)
-    if (glassHits.length > 0 && curPos.y >= 0.35 && curPos.y <= 2.2) {
-      const distFromBack = BACK_WALL_Z - curPos.z;
+    // Sweetspot-Kandidaten nach Glas-Kontakt (innerhalb des Courts)
+    if (!exitedCourt && glassHits.length > 0 && curPos.y >= 0.35 && curPos.y <= 2.4) {
+      const distFromBack = BACK_WALL_Z - Math.abs(curPos.z);
       const distFromSide = HALF_COURT_X - Math.abs(curPos.x);
       const minClearance = Math.min(distFromBack, distFromSide);
-      const preferredY = shotType === "TOPSPIN" || shotType === "LOB" ? 1.35 : 0.92;
+      const preferredY =
+        shotType === "TOPSPIN" || shotType === "BAJADA" || shotType === "LOB" ? 1.35 : 0.92;
       const heightScore = 1 - Math.min(1, Math.abs(curPos.y - preferredY) / 1.2);
       const clearanceScore = Math.min(1, minClearance / 1.3);
       const score = heightScore * 0.6 + clearanceScore * 0.4;
@@ -522,7 +940,10 @@ export function calculateGlassDefenseTrajectory(
     if (sampleAccum >= 0.024) {
       sampleAccum = 0;
       const pt = curPos.clone();
-      if (glassHits.length === 0) {
+      if (exitedCourt) {
+        porExitPoints.push(pt);
+        samples.push({ time: t0 + elapsedAfterBounce, pos: pt, segmentKind: "por_exit" });
+      } else if (glassHits.length === 0) {
         toGlassPoints.push(pt);
         samples.push({ time: t0 + elapsedAfterBounce, pos: pt, segmentKind: "to_glass" });
       } else {
@@ -536,7 +957,11 @@ export function calculateGlassDefenseTrajectory(
 
   // Muster erkennen
   let pattern: GlassPattern = "no_glass";
-  if (glassHits.some((h) => h.isMesh)) {
+  if (exitedCourt === "por_3") {
+    pattern = "por_3";
+  } else if (exitedCourt === "por_4") {
+    pattern = "por_4";
+  } else if (glassHits.some((h) => h.isMesh)) {
     pattern = "fence";
   } else if (glassHits.length >= 2) {
     const first = glassHits[0].wall;
@@ -548,7 +973,7 @@ export function calculateGlassDefenseTrajectory(
     pattern = glassHits[0].wall === "back" ? "back_only" : "side_only";
   }
 
-  // Optimalen Treffpunkt (Sweetspot) & optimale Standposition ermitteln
+  // Optimalen Treffpunkt (Sweetspot) & Standzone ermitteln
   const lastGlassTime = glassHits.length > 0 ? glassHits[glassHits.length - 1].time : 0;
   const afterLastGlass = postGlassCandidates.filter((c) => c.time >= lastGlassTime + 0.06);
   const candidatePool = afterLastGlass.length > 0 ? afterLastGlass : postGlassCandidates;
@@ -556,38 +981,52 @@ export function calculateGlassDefenseTrajectory(
   let sweetspot: THREE.Vector3;
   let optimalStandPos: THREE.Vector3;
 
-  if (candidatePool.length > 0) {
+  if (exitPoint) {
+    sweetspot = exitPoint.clone();
+    optimalStandPos = new THREE.Vector3(exitPoint.x, 0.04, exitPoint.z);
+  } else if (candidatePool.length > 0) {
     const best = candidatePool.reduce((a, b) => (b.score > a.score ? b : a));
     sweetspot = best.pos.clone();
 
-    // Spieler steht seitlich/leicht dahinter (Richtung Mitte/Netz), damit er frei durchschwingen kann
     const dirToCenterX = sweetspot.x >= 0 ? -1 : 1;
     const standX = Math.max(-4.35, Math.min(4.35, sweetspot.x + dirToCenterX * 0.85));
-    const standZ = Math.max(1.2, Math.min(9.1, sweetspot.z + (best.vz < -1 ? 0.55 : -0.45)));
+    const standZ = isAttack
+      ? Math.max(-9.1, Math.min(-1.2, sweetspot.z + (best.vz > 1 ? -0.55 : 0.45)))
+      : Math.max(1.2, Math.min(9.1, sweetspot.z + (best.vz < -1 ? 0.55 : -0.45)));
     optimalStandPos = new THREE.Vector3(standX, 0.04, standZ);
   } else {
-    // Kein Glaskontakt -> optimaler Treffpunkt kurz nach dem 1. Aufprall
     const midIdx = Math.min(toGlassPoints.length - 1, Math.floor(toGlassPoints.length * 0.45));
     sweetspot = (toGlassPoints[midIdx] || pBounce).clone();
     sweetspot.y = Math.max(0.65, sweetspot.y);
+    const standZ = isAttack
+      ? Math.max(-9.1, Math.min(-1.2, sweetspot.z - 0.7))
+      : Math.max(1.2, Math.min(9.1, sweetspot.z + 0.7));
     optimalStandPos = new THREE.Vector3(
       Math.max(-4.35, Math.min(4.35, sweetspot.x + (sweetspot.x >= 0 ? -0.7 : 0.7))),
       0.04,
-      Math.max(1.2, Math.min(9.1, sweetspot.z + 0.7))
+      standZ
     );
   }
 
   const isBajadaWindow =
     pattern === "back_only" &&
     sweetspot.y >= 1.15 &&
-    (shotType === "TOPSPIN" || shotType === "LOB");
+    (shotType === "TOPSPIN" || shotType === "BAJADA" || shotType === "LOB");
 
-  const { label: patternLabel, tip: coachTip } = getPatternText(
-    pattern,
-    shotType,
-    isBajadaWindow,
-    lang
-  );
+  let patternLabel: string;
+  let coachTip: string;
+  let attackRating: AttackRating | undefined;
+
+  if (isAttack) {
+    const atkEval = getAttackEvaluation(pattern, shotType, pBounce, sweetspot, lang);
+    patternLabel = atkEval.label;
+    coachTip = atkEval.tip;
+    attackRating = atkEval.rating;
+  } else {
+    const defText = getDefensePatternText(pattern, shotType, isBajadaWindow, lang);
+    patternLabel = defText.label;
+    coachTip = defText.tip;
+  }
 
   const segments: TrajectorySegment[] = [
     {
@@ -612,36 +1051,49 @@ export function calculateGlassDefenseTrajectory(
       kind: "after_glass",
       points: afterGlassPoints,
       startTime: glassHits[0]?.time || t0,
+      endTime: exitPoint ? samples.find((s) => s.segmentKind === "por_exit")?.time || totalDuration : totalDuration,
+    });
+  }
+
+  if (porExitPoints.length >= 2) {
+    segments.push({
+      kind: "por_exit",
+      points: porExitPoints,
+      startTime: samples.find((s) => s.segmentKind === "por_exit")?.time || totalDuration,
       endTime: totalDuration,
     });
   }
 
   return {
+    mode,
+    shotType,
     segments,
     samples,
     totalDuration,
     firstBounce: pBounce,
     secondBounce,
     glassHits,
+    exitPoint,
+    exitedCourt,
     sweetspot,
     optimalStandPos,
     pattern,
     patternLabel,
     coachTip,
     isBajadaWindow,
+    attackRating,
   };
 }
 
-// Bewertet im optionalen Stellungs-Test, ob deine rote Figur optimal zum Rebound steht
+// Bewertet im Verteidigungs-Stellungs-Test, ob deine rote Figur optimal zum Rebound steht
 export function evaluatePlayerDefensePosition(
   playerPos: { x: number; z: number },
-  sim: DefenseSimulationResult,
+  sim: LabSimulationResult,
   lang: AppLanguage
 ): DefensePositionEval {
   const playerVec = new THREE.Vector3(playerPos.x, 0.04, playerPos.z);
   const distance = playerVec.distanceTo(sim.optimalStandPos);
 
-  // Prüfen, ob sich der Spieler direkt zwischen Boden-Aufprall und Scheibe eingeklemmt hat
   let isJammed = false;
   if (sim.glassHits.length > 0) {
     const toGlassSeg = sim.segments.find((s) => s.kind === "to_glass");
