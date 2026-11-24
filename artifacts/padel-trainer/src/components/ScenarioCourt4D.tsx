@@ -8,7 +8,12 @@ import Effects from "../components/ScenarioCourt3D/Effects";
 import CourtFloor from "../components/ScenarioCourt3D/CourtFloor";
 import TacticalData from "../components/ScenarioCourt3D/TacticalData";
 import { useTranslation } from "../lib/i18n";
-import { DefenseSimulationResult, DefenseShotType } from "../lib/glassPhysics";
+import {
+  LabMode,
+  LabShotType,
+  LabSimulationResult,
+  TrajectorySegment,
+} from "../lib/glassPhysics";
 
 // =========================================================
 // HILFSFUNKTION: Prüft, ob der Eco-Modus im Profil aktiv ist
@@ -26,19 +31,20 @@ const isEcoModeEnabled = (): boolean => {
 };
 
 // =========================================================
-// SCHEIBENSPIEL-LAB: 3D-SPUREN, GLAS-RINGE & ANIMIERTER BALL
+// VEREINTES 3D-LABOR: ANGRIFF (INKL. POR 3/4) & SCHEIBENSPIEL
 // =========================================================
-export interface DefenseLabConfig {
+export interface TrajectoryLabConfig {
   active: boolean;
+  mode: LabMode;
   isPlaying: boolean;
   hasFinished: boolean;
   playbackSpeed: number;
   replayKey: number;
   showPreviewGuide: boolean;
-  shotType: DefenseShotType;
-  oppPos: { x: number; z: number };
+  shotType: LabShotType;
   playerPos: { x: number; z: number };
-  simulation: DefenseSimulationResult;
+  oppPos?: { x: number; z: number };
+  simulation: LabSimulationResult;
   onFinished?: () => void;
 }
 
@@ -55,7 +61,7 @@ function buildTubeGeometry(points: THREE.Vector3[], radius: number): THREE.TubeG
   return new THREE.TubeGeometry(curve, Math.max(12, deduped.length * 2), radius, 8, false);
 }
 
-function samplePositionAtTime(sim: DefenseSimulationResult, time: number): THREE.Vector3 {
+function samplePositionAtTime(sim: LabSimulationResult, time: number): THREE.Vector3 {
   const { samples } = sim;
   if (samples.length === 0) return sim.firstBounce.clone();
   if (time <= 0) return samples[0].pos.clone();
@@ -74,11 +80,11 @@ function samplePositionAtTime(sim: DefenseSimulationResult, time: number): THREE
   return last.pos.clone();
 }
 
-function GlassDefenseScene({
+function TrajectoryLabScene({
   lab,
   controlsRef,
 }: {
-  lab: DefenseLabConfig;
+  lab: TrajectoryLabConfig;
   controlsRef: React.MutableRefObject<any>;
 }) {
   const { camera } = useThree();
@@ -87,29 +93,39 @@ function GlassDefenseScene({
   const elapsedRef = useRef<number>(0);
   const finishedFiredRef = useRef<boolean>(false);
 
-  const camTargetPos = useRef(new THREE.Vector3(0, 9.5, 19.5));
-  const camTargetLook = useRef(new THREE.Vector3(0, 0.8, 5.5));
-  const currentLook = useRef(new THREE.Vector3(0, 0.8, 5.5));
+  const camTargetPos = useRef(new THREE.Vector3(0, 10.5, 20.5));
+  const camTargetLook = useRef(new THREE.Vector3(0, 0.6, 0));
+  const currentLook = useRef(new THREE.Vector3(0, 0.6, 0));
   const needsResetCamRef = useRef<boolean>(true);
 
   const { simulation } = lab;
+  const isAttack = lab.mode === "attack";
+  const backWallRingZ = isAttack ? -9.88 : 9.88;
 
-  // Bei neuem Replay oder neuem Modus Timer sauber zurücksetzen
+  // Bei neuem Replay, Moduswechsel oder neuem Setup Timer sauber zurücksetzen
   useEffect(() => {
     elapsedRef.current = 0;
     finishedFiredRef.current = false;
     needsResetCamRef.current = true;
-  }, [lab.replayKey, lab.isPlaying, simulation]);
+  }, [lab.replayKey, lab.isPlaying, lab.mode, simulation]);
 
-  // Memoized 3D-Tube-Geometrien inkl. sicherem WebGL-Cleanup
+  // 3D-Tube-Geometrien mit sicherem WebGL-Cleanup
   const tubeGeometries = useMemo(() => {
     return simulation.segments
       .map((seg) => ({
         kind: seg.kind,
-        geo: buildTubeGeometry(seg.points, seg.kind === "after_glass" ? 0.048 : 0.036),
+        geo: buildTubeGeometry(
+          seg.points,
+          seg.kind === "por_exit"
+            ? 0.058
+            : seg.kind === "after_glass"
+            ? 0.048
+            : 0.036
+        ),
       }))
-      .filter((entry): entry is { kind: "approach" | "to_glass" | "after_glass"; geo: THREE.TubeGeometry } =>
-        Boolean(entry.geo)
+      .filter(
+        (entry): entry is { kind: TrajectorySegment["kind"]; geo: THREE.TubeGeometry } =>
+          Boolean(entry.geo)
       );
   }, [simulation]);
 
@@ -135,6 +151,13 @@ function GlassDefenseScene({
 
   useFrame((_, delta) => {
     const safeDelta = Math.min(delta, 0.08);
+    const startSamplePos =
+      simulation.samples[0]?.pos ||
+      new THREE.Vector3(
+        isAttack ? lab.playerPos.x : lab.oppPos?.x ?? 0,
+        1.5,
+        isAttack ? lab.playerPos.z : lab.oppPos?.z ?? -3
+      );
 
     // 1. Ball-Position aktualisieren
     if (lab.isPlaying) {
@@ -147,7 +170,7 @@ function GlassDefenseScene({
       }
       if (shadowMeshRef.current) {
         shadowMeshRef.current.position.set(curPos.x, 0.035, curPos.z);
-        const s = Math.max(0.45, 1.15 - curPos.y * 0.14);
+        const s = Math.max(0.35, 1.15 - curPos.y * 0.14);
         shadowMeshRef.current.scale.set(s, s, 1);
       }
 
@@ -156,58 +179,78 @@ function GlassDefenseScene({
         if (lab.onFinished) lab.onFinished();
       }
     } else if (lab.hasFinished) {
-      // Nach Ende ruht der Ball am Sweetspot (zum freien Betrachten)
+      // Nach Ende ruht der Ball am Auslauf (Por 3/4) bzw. am Sweetspot
+      const restPos = simulation.exitedCourt
+        ? simulation.samples[simulation.samples.length - 1]?.pos || simulation.sweetspot
+        : simulation.sweetspot;
       if (ballMeshRef.current) {
-        ballMeshRef.current.position.copy(simulation.sweetspot);
+        ballMeshRef.current.position.copy(restPos);
       }
       if (shadowMeshRef.current) {
-        shadowMeshRef.current.position.set(simulation.sweetspot.x, 0.035, simulation.sweetspot.z);
+        shadowMeshRef.current.position.set(restPos.x, 0.035, restPos.z);
         shadowMeshRef.current.scale.set(0.9, 0.9, 1);
       }
     } else {
-      // Planungsphase: Ball beim Gegner
-      const startPos = simulation.samples[0]?.pos || new THREE.Vector3(lab.oppPos.x, 1.45, lab.oppPos.z);
+      // Planungsphase: Ball beim Schläger
       if (ballMeshRef.current) {
-        ballMeshRef.current.position.copy(startPos);
+        ballMeshRef.current.position.copy(startSamplePos);
       }
       if (shadowMeshRef.current) {
-        shadowMeshRef.current.position.set(startPos.x, 0.035, startPos.z);
+        shadowMeshRef.current.position.set(startSamplePos.x, 0.035, startSamplePos.z);
+        shadowMeshRef.current.scale.set(0.9, 0.9, 1);
       }
     }
 
-    // 2. Kamera-Steuerung: Während des Flugs fokussiert auf die Ecke, danach sofort frei per OrbitControls
+    // 2. Kamera-Steuerung: Während des Flugs filmisch folgen, danach frei per OrbitControls
     if (lab.isPlaying) {
       if (controlsRef.current) {
         controlsRef.current.enabled = false;
       }
 
-      const cornerSide = simulation.firstBounce.x >= 0 ? 1 : -1;
       const curBall = samplePositionAtTime(simulation, elapsedRef.current);
+      const cornerSide = simulation.firstBounce.x >= 0 ? 1 : -1;
 
-      camTargetPos.current.set(cornerSide * 2.2, 6.2, 16.8);
-      camTargetLook.current.set(
-        curBall.x * 0.45 + simulation.firstBounce.x * 0.55,
-        Math.max(0.6, curBall.y * 0.6),
-        Math.max(2.0, curBall.z * 0.5 + 3.5)
-      );
+      if (isAttack) {
+        // Angriffskamera: Folgt dem Schlag in Richtung gegnerische Rückscheibe / Por-3-Seitenwand
+        const camX = lab.playerPos.x * 0.35 - cornerSide * 1.4;
+        const camY = simulation.exitedCourt ? 7.4 : 6.0;
+        const camZ = simulation.exitedCourt ? 7.5 : 8.5;
+        camTargetPos.current.set(camX, camY, camZ);
+        camTargetLook.current.set(
+          curBall.x * 0.6 + simulation.firstBounce.x * 0.4,
+          Math.max(0.7, curBall.y * 0.72),
+          Math.min(-1.0, curBall.z * 0.65 + simulation.firstBounce.z * 0.35)
+        );
+      } else {
+        // Verteidigungskamera: Fokussiert auf die eigene Glasscheiben-Ecke
+        camTargetPos.current.set(cornerSide * 2.2, 6.2, 16.8);
+        camTargetLook.current.set(
+          curBall.x * 0.45 + simulation.firstBounce.x * 0.55,
+          Math.max(0.6, curBall.y * 0.6),
+          Math.max(2.0, curBall.z * 0.5 + 3.5)
+        );
+      }
 
       camera.position.lerp(camTargetPos.current, 4.5 * safeDelta);
-      currentLook.current.lerp(camTargetLook.current, 6.0 * safeDelta);
+      currentLook.current.lerp(camTargetLook.current, 6.5 * safeDelta);
       camera.lookAt(currentLook.current);
       needsResetCamRef.current = false;
-    } else {
-      if (controlsRef.current) {
-        controlsRef.current.enabled = true;
-        if (needsResetCamRef.current && !lab.hasFinished) {
+    } else if (controlsRef.current) {
+      controlsRef.current.enabled = true;
+      if (needsResetCamRef.current && !lab.hasFinished) {
+        if (isAttack) {
+          camTargetPos.current.set(0, 12.0, 22.0);
+          camTargetLook.current.set(0, 0.2, -2.5);
+        } else {
           camTargetPos.current.set(0, 10.5, 20.5);
           camTargetLook.current.set(0, 0.4, 3.5);
-          camera.position.lerp(camTargetPos.current, 5.0 * safeDelta);
-          currentLook.current.lerp(camTargetLook.current, 5.0 * safeDelta);
-          controlsRef.current.target.copy(currentLook.current);
-          controlsRef.current.update();
-          if (camera.position.distanceTo(camTargetPos.current) < 0.25) {
-            needsResetCamRef.current = false;
-          }
+        }
+        camera.position.lerp(camTargetPos.current, 5.0 * safeDelta);
+        currentLook.current.lerp(camTargetLook.current, 5.0 * safeDelta);
+        controlsRef.current.target.copy(currentLook.current);
+        controlsRef.current.update();
+        if (camera.position.distanceTo(camTargetPos.current) < 0.25) {
+          needsResetCamRef.current = false;
         }
       }
     }
@@ -219,7 +262,7 @@ function GlassDefenseScene({
   return (
     <group>
       {/* 1. Animierter 3D-Padelball + Bodenschatten */}
-      <mesh ref={ballMeshRef} position={[lab.oppPos.x, 1.45, lab.oppPos.z]}>
+      <mesh ref={ballMeshRef} position={[lab.playerPos.x, 1.5, lab.playerPos.z]}>
         <sphereGeometry args={[0.14, 20, 20]} />
         <meshStandardMaterial
           color="#d9f99d"
@@ -228,7 +271,11 @@ function GlassDefenseScene({
           roughness={0.35}
         />
       </mesh>
-      <mesh ref={shadowMeshRef} rotation={[-Math.PI / 2, 0, 0]} position={[lab.oppPos.x, 0.035, lab.oppPos.z]}>
+      <mesh
+        ref={shadowMeshRef}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[lab.playerPos.x, 0.035, lab.playerPos.z]}
+      >
         <circleGeometry args={[0.18, 20]} />
         <meshBasicMaterial color="#000000" transparent opacity={0.45} />
       </mesh>
@@ -245,7 +292,7 @@ function GlassDefenseScene({
         </mesh>
       </group>
 
-      {/* 3. Spieler-Standring (Rot) für präzise Raum-Orientierung */}
+      {/* 3. Spieler-Standring (Rot) */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[lab.playerPos.x, 0.038, lab.playerPos.z]}
@@ -254,7 +301,7 @@ function GlassDefenseScene({
         <meshBasicMaterial color="#ef4444" transparent opacity={0.75} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* 4. Farbcodierte 3D-Flugspuren (Gelb -> Lila -> Cyan) */}
+      {/* 4. Farbcodierte 3D-Flugspuren (Gelb -> Lila -> Cyan -> Orange bei Por 3/4) */}
       {showTrajectory &&
         tubeGeometries.map((entry, idx) => {
           const color =
@@ -262,32 +309,11 @@ function GlassDefenseScene({
               ? "#facc15"
               : entry.kind === "to_glass"
               ? "#c084fc"
+              : entry.kind === "por_exit"
+              ? "#f97316"
               : "#22d3ee";
           return (
-            <mesh key={`${entry.kind}-${idx}`} geometry={entry.geo}>
-              <meshStandardMaterial
-                color={color}
-                emissive={color}
-                emissiveIntensity={0.65}
-                transparent
-                opacity={lab.hasFinished || lab.isPlaying ? 0.92 : 0.45}
-              />
-            </mesh>
-          );
-        })}
-
-      {/* 5. Leuchtende Aufprallringe direkt auf der Glaswand (1. & ggf. 2. Scheibe) */}
-      {showTrajectory &&
-        simulation.glassHits.map((hit, idx) => {
-          const isBack = hit.wall === "back";
-          const pos: [number, number, number] = isBack
-            ? [hit.point.x, hit.point.y, 9.88]
-            : [hit.wall === "side_right" ? 4.88 : -4.88, hit.point.y, hit.point.z];
-          const rot: [number, number, number] = isBack ? [0, 0, 0] : [0, Math.PI / 2, 0];
-          const ringColor = hit.isMesh ? "#f97316" : idx === 0 ? "#c084fc" : "#22d3ee";
-
-          return (
-            <group key={`glass-hit-${idx}`} position={pos} rotation={rot}>
+            <mesh key={`${entry.kind}-${idx}`} geometry={entry.geo}> <meshStandardMaterial color={color} emissive={color} emissiveIntensity={entry.kind === "por_exit" ? 0.95 : 0.65} transparent opacity={lab.hasFinished \vert{}\vert{} lab.isPlaying ? 0.94 : 0.45} /> </mesh> ); })}  {/* 5. Leuchtende Aufprallringe direkt auf Rück- & Seitenscheibe */} {showTrajectory && simulation.glassHits.map((hit, idx) => { const isBack = hit.wall === "back"; const pos: [number, number, number] = isBack ? [hit.point.x, hit.point.y, backWallRingZ] : [hit.wall === "side_right" ? 4.88 : -4.88, hit.point.y, hit.point.z]; const rot: [number, number, number] = isBack ? [0, 0, 0] : [0, Math.PI / 2, 0]; const ringColor = hit.isMesh ? "#f97316" : idx === 0 ? "#c084fc" : "#22d3ee";  return ( <group key={`glass-hit-${idx}`} position={pos} rotation={rot}>
               <mesh>
                 <ringGeometry args={[0.22, 0.36, 32]} />
                 <meshBasicMaterial color={ringColor} transparent opacity={0.95} side={THREE.DoubleSide} />
@@ -300,14 +326,31 @@ function GlassDefenseScene({
           );
         })}
 
-      {/* 6. Optimaler Treffpunkt (Sweetspot in der Luft) + grüne Standzone am Boden */}
-      {showSolutionOverlays && (
+      {/* 6. POR-3 / POR-4 EXIT-PORTAL-RING (wenn Ball über die 3m-/4m-Wand fliegt) */}
+      {showTrajectory && simulation.exitPoint && simulation.exitedCourt && (
+        <group
+          position={[simulation.exitPoint.x, simulation.exitPoint.y, simulation.exitPoint.z]}
+          rotation={simulation.exitedCourt === "por_3" ? [0, Math.PI / 2, 0] : [0, 0, 0]}
+        >
+          <mesh>
+            <ringGeometry args={[0.35, 0.56, 36]} />
+            <meshBasicMaterial color="#f97316" transparent opacity={0.95} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh>
+            <circleGeometry args={[0.2, 24]} />
+            <meshBasicMaterial color="#fde047" transparent opacity={0.75} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      )}
+
+      {/* 7. Sweetspot & Standzone (Verteidigung: grün für Dich | Angriff: Rebound-Höhe beim Gegner) */}
+      {showSolutionOverlays && !simulation.exitedCourt && (
         <group>
           <mesh position={simulation.sweetspot}>
             <sphereGeometry args={[0.2, 20, 20]} />
             <meshStandardMaterial
-              color="#34d399"
-              emissive="#10b981"
+              color={isAttack ? "#f59e0b" : "#34d399"}
+              emissive={isAttack ? "#d97706" : "#10b981"}
               emissiveIntensity={0.85}
               transparent
               opacity={0.78}
@@ -316,21 +359,26 @@ function GlassDefenseScene({
 
           {sweetspotDropGeo && (
             <mesh geometry={sweetspotDropGeo}>
-              <meshBasicMaterial color="#34d399" transparent opacity={0.6} />
+              <meshBasicMaterial
+                color={isAttack ? "#f59e0b" : "#34d399"}
+                transparent
+                opacity={0.6}
+              />
             </mesh>
           )}
 
-          {/* Grüne Standzone für deinen Spieler */}
-          <group position={[simulation.optimalStandPos.x, 0.042, simulation.optimalStandPos.z]}>
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[0.58, 0.78, 36]} />
-              <meshBasicMaterial color="#10b981" transparent opacity={0.9} side={THREE.DoubleSide} />
-            </mesh>
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[0.58, 36]} />
-              <meshBasicMaterial color="#10b981" transparent opacity={0.22} side={THREE.DoubleSide} />
-            </mesh>
-          </group>
+          {!isAttack && (
+            <group position={[simulation.optimalStandPos.x, 0.042, simulation.optimalStandPos.z]}>
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[0.58, 0.78, 36]} />
+                <meshBasicMaterial color="#10b981" transparent opacity={0.9} side={THREE.DoubleSide} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[0.58, 36]} />
+                <meshBasicMaterial color="#10b981" transparent opacity={0.22} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          )}
         </group>
       )}
     </group>
@@ -338,315 +386,7 @@ function GlassDefenseScene({
 }
 
 // =========================================================
-// 1. DYNAMISCHE ACTION-KAMERA (Angriffs-Modus)
-// =========================================================
-const LETTERS = ["A", "B", "C", "D", "E"];
-
-function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
-  if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0, side === "left" ? 5 : -5);
-
-  if (zoneId.startsWith("EXACT_")) {
-    const parts = zoneId.split("_");
-    const exactX = parseFloat(parts[1]);
-    const exactZ = parseFloat(parts[2]);
-    return new THREE.Vector3(exactX, 0.02, exactZ);
-  }
-
-  const letterIdx = LETTERS.indexOf(zoneId[0].toUpperCase());
-  const num = parseInt(zoneId[1]);
-  const x = -5 + (letterIdx * 2) + 1;
-  let z = 0;
-  if (side === "left") { z = 10 - (num * 2) + 1; }
-  else { z = -10 + (num * 2) - 1; }
-  return new THREE.Vector3(x, 0.02, z);
-}
-
-function getFrontPos3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
-  const pos = getZoneCenter3D(side, zoneId);
-  if (side === "left") { pos.z -= 0.7; }
-  else { pos.z += 0.7; }
-  return pos;
-}
-
-function getShotParameters(schlagTyp: string) {
-  const sType = (schlagTyp || "").toUpperCase();
-  if (sType.includes("LOB")) return { bogenHoehe: 9.0, powerMultiplier: 0.10 };
-  if (sType.includes("CHIQUITA")) return { bogenHoehe: 3.0, powerMultiplier: 0.15 };
-  if (sType.includes("SMASH")) return { bogenHoehe: 0.4, powerMultiplier: 1.0 };
-  if (sType.includes("BAJADA")) return { bogenHoehe: 0.4, powerMultiplier: 0.4 };
-  if (sType.includes("VIBORA")) return { bogenHoehe: 0.5, powerMultiplier: 0.35 };
-  if (sType.includes("BANDEJA")) return { bogenHoehe: 0.7, powerMultiplier: 0.25 };
-  if (sType.includes("VOLLEY")) return { bogenHoehe: 0.5, powerMultiplier: 0.25 };
-  if (sType.includes("BLOCK")) return { bogenHoehe: 0.5, powerMultiplier: 0.1 };
-  if (sType.includes("DRIVE")) return { bogenHoehe: 1.2, powerMultiplier: 0.25 };
-  if (sType.includes("AUFSCHLAG")) return { bogenHoehe: 1.5, powerMultiplier: 0.3 };
-  return { bogenHoehe: 1.2, powerMultiplier: 0.25 };
-}
-
-function DynamicActionCamera(props: Props & { controlsRef: React.MutableRefObject<any> }) {
-  const { camera } = useThree();
-  const targetPos = useRef(new THREE.Vector3(0, 12.5, 23));
-  const targetLook = useRef(new THREE.Vector3(0, -0.5, -2));
-  const currentLook = useRef(new THREE.Vector3(0, -0.5, -2));
-
-  const flightTimer = useRef(0);
-  const cameraBallProgress = useRef(0);
-
-  const { curves } = useMemo(() => {
-    if (!props.selectedZone && !props.exactCoords?.target) return { curves: [] };
-
-    const startSide = props.positions.ball.side || "left";
-    const targetSide = startSide === "left" ? "right" : "left";
-
-    let startPos = getFrontPos3D(startSide, props.positions.ball.zone);
-    if (props.exactCoords?.you) {
-      startPos = new THREE.Vector3(props.exactCoords.you.x, 0.02, props.exactCoords.you.z);
-      if (startSide === "left") { startPos.z -= 0.5; } else { startPos.z += 0.5; }
-    }
-
-    let ballTargetPos: THREE.Vector3 = getZoneCenter3D(targetSide, props.selectedZone || "C3");
-    if (props.exactCoords?.target) {
-      ballTargetPos = new THREE.Vector3(props.exactCoords.target.x, 0.02, props.exactCoords.target.z);
-    }
-
-    let isCaughtInAir = false;
-
-    if (props.hasSubmitted && startSide === "right") {
-      const youZone = props.selectedLaufZone || props.positions.you;
-      const partnerZone = props.selectedPartnerZone || props.positions.partner;
-      if (youZone === props.selectedZone) {
-        isCaughtInAir = true;
-        ballTargetPos = getFrontPos3D("left", youZone);
-      } else if (partnerZone === props.selectedZone) {
-        isCaughtInAir = true;
-        ballTargetPos = getFrontPos3D("left", partnerZone);
-      }
-    }
-
-    const { bogenHoehe, powerMultiplier } = getShotParameters(props.positions.ball.type || "");
-    const sType = (props.positions.ball.type || "").toUpperCase();
-    const resultCurves: THREE.QuadraticBezierCurve3[] = [];
-
-    const isNetCrash = props.turnResult === "error_net";
-    const isWallDirectCrash = props.turnResult === "error_wall_direct";
-
-    if (isNetCrash) {
-      const zDist = startPos.z - ballTargetPos.z;
-      const fraction = zDist !== 0 ? Math.abs(startPos.z) / Math.abs(zDist) : 0.5;
-      const netX = startPos.x + (ballTargetPos.x - startPos.x) * fraction;
-      const pStart = new THREE.Vector3(startPos.x, 1.5, startPos.z);
-      const pNet = new THREE.Vector3(netX, 0.6, 0);
-      const pFloor = new THREE.Vector3(netX, 0.1, startPos.z > 0 ? 0.8 : -0.8);
-      const mid1 = new THREE.Vector3((pStart.x + pNet.x) / 2, 1.0, (pStart.z + pNet.z) / 2);
-      resultCurves.push(new THREE.QuadraticBezierCurve3(pStart, mid1, pNet));
-      const mid2 = new THREE.Vector3((pNet.x + pFloor.x) / 2, 0.3, (pNet.z + pFloor.z) / 2);
-      resultCurves.push(new THREE.QuadraticBezierCurve3(pNet, mid2, pFloor));
-    } else if (isWallDirectCrash) {
-      const targetZ = startPos.z > 0 ? -10 : 10;
-      const zDist = targetZ - startPos.z;
-      const targetZDist = ballTargetPos.z - startPos.z;
-      const fraction = targetZDist !== 0 ? Math.abs(zDist / targetZDist) : 1;
-      let wallX = startPos.x + (ballTargetPos.x - startPos.x) * fraction;
-      wallX = Math.max(-5, Math.min(5, wallX));
-      const hitHeight = sType.includes("LOB") ? 3.5 : 1.2;
-      const pStart = new THREE.Vector3(startPos.x, 1.5, startPos.z);
-      const pWall = new THREE.Vector3(wallX, hitHeight, targetZ);
-      const pFloor = new THREE.Vector3(wallX, 0.1, targetZ > 0 ? 8.5 : -8.5);
-      const mid1 = new THREE.Vector3((pStart.x + pWall.x) / 2, Math.max(hitHeight, bogenHoehe), (pStart.z + pWall.z) / 2);
-      resultCurves.push(new THREE.QuadraticBezierCurve3(pStart, mid1, pWall));
-      const mid2 = new THREE.Vector3((pWall.x + pFloor.x) / 2, hitHeight / 2, (pWall.z + pFloor.z) / 2);
-      resultCurves.push(new THREE.QuadraticBezierCurve3(pWall, mid2, pFloor));
-    } else {
-      const pStart = new THREE.Vector3(startPos.x, 1.5, startPos.z);
-      const finalTargetY = isCaughtInAir ? 1.2 : 0.1;
-      const p1stBounce = new THREE.Vector3(ballTargetPos.x, finalTargetY, ballTargetPos.z);
-      const midY = Math.max(pStart.y, p1stBounce.y) + bogenHoehe;
-      const mid1 = new THREE.Vector3((pStart.x + p1stBounce.x) / 2, midY, (pStart.z + p1stBounce.z) / 2);
-      resultCurves.push(new THREE.QuadraticBezierCurve3(pStart, mid1, p1stBounce));
-
-      if (!isCaughtInAir) {
-        let dx = p1stBounce.x - pStart.x;
-        let dz = p1stBounce.z - pStart.z;
-        const distStartBounce = Math.sqrt(dx * dx + dz * dz);
-        if (distStartBounce > 0) { dx /= distStartBounce; dz /= distStartBounce; }
-
-        let remainingDist = distStartBounce * powerMultiplier;
-        if (remainingDist < 1.5) remainingDist = 1.5;
-        if (sType.includes("SMASH")) remainingDist += 2.0;
-
-        let curX = p1stBounce.x;
-        let curZ = p1stBounce.z;
-        let curY = 0.1;
-        let lastPoint = p1stBounce.clone();
-        let safeGuard = 0;
-
-        while (remainingDist > 0.05 && safeGuard < 3) {
-          safeGuard++;
-          let tX = Infinity, tZ = Infinity;
-          if (dx > 0.001) tX = (4.95 - curX) / dx;
-          else if (dx < -0.001) tX = (-4.95 - curX) / dx;
-          if (dz > 0.001) tZ = (9.95 - curZ) / dz;
-          else if (dz < -0.001) tZ = (-9.95 - curZ) / dz;
-          const tMin = Math.min(tX, tZ);
-
-          if (tMin < remainingDist && tMin > 0.01) {
-            curX += tMin * dx; curZ += tMin * dz;
-            curY = Math.min(3.5, curY + tMin * (sType.includes("SMASH") ? 0.7 : 0.3));
-            const pWall = new THREE.Vector3(curX, curY, curZ);
-            const dist = lastPoint.distanceTo(pWall);
-            const mid = new THREE.Vector3((lastPoint.x + pWall.x) / 2, Math.max(lastPoint.y, pWall.y) + Math.min(0.2, dist * 0.1), (lastPoint.z + pWall.z) / 2);
-            resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pWall));
-            lastPoint = pWall;
-            remainingDist -= tMin;
-
-            if (tMin === tX) { dx = -dx; curX = curX > 0 ? 4.9 : -4.9; }
-            if (tMin === tZ) { dz = -dz; curZ = curZ > 0 ? 9.9 : -9.9; }
-            remainingDist *= 0.8;
-          } else {
-            curX += remainingDist * dx; curZ += remainingDist * dz; curY = 0.1;
-            const pFloor = new THREE.Vector3(curX, curY, curZ);
-            const dist = lastPoint.distanceTo(pFloor);
-            let arcMidY = (lastPoint.y + pFloor.y) / 2;
-            arcMidY += (lastPoint.y < 0.2) ? Math.min(0.6, dist * 0.3) : Math.min(0.3, dist * 0.15);
-            const mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, arcMidY, (lastPoint.z + pFloor.z) / 2);
-            resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pFloor));
-            lastPoint = pFloor;
-            remainingDist = 0;
-          }
-        }
-
-        if (lastPoint.y > 0.15) {
-          const fallbackX = Math.max(-4.95, Math.min(4.95, lastPoint.x + dx * 1.5));
-          const fallbackZ = Math.max(-9.95, Math.min(9.95, lastPoint.z + dz * 1.5));
-          const pFloor = new THREE.Vector3(fallbackX, 0.1, fallbackZ);
-          const dist = lastPoint.distanceTo(pFloor);
-          const mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, lastPoint.y + Math.min(0.3, dist * 0.2), (lastPoint.z + pFloor.z) / 2);
-          resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pFloor));
-        }
-      }
-    }
-
-    return { curves: resultCurves };
-  }, [
-    props.positions.ball.zone, props.positions.ball.side, props.positions.ball.type,
-    props.selectedZone, props.selectedLaufZone, props.selectedPartnerZone,
-    props.turnResult, props.hasSubmitted, props.exactCoords
-  ]);
-
-  useFrame((_, delta) => {
-    const safeDelta = Math.min(delta, 0.1);
-
-    if (!props.isPreparingShot && !props.hasSubmitted) {
-      flightTimer.current = 0;
-      cameraBallProgress.current = 0;
-      targetPos.current.set(0, 12.5, 23);
-      targetLook.current.set(0, -0.5, -2);
-
-      camera.position.lerp(targetPos.current, 4.0 * safeDelta);
-      currentLook.current.lerp(targetLook.current, 4.0 * safeDelta);
-
-      if (props.controlsRef.current) {
-        props.controlsRef.current.enabled = true;
-        props.controlsRef.current.target.copy(currentLook.current);
-        props.controlsRef.current.update();
-      } else {
-        camera.lookAt(currentLook.current);
-      }
-      return;
-    }
-
-    if (props.controlsRef.current) {
-      props.controlsRef.current.enabled = false;
-    }
-
-    const isOpponent = props.hitterId === "opp1" || props.hitterId === "opp2";
-    const teamSide = isOpponent ? "right" : "left";
-    const targetSide = isOpponent ? "left" : "right";
-
-    let startZoneStr = props.hitterId === "you" ? props.positions.you : (props.hitterId === "partner" ? props.positions.partner : props.positions[props.hitterId as keyof PlayerPositions] as string);
-    if (!startZoneStr || startZoneStr.length < 2) startZoneStr = "C3";
-
-    let start = getZoneCenter3D(teamSide, startZoneStr);
-    const dirZ = isOpponent ? 1 : -1;
-    let camCoords = { x: 0, z: 0 };
-
-    if (props.exactCoords?.you && props.hitterId === "you") {
-      start = new THREE.Vector3(props.exactCoords.you.x, 0.02, props.exactCoords.you.z);
-      camCoords = { x: start.x, z: start.z - (dirZ * 2.5) };
-    } else {
-      const startRow = parseInt(startZoneStr.charAt(1));
-      const camRow = startRow === 1 ? 1 : startRow - 1;
-      const camZoneStr = `${startZoneStr.charAt(0).toUpperCase()}${camRow}`;
-      const c = getZoneCenter3D(teamSide, camZoneStr);
-      camCoords = { x: c.x, z: c.z };
-    }
-
-    if (props.isPreparingShot && !props.hasSubmitted) {
-      targetPos.current.set(camCoords.x, 2.0, camCoords.z);
-      targetLook.current.set(start.x, 1.0, start.z + (dirZ * 4.0));
-
-      camera.position.lerp(targetPos.current, 5.0 * safeDelta);
-      currentLook.current.lerp(targetLook.current, 5.0 * safeDelta);
-      camera.lookAt(currentLook.current);
-      return;
-    }
-
-    if (props.hasSubmitted) {
-      flightTimer.current += safeDelta;
-
-      const startCamPos = new THREE.Vector3(camCoords.x, 2.0, camCoords.z);
-      const c3Coords = getZoneCenter3D(targetSide, "C3");
-      const c3Pos = new THREE.Vector3(c3Coords.x, 1.2, c3Coords.z);
-
-      const DELAY_TIME = 0.5;
-
-      if (flightTimer.current < DELAY_TIME) {
-        targetPos.current.copy(startCamPos);
-        targetLook.current.set(start.x, 1.0, start.z + (dirZ * 4.0));
-        camera.position.lerp(targetPos.current, 8.0 * safeDelta);
-        currentLook.current.lerp(targetLook.current, 8.0 * safeDelta);
-      } else {
-        const timeInSeconds = (props.timerDuration || 3000) / 1000;
-        const baseSpeed = 3.0 / Math.max(1, timeInSeconds - 0.5);
-        let currentTrackingSpeed = baseSpeed;
-
-        if (cameraBallProgress.current >= 2.0) {
-          currentTrackingSpeed = baseSpeed * 0.30;
-        } else if (cameraBallProgress.current >= 1.0) {
-          currentTrackingSpeed = baseSpeed * 0.50;
-        }
-
-        cameraBallProgress.current += safeDelta * currentTrackingSpeed;
-        const p = cameraBallProgress.current;
-
-        const maxCurves = Math.max(1, curves.length);
-        const moveProgress = Math.min(1.0, p / maxCurves);
-        targetPos.current.copy(startCamPos).lerp(c3Pos, moveProgress);
-        camera.position.lerp(targetPos.current, 10.0 * safeDelta);
-
-        if (curves.length > 0) {
-          let currentCurveIndex = Math.floor(p);
-          if (currentCurveIndex >= curves.length) currentCurveIndex = curves.length - 1;
-          let t = p - currentCurveIndex;
-          if (p >= curves.length) t = 1;
-          t = Math.max(0, Math.min(1, t));
-
-          const exactBallPos = curves[currentCurveIndex].getPointAt(t);
-          targetLook.current.copy(exactBallPos);
-        } else {
-          targetLook.current.set(0, 0.5, 0);
-        }
-        currentLook.current.lerp(targetLook.current, 15.0 * safeDelta);
-      }
-      camera.lookAt(currentLook.current);
-    }
-  });
-
-  return null;
-}
-
-// =========================================================
-// 2. PROPS DEFINITION
+// PROPS DEFINITION
 // =========================================================
 export interface PlayerPositions {
   you: string;
@@ -666,17 +406,12 @@ export interface Props {
   selectedZone: string | null;
   hasSubmitted: boolean;
   isPreparingShot?: boolean;
-
   hidePlayerLabels?: boolean;
-
   exactCoords?: {
     you?: { x: number; z: number };
     target?: { x: number; z: number };
   };
-
-  // Optionales 3D-Scheibenspiel-Labor (Verteidigung)
-  defenseLab?: DefenseLabConfig;
-
+  trajectoryLab?: TrajectoryLabConfig;
   bestZones: string[];
   acceptableZones?: string[];
   onZoneClick: (id: string) => void;
@@ -710,7 +445,7 @@ export interface Props {
 }
 
 // =========================================================
-// 3. HAUPTKOMPONENTE (ScenarioCourt4D)
+// HAUPTKOMPONENTE (ScenarioCourt4D)
 // =========================================================
 export default function ScenarioCourt4D(props: Props) {
   const { t } = useTranslation();
@@ -719,7 +454,7 @@ export default function ScenarioCourt4D(props: Props) {
   const controlsRef = useRef<any>(null);
   const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
 
-  const isDefenseLab = Boolean(props.defenseLab?.active);
+  const isLabActive = Boolean(props.trajectoryLab?.active);
 
   useEffect(() => {
     if (props.onIntroFinished) {
@@ -730,7 +465,9 @@ export default function ScenarioCourt4D(props: Props) {
   useEffect(() => {
     const fetchName = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
           setPlayerName(t("guest_name"));
           return;
@@ -759,8 +496,8 @@ export default function ScenarioCourt4D(props: Props) {
     fetchName();
   }, [t]);
 
-  const controlsEnabled = isDefenseLab
-    ? !props.defenseLab?.isPlaying
+  const controlsEnabled = isLabActive
+    ? !props.trajectoryLab?.isPlaying
     : !props.hasSubmitted && !props.isPreparingShot;
 
   return (
@@ -768,7 +505,7 @@ export default function ScenarioCourt4D(props: Props) {
       <div className="absolute inset-0 w-full h-full z-0 pointer-events-auto min-h-[250px]">
         <Canvas
           dpr={ecoMode ? 1.0 : [1, 1.5]}
-          camera={{ position: [0, 12.5, 23.0], fov: 45 }}
+          camera={{ position: [0, 12.0, 22.0], fov: 45 }}
           gl={{
             antialias: true,
             toneMapping: THREE.ACESFilmicToneMapping,
@@ -789,10 +526,6 @@ export default function ScenarioCourt4D(props: Props) {
         >
           <color attach="background" args={["#010205"]} />
 
-          {!props.gameOver && !isDefenseLab && (
-            <DynamicActionCamera {...props} controlsRef={controlsRef} />
-          )}
-
           {!props.gameOver && (
             <OrbitControls
               ref={controlsRef}
@@ -802,13 +535,13 @@ export default function ScenarioCourt4D(props: Props) {
               enableDamping={true}
               dampingFactor={0.05}
               minDistance={6}
-              maxDistance={27}
+              maxDistance={28}
               screenSpacePanning={false}
-              maxPolarAngle={Math.PI / 2.15}
+              maxPolarAngle={Math.PI / 2.12}
               minPolarAngle={0.1}
-              minAzimuthAngle={isDefenseLab ? -Math.PI : -Math.PI / 2.5}
-              maxAzimuthAngle={isDefenseLab ? Math.PI : Math.PI / 2.5}
-              target={[0, -0.5, isDefenseLab ? 4.5 : -2]}
+              minAzimuthAngle={-Math.PI}
+              maxAzimuthAngle={Math.PI}
+              target={[0, -0.3, isLabActive && props.trajectoryLab?.mode === "defense" ? 4.5 : -2.5]}
             />
           )}
 
@@ -836,24 +569,26 @@ export default function ScenarioCourt4D(props: Props) {
               isSimulationMode={true}
             />
 
-            {isDefenseLab && props.defenseLab ? (
+            {isLabActive && props.trajectoryLab ? (
               <>
-                {/* Figuren-Rendering über TacticalData ohne eigene Angriffs-Ballanimation */}
                 <TacticalData
                   {...props}
                   hasSubmitted={false}
                   isCinematicMode={true}
                   hidePlayerLabels={true}
                   positions={{
-                    you: `EXACT_${props.defenseLab.playerPos.x}_${props.defenseLab.playerPos.z}`,
+                    you: `EXACT_${props.trajectoryLab.playerPos.x}_${props.trajectoryLab.playerPos.z}`,
                     partner: "EXACT_1000_1000",
-                    opp1: `EXACT_${props.defenseLab.oppPos.x}_${props.defenseLab.oppPos.z}`,
+                    opp1:
+                      props.trajectoryLab.mode === "defense" && props.trajectoryLab.oppPos
+                        ? `EXACT_${props.trajectoryLab.oppPos.x}_${props.trajectoryLab.oppPos.z}`
+                        : "EXACT_1000_1000",
                     opp2: "EXACT_1000_1000",
                     ball: { side: "right", zone: "EXACT_1000_1000", type: "DRIVE" },
                   }}
                   selectedZone={null}
                 />
-                <GlassDefenseScene lab={props.defenseLab} controlsRef={controlsRef} />
+                <TrajectoryLabScene lab={props.trajectoryLab} controlsRef={controlsRef} />
               </>
             ) : (
               <TacticalData
