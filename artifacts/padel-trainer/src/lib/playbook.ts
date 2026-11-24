@@ -66,6 +66,8 @@ export interface UpsertPlaybookResult {
   limitReached: boolean;
 }
 
+const PLAYBOOK_TABLE = "playbook_entries";
+
 export const getPlaybookStorageKey = (userId?: string | null) =>
   `tacpadel_playbook_v1_${userId || "guest"}`;
 
@@ -321,7 +323,96 @@ export function createPlayFromReplayContext(
   };
 }
 
-// Lädt Playbook (Lokal + Supabase user_metadata zusammenführen)
+// =========================================================================
+// SUPABASE-TABELLEN-HELFER (`public.playbook_entries`)
+// =========================================================================
+function toDbRow(userId: string, play: SavedPlay) {
+  const source = inferPlaySource(play);
+  const updatedAt = play.updatedAt || Date.now();
+  return {
+    id: play.id,
+    user_id: userId,
+    title: play.title,
+    source,
+    is_drill: Boolean(play.isDrill),
+    payload: {
+      ...play,
+      source,
+      isDrill: Boolean(play.isDrill),
+      updatedAt,
+    },
+    updated_at: updatedAt,
+  };
+}
+
+function fromDbRow(row: any): SavedPlay | null {
+  if (!row?.payload || typeof row.payload !== "object") return null;
+  const p = row.payload as SavedPlay;
+  return {
+    ...p,
+    id: String(row.id || p.id),
+    title: String(row.title || p.title || "Play"),
+    source: (row.source || p.source || inferPlaySource(p)) as PlaybookSource,
+    isDrill: Boolean(row.is_drill ?? p.isDrill),
+    updatedAt: Number(row.updated_at || p.updatedAt || Date.now()),
+  };
+}
+
+async function syncPlaybookListToSupabase(
+  userId: string,
+  list: SavedPlay[]
+): Promise<boolean> {
+  try {
+    if (list.length > 0) {
+      const rows = list.map((p) => toDbRow(userId, p));
+      const { error: upsertErr } = await supabase
+        .from(PLAYBOOK_TABLE)
+        .upsert(rows, { onConflict: "user_id,id" });
+      if (upsertErr) return false;
+    }
+
+    // Gelöschte Einträge sauber aus der Tabelle entfernen
+    const { data: existingRows, error: fetchErr } = await supabase
+      .from(PLAYBOOK_TABLE)
+      .select("id")
+      .eq("user_id", userId);
+
+    if (fetchErr || !existingRows) return true;
+
+    const keepIds = new Set(list.map((p) => p.id));
+    const staleIds = existingRows
+      .map((r: any) => String(r.id))
+      .filter((id) => !keepIds.has(id));
+
+    if (staleIds.length > 0) {
+      await supabase
+        .from(PLAYBOOK_TABLE)
+        .delete()
+        .eq("user_id", userId)
+        .in("id", staleIds);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function upsertSinglePlayToSupabase(
+  userId: string,
+  entry: SavedPlay
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from(PLAYBOOK_TABLE)
+      .upsert(toDbRow(userId, entry), { onConflict: "user_id,id" });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+// Lädt Playbook (Supabase `playbook_entries` + lokaler Cache + Auto-Umzug alter `user_metadata`-Spielzüge)
 export async function loadPlaybook(
   userId?: string | null,
   maxSlots: number = MAX_PLAYBOOK_ITEMS
@@ -332,20 +423,40 @@ export async function loadPlaybook(
     if (raw) localPlays = JSON.parse(raw);
   } catch {}
 
-  let remotePlays: SavedPlay[] = [];
+  let dbPlays: SavedPlay[] = [];
+  let legacyMetaPlays: SavedPlay[] = [];
+  let dbReachable = false;
+
   if (userId) {
+    try {
+      const { data, error } = await supabase
+        .from(PLAYBOOK_TABLE)
+        .select("id, title, source, is_drill, payload, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(maxSlots);
+
+      if (!error && Array.isArray(data)) {
+        dbReachable = true;
+        dbPlays = data
+          .map(fromDbRow)
+          .filter((p): p is SavedPlay => p !== null);
+      }
+    } catch {}
+
+    // Einmalige Übernahme alter Spielzüge aus auth.user_metadata (hält das JWT-Token dauerhaft schlank)
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (Array.isArray(session?.user?.user_metadata?.tactic_playbook)) {
-        remotePlays = session.user.user_metadata.tactic_playbook as SavedPlay[];
+        legacyMetaPlays = session.user.user_metadata.tactic_playbook as SavedPlay[];
       }
     } catch {}
   }
 
   const mergedMap = new Map<string, SavedPlay>();
-  [...remotePlays, ...localPlays].forEach((p) => {
+  [...legacyMetaPlays, ...dbPlays, ...localPlays].forEach((p) => {
     const existing = mergedMap.get(p.id);
     if (!existing || (p.updatedAt || 0) > (existing.updatedAt || 0)) {
       mergedMap.set(p.id, p);
@@ -359,6 +470,21 @@ export async function loadPlaybook(
   try {
     localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(merged));
   } catch {}
+
+  // Falls noch Alt-Daten im JWT lagen oder Offline-Spielzüge in der DB fehlen -> einmalig hochsynchronisieren
+  if (userId && dbReachable) {
+    const dbIds = new Set(dbPlays.map((p) => p.id));
+    const hasUnsyncedLocal = merged.some((p) => !dbIds.has(p.id));
+
+    if (legacyMetaPlays.length > 0 || hasUnsyncedLocal) {
+      const synced = await syncPlaybookListToSupabase(userId, merged);
+      if (synced && legacyMetaPlays.length > 0) {
+        supabase.auth
+          .updateUser({ data: { tactic_playbook: null } })
+          .catch(() => {});
+      }
+    }
+  }
 
   return merged;
 }
@@ -374,9 +500,7 @@ export function savePlaybookList(
   } catch {}
 
   if (userId) {
-    supabase.auth
-      .updateUser({ data: { tactic_playbook: trimmed } })
-      .catch(() => {});
+    syncPlaybookListToSupabase(userId, trimmed).catch(() => {});
   }
   return trimmed;
 }
@@ -401,10 +525,18 @@ export function upsertPlaybookEntry(
     };
   }
 
-  const next = [entry, ...current.filter((p) => p.id !== entry.id)];
+  const next = [entry, ...current.filter((p) => p.id !== entry.id)].slice(0, maxSlots);
+  try {
+    localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(next));
+  } catch {}
+
+  if (userId) {
+    upsertSinglePlayToSupabase(userId, entry).catch(() => {});
+  }
+
   return {
     saved: true,
-    list: savePlaybookList(userId, next, maxSlots),
+    list: next,
     limitReached: false,
   };
 }
@@ -445,11 +577,16 @@ export async function migrateGuestPlaybookToUser(
     }
   });
 
+  const limit = Math.max(maxSlots, existingUserPlays.length + guestPlays.length);
   const mergedList = Array.from(mergedMap.values())
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .slice(0, Math.max(maxSlots, existingUserPlays.length + guestPlays.length));
+    .slice(0, limit);
 
-  savePlaybookList(userId, mergedList, Math.max(maxSlots, mergedList.length));
+  try {
+    localStorage.setItem(getPlaybookStorageKey(userId), JSON.stringify(mergedList));
+  } catch {}
+
+  await syncPlaybookListToSupabase(userId, mergedList);
   localStorage.removeItem(guestKey);
 
   return guestPlays.length;
