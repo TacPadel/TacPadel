@@ -92,6 +92,22 @@ export default function PlaybookHub({
     setTimeout(() => setToast(null), 3000);
   };
 
+  const openNewInStudio = () => {
+    try {
+      sessionStorage.removeItem("tacpadel_open_play_id");
+      sessionStorage.setItem("tacpadel_open_board_mode", "studio");
+    } catch {}
+    onNavigateTab("board");
+  };
+
+  const openPlayInStudio = (playId: string) => {
+    try {
+      sessionStorage.setItem("tacpadel_open_play_id", playId);
+      sessionStorage.setItem("tacpadel_open_board_mode", "studio");
+    } catch {}
+    onOpenInBoard(playId);
+  };
+
   useEffect(() => {
     let active = true;
 
@@ -636,7 +652,7 @@ export default function PlaybookHub({
           </div>
 
           <button
-            onClick={() => onNavigateTab("board")}
+            onClick={openNewInStudio}
             className="px-4 py-3 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shrink-0 transition-all"
           >
             {t("pb_hub_new_studio")}
@@ -744,7 +760,7 @@ export default function PlaybookHub({
               Trainer
             </button>
             <button
-              onClick={() => onNavigateTab("board")}
+              onClick={openNewInStudio}
               className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-[11px] uppercase tracking-wider"
             >
               TacticsBoard
@@ -819,7 +835,7 @@ export default function PlaybookHub({
                   </button>
 
                   <button
-                    onClick={() => onOpenInBoard(play.id)}
+                    onClick={() => openPlayInStudio(play.id)}
                     className="py-2 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-black text-[10px] uppercase tracking-wider transition-all"
                   >
                     {t("pb_hub_btn_board")}
