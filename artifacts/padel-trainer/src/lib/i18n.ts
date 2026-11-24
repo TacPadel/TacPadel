@@ -1312,6 +1312,10 @@ export const TRANSLATIONS = {
     pb_guest_banner_btn: "Kostenlos sichern ➔",
     pb_guest_limit_reached: "Gast-Limit (2/2) erreicht – kostenlos anmelden für 50 Plätze & Cloud-Sync!",
     guest_migrated_toast: "Gast-Daten übernommen! Deine Spielzüge & Coach-Stats sind jetzt im Account gesichert.",
+    tb_drill_shuffle_btn: "🎲 Neue Variante",
+    tb_drill_auto_gen_btn: "✨ Auto-Text",
+    tb_drill_variant_label: "Variante",
+    pb_hub_drill_auto_toast: "🎯 Als Coach-Drill aktiviert – Aufgabe & Lösung automatisch erstellt!",
   },
 
   en: {
@@ -2456,6 +2460,10 @@ export const TRANSLATIONS = {
     pb_guest_banner_btn: "Save Free ➔",
     pb_guest_limit_reached: "Guest limit (2/2) reached – sign up free for 50 slots & Cloud Sync!",
     guest_migrated_toast: "Guest data imported! Your plays & Coach stats are now saved to your account.",
+    tb_drill_shuffle_btn: "🎲 New Variant",
+    tb_drill_auto_gen_btn: "✨ Auto Text",
+    tb_drill_variant_label: "Variant",
+    pb_hub_drill_auto_toast: "🎯 Enabled as Coach Drill – prompt & solution auto-generated!",
   },
 
   es: {
@@ -3600,6 +3608,10 @@ export const TRANSLATIONS = {
     pb_guest_banner_btn: "Guardar gratis ➔",
     pb_guest_limit_reached: "Límite de invitado (2/2) – ¡regístrate gratis para 50 espacios y nube!",
     guest_migrated_toast: "¡Datos de invitado importados! Tus jugadas y datos del Coach ya están en tu cuenta.",
+    tb_drill_shuffle_btn: "🎲 Nueva variante",
+    tb_drill_auto_gen_btn: "✨ Auto-texto",
+    tb_drill_variant_label: "Variante",
+    pb_hub_drill_auto_toast: "🎯 Activado como Coach Drill – ¡tarea y solución creadas!",
   },
 } as const;
 
