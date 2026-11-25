@@ -2534,7 +2534,7 @@ export default function TacticsBoard() {
 
               {!activeDrill ? (
                 <div className="bg-[#050b18] border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center gap-3">
-                  <span className="text-3xl">📘</span>
+                  <span className="text-3xl"></span>
                   <h4 className="text-sm font-black text-white uppercase tracking-wider">
                     {t("tb_drill_empty_pb_title")}
                   </h4>
@@ -2626,7 +2626,7 @@ export default function TacticsBoard() {
                       </div>
 
                       <p className="text-[11px] text-slate-400 leading-snug pt-1 border-t border-slate-800/80">
-                        💡 {activeDrill.explanation}
+                        {activeDrill.explanation}
                       </p>
 
                       <div className="flex flex-wrap gap-2">
@@ -2712,7 +2712,7 @@ export default function TacticsBoard() {
                             value={`weakness_${sc.id}`}
                             className="bg-[#050b18] text-amber-300"
                           >
-                            🎯 #{sc.id} – {formatShotName(sc.validShots[0] || "DRIVE", lang)}
+                            #{sc.id} – {formatShotName(sc.validShots[0] || "DRIVE", lang)}
                           </option>
                         ))}
                       </optgroup>
@@ -2745,7 +2745,7 @@ export default function TacticsBoard() {
                   </p>
                   {loadedScenarioExpl && (
                     <p className="text-[11px] text-slate-400 leading-snug pt-1 border-t border-cyan-500/20">
-                      💡 {loadedScenarioExpl}
+                       {loadedScenarioExpl}
                     </p>
                   )}
                 </div>
@@ -3361,7 +3361,7 @@ export default function TacticsBoard() {
                 className={`mt-4 p-4 sm:p-5 rounded-2xl text-white shadow-2xl border w-full max-w-[600px] transition-all duration-300 ${analysis.color}`}
               >
                 <h3 className="text-base sm:text-lg font-black mb-1.5 flex items-center gap-2">
-                  <span className="text-lg sm:text-xl">📋</span> {analysis.title}
+                  <span className="text-lg sm:text-xl"></span> {analysis.title}
                 </h3>
                 <p className="text-xs sm:text-sm leading-relaxed font-medium text-slate-200">
                   {analysis.body}
