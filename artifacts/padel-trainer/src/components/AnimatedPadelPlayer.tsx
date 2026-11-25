@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as THREE from "three";
 
 export type PlayerAction =
@@ -15,11 +16,58 @@ export type PlayerAction =
   | "smash"
   | "lob";
 
+type ShotAction = Exclude<PlayerAction, "a_pose" | "idle" | "walk">;
 type DegVec3 = [number, number, number];
+type BoneRotationMap = Record<string, DegVec3 | undefined>;
+type RacketLoadPromise = Promise<THREE.Group>;
+
+export const DEFAULT_RACKET_URL = "/racket_classic.glb";
+
+// Zuordnung Shop-ID -> eigene 3D-Schlägerdatei in /public.
+// Sobald du weitere Schläger exportierst, einfach hier 1 Zeile ergänzen:
+export const RACKET_MODEL_MAP: Record<string, string> = {
+  racket_starter: "/racket_classic.glb",
+  // racket_control: "/racket_control.glb",
+  // racket_power: "/racket_power.glb",
+  // racket_pro: "/racket_pro.glb",
+};
+
+export function resolveRacketModelUrl(racketId?: string | null, customUrl?: string): string {
+  if (customUrl) return customUrl;
+  if (racketId && RACKET_MODEL_MAP[racketId]) {
+    return RACKET_MODEL_MAP[racketId];
+  }
+  return DEFAULT_RACKET_URL;
+}
+
+const gltfRacketLoader = new GLTFLoader();
+const glbRacketCache = new Map<string, RacketLoadPromise>();
+
+function loadCachedRacketGlb(url: string): RacketLoadPromise {
+  const existing = glbRacketCache.get(url);
+  if (existing) return existing;
+
+  const promise: RacketLoadPromise = new Promise((resolve, reject) => {
+    gltfRacketLoader.load(
+      url,
+      (gltf) => {
+        resolve(gltf.scene);
+      },
+      undefined,
+      (err) => {
+        glbRacketCache.delete(url);
+        reject(err);
+      }
+    );
+  });
+
+  glbRacketCache.set(url, promise);
+  return promise;
+}
 
 interface BonePoseSpec {
   hipsY?: number;
-  bones: Partial<Record<string, DegVec3>>;
+  bones: BoneRotationMap;
 }
 
 interface ShotKeyframe {
@@ -48,7 +96,6 @@ const IDLE_POSE: BonePoseSpec = {
     RightUpLeg: [-22, 0, -6],
     RightLeg: [38, 0, 0],
     RightFoot: [-14, 0, 0],
-    // Lockere Ellbogen-Weite, Handfläche sauber nach innen (+X), Schläger hochkant vor der Brust
     RightArm: [-41, 49, 0],
     RightForeArm: [12, 52, -40],
     RightHand: [18, 0, 4],
@@ -59,16 +106,12 @@ const IDLE_POSE: BonePoseSpec = {
 };
 
 // --- ALLE PADEL-SCHLÄGE IM CHARAKTERRAUM ---
-export const SHOT_ANIMATIONS: Record<
-  Exclude<PlayerAction, "a_pose" | "idle" | "walk">,
-  ShotAnimationDef
-> = {
+export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
   forehand: {
     duration: 1.05,
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Ausholen: Körper nach rechts aufdrehen, Schläger kompakt hinter der Hüfte
         at: 0.34,
         pose: {
           hipsY: -0.1,
@@ -87,7 +130,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Treffpunkt vorne mit aufrechter Schlagfläche
         at: 0.58,
         pose: {
           hipsY: -0.05,
@@ -106,7 +148,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Durchschwung über die linke Schulter
         at: 0.8,
         pose: {
           hipsY: -0.04,
@@ -417,12 +458,13 @@ export const SHOT_ANIMATIONS: Record<
   },
 };
 
-// Finger-Krümmung (rechts: fester Griff inkl. Daumen; links: lockere, natürliche Handhaltung)
-const HAND_FINGER_SPECS: Record<
-  string,
-  { hand: "RightHand" | "LeftHand"; axis: [number, number, number]; deg: number }
-> = {
-  // Rechte Hand umschließt den Griff fest
+interface FingerSpec {
+  hand: "RightHand" | "LeftHand";
+  axis: [number, number, number];
+  deg: number;
+}
+
+const HAND_FINGER_SPECS: Record<string, FingerSpec> = {
   RightHandIndex1: { hand: "RightHand", axis: [1, 0, 0], deg: 62 },
   RightHandIndex2: { hand: "RightHand", axis: [1, 0, 0], deg: 74 },
   RightHandIndex3: { hand: "RightHand", axis: [1, 0, 0], deg: 52 },
@@ -439,7 +481,6 @@ const HAND_FINGER_SPECS: Record<
   RightHandThumb2: { hand: "RightHand", axis: [0, 0.3, 1], deg: 34 },
   RightHandThumb3: { hand: "RightHand", axis: [0, 0.2, 1], deg: 28 },
 
-  // Linke Hand leicht gerundet (kein steifer Anhalter-Daumen)
   LeftHandIndex1: { hand: "LeftHand", axis: [1, 0, 0], deg: 24 },
   LeftHandIndex2: { hand: "LeftHand", axis: [1, 0, 0], deg: 28 },
   LeftHandMiddle1: { hand: "LeftHand", axis: [1, 0, 0], deg: 28 },
@@ -456,134 +497,63 @@ function normalizeBoneKey(rawName: string): string {
   return rawName.replace(/^mixamorig:?/i, "").replace(/^Armature\|/i, "");
 }
 
-// =========================================================================
-// REALISTISCHER 3D-PADELSCHLÄGER (TROPFFORM, OFFENES V-HERZ, LOCHMUSTER)
-// Maße in Metern: Gesamtlänge ~44 cm, Kopfbreite ~24 cm, Stärke 3,6 cm
-// =========================================================================
-function buildPadelRacketGroup(): THREE.Group {
+// Notfall-Fallback, falls keine .glb-Datei geladen werden konnte
+function buildFallbackRacketGroup(): THREE.Group {
   const racket = new THREE.Group();
-  racket.name = "ProceduralPadelRacket";
+  racket.name = "FallbackPadelRacket";
+  racket.userData.isProceduralFallback = true;
 
-  // 1. Griff mit Abschlusskappe & Handschlaufe
-  const gripMat = new THREE.MeshStandardMaterial({
-    color: "#111827",
-    roughness: 0.9,
-    metalness: 0.05,
-  });
-  const handle = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.0155, 0.0175, 0.125, 16),
-    gripMat
+  const grip = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.016, 0.018, 0.125, 12),
+    new THREE.MeshStandardMaterial({ color: "#111827", roughness: 0.9 })
   );
-  handle.position.set(0, 0.062, 0);
-  racket.add(handle);
+  grip.position.set(0, 0.062, 0);
+  racket.add(grip);
 
-  const buttCap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.0195, 0.0205, 0.014, 16),
-    new THREE.MeshStandardMaterial({ color: "#0284c7", roughness: 0.35, metalness: 0.6 })
-  );
-  buttCap.position.set(0, 0.002, 0);
-  racket.add(buttCap);
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.017, 0.124);
+  shape.bezierCurveTo(-0.042, 0.155, -0.098, 0.215, -0.118, 0.295);
+  shape.bezierCurveTo(-0.125, 0.365, -0.088, 0.432, 0.0, 0.442);
+  shape.bezierCurveTo(0.088, 0.432, 0.125, 0.365, 0.118, 0.295);
+  shape.bezierCurveTo(0.098, 0.215, 0.042, 0.155, 0.017, 0.124);
+  shape.closePath();
 
-  // Griffband-Ring oben
-  const gripRing = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.017, 0.017, 0.012, 16),
-    new THREE.MeshStandardMaterial({
-      color: "#00f0ff",
-      emissive: "#0284c7",
-      emissiveIntensity: 0.45,
-      roughness: 0.3,
-    })
-  );
-  gripRing.position.set(0, 0.122, 0);
-  racket.add(gripRing);
-
-  // 2. Tropfenförmiger Rahmen mit offenem V-Herz-Ausschnitt
-  const outerShape = new THREE.Shape();
-  outerShape.moveTo(-0.017, 0.124);
-  outerShape.bezierCurveTo(-0.042, 0.155, -0.098, 0.215, -0.118, 0.295);
-  outerShape.bezierCurveTo(-0.125, 0.365, -0.088, 0.432, 0.0, 0.442);
-  outerShape.bezierCurveTo(0.088, 0.432, 0.125, 0.365, 0.118, 0.295);
-  outerShape.bezierCurveTo(0.098, 0.215, 0.042, 0.155, 0.017, 0.124);
-  outerShape.closePath();
-
-  // Echtes dreieckiges Padel-Herz (Ausschnitt im Schlägerhals)
-  const heartHole = new THREE.Path();
-  heartHole.moveTo(0.0, 0.148);
-  heartHole.lineTo(-0.046, 0.214);
-  heartHole.quadraticCurveTo(0.0, 0.204, 0.046, 0.214);
-  heartHole.closePath();
-  outerShape.holes.push(heartHole);
-
-  const extrudeSettings: THREE.ExtrudeGeometryOptions = {
+  const bodyGeo = new THREE.ExtrudeGeometry(shape, {
     depth: 0.03,
     bevelEnabled: true,
     bevelThickness: 0.004,
     bevelSize: 0.004,
-    bevelSegments: 3,
-    curveSegments: 24,
-  };
-
-  const bodyGeo = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
-  bodyGeo.translate(0, 0, -0.015); // exakt auf Z=0 zentrieren (Gesamtstärke ~3,8 cm)
-
-  const carbonFaceMat = new THREE.MeshStandardMaterial({
-    color: "#0b1120",
-    roughness: 0.42,
-    metalness: 0.55,
+    bevelSegments: 2,
+    curveSegments: 16,
   });
-  const frameSideMat = new THREE.MeshStandardMaterial({
-    color: "#0ea5e9",
-    emissive: "#0284c7",
-    emissiveIntensity: 0.35,
-    roughness: 0.32,
-    metalness: 0.72,
-  });
+  bodyGeo.translate(0, 0, -0.015);
 
-  // Material-Array: [0] Vorder-/Rückseite (dunkles Carbon), [1] Rahmenkante (TacPadel Cyan)
-  const racketBody = new THREE.Mesh(bodyGeo, [carbonFaceMat, frameSideMat]);
-  racket.add(racketBody);
-
-  // Dezente orange Akzent-Brücke am Herz
-  const accentBar = new THREE.Mesh(
-    new THREE.BoxGeometry(0.056, 0.011, 0.036),
-    new THREE.MeshStandardMaterial({
-      color: "#f97316",
-      emissive: "#ea580c",
-      emissiveIntensity: 0.45,
-      roughness: 0.35,
-      metalness: 0.6,
-    })
-  );
-  accentBar.position.set(0, 0.214, 0);
-  racket.add(accentBar);
-
-  // 3. Charakteristische Padel-Lochung auf beiden Schlagflächen (sauberes Symmetrie-Muster)
-  const holeGeo = new THREE.CylinderGeometry(0.0052, 0.0052, 0.04, 8);
-  holeGeo.rotateX(Math.PI / 2);
-  const holeMat = new THREE.MeshBasicMaterial({ color: "#02040a" });
-
-  const holeRows: Array<{ y: number; xs: number[] }> = [
-    { y: 0.255, xs: [-0.046, -0.023, 0.023, 0.046] },
-    { y: 0.285, xs: [-0.072, -0.048, -0.024, 0.024, 0.048, 0.072] },
-    { y: 0.315, xs: [-0.082, -0.056, -0.028, 0.0, 0.028, 0.056, 0.082] },
-    { y: 0.345, xs: [-0.082, -0.056, -0.028, 0.0, 0.028, 0.056, 0.082] },
-    { y: 0.375, xs: [-0.068, -0.042, -0.018, 0.018, 0.042, 0.068] },
-    { y: 0.402, xs: [-0.044, -0.018, 0.018, 0.044] },
-  ];
-
-  holeRows.forEach((row) => {
-    row.xs.forEach((x) => {
-      const hole = new THREE.Mesh(holeGeo, holeMat);
-      hole.position.set(x, row.y, 0);
-      racket.add(hole);
-    });
-  });
-
-  // Continental-Griff in mixamorig:RightHand (+Y=Finger, +X=Daumenkante, +Z=Handfläche)
-  racket.position.set(0.0, 0.078, 0.026);
-  racket.rotation.set(0, 0, THREE.MathUtils.degToRad(-56));
+  const body = new THREE.Mesh(bodyGeo, [
+    new THREE.MeshStandardMaterial({ color: "#0b1120", roughness: 0.45, metalness: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#0ea5e9", roughness: 0.35, metalness: 0.7 }),
+  ]);
+  racket.add(body);
 
   return racket;
+}
+
+function clearRacketMount(mount: THREE.Group) {
+  while (mount.children.length > 0) {
+    const child = mount.children[0];
+    mount.remove(child);
+    // Nur den prozeduralen Fallback disposen – gecachte GLB-Geometrien/Texturen bleiben intakt!
+    if (child.userData?.isProceduralFallback) {
+      child.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach((m) => m.dispose());
+        } else if (mesh.material) {
+          mesh.material.dispose();
+        }
+      });
+    }
+  }
 }
 
 function getRestCharQuaternion(
@@ -605,6 +575,8 @@ function getRestCharQuaternion(
 
 export interface AnimatedPadelPlayerProps {
   modelUrl?: string;
+  racketId?: string | null;
+  racketUrl?: string;
   action?: PlayerAction;
   triggerKey?: number;
   speed?: number;
@@ -617,6 +589,8 @@ export interface AnimatedPadelPlayerProps {
 
 export default function AnimatedPadelPlayer({
   modelUrl = "/meshy_player.glb",
+  racketId = "racket_starter",
+  racketUrl,
   action = "idle",
   triggerKey = 0,
   speed = 1,
@@ -636,7 +610,7 @@ export default function AnimatedPadelPlayer({
   const fingerGripQuatRef = useRef(new Map<string, THREE.Quaternion>());
 
   const restHipsYRef = useRef<number>(0.97);
-  const racketRef = useRef<THREE.Group | null>(null);
+  const racketMountRef = useRef<THREE.Group | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const walkActionRef = useRef<THREE.AnimationAction | null>(null);
 
@@ -650,7 +624,12 @@ export default function AnimatedPadelPlayer({
   const tmpQuatB = useMemo(() => new THREE.Quaternion(), []);
   const tmpTargetQuat = useMemo(() => new THREE.Quaternion(), []);
 
-  // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & beide Hand-Posen vorberechnen
+  const resolvedRacketUrl = useMemo(
+    () => resolveRacketModelUrl(racketId, racketUrl),
+    [racketId, racketUrl]
+  );
+
+  // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & Schläger-Mount an RightHand anlegen
   useEffect(() => {
     const bonesMap = new Map<string, THREE.Bone>();
     const restLocal = new Map<string, THREE.Quaternion>();
@@ -682,7 +661,6 @@ export default function AnimatedPadelPlayer({
       }
     });
 
-    // Finger- & Daumen-Krümmung für rechte (Griff) und linke Hand vorberechnen
     Object.entries(HAND_FINGER_SPECS).forEach(([fKey, spec]) => {
       const qHandChar = restChar.get(spec.hand);
       const qFChar = restChar.get(fKey);
@@ -716,13 +694,17 @@ export default function AnimatedPadelPlayer({
       animations.find((clip) => clip.name === "Walking") || animations[0] || null;
     walkActionRef.current = walkClip ? mixer.clipAction(walkClip) : null;
 
+    // Fester Continental-Griff-Mount an mixamorig:RightHand
     const rightHandBone = bonesMap.get("RightHand");
-    let createdRacket: THREE.Group | null = null;
+    let mount: THREE.Group | null = null;
     if (rightHandBone) {
-      createdRacket = buildPadelRacketGroup();
-      createdRacket.visible = showRacket;
-      rightHandBone.add(createdRacket);
-      racketRef.current = createdRacket;
+      mount = new THREE.Group();
+      mount.name = "PadelRacketMount";
+      mount.position.set(0.0, 0.078, 0.026);
+      mount.rotation.set(0, 0, THREE.MathUtils.degToRad(-56));
+      mount.visible = showRacket;
+      rightHandBone.add(mount);
+      racketMountRef.current = mount;
     }
 
     return () => {
@@ -731,28 +713,66 @@ export default function AnimatedPadelPlayer({
       mixerRef.current = null;
       walkActionRef.current = null;
 
-      if (rightHandBone && createdRacket) {
-        rightHandBone.remove(createdRacket);
-        createdRacket.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach((m) => m.dispose());
-          } else if (mesh.material) {
-            mesh.material.dispose();
-          }
-        });
+      if (rightHandBone && mount) {
+        clearRacketMount(mount);
+        rightHandBone.remove(mount);
       }
-      racketRef.current = null;
+      racketMountRef.current = null;
     };
   }, [clonedScene, animations]);
 
+  // 2. Echten 3D-Schläger (.glb) asynchron & gecacht in den Griff-Mount laden
   useEffect(() => {
-    if (racketRef.current) {
-      racketRef.current.visible = showRacket;
+    const mount = racketMountRef.current;
+    if (!mount) return;
+
+    let cancelled = false;
+
+    const attachSceneToMount = (loadedScene: THREE.Group) => {
+      if (cancelled || !racketMountRef.current) return;
+      clearRacketMount(racketMountRef.current);
+      const clone = loadedScene.clone(true);
+      // Griff leicht (-3,2 cm) in die Handfläche schieben, damit die Finger mittig greifen
+      clone.position.set(0, -0.032, 0);
+      clone.scale.setScalar(1);
+      racketMountRef.current.add(clone);
+    };
+
+    loadCachedRacketGlb(resolvedRacketUrl)
+      .then(attachSceneToMount)
+      .catch(() => {
+        if (resolvedRacketUrl !== DEFAULT_RACKET_URL) {
+          return loadCachedRacketGlb(DEFAULT_RACKET_URL)
+            .then(attachSceneToMount)
+            .catch(() => {
+              if (!cancelled && racketMountRef.current) {
+                clearRacketMount(racketMountRef.current);
+                const fb = buildFallbackRacketGroup();
+                fb.position.set(0, -0.032, 0);
+                racketMountRef.current.add(fb);
+              }
+            });
+        }
+        if (!cancelled && racketMountRef.current) {
+          clearRacketMount(racketMountRef.current);
+          const fb = buildFallbackRacketGroup();
+          fb.position.set(0, -0.032, 0);
+          racketMountRef.current.add(fb);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedRacketUrl, clonedScene]);
+
+  useEffect(() => {
+    if (racketMountRef.current) {
+      racketMountRef.current.visible = showRacket;
     }
   }, [showRacket]);
 
+  // 3. Eingebetteten "Walking"-Clip steuern oder für prozedurale Schläge stoppen
   useEffect(() => {
     shotElapsedRef.current = 0;
     shotDoneRef.current = false;
@@ -769,6 +789,7 @@ export default function AnimatedPadelPlayer({
     }
   }, [action, triggerKey]);
 
+  // 4. Render-Loop: Walking-Mixer ODER Charakterraum-Bone-Animation
   useFrame((state, delta) => {
     const safeDelta = Math.min(delta, 0.05);
 
