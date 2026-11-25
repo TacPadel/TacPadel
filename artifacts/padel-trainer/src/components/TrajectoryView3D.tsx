@@ -265,27 +265,27 @@ export default function TrajectoryView3D() {
     {
       id: "VIBORA",
       short: "VÍBORA",
-      label: lang === "en" ? "🐍 Víbora (Slice drops)" : lang === "es" ? "🐍 Víbora (cae)" : "🐍 Víbora (Slice fällt ab)",
+      label: lang === "en" ? "Víbora (Slice drops)" : lang === "es" ? "Víbora (cae)" : "Víbora (Slice fällt ab)",
     },
     {
       id: "BAJADA",
       short: "BAJADA",
-      label: lang === "en" ? "🌀 Bajada (Topspin kicks)" : lang === "es" ? "🌀 Bajada (liftada)" : "🌀 Bajada (Topspin)",
+      label: lang === "en" ? "Bajada (Topspin kicks)" : lang === "es" ? "Bajada (liftada)" : "Bajada (Topspin)",
     },
     {
       id: "SMASH_POR3",
       short: "POR 3",
-      label: lang === "en" ? "💥 Smash Por 3 (Kick)" : lang === "es" ? "💥 Remate x3 (Kick)" : "💥 Smash Por 3 (Kick)",
+      label: lang === "en" ? "Smash Por 3 (Kick)" : lang === "es" ? "Remate x3 (Kick)" : "Smash Por 3 (Kick)",
     },
     {
       id: "VOLLEY",
       short: "VOLLEY",
-      label: lang === "en" ? "⚡ Volley (Flat/Fence)" : lang === "es" ? "⚡ Volea (Reja)" : "⚡ Volley (Direkt/Gitter)",
+      label: lang === "en" ? "Volley (Flat/Fence)" : lang === "es" ? "Volea (Reja)" : "Volley (Direkt/Gitter)",
     },
     {
       id: "LOB",
       short: "LOB",
-      label: lang === "en" ? "🎈 Deep Lob" : lang === "es" ? "🎈 Globo" : "🎈 Tiefer Lob",
+      label: lang === "en" ? "Deep Lob" : lang === "es" ? "Globo" : "Tiefer Lob",
     },
   ];
 
@@ -293,22 +293,22 @@ export default function TrajectoryView3D() {
     {
       id: "SLICE",
       short: "SLICE",
-      label: lang === "en" ? "🔪 Slice (drops)" : lang === "es" ? "🔪 Cortado (cae)" : "🔪 Slice (fällt ab)",
+      label: lang === "en" ? "Slice (drops)" : lang === "es" ? "Cortado (cae)" : "Slice (fällt ab)",
     },
     {
       id: "FLAT",
       short: "FLAT",
-      label: lang === "en" ? "🎾 Flat (neutral)" : lang === "es" ? "🎾 Plano (neutro)" : "🎾 Glatt (neutral)",
+      label: lang === "en" ? "Flat (neutral)" : lang === "es" ? "Plano (neutro)" : "Glatt (neutral)",
     },
     {
       id: "TOPSPIN",
       short: "TOPSPIN",
-      label: lang === "en" ? "🌀 Topspin (kicks)" : lang === "es" ? "🌀 Liftado (sale)" : "🌀 Topspin (springt raus)",
+      label: lang === "en" ? "Topspin (kicks)" : lang === "es" ? "Liftado (sale)" : "Topspin (springt raus)",
     },
     {
       id: "LOB",
       short: "LOB",
-      label: lang === "en" ? "🎈 Deep Lob" : lang === "es" ? "🎈 Globo" : "🎈 Tiefer Lob",
+      label: lang === "en" ? "Deep Lob" : lang === "es" ? "Globo" : "Tiefer Lob",
     },
   ];
 
@@ -380,7 +380,7 @@ export default function TrajectoryView3D() {
                     : "text-orange-300 hover:text-white"
                 }`}
               >
-                {lang === "en" ? "⚔️ Attack Lab" : lang === "es" ? "⚔️ Ataque" : "⚔️ Angriff"}
+                {lang === "en" ? "Attack Lab" : lang === "es" ? "Ataque" : "Angriff"}
               </button>
               <button
                 onClick={() => {
@@ -394,7 +394,7 @@ export default function TrajectoryView3D() {
                     : "text-cyan-300 hover:text-white"
                 }`}
               >
-                {lang === "en" ? "🛡️ Glass Lab" : lang === "es" ? "🛡️ Cristales" : "🛡️ Scheibenspiel"}
+                {lang === "en" ? "Glass Lab" : lang === "es" ? "Cristales" : "Scheibenspiel"}
               </button>
             </div>
 
@@ -441,7 +441,7 @@ export default function TrajectoryView3D() {
                         : "bg-slate-900 border-slate-700 text-slate-400 hover:text-white"
                     }`}
                   >
-                    🎯 Test
+                    Test
                   </button>
                 </div>
 
@@ -624,10 +624,10 @@ export default function TrajectoryView3D() {
             >
               {labMode === "defense" && defQuizMode
                 ? lang === "en"
-                  ? "🎯 Check Position & Play"
+                  ? "Check Position & Play"
                   : lang === "es"
-                  ? "🎯 Comprobar y Simular"
-                  : "🎯 Stellung prüfen & starten"
+                  ? "Comprobar y Simular"
+                  : "Stellung prüfen & starten"
                 : t("tb_btn_simulate")}
             </button>
           </div>
@@ -648,7 +648,7 @@ export default function TrajectoryView3D() {
                   onClick={() => handleStartSim()}
                   className="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-xs font-black shadow-lg transition-colors"
                 >
-                  🔁 Replay
+                  Replay
                 </button>
                 <button
                   onClick={() => setPlaybackSpeed((s) => (s === 0.4 ? 1 : 0.4))}
@@ -689,7 +689,7 @@ export default function TrajectoryView3D() {
                         : "bg-cyan-950/50 border-cyan-500/40 text-cyan-300"
                     }`}
                   >
-                    {labMode === "attack" ? "⚔️ " : "🛡️ "}
+                    {labMode === "attack" ? "" : ""}
                     {activeSimulation.patternLabel}
                   </span>
                   <span className="text-[9px] font-bold text-slate-400">
@@ -721,7 +721,7 @@ export default function TrajectoryView3D() {
                 )}
 
                 <p className="text-xs text-slate-200 leading-snug">
-                  💡 {activeSimulation.coachTip}
+                  {activeSimulation.coachTip}
                 </p>
 
                 <div className="flex flex-wrap gap-3 text-[9px] font-bold text-slate-400 pt-1 border-t border-slate-800">
