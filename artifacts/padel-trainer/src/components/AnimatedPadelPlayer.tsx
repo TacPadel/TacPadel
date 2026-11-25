@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { useGLTF } from "@react-three/drei";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import * as THREE from "three";
 
@@ -18,17 +18,17 @@ export type PlayerAction =
 type DegVec3 = [number, number, number];
 
 interface BonePoseSpec {
-  hipsY?: number; // vertikaler Offset in Metern (z. B. -0.07 für gebeugte Knie)
+  hipsY?: number;
   bones: Partial<Record<string, DegVec3>>;
 }
 
 interface ShotKeyframe {
-  at: number; // normalisierte Zeit 0..1 innerhalb der Schlag-Dauer
+  at: number;
   pose: BonePoseSpec;
 }
 
 interface ShotAnimationDef {
-  duration: number; // Sekunden bei 1x Geschwindigkeit
+  duration: number;
   frames: ShotKeyframe[];
 }
 
@@ -68,7 +68,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Ausholen: Schultern nach rechts aufdrehen, Schläger zurück
         at: 0.34,
         pose: {
           hipsY: -0.09,
@@ -87,7 +86,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Treffpunkt: Hüfte + Oberkörper schnellen nach vorne
         at: 0.58,
         pose: {
           hipsY: -0.04,
@@ -106,7 +104,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Durchschwung über die linke Schulter
         at: 0.80,
         pose: {
           hipsY: -0.03,
@@ -133,7 +130,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Kompakter Rückschwung nach links
         at: 0.34,
         pose: {
           hipsY: -0.09,
@@ -152,7 +148,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Treffpunkt vorne links
         at: 0.58,
         pose: {
           hipsY: -0.04,
@@ -171,7 +166,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Auslauf nach rechts außen
         at: 0.80,
         pose: {
           hipsY: -0.04,
@@ -197,7 +191,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Kurzes, kompaktes Öffnen am Netz (kein langes Ausholen)
         at: 0.28,
         pose: {
           hipsY: -0.07,
@@ -215,7 +208,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Kurzer Block-/Stech-Impuls nach vorne
         at: 0.56,
         pose: {
           hipsY: -0.08,
@@ -240,7 +232,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Seitlich stellen, linker Arm zeigt zum Lob, rechter Arm auf Kopfhöhe offen
         at: 0.36,
         pose: {
           hipsY: -0.08,
@@ -261,7 +252,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Seitlicher Slice-Treffpunkt auf Augenhöhe
         at: 0.60,
         pose: {
           hipsY: -0.04,
@@ -281,7 +271,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Kontrollierter Durchschwung vor den Körper / Richtung linke Hüfte
         at: 0.82,
         pose: {
           hipsY: -0.06,
@@ -304,7 +293,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Trophy-Pose: tief aufladen, Rücken leicht überstreckt, linker Arm zeigt hoch
         at: 0.36,
         pose: {
           hipsY: -0.10,
@@ -328,10 +316,9 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Maximaler Streck-Treffpunkt ganz oben
         at: 0.56,
         pose: {
-          hipsY: 0.14, // dynamischer Absprung
+          hipsY: 0.14,
           bones: {
             Hips: [-4, 4, 0],
             Spine: [-4, 8, 6],
@@ -351,7 +338,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Explosiver Durchschwung nach unten links
         at: 0.80,
         pose: {
           hipsY: -0.08,
@@ -376,7 +362,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Tief in die Knie gehen, Schläger weit nach unten führen
         at: 0.36,
         pose: {
           hipsY: -0.18,
@@ -399,7 +384,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Beine strecken und Schläger hoch nach oben ziehen
         at: 0.72,
         pose: {
           hipsY: 0.02,
@@ -434,17 +418,18 @@ function buildPadelRacketGroup(): THREE.Group {
   const racket = new THREE.Group();
   racket.name = "ProceduralPadelRacket";
 
-  // Griff
   const handleMat = new THREE.MeshStandardMaterial({
     color: "#0f172a",
     roughness: 0.85,
     metalness: 0.1,
   });
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.02, 0.14, 12), handleMat);
+  const handle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.017, 0.02, 0.14, 12),
+    handleMat
+  );
   handle.position.set(0, 0.07, 0);
   racket.add(handle);
 
-  // Herz / Brücke
   const bridgeMat = new THREE.MeshStandardMaterial({
     color: "#0ea5e9",
     emissive: "#0284c7",
@@ -452,23 +437,27 @@ function buildPadelRacketGroup(): THREE.Group {
     roughness: 0.35,
     metalness: 0.7,
   });
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.065, 0.026), bridgeMat);
+  const bridge = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.065, 0.026),
+    bridgeMat
+  );
   bridge.position.set(0, 0.17, 0);
   racket.add(bridge);
 
-  // Schlagfläche (Tropfen-/Rundform)
   const faceMat = new THREE.MeshStandardMaterial({
     color: "#020617",
     roughness: 0.45,
     metalness: 0.65,
   });
-  const face = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.125, 0.032, 24), faceMat);
+  const face = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.125, 0.125, 0.032, 24),
+    faceMat
+  );
   face.rotation.x = Math.PI / 2;
   face.scale.set(0.92, 1.0, 1.12);
   face.position.set(0, 0.32, 0);
   racket.add(face);
 
-  // Leuchtender Rahmen
   const rimMat = new THREE.MeshStandardMaterial({
     color: "#f97316",
     emissive: "#ea580c",
@@ -476,12 +465,14 @@ function buildPadelRacketGroup(): THREE.Group {
     roughness: 0.3,
     metalness: 0.8,
   });
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.015, 10, 28), rimMat);
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.125, 0.015, 10, 28),
+    rimMat
+  );
   rim.scale.set(0.92, 1.12, 1.0);
   rim.position.set(0, 0.32, 0);
   racket.add(rim);
 
-  // Standard-Griffausrichtung für mixamorig:RightHand
   racket.position.set(0.0, 0.07, 0.03);
   racket.rotation.set(Math.PI / 2, 0.15, 0);
 
@@ -511,34 +502,32 @@ export default function AnimatedPadelPlayer({
   showRacket = true,
   onActionFinished,
 }: AnimatedPadelPlayerProps) {
-  const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(modelUrl);
+  const { scene, animations } = useGLTF(modelUrl, false, false);
 
-  // Eigenes Skelett pro Instanz klonen (wichtig für später 4 Spieler auf dem Court)
+  // Eigenes Skelett pro Instanz klonen
   const clonedScene = useMemo(() => cloneSkinned(scene), [scene]);
-  const { actions } = useAnimations(animations, groupRef);
 
-  const bonesMapRef = useRef>(new Map());
-  const restQuatRef = useRef>(new Map());
+  const bonesMapRef = useRef(new Map<string, THREE.Bone>());
+  const restQuatRef = useRef(new Map<string, THREE.Quaternion>());
   const restHipsYRef = useRef<number>(0.97);
   const racketRef = useRef<THREE.Group | null>(null);
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const walkActionRef = useRef<THREE.AnimationAction | null>(null);
 
   const shotElapsedRef = useRef<number>(0);
   const shotDoneRef = useRef<boolean>(false);
 
-  // Wiederverwendbare Temp-Objekte (keine GC-Spikes in useFrame)
   const tmpEuler = useMemo(() => new THREE.Euler(0, 0, 0, "XYZ"), []);
   const tmpDeltaQuat = useMemo(() => new THREE.Quaternion(), []);
   const tmpQuatA = useMemo(() => new THREE.Quaternion(), []);
   const tmpQuatB = useMemo(() => new THREE.Quaternion(), []);
   const tmpTargetQuat = useMemo(() => new THREE.Quaternion(), []);
 
-  // 1. Bind-Pose erfassen + Padelschläger an mixamorig:RightHand hängen
+  // 1. Bind-Pose erfassen, AnimationMixer direkt auf clonedScene binden & Schläger anhängen
   useEffect(() => {
     const bonesMap = new Map<string, THREE.Bone>();
     const restQuats = new Map<string, THREE.Quaternion>();
 
-    // Exakte A-Pose/Bind-Pose aus den inverseBindMatrices herstellen
     clonedScene.traverse((obj) => {
       const skinned = obj as THREE.SkinnedMesh;
       if (skinned.isSkinnedMesh && skinned.skeleton) {
@@ -561,6 +550,12 @@ export default function AnimatedPadelPlayer({
     bonesMapRef.current = bonesMap;
     restQuatRef.current = restQuats;
 
+    const mixer = new THREE.AnimationMixer(clonedScene);
+    mixerRef.current = mixer;
+    const walkClip =
+      animations.find((clip) => clip.name === "Walking") || animations[0] || null;
+    walkActionRef.current = walkClip ? mixer.clipAction(walkClip) : null;
+
     const rightHand = bonesMap.get("RightHand");
     let createdRacket: THREE.Group | null = null;
     if (rightHand) {
@@ -571,6 +566,11 @@ export default function AnimatedPadelPlayer({
     }
 
     return () => {
+      mixer.stopAllAction();
+      mixer.uncacheRoot(clonedScene);
+      mixerRef.current = null;
+      walkActionRef.current = null;
+
       if (rightHand && createdRacket) {
         rightHand.remove(createdRacket);
         createdRacket.traverse((child) => {
@@ -585,7 +585,7 @@ export default function AnimatedPadelPlayer({
       }
       racketRef.current = null;
     };
-  }, [clonedScene]);
+  }, [clonedScene, animations]);
 
   // Schläger ein-/ausblenden
   useEffect(() => {
@@ -599,26 +599,29 @@ export default function AnimatedPadelPlayer({
     shotElapsedRef.current = 0;
     shotDoneRef.current = false;
 
-    const walkAction = actions["Walking"] || Object.values(actions)[0];
+    const walkAction = walkActionRef.current;
+    if (!walkAction) return;
 
-    if (action === "walk" && walkAction) {
+    if (action === "walk") {
       walkAction.reset();
-      walkAction.setEffectiveTimeScale(speed);
       walkAction.setLoop(THREE.LoopRepeat, Infinity);
-      walkAction.fadeIn(0.18).play();
-      return () => {
-        walkAction.fadeOut(0.15);
-      };
-    } else if (walkAction) {
+      walkAction.play();
+    } else {
       walkAction.stop();
     }
-  }, [action, triggerKey, actions, speed]);
+  }, [action, triggerKey]);
 
-  // 3. Prozedurale Bone-Animation im Render-Loop
+  // 3. Render-Loop: Walking-Mixer ODER prozedurale Bone-Animation
   useFrame((state, delta) => {
-    if (action === "walk") return;
-
     const safeDelta = Math.min(delta, 0.05);
+
+    if (action === "walk") {
+      if (mixerRef.current) {
+        mixerRef.current.update(safeDelta * speed);
+      }
+      return;
+    }
+
     const bonesMap = bonesMapRef.current;
     const restQuats = restQuatRef.current;
     if (bonesMap.size === 0) return;
@@ -630,7 +633,7 @@ export default function AnimatedPadelPlayer({
       const hips = bonesMap.get("Hips");
       if (hips) {
         const bob = breathe ? Math.sin(tClock * 3.4) * 0.014 : 0;
-        const targetY = restHipsYRef.current + (pose.hipsY || 0) + bob;
+        const targetY = restHipsYRef.current + (pose.hipsY ?? 0) + bob;
         hips.position.y = THREE.MathUtils.lerp(hips.position.y, targetY, blendAlpha);
       }
 
@@ -666,7 +669,6 @@ export default function AnimatedPadelPlayer({
       return;
     }
 
-    // Schlag-Animation entlang der Keyframes interpolieren
     const shotDef = SHOT_ANIMATIONS[action];
     if (!shotDef) {
       applyPose(IDLE_POSE, true);
@@ -698,8 +700,8 @@ export default function AnimatedPadelPlayer({
 
     const hips = bonesMap.get("Hips");
     if (hips) {
-      const yA = restHipsYRef.current + (prevFrame.pose.hipsY || 0);
-      const yB = restHipsYRef.current + (nextFrame.pose.hipsY || 0);
+      const yA = restHipsYRef.current + (prevFrame.pose.hipsY ?? 0);
+      const yB = restHipsYRef.current + (nextFrame.pose.hipsY ?? 0);
       hips.position.y = THREE.MathUtils.lerp(
         hips.position.y,
         THREE.MathUtils.lerp(yA, yB, smoothT),
@@ -746,7 +748,7 @@ export default function AnimatedPadelPlayer({
   });
 
   return (
-    <group ref={groupRef} position={position} rotation={[0, rotationY, 0]} scale={scale}>
+    <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
       <primitive object={clonedScene} />
     </group>
   );
