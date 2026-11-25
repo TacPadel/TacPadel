@@ -1122,8 +1122,8 @@ export default function PlaybookHub({
                   }`}
                 >
                   {savedSharedToPb
-                    ? `✓ ${tr("Gespeichert", "Saved", "Guardado")}`
-                    : `💾 ${tr("Ins Playbook", "Save to Playbook", "Guardar")}`}
+                    ? `${tr("Gespeichert", "Saved", "Guardado")}`
+                    : `${tr("Ins Playbook", "Save to Playbook", "Guardar")}`}
                 </button>
               )}
             </div>
@@ -1202,7 +1202,7 @@ export default function PlaybookHub({
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500" />
         <div>
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400 block">
-            📘 TACPADEL PLAYBOOK HUB ({plays.length}/{entitlements.maxPlaybookSlots})
+            TACPADEL PLAYBOOK HUB ({plays.length}/{entitlements.maxPlaybookSlots})
           </span>
           <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-wider">
             {tr("Deine Spielzüge & 3D-Replays", "Your Plays & 3D Replays", "Tus Jugadas y Replays 3D")}
@@ -1229,7 +1229,7 @@ export default function PlaybookHub({
         <div className="bg-amber-950/35 border border-amber-500/40 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-              ☁️ {tr("GASTMODUS • MAX. 2 LOKALE PLÄTZE", "GUEST MODE • MAX 2 LOCAL SLOTS", "MODO INVITADO • MÁX. 2 LOCALES")}
+              {tr("GASTMODUS • MAX. 2 LOKALE PLÄTZE", "GUEST MODE • MAX 2 LOCAL SLOTS", "MODO INVITADO • MÁX. 2 LOCALES")}
             </span>
             <p className="text-xs text-slate-300 leading-snug">
               {tr(
@@ -1253,10 +1253,10 @@ export default function PlaybookHub({
         {(
           [
             { id: "all", label: `${tr("Alle", "All", "Todo")} (${counts.all})` },
-            { id: "match", label: `🎾 (${counts.match})` },
-            { id: "trainer", label: `🧠 (${counts.trainer})` },
-            { id: "studio", label: `✏️ (${counts.studio})` },
-            { id: "drills", label: `🎯 (${counts.drills})` },
+            { id: "match", label: `(${counts.match})` },
+            { id: "trainer", label: `(${counts.trainer})` },
+            { id: "studio", label: `(${counts.studio})` },
+            { id: "drills", label: `(${counts.drills})` },
           ] as { id: HubFilter; label: string }[]
         ).map((tab) => (
           <button
@@ -1280,7 +1280,7 @@ export default function PlaybookHub({
         </div>
       ) : filteredPlays.length === 0 ? (
         <div className="bg-[#050b18]/90 border border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center gap-3">
-          <span className="text-4xl">📘</span>
+          <span className="text-4xl"></span>
           <h3 className="text-sm font-black text-white uppercase tracking-wider">
             {tr("Noch keine Spielzüge hier", "No plays here yet", "Aún no hay jugadas aquí")}
           </h3>
@@ -1296,13 +1296,13 @@ export default function PlaybookHub({
               onClick={handleCreateNewInStudio}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white font-black text-xs uppercase tracking-wider"
             >
-              ✏️ {tr("Im Studio zeichnen", "Draw in Studio", "Dibujar en Estudio")}
+              {tr("Im Studio zeichnen", "Draw in Studio", "Dibujar en Estudio")}
             </button>
             <button
               onClick={() => onNavigateTab("game")}
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-xs uppercase tracking-wider border border-slate-700"
             >
-              🎾 {tr("Zum 3D-Match", "Go to 3D Match", "Ir al Partido 3D")}
+              {tr("Zum 3D-Match", "Go to 3D Match", "Ir al Partido 3D")}
             </button>
           </div>
         </div>
@@ -1314,10 +1314,10 @@ export default function PlaybookHub({
             const stepCount = ctx.steps?.length || 0;
             const srcBadge =
               src === "match"
-                ? { text: "🎾 MATCH", cls: "bg-orange-500/20 border-orange-500/40 text-orange-300" }
+                ? { text: "MATCH", cls: "bg-orange-500/20 border-orange-500/40 text-orange-300" }
                 : src === "trainer"
-                ? { text: "🧠 TRAINER", cls: "bg-cyan-500/20 border-cyan-500/40 text-cyan-300" }
-                : { text: "✏️ STUDIO", cls: "bg-pink-500/20 border-pink-500/40 text-pink-300" };
+                ? { text: "TRAINER", cls: "bg-cyan-500/20 border-cyan-500/40 text-cyan-300" }
+                : { text: "STUDIO", cls: "bg-pink-500/20 border-pink-500/40 text-pink-300" };
 
             return (
               <div
@@ -1337,7 +1337,7 @@ export default function PlaybookHub({
                       )}
                       {stepCount > 0 && (
                         <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 text-purple-300">
-                          🎬 {stepCount} {tr("Schläge", "Shots", "Golpes")}
+                          {stepCount} {tr("Schläge", "Shots", "Golpes")}
                         </span>
                       )}
                     </div>
@@ -1375,8 +1375,8 @@ export default function PlaybookHub({
                     className="py-2 px-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10px] uppercase tracking-wider transition-all"
                   >
                     {src === "trainer"
-                      ? `🧠 ${tr("Üben", "Practice", "Practicar")}`
-                      : `🎬 ${tr("3D-Replay", "3D Replay", "Replay 3D")}`}
+                      ? `${tr("Üben", "Practice", "Practicar")}`
+                      : `${tr("3D-Replay", "3D Replay", "Replay 3D")}`}
                   </button>
 
                   <button
@@ -1386,14 +1386,14 @@ export default function PlaybookHub({
                   >
                     {sharingPlayId === play.id
                       ? "…"
-                      : `📤 ${tr("Freunde fragen", "Ask Friends", "Preguntar")}`}
+                      : `${tr("Freunde fragen", "Ask Friends", "Preguntar")}`}
                   </button>
 
                   <button
                     onClick={() => onOpenInBoard(play.id)}
                     className="py-2 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-black text-[10px] uppercase tracking-wider transition-all"
                   >
-                    ✏️ {tr("Studio-Board", "Studio Board", "Estudio")}
+                    {tr("Studio-Board", "Studio Board", "Estudio")}
                   </button>
 
                   {entitlements.canCreateCustomDrills && (
@@ -1405,7 +1405,7 @@ export default function PlaybookHub({
                           : "bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-orange-300"
                       }`}
                     >
-                      🎯 {play.isDrill ? tr("Drill aktiv", "Drill On", "Drill activo") : tr("Als Drill", "As Drill", "Como Drill")}
+                      {play.isDrill ? tr("Drill aktiv", "Drill On", "Drill activo") : tr("Als Drill", "As Drill", "Como Drill")}
                     </button>
                   )}
                 </div>

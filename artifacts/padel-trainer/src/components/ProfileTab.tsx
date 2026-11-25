@@ -944,7 +944,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               <h2 className="text-2xl font-black text-white tracking-wide text-center md:text-left">{t("prof_title")}</h2>
               {showProBadge && (
                 <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-pink-950/60 border border-pink-500/50 text-pink-300 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
-                  👑 PRO USER
+                  PRO USER
                 </span>
               )}
             </div>
@@ -1246,7 +1246,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       : "bg-slate-900 border-slate-700 text-slate-400 hover:text-white"
                   }`}
                 >
-                  {lockerSpeed === 0.35 ? "🐢 0.35x" : "⚡ 1x"}
+                  {lockerSpeed === 0.35 ? "0.35x" : "1x"}
                 </button>
                 <button
                   onClick={() => setShowLockerRacket((v) => !v)}
@@ -1256,7 +1256,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       : "bg-slate-900 border-slate-700 text-slate-400"
                   }`}
                 >
-                  🎾 Schläger
+                  Schläger
                 </button>
                 <button
                   onClick={() => setLockerAutoRotate((v) => !v)}
@@ -1266,7 +1266,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                       : "bg-slate-900 border-slate-700 text-slate-400"
                   }`}
                 >
-                  🔄 Drehen
+                  Drehen
                 </button>
               </div>
             </div>
@@ -1275,13 +1275,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               {(
                 [
                   { id: "idle", label: "Grundstellung" },
-                  { id: "walk", label: "🏃 Laufen" },
+                  { id: "walk", label: "Laufen" },
                   { id: "forehand", label: "Vorhand" },
                   { id: "backhand", label: "Rückhand" },
                   { id: "volley", label: "Volley" },
                   { id: "bandeja", label: "Bandeja" },
-                  { id: "smash", label: "💥 Smash" },
-                  { id: "lob", label: "🎈 Lob" },
+                  { id: "smash", label: "Smash" },
+                  { id: "lob", label: "Lob" },
                   { id: "a_pose", label: "A-Pose" },
                 ] as { id: PlayerAction; label: string }[]
               ).map((btn) => (
@@ -1667,14 +1667,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             <div className="flex flex-col text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
                 <h3 className="text-[10px] font-black tracking-widest text-pink-400 uppercase">
-                  🛡️ Admin Test-Steuerung &amp; Zentrale
+                  Admin Test-Steuerung &amp; Zentrale
                 </h3>
                 <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
                   OPEN_ACCESS_MODE
                     ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
                     : 'bg-amber-950/60 border-amber-500/50 text-amber-300'
                 }`}>
-                  {OPEN_ACCESS_MODE ? '🌍 Open Access: AN' : '🔐 Freemium: AN'}
+                  {OPEN_ACCESS_MODE ? 'Open Access: AN' : 'Freemium: AN'}
                 </span>
               </div>
               <span className="text-[9px] text-slate-400 font-bold mt-1">
@@ -1685,7 +1685,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             <div className="flex flex-wrap items-center justify-center gap-3">
               <div className="flex items-center gap-2.5 bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
                 <span className={`text-[10px] font-black uppercase tracking-widest ${isProUser ? 'text-pink-400' : 'text-slate-500'}`}>
-                  {isProUser ? "👑 Pro Aktiv" : "🔒 Free"}
+                  {isProUser ? "Pro Aktiv" : "🔒 Free"}
                 </span>
                 <button
                   onClick={toggleProUserStatus}

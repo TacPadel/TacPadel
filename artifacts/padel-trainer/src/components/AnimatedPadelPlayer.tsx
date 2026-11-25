@@ -19,10 +19,6 @@ type DegVec3 = [number, number, number];
 
 interface BonePoseSpec {
   hipsY?: number;
-  // Winkel in Grad im SAUBEREN CHARAKTERRAUM (+X=links, +Y=oben, +Z=vorne):
-  // - Spine/Head: +X neigt nach vorne, +Y dreht nach links, -Y nach rechts
-  // - Arme/Beine (hängen nach -Y): -X schwingt nach VORNE, +Y dreht einwärts,
-  //   RightArm -Z hebt Arm nach rechts/oben, LeftArm +Z hebt Arm nach links/oben
   bones: Partial<Record<string, DegVec3>>;
 }
 
@@ -36,7 +32,7 @@ interface ShotAnimationDef {
   frames: ShotKeyframe[];
 }
 
-// --- GRUNDSTELLUNG (KLASSISCHE PADEL READY STANCE) ---
+// --- GRUNDSTELLUNG (ECHTER CONTINENTAL-GRIFF: SCHLÄGERKANTE HOCHKANT NACH VORNE) ---
 const IDLE_POSE: BonePoseSpec = {
   hipsY: -0.07,
   bones: {
@@ -52,13 +48,13 @@ const IDLE_POSE: BonePoseSpec = {
     RightUpLeg: [-22, 0, -6],
     RightLeg: [38, 0, 0],
     RightFoot: [-14, 0, 0],
-    // Arme vor dem Körper, Unterarme nach innen gedreht (Continental-Griff), linke Hand nahe am Schlägerherz
-    RightArm: [-24, 24, 16],
-    RightForeArm: [-88, 72, 18],
-    RightHand: [0, 0, 14],
-    LeftArm: [-34, -22, -16],
-    LeftForeArm: [-96, -72, -18],
-    LeftHand: [0, 0, -8],
+    // Lockere Ellbogen-Weite, Handfläche sauber nach innen (+X), Schläger hochkant vor der Brust
+    RightArm: [-41, 49, 0],
+    RightForeArm: [12, 52, -40],
+    RightHand: [18, 0, 4],
+    LeftArm: [-48, -50, -6],
+    LeftForeArm: [6, -54, 48],
+    LeftHand: [14, 0, -6],
   },
 };
 
@@ -72,7 +68,7 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Ausholen: Körper nach rechts aufdrehen, Schläger hinter der Hüfte
+        // Ausholen: Körper nach rechts aufdrehen, Schläger kompakt hinter der Hüfte
         at: 0.34,
         pose: {
           hipsY: -0.1,
@@ -91,7 +87,7 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Treffpunkt: Hüfte + Schulter schnellen vor den Körper
+        // Treffpunkt vorne mit aufrechter Schlagfläche
         at: 0.58,
         pose: {
           hipsY: -0.05,
@@ -101,9 +97,9 @@ export const SHOT_ANIMATIONS: Record<
             Spine: [8, 16, 0],
             Spine1: [4, 12, 0],
             Head: [-4, -22, 0],
-            RightArm: [-56, 15, -16],
-            RightForeArm: [-36, 65, 0],
-            RightHand: [0, 0, 0],
+            RightArm: [-56, 26, -16],
+            RightForeArm: [-24, 58, -18],
+            RightHand: [10, 0, 0],
             LeftArm: [-12, 15, 10],
             LeftForeArm: [-95, -50, 0],
           },
@@ -137,7 +133,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Kompaktes Aufdrehen nach links
         at: 0.34,
         pose: {
           hipsY: -0.1,
@@ -147,16 +142,15 @@ export const SHOT_ANIMATIONS: Record<
             Spine: [10, 24, 0],
             Spine1: [6, 18, 0],
             Head: [-6, -42, 0],
-            RightArm: [-46, 36, 32],
-            RightForeArm: [-86, 82, 16],
-            RightHand: [0, 0, 12],
+            RightArm: [-46, 42, 26],
+            RightForeArm: [-62, 68, -12],
+            RightHand: [12, 0, 10],
             LeftArm: [-42, -26, -18],
-            LeftForeArm: [-92, -70, -12],
+            LeftForeArm: [-86, -65, 16],
           },
         },
       },
       {
-        // Treffpunkt vorne mit Gegenzug des linken Arms
         at: 0.58,
         pose: {
           hipsY: -0.05,
@@ -175,7 +169,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Auslauf nach rechts außen
         at: 0.8,
         pose: {
           hipsY: -0.05,
@@ -201,7 +194,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Kurzes Öffnen auf Brusthöhe am Netz
         at: 0.28,
         pose: {
           hipsY: -0.08,
@@ -211,16 +203,15 @@ export const SHOT_ANIMATIONS: Record<
             Spine: [10, -12, 0],
             Spine1: [6, -8, 0],
             Head: [-6, 20, 0],
-            RightArm: [-28, 8, -22],
-            RightForeArm: [-80, 72, 0],
-            RightHand: [0, 0, -10],
-            LeftArm: [-36, -24, -16],
-            LeftForeArm: [-86, -65, 0],
+            RightArm: [-32, 24, -22],
+            RightForeArm: [-48, 64, -26],
+            RightHand: [10, 0, -8],
+            LeftArm: [-38, -32, -14],
+            LeftForeArm: [-40, -56, 36],
           },
         },
       },
       {
-        // Kurzer Block-/Stech-Impuls mit Ausfallschritt
         at: 0.56,
         pose: {
           hipsY: -0.09,
@@ -231,9 +222,9 @@ export const SHOT_ANIMATIONS: Record<
             Spine1: [6, 8, 0],
             LeftUpLeg: [-30, 0, 6],
             LeftLeg: [46, 0, 0],
-            RightArm: [-62, 16, -6],
-            RightForeArm: [-44, 72, 0],
-            RightHand: [0, 0, -6],
+            RightArm: [-60, 28, -8],
+            RightForeArm: [-28, 60, -20],
+            RightHand: [12, 0, -4],
             LeftArm: [-12, 8, 6],
             LeftForeArm: [-92, -60, 0],
           },
@@ -248,7 +239,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Seitlich stellen, linker Arm zeigt zum Ball, Schläger auf Kopfhöhe
         at: 0.36,
         pose: {
           hipsY: -0.08,
@@ -267,7 +257,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Seitlicher Slice-Treffpunkt auf Augenhöhe
         at: 0.6,
         pose: {
           hipsY: -0.05,
@@ -286,7 +275,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Kontrollierter Durchschwung Richtung linke Hüfte
         at: 0.82,
         pose: {
           hipsY: -0.07,
@@ -311,7 +299,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Trophy-Pose: tief aufladen, linker Arm hoch, rechter Ellbogen nach hinten gespannt
         at: 0.36,
         pose: {
           hipsY: -0.11,
@@ -334,7 +321,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Maximaler Streck-Treffpunkt über und leicht vor dem Kopf
         at: 0.56,
         pose: {
           hipsY: 0.13,
@@ -356,7 +342,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Explosiver Durchschwung nach unten links
         at: 0.8,
         pose: {
           hipsY: -0.09,
@@ -383,7 +368,6 @@ export const SHOT_ANIMATIONS: Record<
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        // Tief in die Knie, Schläger tief neben rechtem Knie
         at: 0.36,
         pose: {
           hipsY: -0.18,
@@ -408,7 +392,6 @@ export const SHOT_ANIMATIONS: Record<
         },
       },
       {
-        // Beine strecken und Schläger weich nach oben ziehen
         at: 0.72,
         pose: {
           hipsY: 0.02,
@@ -434,98 +417,179 @@ export const SHOT_ANIMATIONS: Record<
   },
 };
 
-// Finger-Krümmung für den Schlägergriff an der rechten Hand (in RightHand-Raum um +X)
-const RIGHT_FINGER_CURL_DEG: Record<string, number> = {
-  RightHandIndex1: 58,
-  RightHandIndex2: 68,
-  RightHandIndex3: 48,
-  RightHandMiddle1: 64,
-  RightHandMiddle2: 74,
-  RightHandMiddle3: 52,
-  RightHandRing1: 66,
-  RightHandRing2: 74,
-  RightHandRing3: 52,
-  RightHandPinky1: 66,
-  RightHandPinky2: 72,
-  RightHandPinky3: 50,
+// Finger-Krümmung (rechts: fester Griff inkl. Daumen; links: lockere, natürliche Handhaltung)
+const HAND_FINGER_SPECS: Record<
+  string,
+  { hand: "RightHand" | "LeftHand"; axis: [number, number, number]; deg: number }
+> = {
+  // Rechte Hand umschließt den Griff fest
+  RightHandIndex1: { hand: "RightHand", axis: [1, 0, 0], deg: 62 },
+  RightHandIndex2: { hand: "RightHand", axis: [1, 0, 0], deg: 74 },
+  RightHandIndex3: { hand: "RightHand", axis: [1, 0, 0], deg: 52 },
+  RightHandMiddle1: { hand: "RightHand", axis: [1, 0, 0], deg: 68 },
+  RightHandMiddle2: { hand: "RightHand", axis: [1, 0, 0], deg: 78 },
+  RightHandMiddle3: { hand: "RightHand", axis: [1, 0, 0], deg: 54 },
+  RightHandRing1: { hand: "RightHand", axis: [1, 0, 0], deg: 70 },
+  RightHandRing2: { hand: "RightHand", axis: [1, 0, 0], deg: 78 },
+  RightHandRing3: { hand: "RightHand", axis: [1, 0, 0], deg: 54 },
+  RightHandPinky1: { hand: "RightHand", axis: [1, 0, 0], deg: 70 },
+  RightHandPinky2: { hand: "RightHand", axis: [1, 0, 0], deg: 76 },
+  RightHandPinky3: { hand: "RightHand", axis: [1, 0, 0], deg: 52 },
+  RightHandThumb1: { hand: "RightHand", axis: [0, 1, 0.5], deg: -36 },
+  RightHandThumb2: { hand: "RightHand", axis: [0, 0.3, 1], deg: 34 },
+  RightHandThumb3: { hand: "RightHand", axis: [0, 0.2, 1], deg: 28 },
+
+  // Linke Hand leicht gerundet (kein steifer Anhalter-Daumen)
+  LeftHandIndex1: { hand: "LeftHand", axis: [1, 0, 0], deg: 24 },
+  LeftHandIndex2: { hand: "LeftHand", axis: [1, 0, 0], deg: 28 },
+  LeftHandMiddle1: { hand: "LeftHand", axis: [1, 0, 0], deg: 28 },
+  LeftHandMiddle2: { hand: "LeftHand", axis: [1, 0, 0], deg: 32 },
+  LeftHandRing1: { hand: "LeftHand", axis: [1, 0, 0], deg: 32 },
+  LeftHandRing2: { hand: "LeftHand", axis: [1, 0, 0], deg: 34 },
+  LeftHandPinky1: { hand: "LeftHand", axis: [1, 0, 0], deg: 34 },
+  LeftHandPinky2: { hand: "LeftHand", axis: [1, 0, 0], deg: 34 },
+  LeftHandThumb1: { hand: "LeftHand", axis: [0, 1, -0.5], deg: 28 },
+  LeftHandThumb2: { hand: "LeftHand", axis: [0, 0.2, -1], deg: 22 },
 };
 
 function normalizeBoneKey(rawName: string): string {
   return rawName.replace(/^mixamorig:?/i, "").replace(/^Armature\|/i, "");
 }
 
+// =========================================================================
+// REALISTISCHER 3D-PADELSCHLÄGER (TROPFFORM, OFFENES V-HERZ, LOCHMUSTER)
+// Maße in Metern: Gesamtlänge ~44 cm, Kopfbreite ~24 cm, Stärke 3,6 cm
+// =========================================================================
 function buildPadelRacketGroup(): THREE.Group {
   const racket = new THREE.Group();
   racket.name = "ProceduralPadelRacket";
 
-  // Griff
-  const handleMat = new THREE.MeshStandardMaterial({
-    color: "#0f172a",
-    roughness: 0.85,
-    metalness: 0.1,
+  // 1. Griff mit Abschlusskappe & Handschlaufe
+  const gripMat = new THREE.MeshStandardMaterial({
+    color: "#111827",
+    roughness: 0.9,
+    metalness: 0.05,
   });
   const handle = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.017, 0.02, 0.14, 12),
-    handleMat
+    new THREE.CylinderGeometry(0.0155, 0.0175, 0.125, 16),
+    gripMat
   );
-  handle.position.set(0, 0.05, 0);
+  handle.position.set(0, 0.062, 0);
   racket.add(handle);
 
-  // Herz / Brücke
-  const bridgeMat = new THREE.MeshStandardMaterial({
+  const buttCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.0195, 0.0205, 0.014, 16),
+    new THREE.MeshStandardMaterial({ color: "#0284c7", roughness: 0.35, metalness: 0.6 })
+  );
+  buttCap.position.set(0, 0.002, 0);
+  racket.add(buttCap);
+
+  // Griffband-Ring oben
+  const gripRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.017, 0.017, 0.012, 16),
+    new THREE.MeshStandardMaterial({
+      color: "#00f0ff",
+      emissive: "#0284c7",
+      emissiveIntensity: 0.45,
+      roughness: 0.3,
+    })
+  );
+  gripRing.position.set(0, 0.122, 0);
+  racket.add(gripRing);
+
+  // 2. Tropfenförmiger Rahmen mit offenem V-Herz-Ausschnitt
+  const outerShape = new THREE.Shape();
+  outerShape.moveTo(-0.017, 0.124);
+  outerShape.bezierCurveTo(-0.042, 0.155, -0.098, 0.215, -0.118, 0.295);
+  outerShape.bezierCurveTo(-0.125, 0.365, -0.088, 0.432, 0.0, 0.442);
+  outerShape.bezierCurveTo(0.088, 0.432, 0.125, 0.365, 0.118, 0.295);
+  outerShape.bezierCurveTo(0.098, 0.215, 0.042, 0.155, 0.017, 0.124);
+  outerShape.closePath();
+
+  // Echtes dreieckiges Padel-Herz (Ausschnitt im Schlägerhals)
+  const heartHole = new THREE.Path();
+  heartHole.moveTo(0.0, 0.148);
+  heartHole.lineTo(-0.046, 0.214);
+  heartHole.quadraticCurveTo(0.0, 0.204, 0.046, 0.214);
+  heartHole.closePath();
+  outerShape.holes.push(heartHole);
+
+  const extrudeSettings: THREE.ExtrudeGeometryOptions = {
+    depth: 0.03,
+    bevelEnabled: true,
+    bevelThickness: 0.004,
+    bevelSize: 0.004,
+    bevelSegments: 3,
+    curveSegments: 24,
+  };
+
+  const bodyGeo = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
+  bodyGeo.translate(0, 0, -0.015); // exakt auf Z=0 zentrieren (Gesamtstärke ~3,8 cm)
+
+  const carbonFaceMat = new THREE.MeshStandardMaterial({
+    color: "#0b1120",
+    roughness: 0.42,
+    metalness: 0.55,
+  });
+  const frameSideMat = new THREE.MeshStandardMaterial({
     color: "#0ea5e9",
     emissive: "#0284c7",
     emissiveIntensity: 0.35,
-    roughness: 0.35,
-    metalness: 0.7,
+    roughness: 0.32,
+    metalness: 0.72,
   });
-  const bridge = new THREE.Mesh(
-    new THREE.BoxGeometry(0.06, 0.065, 0.026),
-    bridgeMat
-  );
-  bridge.position.set(0, 0.15, 0);
-  racket.add(bridge);
 
-  // Schlagfläche
-  const faceMat = new THREE.MeshStandardMaterial({
-    color: "#020617",
-    roughness: 0.45,
-    metalness: 0.65,
-  });
-  const face = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.125, 0.125, 0.032, 24),
-    faceMat
-  );
-  face.rotation.x = Math.PI / 2;
-  face.scale.set(0.92, 1.0, 1.12);
-  face.position.set(0, 0.3, 0);
-  racket.add(face);
+  // Material-Array: [0] Vorder-/Rückseite (dunkles Carbon), [1] Rahmenkante (TacPadel Cyan)
+  const racketBody = new THREE.Mesh(bodyGeo, [carbonFaceMat, frameSideMat]);
+  racket.add(racketBody);
 
-  // Leuchtender Rahmen
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: "#f97316",
-    emissive: "#ea580c",
-    emissiveIntensity: 0.7,
-    roughness: 0.3,
-    metalness: 0.8,
-  });
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(0.125, 0.015, 10, 28),
-    rimMat
+  // Dezente orange Akzent-Brücke am Herz
+  const accentBar = new THREE.Mesh(
+    new THREE.BoxGeometry(0.056, 0.011, 0.036),
+    new THREE.MeshStandardMaterial({
+      color: "#f97316",
+      emissive: "#ea580c",
+      emissiveIntensity: 0.45,
+      roughness: 0.35,
+      metalness: 0.6,
+    })
   );
-  rim.scale.set(0.92, 1.12, 1.0);
-  rim.position.set(0, 0.3, 0);
-  racket.add(rim);
+  accentBar.position.set(0, 0.214, 0);
+  racket.add(accentBar);
+
+  // 3. Charakteristische Padel-Lochung auf beiden Schlagflächen (sauberes Symmetrie-Muster)
+  const holeGeo = new THREE.CylinderGeometry(0.0052, 0.0052, 0.04, 8);
+  holeGeo.rotateX(Math.PI / 2);
+  const holeMat = new THREE.MeshBasicMaterial({ color: "#02040a" });
+
+  const holeRows: Array<{ y: number; xs: number[] }> = [
+    { y: 0.255, xs: [-0.046, -0.023, 0.023, 0.046] },
+    { y: 0.285, xs: [-0.072, -0.048, -0.024, 0.024, 0.048, 0.072] },
+    { y: 0.315, xs: [-0.082, -0.056, -0.028, 0.0, 0.028, 0.056, 0.082] },
+    { y: 0.345, xs: [-0.082, -0.056, -0.028, 0.0, 0.028, 0.056, 0.082] },
+    { y: 0.375, xs: [-0.068, -0.042, -0.018, 0.018, 0.042, 0.068] },
+    { y: 0.402, xs: [-0.044, -0.018, 0.018, 0.044] },
+  ];
+
+  holeRows.forEach((row) => {
+    row.xs.forEach((x) => {
+      const hole = new THREE.Mesh(holeGeo, holeMat);
+      hole.position.set(x, row.y, 0);
+      racket.add(hole);
+    });
+  });
 
   // Continental-Griff in mixamorig:RightHand (+Y=Finger, +X=Daumenkante, +Z=Handfläche)
-  racket.position.set(0.0, 0.075, 0.032);
-  racket.rotation.set(0, 0, THREE.MathUtils.degToRad(-48));
+  racket.position.set(0.0, 0.078, 0.026);
+  racket.rotation.set(0, 0, THREE.MathUtils.degToRad(-56));
 
   return racket;
 }
 
-// Berechnet die Ruhe-Orientierung eines Bones im lokalen Raum von rootObj (unabhängig von äußerer Gruppen-Rotation)
-function getRestCharQuaternion(obj: THREE.Object3D, rootObj: THREE.Object3D): THREE.Quaternion {
+function getRestCharQuaternion(
+  obj: THREE.Object3D,
+  rootObj: THREE.Object3D
+): THREE.Quaternion {
   const chain: THREE.Object3D[] = [];
   let cur: THREE.Object3D | null = obj;
   while (cur && cur !== rootObj) {
@@ -586,7 +650,7 @@ export default function AnimatedPadelPlayer({
   const tmpQuatB = useMemo(() => new THREE.Quaternion(), []);
   const tmpTargetQuat = useMemo(() => new THREE.Quaternion(), []);
 
-  // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & Finger-Griff vorberechnen
+  // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & beide Hand-Posen vorberechnen
   useEffect(() => {
     const bonesMap = new Map<string, THREE.Bone>();
     const restLocal = new Map<string, THREE.Quaternion>();
@@ -618,30 +682,27 @@ export default function AnimatedPadelPlayer({
       }
     });
 
-    // Finger-Griff-Quaternionen im RightHand-Raum vorberechnen
-    const rightHandBone = bonesMap.get("RightHand");
-    if (rightHandBone) {
-      const qHandChar = restChar.get("RightHand");
-      if (qHandChar) {
-        const qHandCharInv = qHandChar.clone().invert();
-        Object.entries(RIGHT_FINGER_CURL_DEG).forEach(([fKey, curlDeg]) => {
-          const fBone = bonesMap.get(fKey);
-          const qFChar = restChar.get(fKey);
-          const qFLocal = restLocal.get(fKey);
-          if (!fBone || !qFChar || !qFLocal) return;
+    // Finger- & Daumen-Krümmung für rechte (Griff) und linke Hand vorberechnen
+    Object.entries(HAND_FINGER_SPECS).forEach(([fKey, spec]) => {
+      const qHandChar = restChar.get(spec.hand);
+      const qFChar = restChar.get(fKey);
+      const qFLocal = restLocal.get(fKey);
+      if (!qHandChar || !qFChar || !qFLocal) return;
 
-          // Orientierung des Fingers relativ zu RightHand
-          const qInHand = qHandCharInv.clone().multiply(qFChar);
-          const qInHandInv = qInHand.clone().invert();
-          const qCurlHand = new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(1, 0, 0),
-            THREE.MathUtils.degToRad(curlDeg)
-          );
-          const qCurlLocal = qInHandInv.multiply(qCurlHand).multiply(qInHand);
-          fingerGrip.set(fKey, qFLocal.clone().multiply(qCurlLocal));
-        });
-      }
-    }
+      const qInHand = qHandChar.clone().invert().multiply(qFChar);
+      const qInHandInv = qInHand.clone().invert();
+      const axisVec = new THREE.Vector3(
+        spec.axis[0],
+        spec.axis[1],
+        spec.axis[2]
+      ).normalize();
+      const qCurlHand = new THREE.Quaternion().setFromAxisAngle(
+        axisVec,
+        THREE.MathUtils.degToRad(spec.deg)
+      );
+      const qCurlLocal = qInHandInv.multiply(qCurlHand).multiply(qInHand);
+      fingerGrip.set(fKey, qFLocal.clone().multiply(qCurlLocal));
+    });
 
     bonesMapRef.current = bonesMap;
     restLocalQuatRef.current = restLocal;
@@ -655,6 +716,7 @@ export default function AnimatedPadelPlayer({
       animations.find((clip) => clip.name === "Walking") || animations[0] || null;
     walkActionRef.current = walkClip ? mixer.clipAction(walkClip) : null;
 
+    const rightHandBone = bonesMap.get("RightHand");
     let createdRacket: THREE.Group | null = null;
     if (rightHandBone) {
       createdRacket = buildPadelRacketGroup();
@@ -685,14 +747,12 @@ export default function AnimatedPadelPlayer({
     };
   }, [clonedScene, animations]);
 
-  // Schläger ein-/ausblenden
   useEffect(() => {
     if (racketRef.current) {
       racketRef.current.visible = showRacket;
     }
   }, [showRacket]);
 
-  // 2. Eingebetteten "Walking"-Clip steuern oder für prozedurale Schläge stoppen
   useEffect(() => {
     shotElapsedRef.current = 0;
     shotDoneRef.current = false;
@@ -709,7 +769,6 @@ export default function AnimatedPadelPlayer({
     }
   }, [action, triggerKey]);
 
-  // 3. Render-Loop: Walking-Mixer ODER Charakterraum-Bone-Animation
   useFrame((state, delta) => {
     const safeDelta = Math.min(delta, 0.05);
 
@@ -727,18 +786,20 @@ export default function AnimatedPadelPlayer({
     const fingerGrip = fingerGripQuatRef.current;
     if (bonesMap.size === 0) return;
 
-    // Wandelt einen Charakterraum-Eulerwinkel exakt in das lokale Ziel-Quaternion eines Bones um
     const computeTargetBoneQuat = (
       key: string,
       deg: DegVec3 | undefined,
       out: THREE.Quaternion,
       useGrip: boolean
     ) => {
-      if (useGrip && showRacket) {
-        const gripQ = fingerGrip.get(key);
-        if (gripQ) {
-          out.copy(gripQ);
-          return;
+      if (useGrip) {
+        const isRightFinger = key.startsWith("RightHand");
+        if (!isRightFinger || showRacket) {
+          const gripQ = fingerGrip.get(key);
+          if (gripQ) {
+            out.copy(gripQ);
+            return;
+          }
         }
       }
 
@@ -765,7 +826,6 @@ export default function AnimatedPadelPlayer({
       );
       tmpCharDelta.setFromEuler(tmpEuler);
 
-      // d_local = qCharInv * d_char * qChar
       tmpLocalDelta.copy(qCharInv).multiply(tmpCharDelta).multiply(qChar);
       out.copy(qRestLocal).multiply(tmpLocalDelta);
     };
