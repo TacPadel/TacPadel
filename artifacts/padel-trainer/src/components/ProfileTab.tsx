@@ -26,7 +26,7 @@ import {
 import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
-import PlayerShow from "./PlayerShow";
+import AnimatedPadelPlayer, { PlayerAction } from "./AnimatedPadelPlayer";
 import AdminDashboard from "./AdminDashboard";
 import InGameShopModal from "./InGameShopModal";
 
@@ -379,9 +379,19 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- Umschalter für den gemeinsamen 3D-Canvas ---
+  // --- Umschalter für den gemeinsamen 3D-Canvas + Animations-Labor ---
   const [active3DView, setActive3DView] = useState<'locker' | 'trophies'>('locker');
+  const [lockerAnim, setLockerAnim] = useState<PlayerAction>("idle");
+  const [lockerTrigger, setLockerTrigger] = useState<number>(0);
+  const [lockerSpeed, setLockerSpeed] = useState<0.35 | 1>(1);
+  const [lockerAutoRotate, setLockerAutoRotate] = useState<boolean>(false);
+  const [showLockerRacket, setShowLockerRacket] = useState<boolean>(true);
   const controlsRef = useRef<any>(null);
+
+  const triggerLockerAction = (next: PlayerAction) => {
+    setLockerAnim(next);
+    setLockerTrigger((k) => k + 1);
+  };
 
   // --- Performance-Modus ---
   const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
@@ -1033,7 +1043,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
 
         {/* GEMEINSAMER 3D CANVAS CONTAINER */}
-        <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-64 sm:h-72 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
+        <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-72 sm:h-80 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
 
           {active3DView === 'locker' && !lowPerfMode && (
             <>
@@ -1101,16 +1111,29 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </>
                 )}
                 <React.Suspense fallback={null}>
-                  <PlayerShow />
+                  <AnimatedPadelPlayer
+                    modelUrl="/meshy_player.glb"
+                    action={lockerAnim}
+                    triggerKey={lockerTrigger}
+                    speed={lockerSpeed}
+                    showRacket={showLockerRacket}
+                    onActionFinished={() => {
+                      if (lockerAnim !== "walk" && lockerAnim !== "a_pose") {
+                        setLockerAnim("idle");
+                      }
+                    }}
+                  />
                 </React.Suspense>
                 <OrbitControls
                   ref={controlsRef}
-                  enableZoom={false}
+                  enableZoom={true}
+                  minDistance={2.2}
+                  maxDistance={5.5}
                   enablePan={false}
-                  autoRotate
-                  autoRotateSpeed={0.5}
-                  minPolarAngle={Math.PI / 2.5}
-                  maxPolarAngle={Math.PI / 2}
+                  autoRotate={lockerAutoRotate}
+                  autoRotateSpeed={0.8}
+                  minPolarAngle={Math.PI / 3}
+                  maxPolarAngle={Math.PI / 1.9}
                 />
               </>
             ) : (
@@ -1154,6 +1177,77 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             )}
           </AnimatePresence>
         </div>
+
+        {/* 3D ANIMATIONS-LABOR STEUERLEISTE IM SPIND */}
+        {active3DView === 'locker' && (
+          <div className="bg-[#030611]/95 border border-cyan-500/30 rounded-xl p-3 flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">
+                🎬 Animations-Labor (Meshy Rig)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setLockerSpeed((s) => (s === 1 ? 0.35 : 1))}
+                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
+                    lockerSpeed === 0.35
+                      ? "bg-amber-500/25 border-amber-400 text-amber-300"
+                      : "bg-slate-900 border-slate-700 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {lockerSpeed === 0.35 ? "🐢 0.35x" : "⚡ 1x"}
+                </button>
+                <button
+                  onClick={() => setShowLockerRacket((v) => !v)}
+                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
+                    showLockerRacket
+                      ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                      : "bg-slate-900 border-slate-700 text-slate-400"
+                  }`}
+                >
+                  🎾 Schläger
+                </button>
+                <button
+                  onClick={() => setLockerAutoRotate((v) => !v)}
+                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
+                    lockerAutoRotate
+                      ? "bg-purple-500/25 border-purple-400 text-purple-300"
+                      : "bg-slate-900 border-slate-700 text-slate-400"
+                  }`}
+                >
+                  🔄 Drehen
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+              {(
+                [
+                  { id: "idle", label: "Grundstellung" },
+                  { id: "walk", label: "🏃 Laufen" },
+                  { id: "forehand", label: "Vorhand" },
+                  { id: "backhand", label: "Rückhand" },
+                  { id: "volley", label: "Volley" },
+                  { id: "bandeja", label: "Bandeja" },
+                  { id: "smash", label: "💥 Smash" },
+                  { id: "lob", label: "🎈 Lob" },
+                  { id: "a_pose", label: "A-Pose" },
+                ] as { id: PlayerAction; label: string }[]
+              ).map((btn) => (
+                <button
+                  key={btn.id}
+                  onClick={() => triggerLockerAction(btn.id)}
+                  className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    lockerAnim === btn.id
+                      ? "bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]"
+                      : "bg-slate-900/90 border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white"
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="w-full h-px bg-slate-800/60 my-2" />
