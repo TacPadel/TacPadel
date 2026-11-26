@@ -9,12 +9,17 @@ export type PlayerAction =
   | "a_pose"
   | "idle"
   | "walk"
+  | "serve"
   | "forehand"
   | "backhand"
   | "volley"
   | "bandeja"
+  | "vibora"
+  | "bajada"
   | "smash"
-  | "lob";
+  | "lob"
+  | "chiquita"
+  | "block";
 
 type ShotAction = Exclude<PlayerAction, "a_pose" | "idle" | "walk">;
 type DegVec3 = [number, number, number];
@@ -23,8 +28,7 @@ type RacketLoadPromise = Promise<THREE.Group>;
 
 export const DEFAULT_RACKET_URL = "/racket_classic.glb";
 
-// Zuordnung Shop-ID -> eigene 3D-Schlägerdatei in /public.
-// Sobald du weitere Schläger exportierst, einfach hier 1 Zeile ergänzen:
+// Zuordnung Shop-ID -> eigene 3D-Schlägerdatei in /public
 export const RACKET_MODEL_MAP: Record<string, string> = {
   racket_starter: "/racket_classic.glb",
   // racket_control: "/racket_control.glb",
@@ -32,12 +36,35 @@ export const RACKET_MODEL_MAP: Record<string, string> = {
   // racket_pro: "/racket_pro.glb",
 };
 
-export function resolveRacketModelUrl(racketId?: string | null, customUrl?: string): string {
+export function resolveRacketModelUrl(
+  racketId?: string | null,
+  customUrl?: string
+): string {
   if (customUrl) return customUrl;
   if (racketId && RACKET_MODEL_MAP[racketId]) {
     return RACKET_MODEL_MAP[racketId];
   }
   return DEFAULT_RACKET_URL;
+}
+
+// Hilfsfunktion zur direkten Zuordnung von GameLogic-Schlagnamen auf Animationen
+export function mapShotTypeToPlayerAction(shotType?: string | null): PlayerAction {
+  const s = (shotType || "").toUpperCase();
+  if (s.includes("AUFSCHLAG") || s.includes("SERVE") || s.includes("SAQUE")) {
+    return "serve";
+  }
+  if (s.includes("SMASH") || s.includes("REMATE")) return "smash";
+  if (s.includes("VIBORA")) return "vibora";
+  if (s.includes("BANDEJA")) return "bandeja";
+  if (s.includes("BAJADA")) return "bajada";
+  if (s.includes("VOLLEY") || s.includes("VOLEA")) return "volley";
+  if (s.includes("LOB") || s.includes("GLOBO")) return "lob";
+  if (s.includes("CHIQUITA")) return "chiquita";
+  if (s.includes("BLOCK") || s.includes("BLOQUEO")) return "block";
+  if (s.includes("RUECKHAND") || s.includes("BACKHAND") || s.includes("REVES")) {
+    return "backhand";
+  }
+  return "forehand";
 }
 
 const gltfRacketLoader = new GLTFLoader();
@@ -80,7 +107,7 @@ interface ShotAnimationDef {
   frames: ShotKeyframe[];
 }
 
-// --- GRUNDSTELLUNG (ECHTER CONTINENTAL-GRIFF: SCHLÄGERKANTE HOCHKANT NACH VORNE) ---
+// --- GRUNDSTELLUNG (CONTINENTAL-GRIFF: SCHLÄGERKANTE HOCHKANT NACH VORNE) ---
 const IDLE_POSE: BonePoseSpec = {
   hipsY: -0.07,
   bones: {
@@ -105,8 +132,83 @@ const IDLE_POSE: BonePoseSpec = {
   },
 };
 
+// --- SCHLÄGER-TRAGEPOSE WÄHREND DES LAUFENS (HÄLT DEN SCHLÄGER SEITLICH FREI) ---
+const WALK_CARRY_ARM_BONES: BoneRotationMap = {
+  RightArm: [-20, 43, -2],
+  RightForeArm: [6, 18, -55],
+  RightHand: [21, -2, -4],
+};
+
 // --- ALLE PADEL-SCHLÄGE IM CHARAKTERRAUM ---
 export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
+  serve: {
+    duration: 1.2,
+    frames: [
+      { at: 0.0, pose: IDLE_POSE },
+      {
+        // Seitliche Aufschlag-Position: linke Hand lässt Ball vorne rechts fallen, Schläger auf Hüfthöhe zurück
+        at: 0.34,
+        pose: {
+          hipsY: -0.06,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [8, -38, 0],
+            Spine: [10, -20, 0],
+            Spine1: [6, -12, 0],
+            Head: [-4, 46, 0],
+            RightArm: [-11, 14, -7],
+            RightForeArm: [5, 16, -18],
+            RightHand: [-22, 12, -14],
+            LeftArm: [-12, 13, 23],
+            LeftForeArm: [-35, -45, 55],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Unterhand-Treffpunkt unter Hüfthöhe mit leichter Slice-Öffnung
+        at: 0.58,
+        pose: {
+          hipsY: -0.07,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [10, -6, 0],
+            Spine: [10, 4, 0],
+            Spine1: [6, 6, 0],
+            Head: [-6, 4, 0],
+            RightArm: [-55, 22, 6],
+            RightForeArm: [-2, 4, 12],
+            RightHand: [26, -13, 1],
+            LeftArm: [-12, -19, 8],
+            LeftForeArm: [-38, -47, 41],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Kontrollierter Auslauf hoch zur linken Schulter
+        at: 0.82,
+        pose: {
+          hipsY: -0.04,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [6, 24, 0],
+            Spine: [6, 18, 0],
+            Spine1: [4, 12, 0],
+            Head: [-4, -26, 0],
+            RightArm: [-61, 30, -28],
+            RightForeArm: [-68, 2, 44],
+            RightHand: [2, 5, 8],
+            LeftArm: [-40, 22, -21],
+            LeftForeArm: [-22, -10, 40],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      { at: 1.0, pose: IDLE_POSE },
+    ],
+  },
+
   forehand: {
     duration: 1.05,
     frames: [
@@ -174,38 +276,40 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        at: 0.34,
+        at: 0.32,
         pose: {
-          hipsY: -0.1,
+          hipsY: -0.09,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [8, 36, 0],
-            Spine: [10, 24, 0],
-            Spine1: [6, 18, 0],
+            Hips: [8, 34, 0],
+            Spine: [10, 22, 0],
+            Spine1: [6, 16, 0],
             Head: [-6, -42, 0],
-            RightArm: [-46, 42, 26],
-            RightForeArm: [-62, 68, -12],
-            RightHand: [12, 0, 10],
-            LeftArm: [-42, -26, -18],
-            LeftForeArm: [-86, -65, 16],
+            RightArm: [-14, 42, -35],
+            RightForeArm: [-22, 69, -48],
+            RightHand: [0, 10, 2],
+            LeftArm: [-51, -95, 19],
+            LeftForeArm: [-19, -46, 37],
+            LeftHand: [6, 0, 0],
           },
         },
       },
       {
-        at: 0.58,
+        at: 0.56,
         pose: {
           hipsY: -0.05,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [6, -8, 0],
-            Spine: [8, -10, 0],
-            Spine1: [4, -8, 0],
-            Head: [-4, 14, 0],
-            RightArm: [-58, -10, -24],
-            RightForeArm: [-28, 70, 0],
-            RightHand: [0, 0, -6],
-            LeftArm: [24, -10, 12],
-            LeftForeArm: [-42, -40, 0],
+            Hips: [6, 4, 0],
+            Spine: [8, 4, 0],
+            Spine1: [4, 0, 0],
+            Head: [-4, -6, 0],
+            RightArm: [-24, 77, -50],
+            RightForeArm: [35, -3, 23],
+            RightHand: [30, -25, 12],
+            LeftArm: [28, -22, 18],
+            LeftForeArm: [-35, -35, 10],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -215,14 +319,16 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
           hipsY: -0.05,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [4, -26, 0],
-            Spine: [4, -18, 0],
-            Spine1: [2, -14, 0],
-            Head: [-4, 30, 0],
-            RightArm: [-42, -34, -48],
-            RightForeArm: [-22, 62, 0],
-            LeftArm: [32, -16, 18],
-            LeftForeArm: [-35, -40, 0],
+            Hips: [4, -18, 0],
+            Spine: [4, -14, 0],
+            Spine1: [2, -10, 0],
+            Head: [-4, 24, 0],
+            RightArm: [-23, 76, -49],
+            RightForeArm: [15, -2, 5],
+            RightHand: [3, 1, 11],
+            LeftArm: [48, 0, 32],
+            LeftForeArm: [-28, -25, 5],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -240,15 +346,16 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
           hipsY: -0.08,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [8, -18, 0],
+            Hips: [8, -16, 0],
             Spine: [10, -12, 0],
             Spine1: [6, -8, 0],
             Head: [-6, 20, 0],
-            RightArm: [-32, 24, -22],
-            RightForeArm: [-48, 64, -26],
-            RightHand: [10, 0, -8],
-            LeftArm: [-38, -32, -14],
-            LeftForeArm: [-40, -56, 36],
+            RightArm: [-54, 85, -1],
+            RightForeArm: [25, -25, -55],
+            RightHand: [30, -9, 7],
+            LeftArm: [-19, -8, 27],
+            LeftForeArm: [-42, -59, 55],
+            LeftHand: [4, 0, 0],
           },
         },
       },
@@ -258,16 +365,18 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
           hipsY: -0.09,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [10, 12, 0],
-            Spine: [12, 10, 0],
-            Spine1: [6, 8, 0],
+            Hips: [10, 4, 0],
+            Spine: [12, 4, 0],
+            Spine1: [6, 2, 0],
+            Head: [-6, -6, 0],
             LeftUpLeg: [-30, 0, 6],
             LeftLeg: [46, 0, 0],
-            RightArm: [-60, 28, -8],
-            RightForeArm: [-28, 60, -20],
-            RightHand: [12, 0, -4],
-            LeftArm: [-12, 8, 6],
-            LeftForeArm: [-92, -60, 0],
+            RightArm: [-61, 73, 16],
+            RightForeArm: [35, -49, -55],
+            RightHand: [30, 0, -7],
+            LeftArm: [-3, -16, 19],
+            LeftForeArm: [-45, -54, 47],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -280,38 +389,40 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        at: 0.36,
+        at: 0.34,
         pose: {
           hipsY: -0.08,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [4, -44, 0],
-            Spine: [4, -18, 6],
+            Hips: [4, -46, 0],
+            Spine: [4, -20, 4],
             Spine1: [-2, -14, 4],
-            Head: [-14, 46, 0],
-            RightArm: [-18, -18, -86],
-            RightForeArm: [-84, 70, 0],
-            RightHand: [0, 0, -8],
-            LeftArm: [-112, -15, 18],
-            LeftForeArm: [-18, -30, 0],
+            Head: [-12, 50, 0],
+            RightArm: [-77, 75, -20],
+            RightForeArm: [6, 11, -6],
+            RightHand: [14, -1, 19],
+            LeftArm: [-114, -48, 74],
+            LeftForeArm: [16, -14, 14],
+            LeftHand: [0, 0, 0],
           },
         },
       },
       {
-        at: 0.6,
+        at: 0.58,
         pose: {
           hipsY: -0.05,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [6, -4, 0],
-            Spine: [6, 8, -4],
-            Spine1: [4, 10, 0],
-            Head: [-10, 4, 0],
-            RightArm: [-86, 12, -40],
-            RightForeArm: [-30, 72, 0],
-            RightHand: [0, 0, -4],
-            LeftArm: [-24, 10, 8],
-            LeftForeArm: [-92, -60, 0],
+            Hips: [6, -12, 0],
+            Spine: [6, -4, -4],
+            Spine1: [4, 2, 0],
+            Head: [-8, 12, 0],
+            RightArm: [-79, 92, -18],
+            RightForeArm: [35, 6, 21],
+            RightHand: [30, -11, 29],
+            LeftArm: [-28, -42, 4],
+            LeftForeArm: [-25, -45, 25],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -322,12 +433,151 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
           bones: {
             ...IDLE_POSE.bones,
             Hips: [8, 22, 0],
-            Spine: [10, 18, 0],
+            Spine: [10, 16, 0],
+            Spine1: [4, 10, 0],
             Head: [-6, -24, 0],
-            RightArm: [-52, 34, 24],
-            RightForeArm: [-88, 76, 14],
-            LeftArm: [-12, 16, 10],
-            LeftForeArm: [-96, -50, 0],
+            RightArm: [-21, 53, -13],
+            RightForeArm: [-46, 38, -13],
+            RightHand: [4, -1, 12],
+            LeftArm: [-12, -32, 10],
+            LeftForeArm: [-30, -40, 20],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      { at: 1.0, pose: IDLE_POSE },
+    ],
+  },
+
+  vibora: {
+    duration: 1.15,
+    frames: [
+      { at: 0.0, pose: IDLE_POSE },
+      {
+        // Enge seitliche Spannung hinter dem Kopf, Ellbogen hoch, linker Arm zeigt frei hoch-links
+        at: 0.34,
+        pose: {
+          hipsY: -0.09,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [4, -52, 0],
+            Spine: [2, -24, 6],
+            Spine1: [-4, -16, 4],
+            Head: [-12, 56, 0],
+            RightArm: [-76, 70, -9],
+            RightForeArm: [4, 8, -38],
+            RightHand: [6, -2, -2],
+            LeftArm: [-114, -43, 73],
+            LeftForeArm: [14, -12, 18],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Aggressiver Seitwärts-Peitschenschlag auf Ohrhöhe mit Side-Spin
+        at: 0.56,
+        pose: {
+          hipsY: -0.04,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [6, -4, 0],
+            Spine: [8, 6, -6],
+            Spine1: [4, 8, -4],
+            Head: [-8, 2, 0],
+            RightArm: [-74, 52, -51],
+            RightForeArm: [35, 33, 25],
+            RightHand: [24, 4, 15],
+            LeftArm: [-26, -40, 6],
+            LeftForeArm: [-28, -42, 24],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Schneller Durchschwung um die linke Schulter/Brust
+        at: 0.8,
+        pose: {
+          hipsY: -0.07,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [10, 30, 0],
+            Spine: [12, 22, -4],
+            Spine1: [6, 14, 0],
+            Head: [-6, -30, 0],
+            RightArm: [-44, 38, -62],
+            RightForeArm: [-78, -8, 52],
+            RightHand: [-4, 0, 0],
+            LeftArm: [22, -24, 14],
+            LeftForeArm: [-36, -30, 10],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      { at: 1.0, pose: IDLE_POSE },
+    ],
+  },
+
+  bajada: {
+    duration: 1.15,
+    frames: [
+      { at: 0.0, pose: IDLE_POSE },
+      {
+        // Hohe Vorbereitung nach der Rückscheibe: Schläger hoch über der rechten Schulter
+        at: 0.34,
+        pose: {
+          hipsY: -0.06,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [4, -48, 0],
+            Spine: [0, -22, 6],
+            Spine1: [-4, -14, 4],
+            Head: [-10, 50, 0],
+            RightArm: [-72, 73, -27],
+            RightForeArm: [16, 18, -14],
+            RightHand: [2, 5, 12],
+            LeftArm: [-72, 5, 88],
+            LeftForeArm: [-3, -23, 29],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Druckvoller Angriffs-Treffpunkt von oben nach vorne-unten
+        at: 0.56,
+        pose: {
+          hipsY: -0.08,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [10, 8, 0],
+            Spine: [12, 12, -4],
+            Spine1: [8, 10, 0],
+            Head: [-8, -14, 0],
+            RightArm: [11, 32, -69],
+            RightForeArm: [35, -26, -55],
+            RightHand: [30, 21, 27],
+            LeftArm: [14, -26, 12],
+            LeftForeArm: [-34, -36, 14],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Tiefer Auslauf über die linke Hüfte
+        at: 0.8,
+        pose: {
+          hipsY: -0.1,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [14, 32, 0],
+            Spine: [16, 22, -4],
+            Spine1: [10, 14, 0],
+            Head: [-10, -34, 0],
+            RightArm: [36, 89, -45],
+            RightForeArm: [35, -36, -55],
+            RightHand: [0, 21, 18],
+            LeftArm: [26, -24, 14],
+            LeftForeArm: [-38, -30, 10],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -340,63 +590,66 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
     frames: [
       { at: 0.0, pose: IDLE_POSE },
       {
-        at: 0.36,
+        at: 0.34,
         pose: {
-          hipsY: -0.11,
+          hipsY: -0.1,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [0, -46, 0],
-            Spine: [-6, -20, 8],
-            Spine1: [-10, -16, 6],
-            Head: [-22, 48, 0],
+            Hips: [2, -48, 0],
+            Spine: [-4, -22, 6],
+            Spine1: [-8, -14, 6],
+            Head: [-16, 52, 0],
             LeftUpLeg: [-28, 0, 6],
             LeftLeg: [46, 0, 0],
             RightUpLeg: [-28, 0, -6],
             RightLeg: [46, 0, 0],
-            RightArm: [-30, -16, -110],
-            RightForeArm: [-104, 70, 0],
-            RightHand: [0, 0, -12],
-            LeftArm: [-128, -10, 16],
-            LeftForeArm: [-14, -20, 0],
+            RightArm: [-75, 69, -18],
+            RightForeArm: [5, 12, -27],
+            RightHand: [2, 1, 6],
+            LeftArm: [-102, -38, 69],
+            LeftForeArm: [15, -14, 15],
+            LeftHand: [0, 0, 0],
           },
         },
       },
       {
         at: 0.56,
         pose: {
-          hipsY: 0.13,
+          hipsY: 0.05,
           bones: {
-            Hips: [-4, 8, 0],
-            Spine: [-6, 12, -8],
-            Spine1: [-2, 10, -6],
-            Head: [-18, -6, 0],
+            Hips: [-2, 6, 0],
+            Spine: [-4, 8, -6],
+            Spine1: [-2, 6, -4],
+            Head: [-14, -6, 0],
             LeftUpLeg: [-6, 0, 4],
             LeftLeg: [12, 0, 0],
             RightUpLeg: [-8, 0, -4],
             RightLeg: [16, 0, 0],
-            RightArm: [-138, 6, -16],
-            RightForeArm: [-12, 52, 0],
-            RightHand: [0, 0, 16],
-            LeftArm: [-20, 10, 8],
-            LeftForeArm: [-95, -50, 0],
+            RightArm: [-3, 34, -95],
+            RightForeArm: [35, 27, -34],
+            RightHand: [27, 24, 14],
+            LeftArm: [-34, -47, -2],
+            LeftForeArm: [-7, -17, -16],
+            LeftHand: [0, 0, 0],
           },
         },
       },
       {
         at: 0.8,
         pose: {
-          hipsY: -0.09,
+          hipsY: -0.08,
           bones: {
             ...IDLE_POSE.bones,
-            Hips: [14, 28, 0],
-            Spine: [16, 20, -8],
-            Spine1: [12, 14, 0],
+            Hips: [12, 28, 0],
+            Spine: [14, 20, -6],
+            Spine1: [8, 12, 0],
             Head: [-8, -28, 0],
-            RightArm: [-44, 38, 28],
-            RightForeArm: [-78, 76, 12],
-            RightHand: [0, 0, -12],
-            LeftArm: [12, 20, 10],
-            LeftForeArm: [-90, -40, 0],
+            RightArm: [1, 44, -70],
+            RightForeArm: [-61, -17, 52],
+            RightHand: [5, -3, 6],
+            LeftArm: [26, -24, 14],
+            LeftForeArm: [-38, -30, 10],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -411,12 +664,12 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
       {
         at: 0.36,
         pose: {
-          hipsY: -0.18,
+          hipsY: -0.16,
           bones: {
             ...IDLE_POSE.bones,
             Hips: [14, -26, 0],
-            Spine: [16, -14, 0],
-            Spine1: [12, -10, 0],
+            Spine: [14, -14, 0],
+            Spine1: [10, -10, 0],
             Head: [-14, 28, 0],
             LeftUpLeg: [-42, 0, 6],
             LeftLeg: [70, 0, 0],
@@ -424,32 +677,150 @@ export const SHOT_ANIMATIONS: Record<ShotAction, ShotAnimationDef> = {
             RightUpLeg: [-42, 0, -6],
             RightLeg: [70, 0, 0],
             RightFoot: [-26, 0, 0],
-            RightArm: [16, -12, -14],
-            RightForeArm: [-24, 70, 0],
-            RightHand: [0, 0, -18],
-            LeftArm: [-34, -22, -12],
-            LeftForeArm: [-75, -60, 0],
+            RightArm: [-60, 50, 10],
+            RightForeArm: [-34, 7, 27],
+            RightHand: [4, -4, 18],
+            LeftArm: [-7, 41, 27],
+            LeftForeArm: [-64, -66, 55],
+            LeftHand: [0, 0, 0],
           },
         },
       },
       {
         at: 0.72,
         pose: {
-          hipsY: 0.02,
+          hipsY: 0.01,
           bones: {
-            Hips: [0, 22, 0],
-            Spine: [-4, 18, 0],
-            Spine1: [-4, 14, 0],
-            Head: [-16, -18, 0],
+            Hips: [0, 18, 0],
+            Spine: [-2, 14, 0],
+            Spine1: [-2, 10, 0],
+            Head: [-12, -18, 0],
             LeftUpLeg: [-6, 0, 4],
             LeftLeg: [12, 0, 0],
             RightUpLeg: [-6, 0, -4],
             RightLeg: [12, 0, 0],
-            RightArm: [-116, 22, 14],
-            RightForeArm: [-30, 72, 0],
-            RightHand: [0, 0, -6],
-            LeftArm: [-10, 15, 10],
-            LeftForeArm: [-90, -50, 0],
+            RightArm: [-95, -10, 11],
+            RightForeArm: [-14, -55, 55],
+            RightHand: [30, -9, 30],
+            LeftArm: [18, -25, 18],
+            LeftForeArm: [-32, -35, 12],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      { at: 1.0, pose: IDLE_POSE },
+    ],
+  },
+
+  chiquita: {
+    duration: 0.95,
+    frames: [
+      { at: 0.0, pose: IDLE_POSE },
+      {
+        // Tiefe Kniebeuge, sehr kurzer tiefer Ansatz rechts vor dem Körper
+        at: 0.34,
+        pose: {
+          hipsY: -0.15,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [14, -20, 0],
+            Spine: [14, -12, 0],
+            Spine1: [10, -8, 0],
+            Head: [-14, 24, 0],
+            LeftUpLeg: [-38, 0, 6],
+            LeftLeg: [64, 0, 0],
+            LeftFoot: [-24, 0, 0],
+            RightUpLeg: [-38, 0, -6],
+            RightLeg: [64, 0, 0],
+            RightFoot: [-24, 0, 0],
+            RightArm: [-68, 43, 28],
+            RightForeArm: [-23, 22, 2],
+            RightHand: [28, -10, 15],
+            LeftArm: [-14, 11, 23],
+            LeftForeArm: [-57, -65, 55],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Weicher, kontrollierter Push vor die Füße der Netzspieler
+        at: 0.64,
+        pose: {
+          hipsY: -0.12,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [12, 8, 0],
+            Spine: [12, 8, 0],
+            Spine1: [8, 6, 0],
+            Head: [-10, -10, 0],
+            LeftUpLeg: [-32, 0, 6],
+            LeftLeg: [54, 0, 0],
+            LeftFoot: [-20, 0, 0],
+            RightUpLeg: [-32, 0, -6],
+            RightLeg: [54, 0, 0],
+            RightFoot: [-20, 0, 0],
+            RightArm: [-48, 41, -27],
+            RightForeArm: [-65, -40, 35],
+            RightHand: [25, -20, 25],
+            LeftArm: [-17, -40, 13],
+            LeftForeArm: [-43, -55, 35],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      { at: 1.0, pose: IDLE_POSE },
+    ],
+  },
+
+  block: {
+    duration: 0.65,
+    frames: [
+      { at: 0.0, pose: IDLE_POSE },
+      {
+        // Tiefe, stabile Abwehrposition mit kompakter Schlägerwand vor der Brust
+        at: 0.28,
+        pose: {
+          hipsY: -0.11,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [10, -10, 0],
+            Spine: [12, -8, 0],
+            Spine1: [8, -4, 0],
+            Head: [-10, 10, 0],
+            LeftUpLeg: [-30, 0, 8],
+            LeftLeg: [50, 0, 0],
+            RightUpLeg: [-30, 0, -8],
+            RightLeg: [50, 0, 0],
+            RightArm: [-35, 95, -14],
+            RightForeArm: [35, -41, -55],
+            RightHand: [30, -6, 1],
+            LeftArm: [-23, -20, 16],
+            LeftForeArm: [-43, -59, 55],
+            LeftHand: [0, 0, 0],
+          },
+        },
+      },
+      {
+        // Kurzes Abfedern ohne Ausholen
+        at: 0.58,
+        pose: {
+          hipsY: -0.12,
+          bones: {
+            ...IDLE_POSE.bones,
+            Hips: [12, 2, 0],
+            Spine: [12, 2, 0],
+            Spine1: [8, 2, 0],
+            Head: [-10, -2, 0],
+            LeftUpLeg: [-32, 0, 8],
+            LeftLeg: [54, 0, 0],
+            RightUpLeg: [-32, 0, -8],
+            RightLeg: [54, 0, 0],
+            RightArm: [-41, 83, -9],
+            RightForeArm: [35, -61, -55],
+            RightHand: [30, 0, -20],
+            LeftArm: [-17, -36, 20],
+            LeftForeArm: [-47, -58, 49],
+            LeftHand: [0, 0, 0],
           },
         },
       },
@@ -497,7 +868,6 @@ function normalizeBoneKey(rawName: string): string {
   return rawName.replace(/^mixamorig:?/i, "").replace(/^Armature\|/i, "");
 }
 
-// Notfall-Fallback, falls keine .glb-Datei geladen werden konnte
 function buildFallbackRacketGroup(): THREE.Group {
   const racket = new THREE.Group();
   racket.name = "FallbackPadelRacket";
@@ -529,8 +899,16 @@ function buildFallbackRacketGroup(): THREE.Group {
   bodyGeo.translate(0, 0, -0.015);
 
   const body = new THREE.Mesh(bodyGeo, [
-    new THREE.MeshStandardMaterial({ color: "#0b1120", roughness: 0.45, metalness: 0.5 }),
-    new THREE.MeshStandardMaterial({ color: "#0ea5e9", roughness: 0.35, metalness: 0.7 }),
+    new THREE.MeshStandardMaterial({
+      color: "#0b1120",
+      roughness: 0.45,
+      metalness: 0.5,
+    }),
+    new THREE.MeshStandardMaterial({
+      color: "#0ea5e9",
+      roughness: 0.35,
+      metalness: 0.7,
+    }),
   ]);
   racket.add(body);
 
@@ -541,7 +919,6 @@ function clearRacketMount(mount: THREE.Group) {
   while (mount.children.length > 0) {
     const child = mount.children[0];
     mount.remove(child);
-    // Nur den prozeduralen Fallback disposen – gecachte GLB-Geometrien/Texturen bleiben intakt!
     if (child.userData?.isProceduralFallback) {
       child.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -694,7 +1071,6 @@ export default function AnimatedPadelPlayer({
       animations.find((clip) => clip.name === "Walking") || animations[0] || null;
     walkActionRef.current = walkClip ? mixer.clipAction(walkClip) : null;
 
-    // Fester Continental-Griff-Mount an mixamorig:RightHand
     const rightHandBone = bonesMap.get("RightHand");
     let mount: THREE.Group | null = null;
     if (rightHandBone) {
@@ -732,7 +1108,6 @@ export default function AnimatedPadelPlayer({
       if (cancelled || !racketMountRef.current) return;
       clearRacketMount(racketMountRef.current);
       const clone = loadedScene.clone(true);
-      // Griff leicht (-3,2 cm) in die Handfläche schieben, damit die Finger mittig greifen
       clone.position.set(0, -0.032, 0);
       clone.scale.setScalar(1);
       racketMountRef.current.add(clone);
@@ -789,17 +1164,9 @@ export default function AnimatedPadelPlayer({
     }
   }, [action, triggerKey]);
 
-  // 4. Render-Loop: Walking-Mixer ODER Charakterraum-Bone-Animation
+  // 4. Render-Loop: Walking-Mixer (mit Schläger-Tragekorrektur) ODER prozedurale Schläge
   useFrame((state, delta) => {
     const safeDelta = Math.min(delta, 0.05);
-
-    if (action === "walk") {
-      if (mixerRef.current) {
-        mixerRef.current.update(safeDelta * speed);
-      }
-      return;
-    }
-
     const bonesMap = bonesMapRef.current;
     const restLocal = restLocalQuatRef.current;
     const restChar = restCharQuatRef.current;
@@ -850,6 +1217,37 @@ export default function AnimatedPadelPlayer({
       tmpLocalDelta.copy(qCharInv).multiply(tmpCharDelta).multiply(qChar);
       out.copy(qRestLocal).multiply(tmpLocalDelta);
     };
+
+    if (action === "walk") {
+      if (mixerRef.current) {
+        mixerRef.current.update(safeDelta * speed);
+      }
+
+      // Schläger beim Laufen sauber seitlich tragen (kein Durchschwingen durch den Bauch)
+      if (showRacket) {
+        const carryBones: Array<"RightArm" | "RightForeArm" | "RightHand"> = [
+          "RightArm",
+          "RightForeArm",
+          "RightHand",
+        ];
+        carryBones.forEach((bKey) => {
+          const bone = bonesMap.get(bKey);
+          const deg = WALK_CARRY_ARM_BONES[bKey];
+          if (!bone || !deg) return;
+          computeTargetBoneQuat(bKey, deg, tmpTargetQuat, false);
+          // 78 % Tragepose + 22 % natürlicher Lauf-Rhythmus aus dem Clip
+          bone.quaternion.slerp(tmpTargetQuat, 0.78);
+        });
+
+        // Finger der rechten Hand bleiben auch beim Laufen fest um den Griff geschlossen
+        fingerGrip.forEach((gripQ, fKey) => {
+          if (!fKey.startsWith("RightHand")) return;
+          const fBone = bonesMap.get(fKey);
+          if (fBone) fBone.quaternion.copy(gripQ);
+        });
+      }
+      return;
+    }
 
     const blendAlpha = 1 - Math.exp(-safeDelta * 14);
     const tClock = state.clock.elapsedTime;
