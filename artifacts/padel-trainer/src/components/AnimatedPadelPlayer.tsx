@@ -35,6 +35,13 @@ type DegVec3 = [number, number, number];
 type BoneRotationMap = Record<string, DegVec3 | undefined>;
 type RacketLoadPromise = Promise<THREE.Group>;
 
+interface HandAlignData {
+  foreArmFixChar: THREE.Quaternion;
+  foreArmFixCharInv: THREE.Quaternion;
+  handFixChar: THREE.Quaternion;
+  handBasisLocalQuat: THREE.Quaternion;
+}
+
 export const DEFAULT_PARTNER_URL = LOADOUT_DEFAULT_PARTNER_URL;
 export const DEFAULT_RACKET_URL = LOADOUT_DEFAULT_RACKET_URL;
 
@@ -1046,6 +1053,10 @@ export default function AnimatedPadelPlayer({
   const restCharQuatRef = useRef(new Map<string, THREE.Quaternion>());
   const restCharQuatInvRef = useRef(new Map<string, THREE.Quaternion>());
   const fingerGripQuatRef = useRef(new Map<string, THREE.Quaternion>());
+  const handAlignRef = useRef<{
+    right: HandAlignData | null;
+    left: HandAlignData | null;
+  }>({ right: null, left: null });
 
   const restHipsYRef = useRef<number>(0.97);
   const racketMountRef = useRef<THREE.Group | null>(null);
@@ -1071,7 +1082,7 @@ export default function AnimatedPadelPlayer({
     return { url: asset.url, offset: asset.offset };
   }, [racketId, racketUrl]);
 
-  // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & Schläger-Mount an RightHand anlegen
+  // 1. Bind-Pose erfassen, Hand-Ausrichtung prüfen, Charakterraum-Quaternionen & Schläger-Mount an RightHand anlegen
   useEffect(() => {
     const bonesMap = new Map<string, THREE.Bone>();
     const restLocal = new Map<string, THREE.Quaternion>();
@@ -1085,6 +1096,7 @@ export default function AnimatedPadelPlayer({
         skinned.skeleton.pose();
       }
     });
+    clonedScene.updateMatrixWorld(true);
 
     clonedScene.traverse((obj) => {
       if ((obj as THREE.Bone).isBone) {
@@ -1103,6 +1115,105 @@ export default function AnimatedPadelPlayer({
       }
     });
 
+    // Automatische Hand-Roll-Erkennung: gleicht Modelle mit rückwärts gerichteten Handflächen (Partner 1–4)
+    // auf Leos Referenz-Bind-Pose (Handfläche +Z nach vorne) ab, ohne Leo zu verändern.
+    const invRootMat = clonedScene.matrixWorld.clone().invert();
+    const getPosChar = (bone: THREE.Bone) =>
+      new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld).applyMatrix4(invRootMat);
+
+    const computeHandAlign = (side: "Right" | "Left"): HandAlignData | null => {
+      const foreArmBone = bonesMap.get(`${side}ForeArm`);
+      const handBone = bonesMap.get(`${side}Hand`);
+      const indexBone = bonesMap.get(`${side}HandIndex1`);
+      const middleBone = bonesMap.get(`${side}HandMiddle1`);
+      const pinkyBone = bonesMap.get(`${side}HandPinky1`);
+      if (!foreArmBone || !handBone || !indexBone || !middleBone || !pinkyBone) {
+        return null;
+      }
+
+      const pForeArm = getPosChar(foreArmBone);
+      const pHand = getPosChar(handBone);
+      const pIndex = getPosChar(indexBone);
+      const pMiddle = getPosChar(middleBone);
+      const pPinky = getPosChar(pinkyBone);
+
+      const vForeArmChar = pHand.clone().sub(pForeArm);
+      const vFingersChar = pMiddle.clone().sub(pHand);
+      const vThumbChar = pIndex.clone().sub(pPinky);
+      if (
+        vForeArmChar.lengthSq() < 1e-8 ||
+        vFingersChar.lengthSq() < 1e-8 ||
+        vThumbChar.lengthSq() < 1e-8
+      ) {
+        return null;
+      }
+      vForeArmChar.normalize();
+      vFingersChar.normalize();
+      vThumbChar.addScaledVector(vFingersChar, -vThumbChar.dot(vFingersChar)).normalize();
+
+      const vPalmChar =
+        side === "Right"
+          ? new THREE.Vector3().crossVectors(vThumbChar, vFingersChar).normalize()
+          : new THREE.Vector3().crossVectors(vFingersChar, vThumbChar).normalize();
+
+      const targetPalm = new THREE.Vector3(0, 0, 1);
+      targetPalm.addScaledVector(vFingersChar, -targetPalm.dot(vFingersChar));
+      if (targetPalm.lengthSq() < 1e-6) return null;
+      targetPalm.normalize();
+
+      const cosA = THREE.MathUtils.clamp(vPalmChar.dot(targetPalm), -1, 1);
+      const sinA = vFingersChar.dot(new THREE.Vector3().crossVectors(vPalmChar, targetPalm));
+      let rollRad = Math.atan2(sinA, cosA);
+
+      // Deadzone: Leo und bereits korrekt gedrehte Rigs bleiben 100 % unverändert
+      if (Math.abs(rollRad) < THREE.MathUtils.degToRad(25)) {
+        return null;
+      }
+
+      // Bei ~180° anatomisch natürliche Supinationsrichtung (innen herum) erzwingen
+      if (Math.abs(rollRad) > THREE.MathUtils.degToRad(150)) {
+        rollRad = side === "Right" ? Math.abs(rollRad) : -Math.abs(rollRad);
+      }
+
+      const foreArmFixChar = new THREE.Quaternion().setFromAxisAngle(
+        vForeArmChar,
+        rollRad * 0.7
+      );
+      const foreArmFixCharInv = foreArmFixChar.clone().invert();
+      const handFixChar = new THREE.Quaternion().setFromAxisAngle(
+        vFingersChar,
+        rollRad * 0.3
+      );
+
+      // Exakte anatomische Handbasis im Hand-Lokalraum für Schläger-Mount & Fingerbeugung
+      const invHandMat = handBone.matrixWorld.clone().invert();
+      const getPosHandLocal = (bone: THREE.Bone) =>
+        new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld).applyMatrix4(invHandMat);
+
+      const uFingers = getPosHandLocal(middleBone).normalize();
+      const uThumb = getPosHandLocal(indexBone).sub(getPosHandLocal(pinkyBone));
+      uThumb.addScaledVector(uFingers, -uThumb.dot(uFingers)).normalize();
+      const uPalm =
+        side === "Right"
+          ? new THREE.Vector3().crossVectors(uThumb, uFingers).normalize()
+          : new THREE.Vector3().crossVectors(uFingers, uThumb).normalize();
+
+      const basisX = side === "Right" ? uThumb : uThumb.clone().negate();
+      const basisMat = new THREE.Matrix4().makeBasis(basisX, uFingers, uPalm);
+      const handBasisLocalQuat = new THREE.Quaternion().setFromRotationMatrix(basisMat);
+
+      return {
+        foreArmFixChar,
+        foreArmFixCharInv,
+        handFixChar,
+        handBasisLocalQuat,
+      };
+    };
+
+    const rightAlign = computeHandAlign("Right");
+    const leftAlign = computeHandAlign("Left");
+    handAlignRef.current = { right: rightAlign, left: leftAlign };
+
     Object.entries(HAND_FINGER_SPECS).forEach(([fKey, spec]) => {
       const qHandChar = restChar.get(spec.hand);
       const qFChar = restChar.get(fKey);
@@ -1116,6 +1227,12 @@ export default function AnimatedPadelPlayer({
         spec.axis[1],
         spec.axis[2]
       ).normalize();
+
+      const alignForHand = spec.hand === "RightHand" ? rightAlign : leftAlign;
+      if (alignForHand) {
+        axisVec.applyQuaternion(alignForHand.handBasisLocalQuat);
+      }
+
       const qCurlHand = new THREE.Quaternion().setFromAxisAngle(
         axisVec,
         THREE.MathUtils.degToRad(spec.deg)
@@ -1148,6 +1265,7 @@ export default function AnimatedPadelPlayer({
 
     const rightHandBone = bonesMap.get("RightHand");
     let mount: THREE.Group | null = null;
+    let handBasisGroup: THREE.Group | null = null;
     if (rightHandBone) {
       const partnerOffset = resolvedPartnerAsset.racketOffset;
       const pPos = partnerOffset?.position;
@@ -1172,7 +1290,16 @@ export default function AnimatedPadelPlayer({
         mount.scale.set(pScale[0], pScale[1], pScale[2]);
       }
       mount.visible = showRacket;
-      rightHandBone.add(mount);
+
+      if (rightAlign) {
+        handBasisGroup = new THREE.Group();
+        handBasisGroup.name = "PadelRacketHandBasis";
+        handBasisGroup.quaternion.copy(rightAlign.handBasisLocalQuat);
+        handBasisGroup.add(mount);
+        rightHandBone.add(handBasisGroup);
+      } else {
+        rightHandBone.add(mount);
+      }
       racketMountRef.current = mount;
     }
 
@@ -1181,10 +1308,15 @@ export default function AnimatedPadelPlayer({
       mixer.uncacheRoot(clonedScene);
       mixerRef.current = null;
       walkActionRef.current = null;
+      handAlignRef.current = { right: null, left: null };
 
-      if (rightHandBone && mount) {
-        clearRacketMount(mount);
-        rightHandBone.remove(mount);
+      if (rightHandBone) {
+        if (mount) clearRacketMount(mount);
+        if (handBasisGroup) {
+          rightHandBone.remove(handBasisGroup);
+        } else if (mount) {
+          rightHandBone.remove(mount);
+        }
       }
       racketMountRef.current = null;
     };
@@ -1296,7 +1428,8 @@ export default function AnimatedPadelPlayer({
       key: string,
       deg: DegVec3 | undefined,
       out: THREE.Quaternion,
-      useGrip: boolean
+      useGrip: boolean,
+      applyHandAlign: boolean
     ) => {
       if (useGrip) {
         const isRightFinger = key.startsWith("RightHand");
@@ -1312,11 +1445,6 @@ export default function AnimatedPadelPlayer({
       const qRestLocal = restLocal.get(key);
       if (!qRestLocal) return;
 
-      if (!deg) {
-        out.copy(qRestLocal);
-        return;
-      }
-
       const qChar = restChar.get(key);
       const qCharInv = restCharInv.get(key);
       if (!qChar || !qCharInv) {
@@ -1324,13 +1452,48 @@ export default function AnimatedPadelPlayer({
         return;
       }
 
-      tmpEuler.set(
-        THREE.MathUtils.degToRad(deg[0]),
-        THREE.MathUtils.degToRad(deg[1]),
-        THREE.MathUtils.degToRad(deg[2]),
-        "XYZ"
-      );
-      tmpCharDelta.setFromEuler(tmpEuler);
+      const align = applyHandAlign ? handAlignRef.current : null;
+      const rightAlign = align?.right;
+      const leftAlign = align?.left;
+
+      const isAlignedBone =
+        (key === "RightForeArm" && !!rightAlign) ||
+        (key === "RightHand" && !!rightAlign) ||
+        (key === "LeftForeArm" && !!leftAlign) ||
+        (key === "LeftHand" && !!leftAlign);
+
+      if (!deg && !isAlignedBone) {
+        out.copy(qRestLocal);
+        return;
+      }
+
+      if (deg) {
+        tmpEuler.set(
+          THREE.MathUtils.degToRad(deg[0]),
+          THREE.MathUtils.degToRad(deg[1]),
+          THREE.MathUtils.degToRad(deg[2]),
+          "XYZ"
+        );
+        tmpCharDelta.setFromEuler(tmpEuler);
+      } else {
+        tmpCharDelta.identity();
+      }
+
+      if (key === "RightForeArm" && rightAlign) {
+        tmpCharDelta.multiply(rightAlign.foreArmFixChar);
+      } else if (key === "RightHand" && rightAlign) {
+        tmpCharDelta
+          .premultiply(rightAlign.foreArmFixCharInv)
+          .multiply(rightAlign.foreArmFixChar)
+          .multiply(rightAlign.handFixChar);
+      } else if (key === "LeftForeArm" && leftAlign) {
+        tmpCharDelta.multiply(leftAlign.foreArmFixChar);
+      } else if (key === "LeftHand" && leftAlign) {
+        tmpCharDelta
+          .premultiply(leftAlign.foreArmFixCharInv)
+          .multiply(leftAlign.foreArmFixChar)
+          .multiply(leftAlign.handFixChar);
+      }
 
       tmpLocalDelta.copy(qCharInv).multiply(tmpCharDelta).multiply(qChar);
       out.copy(qRestLocal).multiply(tmpLocalDelta);
@@ -1352,7 +1515,7 @@ export default function AnimatedPadelPlayer({
           const bone = bonesMap.get(bKey);
           const deg = WALK_CARRY_ARM_BONES[bKey];
           if (!bone || !deg) return;
-          computeTargetBoneQuat(bKey, deg, tmpTargetQuat, false);
+          computeTargetBoneQuat(bKey, deg, tmpTargetQuat, false, true);
           // 78 % Tragepose + 22 % natürlicher Lauf-Rhythmus aus dem Clip
           bone.quaternion.slerp(tmpTargetQuat, 0.78);
         });
@@ -1370,7 +1533,12 @@ export default function AnimatedPadelPlayer({
     const blendAlpha = 1 - Math.exp(-safeDelta * 14);
     const tClock = state.clock.elapsedTime;
 
-    const applyPose = (pose: BonePoseSpec, breathe: boolean, useGrip: boolean) => {
+    const applyPose = (
+      pose: BonePoseSpec,
+      breathe: boolean,
+      useGrip: boolean,
+      applyHandAlign: boolean
+    ) => {
       const hips = bonesMap.get("Hips");
       if (hips) {
         const bob = breathe ? Math.sin(tClock * 3.4) * 0.014 : 0;
@@ -1379,24 +1547,24 @@ export default function AnimatedPadelPlayer({
       }
 
       bonesMap.forEach((bone, key) => {
-        computeTargetBoneQuat(key, pose.bones[key], tmpTargetQuat, useGrip);
+        computeTargetBoneQuat(key, pose.bones[key], tmpTargetQuat, useGrip, applyHandAlign);
         bone.quaternion.slerp(tmpTargetQuat, blendAlpha);
       });
     };
 
     if (action === "a_pose") {
-      applyPose({ hipsY: 0, bones: {} }, false, false);
+      applyPose({ hipsY: 0, bones: {} }, false, false, false);
       return;
     }
 
     if (action === "idle") {
-      applyPose(IDLE_POSE, true, true);
+      applyPose(IDLE_POSE, true, true, true);
       return;
     }
 
     const shotDef = SHOT_ANIMATIONS[action];
     if (!shotDef) {
-      applyPose(IDLE_POSE, true, true);
+      applyPose(IDLE_POSE, true, true, true);
       return;
     }
 
@@ -1436,8 +1604,8 @@ export default function AnimatedPadelPlayer({
     }
 
     bonesMap.forEach((bone, key) => {
-      computeTargetBoneQuat(key, prevFrame.pose.bones[key], tmpQuatA, true);
-      computeTargetBoneQuat(key, nextFrame.pose.bones[key], tmpQuatB, true);
+      computeTargetBoneQuat(key, prevFrame.pose.bones[key], tmpQuatA, true, true);
+      computeTargetBoneQuat(key, nextFrame.pose.bones[key], tmpQuatB, true, true);
       tmpTargetQuat.copy(tmpQuatA).slerp(tmpQuatB, smoothT);
       bone.quaternion.slerp(tmpTargetQuat, fastBlend);
     });
