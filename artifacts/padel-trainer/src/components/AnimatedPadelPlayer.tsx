@@ -1553,7 +1553,7 @@ export default function AnimatedPadelPlayer({
     };
 
     if (action === "a_pose") {
-      applyPose({ hipsY: 0, bones: {} }, false, false, false);
+      applyPose({ hipsY: 0, bones: {} }, false, false, true);
       return;
     }
 
