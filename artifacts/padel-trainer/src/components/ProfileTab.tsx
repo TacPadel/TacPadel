@@ -27,7 +27,7 @@ import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow";
-import AnimatedPadelPlayer, { PlayerAction } from "./AnimatedPadelPlayer";
+import AnimatedPadelPlayer from "./AnimatedPadelPlayer";
 import AdminDashboard from "./AdminDashboard";
 import InGameShopModal from "./InGameShopModal";
 
@@ -108,7 +108,7 @@ function CameraSwitcher({ mode, controlsRef }: { mode: 'locker' | 'trophies', co
 }
 
 // ==========================================
-// --- 3D TRON TROPHIES (Hologramm Style Bild-getreu) ---
+// --- 3D TRON TROPHIES (Hologramm Style) ---
 // ==========================================
 function TronTrophy({ position, tourId, onClick, lowQuality }: { position: [number, number, number], tourId: string, onClick: (id: string) => void, lowQuality?: boolean }) {
   const ref = useRef<any>(null);
@@ -415,20 +415,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- Umschalter für den gemeinsamen 3D-Canvas + Animations-Labor ---
+  // --- Umschalter für den gemeinsamen 3D-Canvas (Spind: nur Grundstellung & A-Pose) ---
   const [active3DView, setActive3DView] = useState<'locker' | 'trophies'>('locker');
-  const [lockerAnim, setLockerAnim] = useState<PlayerAction>("idle");
-  const [lockerTrigger, setLockerTrigger] = useState<number>(0);
-  const [lockerSpeed, setLockerSpeed] = useState<0.35 | 1>(1);
-  const [lockerAutoRotate, setLockerAutoRotate] = useState<boolean>(false);
+  const [lockerPose, setLockerPose] = useState<'idle' | 'a_pose'>('idle');
+  const [lockerAutoRotate, setLockerAutoRotate] = useState<boolean>(true);
   const [showLockerRacket, setShowLockerRacket] = useState<boolean>(true);
   const [lockerModelError, setLockerModelError] = useState<string | null>(null);
   const controlsRef = useRef<any>(null);
-
-  const triggerLockerAction = (next: PlayerAction) => {
-    setLockerAnim(next);
-    setLockerTrigger((k) => k + 1);
-  };
 
   // --- Performance-Modus ---
   const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
@@ -478,7 +471,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
     setMessage({
       type: 'success',
-      text: newState ? "👑 Pro-User-Ansicht aktiviert!" : "🔒 Free-User-Ansicht aktiviert!"
+      text: newState ? "Pro-User-Ansicht aktiviert" : "Free-User-Ansicht aktiviert"
     });
     setTimeout(() => setMessage(null), 2500);
   };
@@ -695,7 +688,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
     setMessage({
       type: 'success',
-      text: `⬆️ ${item.name} ${t("rpg_upgrade_success")} +${res.newLevel}!`,
+      text: `${item.name} ${t("rpg_upgrade_success")} +${res.newLevel}`,
     });
     setTimeout(() => setMessage(null), 3000);
   };
@@ -747,7 +740,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 ? maxLevelLabel
                 : details.canUpgrade
                 ? t("rpg_ready_upgrade")
-                : `${t("rpg_xp_label")} (Lvl +${details.level} ➔ +${details.level + 1})`}
+                : `${t("rpg_xp_label")} (Lvl +${details.level} -> +${details.level + 1})`}
             </span>
             {!details.isMaxLevel && (
               <span className="text-cyan-300">
@@ -781,7 +774,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             }`}
           >
             <span>
-              {t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP 🪙)
+              {t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP)
             </span>
           </button>
         )}
@@ -900,6 +893,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const selectedRacketObj = ownedRackets.find(r => r.id === racketId) || ownedRackets[0] || SHOP_RACKETS[0];
   const selectedShotObj = ownedShots.find(s => s.id === shotId) || ownedShots[0] || SHOP_SHOTS[0];
 
+  const avatarInitials = (username || "TP").trim().slice(0, 2).toUpperCase();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -930,9 +925,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             {avatarUrl ? (
               <img src={avatarUrl} alt="Avatar" className="w-28 h-28 rounded-full object-cover border-4 border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:border-cyan-500/50 transition-colors" />
             ) : (
-              <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-500 text-5xl border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">👤</div>
+              <div className="w-28 h-28 bg-cyan-950/30 rounded-full flex items-center justify-center mx-auto text-cyan-400 text-2xl font-black tracking-widest border-2 border-dashed border-cyan-500/50 group-hover:bg-cyan-900/50 transition-colors shadow-sm">
+                {avatarInitials}
+              </div>
             )}
-            <div className="absolute bottom-0 right-0 bg-background border border-border rounded-full p-2.5 shadow-md text-sm group-hover:scale-110 transition-transform">✏</div>
+            <div className="absolute bottom-0 right-0 bg-[#050b18] border border-cyan-500/50 rounded-full px-2.5 py-1 shadow-md text-[9px] font-black uppercase tracking-wider text-cyan-300 group-hover:scale-105 transition-transform">
+              {lang === "en" ? "Edit" : lang === "es" ? "Foto" : "Foto"}
+            </div>
           </label>
           <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} className="hidden" />
           {isUploading && <span className="text-[10px] text-cyan-400 mt-3 font-bold animate-pulse uppercase tracking-wider">{t("prof_uploading")}</span>}
@@ -1002,8 +1001,8 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         className="w-full bg-gradient-to-r from-cyan-950/60 via-[#050b18] to-orange-950/50 hover:from-cyan-900/60 hover:to-orange-900/50 border border-cyan-500/40 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-[0_0_20px_rgba(6,182,212,0.12)] transition-all group text-left"
       >
         <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-xl shrink-0">
-            🧠
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-[11px] font-black tracking-widest text-cyan-300 shrink-0">
+            TP
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-black uppercase tracking-widest text-white group-hover:text-cyan-300 transition-colors">
@@ -1019,7 +1018,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </div>
         </div>
         <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 shrink-0 group-hover:translate-x-1 transition-transform">
-          {lang === "en" ? "Open ➔" : lang === "es" ? "Abrir ➔" : "Öffnen ➔"}
+          {lang === "en" ? "Open ->" : lang === "es" ? "Abrir ->" : "Öffnen ->"}
         </span>
       </button>
 
@@ -1080,7 +1079,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
         </div>
 
         {/* GEMEINSAMER 3D CANVAS CONTAINER */}
-        <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-72 sm:h-80 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
+        <div className={`w-full ${active3DView === 'trophies' ? 'h-[380px] border-cyan-900/50 shadow-[inset_0_0_30px_rgba(6,182,212,0.15)]' : 'h-64 sm:h-72 border-slate-800/80 shadow-inner'} bg-[#020408] rounded-xl border overflow-hidden relative cursor-grab active:cursor-grabbing transition-all duration-300`}>
 
           {active3DView === 'locker' && !lowPerfMode && (
             <>
@@ -1158,15 +1157,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   <React.Suspense fallback={null}>
                     <AnimatedPadelPlayer
                       modelUrl="/meshy_player.glb"
-                      action={lockerAnim}
-                      triggerKey={lockerTrigger}
-                      speed={lockerSpeed}
+                      racketId={racketId}
+                      action={lockerPose}
                       showRacket={showLockerRacket}
-                      onActionFinished={() => {
-                        if (lockerAnim !== "walk" && lockerAnim !== "a_pose") {
-                          setLockerAnim("idle");
-                        }
-                      }}
                     />
                   </React.Suspense>
                 </LockerModelBoundary>
@@ -1224,86 +1217,65 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </AnimatePresence>
         </div>
 
-        {/* 3D ANIMATIONS-LABOR STEUERLEISTE IM SPIND */}
+        {/* KOMPAKTE SPIND-STEUERUNG (GRUNDSTELLUNG, A-POSE, SCHLÄGER, DREHEN) */}
         {active3DView === 'locker' && (
-          <div className="bg-[#030611]/95 border border-cyan-500/30 rounded-xl p-3 flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2">
             {lockerModelError && (
-              <div className="px-2.5 py-2 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-300 text-[10px] font-bold leading-snug">
-                ⚠️ Fallback auf Standard-Figur aktiv – <code className="text-white">/meshy_player.glb</code> konnte nicht geladen werden ({lockerModelError}).
+              <div className="px-3 py-2 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-300 text-[10px] font-bold leading-snug">
+                Hinweis: Standard-Figur aktiv - <code className="text-white">/meshy_player.glb</code> konnte nicht geladen werden ({lockerModelError}).
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">
-                🎬 Animations-Labor (Meshy Rig)
-              </span>
+            <div className="bg-[#030611]/95 border border-slate-800 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setLockerSpeed((s) => (s === 1 ? 0.35 : 1))}
-                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
-                    lockerSpeed === 0.35
-                      ? "bg-amber-500/25 border-amber-400 text-amber-300"
-                      : "bg-slate-900 border-slate-700 text-slate-400 hover:text-white"
+                  onClick={() => setLockerPose('idle')}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    lockerPose === 'idle'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {lockerSpeed === 0.35 ? "0.35x" : "1x"}
+                  {lang === "en" ? "Ready Stance" : lang === "es" ? "Posición base" : "Grundstellung"}
                 </button>
                 <button
-                  onClick={() => setShowLockerRacket((v) => !v)}
-                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
-                    showLockerRacket
-                      ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
-                      : "bg-slate-900 border-slate-700 text-slate-400"
+                  onClick={() => setLockerPose('a_pose')}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    lockerPose === 'a_pose'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
-                  Schläger
+                  A-Pose
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="hidden sm:inline text-[9px] font-bold text-slate-500 uppercase tracking-wider mr-1">
+                  {selectedRacketObj.name}
+                </span>
+                <button
+                  onClick={() => setShowLockerRacket((v) => !v)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                    showLockerRacket
+                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {lang === "en" ? "Racket" : lang === "es" ? "Pala" : "Schläger"}
                 </button>
                 <button
                   onClick={() => setLockerAutoRotate((v) => !v)}
-                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase border transition-all ${
+                  className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
                     lockerAutoRotate
-                      ? "bg-purple-500/25 border-purple-400 text-purple-300"
-                      : "bg-slate-900 border-slate-700 text-slate-400"
+                      ? 'bg-purple-500/25 border-purple-400 text-purple-300'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
                   }`}
                 >
-                  Drehen
+                  {lang === "en" ? "Rotate" : lang === "es" ? "Girar" : "Drehen"}
                 </button>
               </div>
             </div>
-
-                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-              {(
-                [
-                  { id: "idle", label: "Grundstellung" },
-                  { id: "walk", label: "Laufen" },
-                  { id: "serve", label: "Aufschlag" },
-                  { id: "forehand", label: "Vorhand" },
-                  { id: "backhand", label: "Rueckhand" },
-                  { id: "volley", label: "Volley" },
-                  { id: "bandeja", label: "Bandeja" },
-                  { id: "vibora", label: "Vibora" },
-                  { id: "bajada", label: "Bajada" },
-                  { id: "smash", label: "Smash" },
-                  { id: "lob", label: "Lob" },
-                  { id: "chiquita", label: "Chiquita" },
-                  { id: "block", label: "Block" },
-                  { id: "a_pose", label: "A-Pose" },
-                ] as { id: PlayerAction; label: string }[]
-              ).map((btn) => (
-                <button
-                  key={btn.id}
-                  onClick={() => triggerLockerAction(btn.id)}
-                  className={`py-2 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
-                    lockerAnim === btn.id
-                      ? "bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]"
-                      : "bg-slate-900/90 border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white"
-                  }`}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
-
           </div>
         )}
       </div>
@@ -1330,7 +1302,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               onClick={() => setIsShopModalOpen(true)}
               className="text-[10px] font-black text-amber-300 bg-amber-950/40 border border-amber-500/40 px-3.5 py-2 rounded-xl hover:bg-amber-900/50 transition-all shadow-[0_0_12px_rgba(245,158,11,0.15)] shrink-0 flex items-center gap-1.5"
             >
-              <span>🪙 In-Game Shop ({tacPoints} TP) ➔</span>
+              <span>In-Game Shop ({tacPoints} TP) -&gt;</span>
             </button>
           </div>
 
@@ -1374,14 +1346,14 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     const d = getUpgradedItemDetails(p, itemProgressMap);
                     return (
                       <option key={p.id} value={p.id}>
-                        ✓ {d.displayName} ({p.badge})
+                        {d.displayName} ({p.badge})
                       </option>
                     );
                   })}
                 </select>
                 {selectedPartnerObj.perk && (
                   <span className="text-[10px] text-slate-400 italic">
-                    ⚡ {formatPartnerPerk(selectedPartnerObj.id, lang, selectedPartnerObj.perk)}
+                    Perk: {formatPartnerPerk(selectedPartnerObj.id, lang, selectedPartnerObj.perk)}
                   </span>
                 )}
 
@@ -1429,7 +1401,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     const d = getUpgradedItemDetails(r, itemProgressMap);
                     return (
                       <option key={r.id} value={r.id}>
-                        ✓ {d.displayName} ({r.badge})
+                        {d.displayName} ({r.badge})
                       </option>
                     );
                   })}
@@ -1479,7 +1451,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     const d = getUpgradedItemDetails(s, itemProgressMap);
                     return (
                       <option key={s.id} value={s.id}>
-                        ✓ {d.displayName} ({s.badge})
+                        {d.displayName} ({s.badge})
                       </option>
                     );
                   })}
@@ -1620,9 +1592,9 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           </span>
           <div className="flex bg-[#050b18] p-1 rounded-xl border border-slate-800 gap-1">
             {([
-              { code: 'de', label: '🇩🇪 DE' },
-              { code: 'en', label: '🇬🇧 EN' },
-              { code: 'es', label: '🇪🇸 ES' },
+              { code: 'de', label: 'DE' },
+              { code: 'en', label: 'EN' },
+              { code: 'es', label: 'ES' },
             ] as const).map((l) => (
               <button
                 key={l.code}
@@ -1691,7 +1663,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
             <div className="flex flex-wrap items-center justify-center gap-3">
               <div className="flex items-center gap-2.5 bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
                 <span className={`text-[10px] font-black uppercase tracking-widest ${isProUser ? 'text-pink-400' : 'text-slate-500'}`}>
-                  {isProUser ? "Pro Aktiv" : "🔒 Free"}
+                  {isProUser ? "Pro Aktiv" : "Free"}
                 </span>
                 <button
                   onClick={toggleProUserStatus}
@@ -1712,7 +1684,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 onClick={() => setShowAdminModal(!showAdminModal)}
                 className="px-4 py-2.5 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
               >
-                {showAdminModal ? "✕ Zentrale schließen" : "🛠️ Admin-Zentrale öffnen"}
+                {showAdminModal ? "Zentrale schließen" : "Admin-Zentrale öffnen"}
               </button>
             </div>
           </div>
