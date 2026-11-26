@@ -1271,17 +1271,22 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
               </div>
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
               {(
                 [
                   { id: "idle", label: "Grundstellung" },
                   { id: "walk", label: "Laufen" },
+                  { id: "serve", label: "Aufschlag" },
                   { id: "forehand", label: "Vorhand" },
-                  { id: "backhand", label: "Rückhand" },
+                  { id: "backhand", label: "Rueckhand" },
                   { id: "volley", label: "Volley" },
                   { id: "bandeja", label: "Bandeja" },
+                  { id: "vibora", label: "Vibora" },
+                  { id: "bajada", label: "Bajada" },
                   { id: "smash", label: "Smash" },
                   { id: "lob", label: "Lob" },
+                  { id: "chiquita", label: "Chiquita" },
+                  { id: "block", label: "Block" },
                   { id: "a_pose", label: "A-Pose" },
                 ] as { id: PlayerAction; label: string }[]
               ).map((btn) => (
@@ -1298,6 +1303,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 </button>
               ))}
             </div>
+
           </div>
         )}
       </div>
