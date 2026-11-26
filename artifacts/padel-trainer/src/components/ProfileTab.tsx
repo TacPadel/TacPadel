@@ -12,6 +12,7 @@ import {
   ShopItem,
   ItemProgressMap,
   normalizeShotId,
+  resolvePartnerItem,
   isLoadoutLockedByActiveMatch,
   getSavedItemProgress,
   saveItemProgress,
@@ -28,7 +29,7 @@ import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
 import PlayerShow from "./PlayerShow";
-import AnimatedPadelPlayer from "./AnimatedPadelPlayer";
+import AnimatedPadelPlayer, { preloadAnimatedPartner } from "./AnimatedPadelPlayer";
 import AdminDashboard from "./AdminDashboard";
 import InGameShopModal from "./InGameShopModal";
 
@@ -302,9 +303,7 @@ function TronCabinet({ trophies, onTrophyClick, lowQuality }: { trophies: string
 // ==========================================
 
 const normalizePartnerId = (rawId?: string | null): string => {
-  if (!rawId) return "partner_rookie";
-  if (SHOP_PARTNERS.some((p) => p.id === rawId)) return rawId;
-  return "partner_rookie";
+  return resolvePartnerItem(rawId).id;
 };
 
 // Hilfsfunktion: Bereinigt gespeicherte Item-Listen auf die neuen IDs (shot_classic, volley, chiquita)
@@ -396,16 +395,20 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const ownedPartners = useMemo(
     () => SHOP_PARTNERS.filter((p) => unlockedItems.includes(p.id) || p.price === 0),
     [unlockedItems]
-    
   );
-  
+
+  useEffect(() => {
+    ownedPartners.forEach((p) => preloadAnimatedPartner(p.id));
+  }, [ownedPartners]);
+
   const ownedRackets = useMemo(
     () => SHOP_RACKETS.filter((r) => unlockedItems.includes(r.id) || r.price === 0),
     [unlockedItems]
   );
+
   useEffect(() => {
-  ownedRackets.forEach((r) => preloadEquippedRacket(r.id));
-}, [ownedRackets]);
+    ownedRackets.forEach((r) => preloadEquippedRacket(r.id));
+  }, [ownedRackets]);
 
   const ownedShots = useMemo(
     () => SHOP_SHOTS.filter((s) => unlockedItems.includes(s.id) || s.price === 0),
@@ -429,6 +432,10 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showLockerRacket, setShowLockerRacket] = useState<boolean>(true);
   const [lockerModelError, setLockerModelError] = useState<string | null>(null);
   const controlsRef = useRef<any>(null);
+
+  useEffect(() => {
+    setLockerModelError(null);
+  }, [partnerId]);
 
   // --- Performance-Modus ---
   const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
@@ -634,11 +641,13 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
       setEquippedPartner(item.id);
       setPartnerId(item.id);
       localStorage.setItem("tacpadel_partner_id", item.id);
+      preloadAnimatedPartner(item.id);
       await supabase.from('user_stats').update({ partner_id: item.id }).eq('id', user.id);
     } else if (category === 'racket') {
       setEquippedRacket(item.id);
       setRacketId(item.id);
       localStorage.setItem("tacpadel_racket_id", item.id);
+      preloadEquippedRacket(item.id);
       await supabase.from('user_stats').update({ equipped_racket: item.id }).eq('id', user.id);
     } else {
       setEquippedShot(item.id);
@@ -1154,6 +1163,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </>
                 )}
                 <LockerModelBoundary
+                  key={partnerId}
                   fallback={
                     <React.Suspense fallback={null}>
                       <PlayerShow />
@@ -1163,7 +1173,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 >
                   <React.Suspense fallback={null}>
                     <AnimatedPadelPlayer
-                      modelUrl="/meshy_player.glb"
+                      partnerId={partnerId}
                       racketId={racketId}
                       action={lockerPose}
                       showRacket={showLockerRacket}
@@ -1229,7 +1239,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex flex-col gap-2">
             {lockerModelError && (
               <div className="px-3 py-2 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-300 text-[10px] font-bold leading-snug">
-                Hinweis: Standard-Figur aktiv - <code className="text-white">/meshy_player.glb</code> konnte nicht geladen werden ({lockerModelError}).
+                Hinweis: Standard-Figur aktiv - <code className="text-white">{selectedPartnerObj.modelUrl}</code> konnte nicht geladen werden ({lockerModelError}).
               </div>
             )}
 
@@ -1259,7 +1269,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
               <div className="flex items-center gap-1.5">
                 <span className="hidden sm:inline text-[9px] font-bold text-slate-500 uppercase tracking-wider mr-1">
-                  {selectedRacketObj.name}
+                  {selectedPartnerObj.name} · {selectedRacketObj.name}
                 </span>
                 <button
                   onClick={() => setShowLockerRacket((v) => !v)}
@@ -1345,6 +1355,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     setPartnerId(nextPartner);
                     setEquippedPartner(nextPartner);
                     localStorage.setItem("tacpadel_partner_id", nextPartner);
+                    preloadAnimatedPartner(nextPartner);
                     supabase.from('user_stats').update({ partner_id: nextPartner }).eq('id', user.id).then(() => {});
                   }}
                   className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
@@ -1400,6 +1411,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                     setRacketId(nextId);
                     setEquippedRacket(nextId);
                     localStorage.setItem("tacpadel_racket_id", nextId);
+                    preloadEquippedRacket(nextId);
                     supabase.from('user_stats').update({ equipped_racket: nextId }).eq('id', user.id).then(() => {});
                   }}
                   className={`px-3 py-2 bg-[#0a1122] border border-slate-700/50 focus:border-cyan-500/50 rounded-lg text-white text-xs font-bold outline-none transition-colors appearance-none ${isMatchLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}

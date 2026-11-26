@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import { supabase } from "../lib/supabase";
 import {
   SHOP_PARTNERS,
@@ -10,6 +12,7 @@ import {
   ShopItem,
   ItemProgressMap,
   normalizeShotId,
+  resolvePartnerItem,
   isLoadoutLockedByActiveMatch,
   getSavedItemProgress,
   getUpgradedItemDetails,
@@ -20,6 +23,10 @@ import {
 import { useTranslation, formatPartnerPerk } from "../lib/i18n";
 import RacketPreview3D from "./RacketPreview3D";
 import { preloadAllShopRackets, preloadEquippedRacket } from "./RacketMesh";
+import AnimatedPadelPlayer, {
+  preloadAllAnimatedPartners,
+  preloadAnimatedPartner,
+} from "./AnimatedPadelPlayer";
 
 interface InGameShopModalProps {
   isOpen: boolean;
@@ -28,10 +35,33 @@ interface InGameShopModalProps {
   onLoadoutChanged: () => void;
 }
 
+class PartnerPreviewErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">
+          3D-Vorschau nicht verfügbar
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const normalizePartnerId = (rawId?: string | null): string => {
-  if (!rawId) return "partner_rookie";
-  if (SHOP_PARTNERS.some((p) => p.id === rawId)) return rawId;
-  return "partner_rookie";
+  return resolvePartnerItem(rawId).id;
 };
 
 // Bereinigt gespeicherte Item-Listen auf die neuen IDs (shot_classic, volley, chiquita)
@@ -53,6 +83,7 @@ export default function InGameShopModal({
   const isIOS = Capacitor.getPlatform() === "ios";
 
   const [activeCategory, setActiveCategory] = useState<"partner" | "racket" | "shot">("partner");
+  const [partnerPreviewAction, setPartnerPreviewAction] = useState<"idle" | "walk">("idle");
 
   const [tacPoints, setTacPoints] = useState<number>(() => {
     const saved = localStorage.getItem("tacpadel_tac_points");
@@ -95,15 +126,21 @@ export default function InGameShopModal({
 
   const isMatchLocked = isOpen && isLoadoutLockedByActiveMatch(userId);
 
-  // Alle Schläger-GLBs erst vorladen, wenn der Schläger-Tab im Shop geöffnet wird
+  // 3D-GLBs erst vorladen, wenn der jeweilige Tab im Shop geöffnet ist
   useEffect(() => {
-    if (isOpen && activeCategory === "racket") {
+    if (!isOpen) return;
+    if (activeCategory === "partner") {
+      preloadAllAnimatedPartners();
+    } else if (activeCategory === "racket") {
       preloadAllShopRackets();
     }
   }, [isOpen, activeCategory]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setPartnerPreviewAction("idle");
+      return;
+    }
 
     const localPartner = normalizePartnerId(localStorage.getItem("tacpadel_partner_id"));
     const localRacket = localStorage.getItem("tacpadel_racket_id") || "racket_starter";
@@ -177,6 +214,16 @@ export default function InGameShopModal({
   const previewStats = useMemo(
     () => calculateLoadoutStats(previewPartner, previewRacket, previewShot, itemProgressMap),
     [previewPartner, previewRacket, previewShot, itemProgressMap]
+  );
+
+  const previewPartnerItem = useMemo(
+    () => resolvePartnerItem(previewPartner),
+    [previewPartner]
+  );
+
+  const previewPartnerDetails = useMemo(
+    () => getUpgradedItemDetails(previewPartnerItem, itemProgressMap),
+    [previewPartnerItem, itemProgressMap]
   );
 
   const previewRacketItem = useMemo(
@@ -263,6 +310,7 @@ export default function InGameShopModal({
         setEquippedPartner(item.id);
         setPreviewPartner(item.id);
         localStorage.setItem("tacpadel_partner_id", item.id);
+        preloadAnimatedPartner(item.id);
         if (userId) await supabase.from("user_stats").update({ partner_id: item.id }).eq("id", userId);
       } else if (category === "racket") {
         setEquippedRacket(item.id);
@@ -329,6 +377,7 @@ export default function InGameShopModal({
         setEquippedPartner(item.id);
         setPreviewPartner(item.id);
         localStorage.setItem("tacpadel_partner_id", item.id);
+        preloadAnimatedPartner(item.id);
       } else if (category === "racket") {
         setEquippedRacket(item.id);
         setPreviewRacket(item.id);
@@ -535,6 +584,83 @@ export default function InGameShopModal({
                 ⚡ {t("prof_focus_label")}
               </button>
             </div>
+
+            {/* 3D PARTNER-VORSCHAU (NUR IM PARTNER-TAB) */}
+            {activeCategory === "partner" && (
+              <div className="relative shrink-0 border-b border-slate-800/90 bg-[radial-gradient(ellipse_at_center,_rgba(16,185,129,0.2)_0%,_rgba(3,6,17,0.96)_72%)]">
+                <div className="w-full h-40 sm:h-48">
+                  <PartnerPreviewErrorBoundary key={previewPartner}>
+                    <Canvas
+                      dpr={[1, 2]}
+                      camera={{ position: [0, 0.15, 3.05], fov: 36 }}
+                      gl={{ antialias: true, alpha: true }}
+                    >
+                      <ambientLight intensity={0.9} />
+                      <directionalLight position={[3, 5, 4]} intensity={1.35} />
+                      <directionalLight position={[-3, 2, -3]} intensity={0.55} color="#34d399" />
+                      <Suspense fallback={null}>
+                        <AnimatedPadelPlayer
+                          partnerId={previewPartner}
+                          racketId={previewRacket}
+                          action={partnerPreviewAction}
+                          position={[0, -0.86, 0]}
+                          scale={1.02}
+                          showRacket
+                        />
+                      </Suspense>
+                      <OrbitControls
+                        enablePan={false}
+                        enableZoom={false}
+                        enableDamping
+                        dampingFactor={0.08}
+                        minPolarAngle={Math.PI / 2.7}
+                        maxPolarAngle={Math.PI / 1.95}
+                        target={[0, 0.02, 0]}
+                      />
+                    </Canvas>
+                  </PartnerPreviewErrorBoundary>
+                </div>
+
+                {/* Info-Overlay oben links */}
+                <div className="pointer-events-none absolute top-2 left-3 flex items-center gap-1.5">
+                  <span className="text-[10px] font-black text-white bg-slate-950/75 border border-slate-700/80 px-2 py-0.5 rounded-md backdrop-blur-sm">
+                    {previewPartnerDetails.displayName}
+                  </span>
+                  <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-950/70 border border-emerald-500/40 px-1.5 py-0.5 rounded-md">
+                    {previewPartnerItem.badge}
+                  </span>
+                </div>
+
+                {/* Idle / Walk Umschalter unten links */}
+                <div className="absolute bottom-2 left-3 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPartnerPreviewAction((prev) => (prev === "idle" ? "walk" : "idle"))
+                    }
+                    className="text-[8px] font-black uppercase tracking-wider text-slate-200 bg-slate-950/80 hover:bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    {partnerPreviewAction === "idle" ? "▶ Walk" : "⏸ Idle"}
+                  </button>
+                </div>
+
+                {/* Status / 3D-Hinweis unten rechts */}
+                <div className="pointer-events-none absolute bottom-2 right-3 flex items-center gap-1.5">
+                  {previewPartner === equippedPartner ? (
+                    <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-950/75 border border-emerald-500/40 px-2 py-0.5 rounded-md">
+                      ✓ {t("prof_equipped")}
+                    </span>
+                  ) : (
+                    <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-950/75 border border-amber-500/40 px-2 py-0.5 rounded-md">
+                      {t("prof_preview")}
+                    </span>
+                  )}
+                  <span className="text-[8px] font-bold text-slate-400 bg-slate-950/70 border border-slate-800 px-1.5 py-0.5 rounded-md">
+                    ↔ 3D
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 3D SCHLÄGER-VORSCHAU (NUR IM SCHLÄGER-TAB) */}
             {activeCategory === "racket" && (

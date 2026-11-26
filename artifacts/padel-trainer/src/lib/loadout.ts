@@ -30,6 +30,14 @@ export interface ShopItem {
   };
 }
 
+export interface PartnerShopItem<TId extends string = string> extends ShopItem {
+  id: TId;
+  modelUrl: string;
+  hasWalkingClip: boolean;
+  /** Optionaler Schläger-Offset pro Figur, falls die Hand-Rotation abweicht */
+  racketOffset?: RacketTransform;
+}
+
 export interface RacketShopItem<TId extends string = string> extends ShopItem {
   id: TId;
   modelUrl: string;
@@ -372,9 +380,12 @@ export function performItemUpgrade(
 }
 
 // =========================================================
-// 1. KI-TEAMPARTNER (1x Klassik + 4x Skill-Fokus)
+// 1. KI-TEAMPARTNER (1x Klassik + 4x Skill-Fokus | SINGLE SOURCE OF TRUTH)
 // =========================================================
-export const SHOP_PARTNERS: ShopItem[] = [
+/** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
+const PARTNER_MODEL_BASE_PATH = "";
+
+const PARTNER_DEFINITIONS = [
   {
     id: "partner_rookie",
     name: "Leo",
@@ -382,6 +393,8 @@ export const SHOP_PARTNERS: ShopItem[] = [
     tier: 0,
     price: 0,
     reqScore: 0,
+    modelUrl: `${PARTNER_MODEL_BASE_PATH}/meshy_player.glb`,
+    hasWalkingClip: true,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
@@ -403,6 +416,8 @@ export const SHOP_PARTNERS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${PARTNER_MODEL_BASE_PATH}/meshy_partner1.glb`,
+    hasWalkingClip: false,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Potencia" : "Power";
@@ -419,11 +434,13 @@ export const SHOP_PARTNERS: ShopItem[] = [
   },
   {
     id: "partner_tactician",
-    name: "Sofia",
+    name: "Sergio",
     focus: "control",
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${PARTNER_MODEL_BASE_PATH}/meshy_partner2.glb`,
+    hasWalkingClip: false,
     badge: "Control",
     get perk() {
       const l = getAppLanguage();
@@ -431,7 +448,7 @@ export const SHOP_PARTNERS: ShopItem[] = [
         ? "Especialista en control: coloca globos y bandejas precisas"
         : l === "en"
         ? "Control specialist: places pinpoint lobs and bandejas"
-        : "Kontroll-Spezialistin: Spielt präzise Lobs und Bandejas";
+        : "Kontroll-Spezialist: Spielt präzise Lobs und Bandejas";
     },
     modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
@@ -442,6 +459,8 @@ export const SHOP_PARTNERS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${PARTNER_MODEL_BASE_PATH}/meshy_partner3.glb`,
+    hasWalkingClip: false,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Defensa" : "Defense";
@@ -463,6 +482,8 @@ export const SHOP_PARTNERS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${PARTNER_MODEL_BASE_PATH}/meshy_partner4.glb`,
+    hasWalkingClip: false,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Agilidad" : "Agility";
@@ -477,7 +498,47 @@ export const SHOP_PARTNERS: ShopItem[] = [
     },
     modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
-];
+] as const satisfies readonly PartnerShopItem[];
+
+export type PartnerId = (typeof PARTNER_DEFINITIONS)[number]["id"];
+
+export const SHOP_PARTNERS: PartnerShopItem<PartnerId>[] = [...PARTNER_DEFINITIONS];
+
+export const DEFAULT_PARTNER: PartnerShopItem<PartnerId> = SHOP_PARTNERS[0];
+export const DEFAULT_PARTNER_ID: PartnerId = DEFAULT_PARTNER.id;
+export const DEFAULT_PARTNER_URL: string = DEFAULT_PARTNER.modelUrl;
+
+const PARTNER_BY_ID = new Map<string, PartnerShopItem<PartnerId>>(
+  SHOP_PARTNERS.map((partner) => [partner.id, partner])
+);
+
+export function resolvePartnerItem(partnerId?: string | null): PartnerShopItem<PartnerId> {
+  return (partnerId ? PARTNER_BY_ID.get(partnerId) : undefined) ?? DEFAULT_PARTNER;
+}
+
+export function resolvePartnerAsset(partnerId?: string | null): {
+  id: PartnerId;
+  url: string;
+  hasWalkingClip: boolean;
+  racketOffset?: RacketTransform;
+} {
+  const item = resolvePartnerItem(partnerId);
+  return {
+    id: item.id,
+    url: item.modelUrl,
+    hasWalkingClip: item.hasWalkingClip,
+    racketOffset: item.racketOffset,
+  };
+}
+
+export function getEquippedPartnerId(respectMatchLock: boolean = true): PartnerId {
+  const locked = respectMatchLock ? getActiveMatchLockedLoadout() : null;
+  let storedId: string | null = null;
+  try {
+    storedId = localStorage.getItem("tacpadel_partner_id");
+  } catch {}
+  return resolvePartnerItem(locked?.partnerId || storedId || DEFAULT_PARTNER_ID).id;
+}
 
 // =========================================================
 // 2. SCHLÄGER / RACKETS (1x Klassik + 4x Skill-Fokus | SINGLE SOURCE OF TRUTH)

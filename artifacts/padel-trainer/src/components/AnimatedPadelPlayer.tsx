@@ -5,8 +5,11 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import {
+  DEFAULT_PARTNER_URL as LOADOUT_DEFAULT_PARTNER_URL,
   DEFAULT_RACKET_URL as LOADOUT_DEFAULT_RACKET_URL,
+  SHOP_PARTNERS,
   SHOP_RACKETS,
+  resolvePartnerAsset,
   resolveRacketAsset,
   type RacketTransform,
 } from "../lib/loadout";
@@ -32,12 +35,26 @@ type DegVec3 = [number, number, number];
 type BoneRotationMap = Record<string, DegVec3 | undefined>;
 type RacketLoadPromise = Promise<THREE.Group>;
 
+export const DEFAULT_PARTNER_URL = LOADOUT_DEFAULT_PARTNER_URL;
 export const DEFAULT_RACKET_URL = LOADOUT_DEFAULT_RACKET_URL;
+
+// Zuordnung Shop-ID -> 3D-Partnerdatei direkt aus loadout.ts (Single Source of Truth)
+export const PARTNER_MODEL_MAP: Record<string, string> = Object.fromEntries(
+  SHOP_PARTNERS.map((p) => [p.id, p.modelUrl])
+);
 
 // Zuordnung Shop-ID -> 3D-Schlägerdatei direkt aus loadout.ts (Single Source of Truth)
 export const RACKET_MODEL_MAP: Record<string, string> = Object.fromEntries(
   SHOP_RACKETS.map((r) => [r.id, r.modelUrl])
 );
+
+export function resolvePartnerModelUrl(
+  partnerId?: string | null,
+  customUrl?: string
+): string {
+  if (customUrl) return customUrl;
+  return resolvePartnerAsset(partnerId).url;
+}
 
 export function resolveRacketModelUrl(
   racketId?: string | null,
@@ -45,6 +62,18 @@ export function resolveRacketModelUrl(
 ): string {
   if (customUrl) return customUrl;
   return resolveRacketAsset(racketId).url;
+}
+
+/** Wärmt den useGLTF-Cache für einen Partner vor (sofortiger Wechsel im Shop/Profil) */
+export function preloadAnimatedPartner(partnerId?: string | null): void {
+  const { url } = resolvePartnerAsset(partnerId);
+  useGLTF.preload(url, false, false);
+}
+
+export function preloadAllAnimatedPartners(): void {
+  SHOP_PARTNERS.forEach((p) => {
+    useGLTF.preload(p.modelUrl, false, false);
+  });
 }
 
 // Hilfsfunktion zur direkten Zuordnung von GameLogic-Schlagnamen auf Animationen
@@ -963,6 +992,7 @@ function getRestCharQuaternion(
 }
 
 export interface AnimatedPadelPlayerProps {
+  partnerId?: string | null;
   modelUrl?: string;
   racketId?: string | null;
   racketUrl?: string;
@@ -976,8 +1006,11 @@ export interface AnimatedPadelPlayerProps {
   onActionFinished?: () => void;
 }
 
+const WALK_FALLBACK_TIME_SCALE = 0.6;
+
 export default function AnimatedPadelPlayer({
-  modelUrl = "/meshy_player.glb",
+  partnerId = "partner_rookie",
+  modelUrl,
   racketId = "racket_starter",
   racketUrl,
   action = "idle",
@@ -989,7 +1022,23 @@ export default function AnimatedPadelPlayer({
   showRacket = true,
   onActionFinished,
 }: AnimatedPadelPlayerProps) {
-  const { scene, animations } = useGLTF(modelUrl, false, false);
+  const resolvedPartnerAsset = useMemo(() => {
+    if (modelUrl) {
+      return {
+        url: modelUrl,
+        hasWalkingClip: true,
+        racketOffset: undefined as RacketTransform | undefined,
+      };
+    }
+    const asset = resolvePartnerAsset(partnerId);
+    return {
+      url: asset.url,
+      hasWalkingClip: asset.hasWalkingClip,
+      racketOffset: asset.racketOffset,
+    };
+  }, [partnerId, modelUrl]);
+
+  const { scene, animations } = useGLTF(resolvedPartnerAsset.url, false, false);
   const clonedScene = useMemo(() => cloneSkinned(scene), [scene]);
 
   const bonesMapRef = useRef(new Map<string, THREE.Bone>());
@@ -1002,6 +1051,7 @@ export default function AnimatedPadelPlayer({
   const racketMountRef = useRef<THREE.Group | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const walkActionRef = useRef<THREE.AnimationAction | null>(null);
+  const walkClipTimeScaleRef = useRef<number>(1);
 
   const shotElapsedRef = useRef<number>(0);
   const shotDoneRef = useRef<boolean>(false);
@@ -1082,17 +1132,45 @@ export default function AnimatedPadelPlayer({
 
     const mixer = new THREE.AnimationMixer(clonedScene);
     mixerRef.current = mixer;
+
+    // Walking-Clip bevorzugen; bei Partnern ohne Walking-Clip auf gedrosseltes Running ausweichen
+    const exactWalkClip = animations.find((clip) => clip.name === "Walking") || null;
     const walkClip =
-      animations.find((clip) => clip.name === "Walking") || animations[0] || null;
+      exactWalkClip ||
+      animations.find((clip) => clip.name === "Running") ||
+      animations[0] ||
+      null;
     walkActionRef.current = walkClip ? mixer.clipAction(walkClip) : null;
+    walkClipTimeScaleRef.current =
+      exactWalkClip && resolvedPartnerAsset.hasWalkingClip
+        ? 1
+        : WALK_FALLBACK_TIME_SCALE;
 
     const rightHandBone = bonesMap.get("RightHand");
     let mount: THREE.Group | null = null;
     if (rightHandBone) {
+      const partnerOffset = resolvedPartnerAsset.racketOffset;
+      const pPos = partnerOffset?.position;
+      const pRot = partnerOffset?.rotation;
+      const pScale = partnerOffset?.scale;
+
       mount = new THREE.Group();
       mount.name = "PadelRacketMount";
-      mount.position.set(0.0, 0.078, 0.026);
-      mount.rotation.set(0, 0, THREE.MathUtils.degToRad(-56));
+      mount.position.set(
+        0.0 + (pPos ? pPos[0] : 0),
+        0.078 + (pPos ? pPos[1] : 0),
+        0.026 + (pPos ? pPos[2] : 0)
+      );
+      mount.rotation.set(
+        pRot ? pRot[0] : 0,
+        pRot ? pRot[1] : 0,
+        THREE.MathUtils.degToRad(-56) + (pRot ? pRot[2] : 0)
+      );
+      if (typeof pScale === "number") {
+        mount.scale.setScalar(pScale);
+      } else if (pScale) {
+        mount.scale.set(pScale[0], pScale[1], pScale[2]);
+      }
       mount.visible = showRacket;
       rightHandBone.add(mount);
       racketMountRef.current = mount;
@@ -1110,7 +1188,7 @@ export default function AnimatedPadelPlayer({
       }
       racketMountRef.current = null;
     };
-  }, [clonedScene, animations]);
+  }, [clonedScene, animations, resolvedPartnerAsset.hasWalkingClip, resolvedPartnerAsset.racketOffset]);
 
   // 2. Echten 3D-Schläger (.glb) asynchron & gecacht in den Griff-Mount laden
   useEffect(() => {
@@ -1186,7 +1264,7 @@ export default function AnimatedPadelPlayer({
     }
   }, [showRacket]);
 
-  // 3. Eingebetteten "Walking"-Clip steuern oder für prozedurale Schläge stoppen
+  // 3. Eingebetteten "Walking"-Clip (bzw. Running-Fallback) steuern oder für prozedurale Schläge stoppen
   useEffect(() => {
     shotElapsedRef.current = 0;
     shotDoneRef.current = false;
@@ -1196,12 +1274,13 @@ export default function AnimatedPadelPlayer({
 
     if (action === "walk") {
       walkAction.reset();
+      walkAction.setEffectiveTimeScale(walkClipTimeScaleRef.current);
       walkAction.setLoop(THREE.LoopRepeat, Infinity);
       walkAction.play();
     } else {
       walkAction.stop();
     }
-  }, [action, triggerKey]);
+  }, [action, triggerKey, clonedScene]);
 
   // 4. Render-Loop: Walking-Mixer (mit Schläger-Tragekorrektur) ODER prozedurale Schläge
   useFrame((state, delta) => {
