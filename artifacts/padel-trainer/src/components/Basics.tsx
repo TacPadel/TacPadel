@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation, AppLanguage, TranslationKey } from "../lib/i18n";
+import ShotBasicsLab3D, { ShotGuideId } from "./ShotBasicsLab3D";
 
 interface BasicsViewProps {
   setActiveTab?: (tab: "home" | "trainer" | "board" | "basics") => void;
@@ -15,6 +16,8 @@ type CategoryKey =
   | "tour"
   | "stamina"
   | "ai";
+
+type BasicsMode = "lexicon" | "lab3d";
 
 const CATEGORY_LABEL_KEYS: Record<CategoryKey, TranslationKey> = {
   shots: "basics_cat_shots",
@@ -38,6 +41,22 @@ const CATEGORY_STYLE_BY_KEY: Record<CategoryKey, { badge: string; stripe: string
   ai: { badge: "bg-cyan-500/10 border-cyan-500/30 text-cyan-400", stripe: "bg-cyan-500" },
 };
 
+// Ordnet einen Lexikon-Titel (DE/EN/ES) dem passenden Schlag im 3D-Labor zu
+function mapDictionaryShotTo3D(title: string): ShotGuideId {
+  const s = title.toLowerCase();
+  if (s.includes("aufschlag") || s.includes("serve") || s.includes("saque")) return "serve";
+  if (s.includes("lob") || s.includes("globo")) return "lob";
+  if (s.includes("volley") || s.includes("volea")) return "volley";
+  if (s.includes("bandeja")) return "bandeja";
+  if (s.includes("víbora") || s.includes("vibora")) return "vibora";
+  if (s.includes("smash") || s.includes("remate")) return "smash";
+  if (s.includes("bajada")) return "bajada";
+  if (s.includes("chiquita")) return "chiquita";
+  if (s.includes("block") || s.includes("bloqueo")) return "block";
+  if (s.includes("rückhand") || s.includes("backhand") || s.includes("revés")) return "backhand";
+  return "forehand";
+}
+
 // Mehrsprachiges Padel-Lexikon (DE / EN / ES)
 export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Record<string, string>>> = {
   de: {
@@ -49,7 +68,7 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
       "Bandeja": "Ein defensiver/kontrollierter Überkopfschlag, der meistens im Mittelfeld angewendet wird. Getroffen wird der Ball seitlich auf Kopfhöhe mit Slice, um den Ball flach zu halten und die Netzposition zu verteidigen.",
       "Víbora": "Ein aggressiverer Überkopfschlag mit viel Seitwärtsdrall (Schnitt). Der Ball prallt unberechenbar und extrem flach von den gegnerischen Wänden ab.",
       "Smash (Por Tres / Por Cuatro)": "Ein klassischer Überkopf-Power-Schlag. Wird genutzt, um den Ball so hart zu treffen, dass er nach der gegnerischen Wand über die 3-Meter (Por Tres) oder 4-Meter (Por Cuatro) Außenwand springt oder hoch ins eigene Feld zurückkehrt.",
-      "Bajada de Pared": "Ein Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der eigenen Rückwand abgesprungen ist. Man „schlägt den Ball von der Wand nach unten“, oft sehr kraftvoll und offensiv.",
+      "Bajada de Pared": "Ein Überkopfschlag aus dem Hinterfeld, nachdem der Ball hoch von der eigenen Rückwand abgesprungen ist. Man schlägt den Ball von der Wand nach unten, oft sehr kraftvoll und offensiv.",
       "Chiquita": "Ein kurzer, weicher Ball aus der Defensive genau vor die Füße der am Netz stehenden Gegner. Zwingt den Gegner zu einem unangenehmen Volley von weit unten und öffnet Chancen zum Konter.",
       "Block": "Ein rein passiver Schlag am Netz. Man hält den Schläger wie eine Wand hin, um extrem harte, gerade Passierbälle des Gegners abzufangen und kurz hinter dem Netz abtropfen zu lassen.",
       "Drive": "Ein flacher Grundschlag, der sowohl mit der Vorhand als auch mit der Rückhand gespielt wird. Er dient dazu, den Ballwechsel zu eröffnen oder den Gegner von der Grundlinie aus unter Druck zu setzen.",
@@ -57,23 +76,23 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
     positions: {
       "Vorhand-Seite (Rechts)": "Der Spieler auf der rechten Seite (bei Rechtshändern). Traditionell der strategischere, aufbauende Spieler, der den Rhythmus bestimmt und den Ball sicher im Spiel hält, um dem Partner Chancen vorzubereiten.",
       "Rückhand-Seite (Links)": "Der Spieler auf der linken Seite. Hat den Ball bei hohen Bällen in der Mitte oft auf der starken Vorhand (für Smashes). Traditionell der offensivere Spieler, der viele Punkte abschließt.",
-      "Netzposition (Angriff)": "Die dominierende Position im Padel. Beide Spieler stehen ca. 2–3 Meter vor dem Netz. Von hier aus wird der Druck per Volley und Überkopfschlägen aufgebaut. Punkte werden fast nur hier gewonnen.",
+      "Netzposition (Angriff)": "Die dominierende Position im Padel. Beide Spieler stehen ca. 2-3 Meter vor dem Netz. Von hier aus wird der Druck per Volley und Überkopfschlägen aufgebaut. Punkte werden fast nur hier gewonnen.",
       "Grundlinie (Verteidigung)": "Die Ausgangsposition bei gegnerischem Aufschlag oder Druck. Spieler stehen leicht hinter der Aufschlaglinie. Fokus liegt auf dem Nutzen der Glaswände und dem Spielen von Lobs.",
       "Australische Aufstellung": "Eine Taktik beim Aufschlag: Die Spieler wechseln nach dem Aufschlag nicht die Seiten (links/rechts), sondern bleiben immer auf ihrer Spezial-Seite. Der Netzspieler duckt sich oft, damit der Partner diagonal über ihn aufschlagen kann.",
       "Übergangszone (Niemandsland)": "Der Bereich zwischen Aufschlaglinie und Netz. Hier sollte man sich niemals freiwillig aufhalten, da man leicht vor die Füße angespielt werden kann. Diese Zone wird nur schnell durchschritten.",
     },
     rules: {
-      "Zählweise & Tie-Break": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird oft mit der „Golden Point“-Regel (nächster Punkt entscheidet) gespielt. Ein normaler Satz geht bis 6. Bei 6:6 gibt es einen Tie-Break bis 7 Punkte.",
+      "Zählweise & Tie-Break": "Exakt wie im Tennis: 15, 30, 40, Spiel. Bei Einstand (40:40) wird oft mit der Golden-Point-Regel (nächster Punkt entscheidet) gespielt. Ein normaler Satz geht bis 6. Bei 6:6 gibt es einen Tie-Break bis 7 Punkte.",
       "Match-Tiebreak": "Wird oft anstelle eines dritten Satzes gespielt (oder wie hier in der App als komplettes Match). Wer zuerst 10 Punkte erreicht (mit 2 Punkten Vorsprung), gewinnt das Match.",
       "Aufschlag-Regeln": "Der Ball muss hinter der Aufschlaglinie auf den Boden geprellt und unterhalb der Hüfte getroffen werden. Mindestens ein Fuß muss den Boden berühren und kein Fuß darf die Aufschlaglinie übertreten.",
-      "Let (Netzaufschlag)": "Berührt der Ball beim Aufschlag die Netzkante und landet danach korrekt im diagonalen Aufschlagfeld, wird der Aufschlag wiederholt („Let“). Berührt er danach das Gitter, ist es ein Fehler.",
+      "Let (Netzaufschlag)": "Berührt der Ball beim Aufschlag die Netzkante und landet danach korrekt im diagonalen Aufschlagfeld, wird der Aufschlag wiederholt (Let). Berührt er danach das Gitter, ist es ein Fehler.",
       "Wand & Gitter": "Der Ball muss immer zuerst auf dem Boden aufkommen, bevor er die Glaswand oder das Metallgitter berührt. Berührt er die Wand/das Gitter direkt fliegend, ist er sofort im Aus.",
       "Eigenes Glas nutzen": "In der Defensive darf man den Ball mit voller Kraft gegen die eigene Glasscheibe schlagen, damit er über das Netz ins gegnerische Feld fliegt. Das Nutzen des eigenen Metallgitters ist hingegen streng verboten.",
       "Netzberührung": "Weder der Spieler noch sein Schläger dürfen das Netz, die Netzpfosten oder das gegnerische Spielfeld berühren, solange der Ball im Spiel ist. Passiert dies, gehört der Punkt sofort den Gegnern.",
       "Übergreifen (Invasion)": "Den Ball auf der gegnerischen Seite des Netzes zu treffen, ist verboten. Ausnahme: Der Ball ist im eigenen Feld aufgesprungen, an die eigene Wand geprallt und fliegt von selbst wieder zurück übers Netz. Dann darf man übergreifen.",
     },
     tactics: {
-      "La Nevera (Der Kühlschrank)": "Eine Taktik, bei der man den stärkeren der beiden gegnerischen Spieler komplett aus dem Spiel nimmt, indem man fast jeden Ball gezielt auf den schwächeren Partner spielt. Der starke Spieler „kühlt ab“.",
+      "La Nevera (Der Kühlschrank)": "Eine Taktik, bei der man den stärkeren der beiden gegnerischen Spieler komplett aus dem Spiel nimmt, indem man fast jeden Ball gezielt auf den schwächeren Partner spielt. Der starke Spieler kühlt ab.",
       "Split Step": "Ein kleiner Sprung, den man exakt in dem Moment ausführt, wenn der Gegner den Ball trifft. So ist man reaktionsbereit und kann explosiv in jede Richtung starten.",
       "Glaswand lesen": "Die Fähigkeit, den Winkel und die Geschwindigkeit des anfliegenden Balls richtig einzuschätzen, um zu wissen, wie er von der Rückwand oder Seitenwand abprallen wird.",
       "Pacing (Zeitspiel)": "Die Geschwindigkeit des Ballwechsels zu kontrollieren. Aggressive KIs hassen langsame, hohe Lobs, während defensive Teams oft Probleme mit extrem schnellen Volley-Duellen haben.",
@@ -81,7 +100,7 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
     tacscore: {
       "TacScore (Skill-Level)": "Dein MMR (Matchmaking Rating). Er steigt bei Siegen und sinkt bei Niederlagen. Dein TacScore bestimmt die Stärke der KI im freien Spiel und schaltet höhere Turniere frei.",
       "TacPoints (Währung)": "Die In-Game Währung. Du verdienst TacPoints durch Siege (besonders in Turnieren) und benötigst sie als Startgeld (Buy-In) für Pro Tour Events sowie für Ausrüstung im Spind.",
-      "Profi-Liga Modus": "Erreichst du einen TacScore von 4000, wechselt das Spiel in den Profi-Modus. Die hilfreichen Taktik-Linien auf dem Boden verschwinden – du musst Laufwege und Schläge nun komplett frei einschätzen.",
+      "Profi-Liga Modus": "Erreichst du einen TacScore von 4000, wechselt das Spiel in den Profi-Modus. Die hilfreichen Taktik-Linien auf dem Boden verschwinden - du musst Laufwege und Schläge nun komplett frei einschätzen.",
     },
     tour: {
       "Open Events": "Die Einstiegsklasse der Pro Tour. Kosten wenig bis gar kein Startgeld und erfordern einen niedrigen TacScore. Perfekt, um erste Erfahrungen im K.o.-System zu sammeln und das Konto aufzufüllen.",
@@ -113,7 +132,7 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
       "Bandeja": "A controlled, defensive overhead shot played mid-court. Hit at head height with slice so the ball stays low after rebounding off the back glass, allowing you to keep the net position.",
       "Víbora": "An aggressive overhead shot with heavy side-spin. The ball rebounds fast, low and unpredictably off the opponent's corner walls.",
       "Smash (Por Tres / Por Cuatro)": "The classic power overhead. Used to hit the ball so hard that it bounces out over the 3-meter side wall (Por Tres), clears the 4-meter back wall (Por Cuatro), or flies back to your own side.",
-      "Bajada de Pared": "An offensive overhead counter-attack from the back of the court after a high rebound off your own back glass. You 'bring the ball down' with pace to attack opponents at the net.",
+      "Bajada de Pared": "An offensive overhead counter-attack from the back of the court after a high rebound off your own back glass. You bring the ball down with pace to attack opponents at the net.",
       "Chiquita": "A soft, slow shot played from the back court right at the feet of opponents standing at the net, forcing them to hit a difficult volley upwards.",
       "Block": "A compact, defensive reflex shot at the net. You hold the racket firm like a wall to absorb powerful body shots and drop the ball short over the net.",
       "Drive (Groundstroke)": "A flat or slightly topspin groundstroke hit with forehand or backhand after the bounce to build the rally from the baseline.",
@@ -121,23 +140,23 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
     positions: {
       "Forehand Side (Right / Drive)": "The right side of the court. For right-handed players, the forehand faces the center. Traditionally the playmaker who builds the point and sets up opportunities for the partner.",
       "Backhand Side (Left / Revés)": "The left side of the court. For right-handers, the strong forehand and overhead smash cover the center. Traditionally the more aggressive finisher.",
-      "Net Position (Attack)": "The dominant position in Padel. Both partners stand 2–3 meters from the net, applying pressure with volleys and overheads. Almost 80% of points are won from the net.",
+      "Net Position (Attack)": "The dominant position in Padel. Both partners stand 2-3 meters from the net, applying pressure with volleys and overheads. Almost 80% of points are won from the net.",
       "Baseline (Defense)": "The starting position when defending behind the service line. Focus lies on using the glass walls, absorbing pressure and playing deep lobs to regain the net.",
       "Australian Formation": "A serving tactic where partners stay on their preferred side instead of switching. The net player crouches near the center line while the server hits diagonally.",
       "Transition Zone (No Man's Land)": "The area between the service line and the net. Never stop here during a rally, as opponents will easily target your feet. Move through it quickly.",
     },
     rules: {
-      "Scoring & Tiebreak": "Identical to tennis: 15, 30, 40, Game. At Deuce (40:40), many tournaments use the 'Golden Point' rule (next point wins). At 6:6 games, a tiebreak is played to 7 points.",
+      "Scoring & Tiebreak": "Identical to tennis: 15, 30, 40, Game. At Deuce (40:40), many tournaments use the Golden Point rule (next point wins). At 6:6 games, a tiebreak is played to 7 points.",
       "Match Tiebreak": "Often played instead of a third set (or as a full match in TacPadel). The first team to reach 10 points with a 2-point lead wins.",
       "Service Rules": "The ball must bounce behind the service line and be struck below waist height. At least one foot must touch the ground, without touching or crossing the service line.",
-      "Let Serve": "If a serve clips the top of the net and lands cleanly inside the diagonal service box (without hitting the wire mesh before the second bounce), it is replayed ('Let').",
+      "Let Serve": "If a serve clips the top of the net and lands cleanly inside the diagonal service box (without hitting the wire mesh before the second bounce), it is replayed (Let).",
       "Walls & Wire Mesh": "A ball must always bounce on the turf first before hitting the opponent's glass wall or wire mesh. Hitting a wall or fence directly on the fly is Out.",
       "Using Your Own Glass": "In desperate defense, you may hit the ball against your own glass wall so it rebounds over the net. Hitting your own wire mesh, however, is a fault.",
       "Net Touch": "Neither a player nor their racket may touch the net, net posts, or the opponent's court while the ball is in play.",
       "Reaching Over the Net": "You may only reach over the net to hit a ball after it has already bounced on your side (e.g., rebounding back over the net after a spin smash).",
     },
     tactics: {
-      "La Nevera (The Fridge)": "A classic padel tactic where you direct almost every ball to the weaker opponent, leaving the stronger player 'in the fridge' out of rhythm.",
+      "La Nevera (The Fridge)": "A classic padel tactic where you direct almost every ball to the weaker opponent, leaving the stronger player in the fridge out of rhythm.",
       "Split Step": "A small hop performed right as the opponent strikes the ball, loading your legs so you can push off explosively in any direction.",
       "Reading the Glass": "Judging the speed, spin and angle of an incoming shot to anticipate exactly where the ball will rebound off the back or side glass.",
       "Pacing (Tempo Control)": "Controlling the speed of the rally. Aggressive AI teams hate slow, high lobs, while defensive teams struggle against fast, angled volley combinations.",
@@ -155,9 +174,9 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
       "Tournament Persistence": "Your bracket progress and remaining player stamina carry over from round to round. If you lose without using a Second Chance, you are eliminated.",
     },
     stamina: {
-      "Stamina": "Every sprint and shot drains stamina from you and your partner. If stamina hits 0, shot quality drops und balls can fall short into the net.",
+      "Stamina": "Every sprint and shot drains stamina from you and your partner. If stamina hits 0, shot quality drops and balls can fall short into the net.",
       "Tactical Stamina Recovery": "You recover stamina mid-rally by choosing smart tactical positions (e.g. moving to the net after a deep lob or holding net position on volleys).",
-      "Court Grid & Footwork": "The court is divided into a 5x5 grid (A–E, 1–5). You must move into the ball's intercept zone before the timer runs out.",
+      "Court Grid & Footwork": "The court is divided into a 5x5 grid (A-E, 1-5). You must move into the ball's intercept zone before the timer runs out.",
       "Who Takes the Ball?": "Coordinate with your partner: one player intercepts the ball while the other covers the open court. The AI ruthlessly punishes gaps.",
     },
     ai: {
@@ -185,23 +204,23 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
     positions: {
       "Lado de Drive (Derecha)": "El jugador de la derecha. En diestros tiene la derecha hacia el centro. Tradicionalmente es el jugador más táctico y sólido que construye el punto.",
       "Lado de Revés (Izquierda)": "El jugador de la izquierda. En diestros cubre el centro con su derecha y el remate aéreo. Suele ser el jugador más ofensivo y definidor.",
-      "Posición de Red (Ataque)": "La zona dominante en el pádel. Ambos jugadores se sitúan a 2–3 metros de la red para presionar con voleas y juego aéreo.",
+      "Posición de Red (Ataque)": "La zona dominante en el pádel. Ambos jugadores se sitúan a 2-3 metros de la red para presionar con voleas y juego aéreo.",
       "Fondo de Pista (Defensa)": "Posición inicial detrás de la línea de saque cuando el rival domina. El objetivo es defender con los cristales y tirar globos para recuperar la red.",
       "Formación Australiana": "Táctica de saque en la que la pareja mantiene siempre su lado especialista sin cambiarse. El compañero en la red se agacha junto a la línea central.",
       "Zona de Transición (Tierra de Nadie)": "El espacio entre la línea de saque y la red. Nunca debes quedarte parado aquí, ya que te jugarán bolas a los pies con facilidad.",
     },
     rules: {
-      "Puntuación y Tie-Break": "Igual que en el tenis: 15, 30, 40 y Juego. En iguales (40:40) suele aplicarse el 'Punto de Oro'. Con 6:6 se juega un tie-break a 7 puntos.",
+      "Puntuación y Tie-Break": "Igual que en el tenis: 15, 30, 40 y Juego. En iguales (40:40) suele aplicarse el Punto de Oro. Con 6:6 se juega un tie-break a 7 puntos.",
       "Super Tie-Break": "Se juega a 10 puntos con diferencia de 2. En TacPadel los partidos individuales y rondas de torneo se disputan en formato Tie-Break dinámico.",
       "Reglas de Saque": "La bola debe botar detrás de la línea y golpearse por debajo de la cintura con al menos un pie en contacto con el suelo.",
-      "Let (Saque que toca la red)": "Si el saque toca la cinta de la red y cae correctamente en el cuadro rival sin tocar la malla antes del segundo bote, se repite ('Let').",
+      "Let (Saque que toca la red)": "Si el saque toca la cinta de la red y cae correctamente en el cuadro rival sin tocar la malla antes del segundo bote, se repite (Let).",
       "Cristal y Malla Metálica": "La bola siempre debe botar primero en el suelo del campo rival antes de tocar el cristal o la malla. Si toca pared o malla directamente, es fuera.",
       "Uso de tu Propio Cristal": "En defensa puedes golpear la bola contra tu propio cristal para que pase al campo rival. Tocar tu propia malla metálica, en cambio, es pérdida del punto.",
       "Toque de Red": "Ni el jugador ni su pala pueden tocar la red, los postes ni el campo rival mientras la bola está en juego.",
       "Invasión (Pasar la pala)": "Solo se permite golpear la bola al otro lado de la red si ya ha botado primero en tu campo y vuelve hacia el campo rival por efecto.",
     },
     tactics: {
-      "La Nevera": "Táctica clásica que consiste en enviar casi todas las bolas al rival más flojo para dejar 'en la nevera' (frío y sin ritmo) al jugador más peligroso.",
+      "La Nevera": "Táctica clásica que consiste en enviar casi todas las bolas al rival más flojo para dejar en la nevera (frío y sin ritmo) al jugador más peligroso.",
       "Split Step (Paso de Activación)": "Pequeño salto justo cuando el rival impacta la bola para activar las piernas y arrancar rápido en cualquier dirección.",
       "Lectura de Pared": "Capacidad de calcular la velocidad y el ángulo de entrada de la bola para anticipar su salida tras rebotar en el cristal.",
       "Control del Ritmo (Tempo)": "Alternar velocidades de bola. Las parejas IA agresivas sufren ante globos lentos y profundos, mientras que las defensivas sufren ante voleas rápidas.",
@@ -221,7 +240,7 @@ export const PADEL_DICTIONARY_I18N: Record<AppLanguage, Record<CategoryKey, Reco
     stamina: {
       "Energía (Stamina)": "Cada carrera y golpe potente consume energía. Si llega a 0, tus golpes pierden fuerza y aumenta el riesgo de fallar en la red.",
       "Recuperación Táctica": "Recuperas energía durante el punto si eliges desplazamientos tácticamente óptimos tras golpear.",
-      "Zonas y Desplazamientos": "La pista se divide en una cuadrícula 5x5 (A–E, 1–5). Debes llegar a tiempo a la zona de impacto antes de que acabe el temporizador.",
+      "Zonas y Desplazamientos": "La pista se divide en una cuadrícula 5x5 (A-E, 1-5). Debes llegar a tiempo a la zona de impacto antes de que acabe el temporizador.",
       "¿Quién toma la bola?": "Coordínate con tu compañero: mientras uno va a la bola, el otro cubre el hueco libre en bloque.",
     },
     ai: {
@@ -406,12 +425,36 @@ const CATEGORY_KEYS: CategoryKey[] = [
 export default function BasicsView({ setActiveTab }: BasicsViewProps) {
   const { lang, t } = useTranslation();
 
+  const ui = (de: string, en: string, es: string) =>
+    lang === "en" ? en : lang === "es" ? es : de;
+
+  const [basicsMode, setBasicsMode] = useState<BasicsMode>("lexicon");
+  const [labInitialShot, setLabInitialShot] = useState<ShotGuideId>("forehand");
+  const [labOpenSeq, setLabOpenSeq] = useState<number>(0);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"all" | CategoryKey>("all");
   const [showLegal, setShowLegal] = useState<boolean>(false);
 
+  const lowPerfMode = useMemo(() => {
+    try {
+      return localStorage.getItem("tacpadel_low_perf") === "true";
+    } catch {
+      return false;
+    }
+  }, []);
+
   const activeDict = PADEL_DICTIONARY_I18N[lang] || PADEL_DICTIONARY_I18N.de;
   const legal = LEGAL_TEXTS[lang] || LEGAL_TEXTS.de;
+
+  const openShotIn3DLab = (shotId: ShotGuideId) => {
+    setLabInitialShot(shotId);
+    setLabOpenSeq((k) => k + 1);
+    setBasicsMode("lab3d");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   // Objekt flach machen für die Suche und Darstellung
   const flattenedItems: LexikonItem[] = useMemo(() => {
@@ -587,7 +630,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
         </motion.div>
       ) : (
         // ========================================================
-        // ANSICHT: NORMALES LEXIKON
+        // ANSICHT: BASICS (LEXIKON & 3D SCHLAG-LABOR)
         // ========================================================
         <motion.div
           key="lexikon-view"
@@ -595,7 +638,7 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 20 }}
           transition={{ duration: 0.2 }}
-          className="w-full flex flex-col gap-6 text-slate-200 font-sans pb-24"
+          className="w-full flex flex-col gap-5 text-slate-200 font-sans pb-24"
         >
           {/* 1. HERO SECTION */}
           <div className="w-full bg-[#040914]/90 border border-emerald-900/50 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
@@ -615,89 +658,165 @@ export default function BasicsView({ setActiveTab }: BasicsViewProps) {
                 <p className="text-xs text-slate-400 mt-1 font-semibold">{t("basics_desc")}</p>
               </div>
 
-              {/* Suchleiste */}
-              <div className="w-full md:w-72 bg-[#030611] border border-slate-800 p-3 rounded-xl shadow-inner flex items-center gap-3 transition-colors focus-within:border-emerald-500/50">
-                <span className="text-slate-500 pl-1 text-sm">🔍</span>
-                <input
-                  type="text"
-                  placeholder={t("basics_search_placeholder")}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-transparent border-none outline-none text-xs text-white placeholder-slate-600 w-full pr-2 font-medium"
-                />
-              </div>
+              {/* Suchleiste (nur im Lexikon aktiv) */}
+              {basicsMode === "lexicon" && (
+                <div className="w-full md:w-72 bg-[#030611] border border-slate-800 p-3 rounded-xl shadow-inner flex items-center gap-3 transition-colors focus-within:border-emerald-500/50">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 pl-1">
+                    {ui("Suche", "Search", "Buscar")}
+                  </span>
+                  <input
+                    type="text"
+                    placeholder={t("basics_search_placeholder")}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="bg-transparent border-none outline-none text-xs text-white placeholder-slate-600 w-full pr-2 font-medium"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modus-Umschalter: Lexikon vs. 3D Schlag-Labor */}
+            <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-2 relative z-10">
+              <button
+                onClick={() => setBasicsMode("lexicon")}
+                className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border transition-all ${
+                  basicsMode === "lexicon"
+                    ? "bg-emerald-600/25 border-emerald-400 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.25)]"
+                    : "bg-[#030611] border-slate-800 text-slate-400 hover:text-white"
+                }`}
+              >
+                {ui("Lexikon & Regeln", "Glossary & Rules", "Glosario y Reglas")}
+              </button>
+
+              <button
+                onClick={() => setBasicsMode("lab3d")}
+                className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border transition-all ${
+                  basicsMode === "lab3d"
+                    ? "bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-[0_0_16px_rgba(6,182,212,0.35)]"
+                    : "bg-[#030611] border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 hover:text-white"
+                }`}
+              >
+                {ui("3D Schlag-Labor", "3D Shot Lab", "Laboratorio 3D de Golpes")}
+              </button>
             </div>
           </div>
 
-          {/* 2. KATEGORIE-FILTER */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
-            <button
-              onClick={() => setSelectedCategory("all")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap ${
-                selectedCategory === "all"
-                  ? "bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
-                  : "bg-[#050b18]/80 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white"
-              }`}
-            >
-              {t("basics_cat_all")}
-            </button>
+          {basicsMode === "lab3d" ? (
+            // ========================================================
+            // UNTERANSICHT: INTERAKTIVES 3D SCHLAG-LABOR
+            // ========================================================
+            <ShotBasicsLab3D
+              initialShotId={labInitialShot}
+              playRequestKey={labOpenSeq}
+              lowPerfMode={lowPerfMode}
+            />
+          ) : (
+            // ========================================================
+            // UNTERANSICHT: LEXIKON-FILTER & KARTEN
+            // ========================================================
+            <>
+              {/* 2. KATEGORIE-FILTER */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                <button
+                  onClick={() => setSelectedCategory("all")}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap ${
+                    selectedCategory === "all"
+                      ? "bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                      : "bg-[#050b18]/80 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white"
+                  }`}
+                >
+                  {t("basics_cat_all")}
+                </button>
 
-            {CATEGORY_KEYS.map((catKey) => (
-              <button
-                key={catKey}
-                onClick={() => setSelectedCategory(catKey)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap ${
-                  selectedCategory === catKey
-                    ? "bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
-                    : "bg-[#050b18]/80 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                {t(CATEGORY_LABEL_KEYS[catKey])}
-              </button>
-            ))}
-          </div>
-
-          {/* 3. LEXIKON GRID (Karten) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredItems.map((item) => (
-              <motion.div
-                key={item.id}
-                whileHover={{ scale: 1.01 }}
-                className="bg-[#050b18]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-start gap-4 relative overflow-hidden group hover:border-slate-600 transition-all"
-              >
-                {/* Dynamischer, leuchtender Rand-Effekt (links) passend zur Kategorie */}
-                <div
-                  className={`absolute top-0 left-0 w-1 h-full opacity-60 group-hover:opacity-100 transition-opacity ${item.stripeColor}`}
-                />
-
-                <div className="flex justify-between items-start gap-2">
-                  <h3 className="text-base font-black text-white uppercase tracking-wider leading-tight">
-                    {item.title}
-                  </h3>
-                  <span
-                    className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border whitespace-nowrap ${item.badgeColor}`}
+                {CATEGORY_KEYS.map((catKey) => (
+                  <button
+                    key={catKey}
+                    onClick={() => setSelectedCategory(catKey)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap ${
+                      selectedCategory === catKey
+                        ? "bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                        : "bg-[#050b18]/80 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white"
+                    }`}
                   >
-                    {item.categoryLabel}
-                  </span>
-                </div>
-
-                <div className="bg-[#030611]/60 border border-slate-800/80 p-4 rounded-xl flex-1 mt-auto shadow-inner">
-                  <p className="text-[13px] text-slate-300 leading-relaxed font-medium">
-                    {item.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-
-            {filteredItems.length === 0 && (
-              <div className="col-span-full py-16 text-center flex flex-col items-center justify-center gap-2">
-                <span className="text-3xl">🔎</span>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  {t("basics_no_results")}
-                </p>
+                    {t(CATEGORY_LABEL_KEYS[catKey])}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
+
+              {/* Hinweis-Banner bei aktivem Schlaege-Filter */}
+              {selectedCategory === "shots" && (
+                <div className="bg-cyan-950/30 border border-cyan-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 block">
+                      {ui("3D-BEWEGUNGSANALYSE", "3D MOTION VIEW", "ANALISIS EN 3D")}
+                    </span>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      {ui(
+                        "Sieh dir jeden Schlag frei drehbar und in Zeitlupe im 3D Schlag-Labor an.",
+                        "Inspect every shot in 360-degree 3D and slow motion inside the 3D Shot Lab.",
+                        "Observa cada golpe en 3D con rotacion libre y camara lenta en el Laboratorio 3D."
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => openShotIn3DLab("forehand")}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[10px] font-black uppercase tracking-widest shrink-0 transition-all"
+                  >
+                    {ui("3D Labor oeffnen", "Open 3D Lab", "Abrir Laboratorio 3D")}
+                  </button>
+                </div>
+              )}
+
+              {/* 3. LEXIKON GRID (Karten) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredItems.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    whileHover={{ scale: 1.01 }}
+                    className="bg-[#050b18]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-start gap-4 relative overflow-hidden group hover:border-slate-600 transition-all"
+                  >
+                    <div
+                      className={`absolute top-0 left-0 w-1 h-full opacity-60 group-hover:opacity-100 transition-opacity ${item.stripeColor}`}
+                    />
+
+                    <div className="flex justify-between items-start gap-2">
+                      <h3 className="text-base font-black text-white uppercase tracking-wider leading-tight">
+                        {item.title}
+                      </h3>
+                      <span
+                        className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border whitespace-nowrap ${item.badgeColor}`}
+                      >
+                        {item.categoryLabel}
+                      </span>
+                    </div>
+
+                    <div className="bg-[#030611]/60 border border-slate-800/80 p-4 rounded-xl flex-1 mt-auto shadow-inner">
+                      <p className="text-[13px] text-slate-300 leading-relaxed font-medium">
+                        {item.description}
+                      </p>
+                    </div>
+
+                    {item.categoryKey === "shots" && (
+                      <button
+                        onClick={() => openShotIn3DLab(mapDictionaryShotTo3D(item.title))}
+                        className="w-full py-2 px-3 rounded-xl bg-cyan-600/15 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        {ui("In 3D ansehen", "View in 3D", "Ver en 3D")}
+                      </button>
+                    )}
+                  </motion.div>
+                ))}
+
+                {filteredItems.length === 0 && (
+                  <div className="col-span-full py-16 text-center flex flex-col items-center justify-center gap-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                      {t("basics_no_results")}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* 4. RECHTLICHES LINK (Ganz unten) */}
           <div className="mt-8 pt-6 border-t border-slate-800/50 flex justify-center w-full">
