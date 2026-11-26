@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, AdaptiveDpr } from "@react-three/drei";
 import AnimatedPadelPlayer, { PlayerAction } from "./AnimatedPadelPlayer";
@@ -341,6 +342,12 @@ const SHOT_GUIDES: ShotGuideEntry[] = [
   },
 ];
 
+const CATEGORY_DOT: Record<ShotCategory, string> = {
+  basics: "bg-emerald-400",
+  baseline: "bg-cyan-400",
+  net: "bg-orange-400",
+};
+
 interface LabBoundaryProps {
   children: React.ReactNode;
 }
@@ -384,8 +391,17 @@ export default function ShotBasicsLab3D({
   const ui = (de: string, en: string, es: string) =>
     lang === "en" ? en : lang === "es" ? es : de;
 
-  const [selectedId, setSelectedId] = useState<ShotGuideId>(initialShotId);
-  const [activeAnim, setActiveAnim] = useState<PlayerAction>(initialShotId);
+  // Bei Direkt-Sprung aus dem Lexikon (playRequestKey > 0) direkt diesen Schlag aufklappen,
+  // beim normalen Öffnen bleibt zunächst alles kompakt zugeklappt
+  const [selectedId, setSelectedId] = useState<ShotGuideId>(
+    playRequestKey > 0 ? initialShotId : "idle"
+  );
+  const [expandedId, setExpandedId] = useState<ShotGuideId | null>(
+    playRequestKey > 0 ? initialShotId : null
+  );
+  const [activeAnim, setActiveAnim] = useState<PlayerAction>(
+    playRequestKey > 0 ? initialShotId : "idle"
+  );
   const [triggerKey, setTriggerKey] = useState<number>(1);
   const [speed, setSpeed] = useState<0.35 | 1>(1);
   const [loopEnabled, setLoopEnabled] = useState<boolean>(false);
@@ -399,8 +415,11 @@ export default function ShotBasicsLab3D({
       ? localStorage.getItem("tacpadel_racket_id") || "racket_starter"
       : "racket_starter");
 
-  const selectedGuide =
+  const activeGuide =
     SHOT_GUIDES.find((g) => g.id === selectedId) || SHOT_GUIDES[0];
+  const expandedGuide = expandedId
+    ? SHOT_GUIDES.find((g) => g.id === expandedId) || null
+    : null;
 
   const clearLoopTimer = () => {
     if (loopTimerRef.current) {
@@ -419,21 +438,39 @@ export default function ShotBasicsLab3D({
     if (playRequestKey > 0) {
       clearLoopTimer();
       setSelectedId(initialShotId);
+      setExpandedId(initialShotId);
       setActiveAnim(initialShotId);
       setTriggerKey((k) => k + 1);
     }
   }, [initialShotId, playRequestKey]);
 
-  const playShot = (shotId: ShotGuideId) => {
+  const replayShot = (shotId: ShotGuideId) => {
     clearLoopTimer();
     setSelectedId(shotId);
     setActiveAnim(shotId);
     setTriggerKey((k) => k + 1);
   };
 
+  const handleShotButtonClick = (shotId: ShotGuideId) => {
+    if (expandedId === shotId) {
+      // Erneuter Klick auf denselben Schlag schließt die Erklärung
+      clearLoopTimer();
+      setExpandedId(null);
+      setActiveAnim("idle");
+      return;
+    }
+
+    // Neuer Schlag: Erklärung aufklappen und Animation sofort abspielen
+    clearLoopTimer();
+    setSelectedId(shotId);
+    setExpandedId(shotId);
+    setActiveAnim(shotId);
+    setTriggerKey((k) => k + 1);
+  };
+
   const handleActionFinished = () => {
     if (selectedId === "idle") return;
-    if (loopEnabled) {
+    if (loopEnabled && expandedId === selectedId) {
       clearLoopTimer();
       loopTimerRef.current = setTimeout(() => {
         setActiveAnim(selectedId);
@@ -444,48 +481,42 @@ export default function ShotBasicsLab3D({
     }
   };
 
-  const categories: Array<{ id: ShotCategory; title: string }> = [
-    { id: "basics", title: ui("Grundlagen", "Fundamentals", "Fundamentos") },
-    { id: "baseline", title: ui("Grundlinie", "Baseline", "Fondo de pista") },
-    { id: "net", title: ui("Netz & Overhead", "Net & Overhead", "Red y aéreo") },
-  ];
-
   return (
-    <div className="w-full bg-[#050b14] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-4">
-      {/* Kopfzeile */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
-        <div>
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-400 block">
-            {ui("3D SCHLAG-LEXIKON", "3D SHOT ENCYCLOPEDIA", "ENCICLOPEDIA 3D DE GOLPES")}
+    <div className="w-full bg-[#050b14] border border-cyan-500/30 rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col gap-3">
+      {/* Kompakte Kopfzeile */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+            {ui("3D Schlag-Labor", "3D Shot Lab", "Laboratorio 3D")}
           </span>
-          <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-wide">
-            {ui("Alle Padel-Schläge im Detail", "All Padel Shots in Detail", "Todos los golpes de pádel")}
-          </h3>
+          <span className="text-[9px] text-slate-500 font-bold hidden sm:inline">
+            {ui("Schlag wählen für Demo & Erklärung", "Tap a shot for demo & guide", "Elige un golpe para demo y guía")}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setSpeed((s) => (s === 1 ? 0.35 : 1))}
-            className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+            className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
               speed === 0.35
                 ? "bg-amber-500/25 border-amber-400 text-amber-300"
                 : "bg-slate-900 border-slate-700 text-slate-300 hover:text-white"
             }`}
           >
-            {speed === 0.35 ? "Zeitlupe 0.35x" : "Tempo 1x"}
+            {speed === 0.35 ? "0.35x" : "1x"}
           </button>
 
           <button
             onClick={() => {
               const next = !loopEnabled;
               setLoopEnabled(next);
-              if (next && selectedId !== "idle") {
-                playShot(selectedId);
+              if (next && expandedId && expandedId !== "idle") {
+                replayShot(expandedId);
               } else {
                 clearLoopTimer();
               }
             }}
-            className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+            className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
               loopEnabled
                 ? "bg-cyan-500/25 border-cyan-400 text-cyan-300"
                 : "bg-slate-900 border-slate-700 text-slate-300 hover:text-white"
@@ -496,7 +527,7 @@ export default function ShotBasicsLab3D({
 
           <button
             onClick={() => setAutoRotate((v) => !v)}
-            className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+            className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
               autoRotate
                 ? "bg-purple-500/25 border-purple-400 text-purple-300"
                 : "bg-slate-900 border-slate-700 text-slate-300 hover:text-white"
@@ -507,163 +538,217 @@ export default function ShotBasicsLab3D({
         </div>
       </div>
 
-      {/* Hauptbereich: 3D-Bühne links + Erklärung rechts */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-        {/* 3D-Bühne */}
-        <div className="lg:col-span-7 flex flex-col gap-2">
-          <div className="w-full h-72 sm:h-80 lg:h-[400px] bg-[#020408] rounded-xl border border-slate-800 relative overflow-hidden cursor-grab active:cursor-grabbing">
-            <div className="absolute top-3 left-3 z-10 pointer-events-none flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-md bg-[#050b18]/90 border border-cyan-500/40 text-[10px] font-black uppercase tracking-widest text-cyan-300">
-                {tr(selectedGuide.name)}
-              </span>
-              <span className="px-2 py-1 rounded-md bg-[#050b18]/85 border border-slate-700 text-[9px] font-bold uppercase tracking-wider text-slate-300">
-                {tr(selectedGuide.level)}
-              </span>
-            </div>
+      {/* 1. 3D-ANIMATIONSBOX (kompakt & sticky, bleibt beim Lesen im Fenster sichtbar) */}
+      <div className="sticky top-2 z-20">
+        <div className="w-full h-56 sm:h-72 bg-[#020408] rounded-xl border border-slate-800 shadow-[0_8px_24px_rgba(0,0,0,0.75)] relative overflow-hidden cursor-grab active:cursor-grabbing">
+          {/* Aktiver Schlag oben links */}
+          <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none flex items-center gap-1.5">
+            <span className="px-2 py-0.5 rounded-md bg-[#050b18]/90 border border-cyan-500/40 text-[9px] font-black uppercase tracking-widest text-cyan-300">
+              {tr(activeGuide.name)}
+            </span>
+            <span className="px-1.5 py-0.5 rounded-md bg-[#050b18]/85 border border-slate-700 text-[8px] font-bold uppercase tracking-wider text-slate-300">
+              {tr(activeGuide.level)}
+            </span>
+          </div>
 
-            <div className="absolute bottom-2.5 left-3 z-10 pointer-events-none">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                {ui("Ziehen zum Drehen | Zoomen möglich", "Drag to rotate | Pinch or scroll to zoom", "Arrastra para girar | Zoom activo")}
-              </span>
-            </div>
+          {/* Hinweis unten links */}
+          <div className="absolute bottom-2 left-2.5 z-10 pointer-events-none hidden sm:block">
+            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500">
+              {ui("Ziehen zum Drehen | Zoomen möglich", "Drag to rotate | Zoom enabled", "Arrastra para girar | Zoom activo")}
+            </span>
+          </div>
 
-            <Canvas
-              dpr={lowPerfMode ? 0.8 : 1.25}
-              camera={{ position: [0, 1.15, 3.6], fov: 44 }}
-              gl={{
-                antialias: !lowPerfMode,
-                powerPreference: "high-performance",
-                precision: lowPerfMode ? "mediump" : "highp",
-              }}
+          {/* Kompakter Wiederholen-Button direkt in der Box */}
+          {selectedId !== "idle" && (
+            <button
+              onClick={() => replayShot(selectedId)}
+              className="absolute bottom-2 right-2.5 z-10 px-2.5 py-1 rounded-lg bg-cyan-600/90 hover:bg-cyan-500 border border-cyan-400/60 text-white text-[9px] font-black uppercase tracking-widest shadow-md transition-all"
             >
-              <AdaptiveDpr pixelated />
-              <ambientLight intensity={2.4} />
-              <directionalLight position={[1.5, 2.5, 3]} intensity={2.3} color="#ffffff" />
-              {!lowPerfMode && (
-                <>
-                  <pointLight position={[-1.8, 1.6, 1.4]} intensity={12} color="#00f0ff" distance={9} />
-                  <pointLight position={[1.8, 1.4, 1.2]} intensity={10} color="#f97316" distance={9} />
-                </>
-              )}
+              {ui("Abspielen", "Replay", "Repetir")}
+            </button>
+          )}
 
-              <LabBoundary>
-                <React.Suspense fallback={null}>
-                  <AnimatedPadelPlayer
-                    modelUrl="/meshy_player.glb"
-                    racketId={equippedRacketId}
-                    action={activeAnim}
-                    triggerKey={triggerKey}
-                    speed={speed}
-                    showRacket={true}
-                    position={[0, -0.92, 0]}
-                    scale={1.12}
-                    onActionFinished={handleActionFinished}
-                  />
-                </React.Suspense>
-              </LabBoundary>
-
-              <OrbitControls
-                enableZoom={true}
-                minDistance={2.1}
-                maxDistance={5.2}
-                enablePan={false}
-                autoRotate={autoRotate}
-                autoRotateSpeed={0.9}
-                minPolarAngle={Math.PI / 3.2}
-                maxPolarAngle={Math.PI / 1.85}
-              />
-            </Canvas>
-          </div>
-
-          <button
-            onClick={() => playShot(selectedId)}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10px] uppercase tracking-[0.18em] transition-all shadow-lg"
+          <Canvas
+            dpr={lowPerfMode ? 0.8 : 1.25}
+            camera={{ position: [0, 1.15, 3.65], fov: 44 }}
+            gl={{
+              antialias: !lowPerfMode,
+              powerPreference: "high-performance",
+              precision: lowPerfMode ? "mediump" : "highp",
+            }}
           >
-            {selectedId === "idle"
-              ? ui("Grundstellung zentrieren", "Center Ready Stance", "Centrar posición base")
-              : `${ui("Schlag abspielen", "Play Shot", "Reproducir golpe")}: ${tr(selectedGuide.name)}`}
-          </button>
-        </div>
+            <AdaptiveDpr pixelated />
+            <ambientLight intensity={2.4} />
+            <directionalLight position={[1.5, 2.5, 3]} intensity={2.3} color="#ffffff" />
+            {!lowPerfMode && (
+              <>
+                <pointLight position={[-1.8, 1.6, 1.4]} intensity={12} color="#00f0ff" distance={9} />
+                <pointLight position={[1.8, 1.4, 1.2]} intensity={10} color="#f97316" distance={9} />
+              </>
+            )}
 
-        {/* Erklärungs-Karte */}
-        <div className="lg:col-span-5 bg-[#030611] border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-3">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <h4 className="text-sm font-black uppercase tracking-wider text-white">
-                {tr(selectedGuide.name)}
-              </h4>
-              <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
-                {tr(selectedGuide.level)}
-              </span>
-            </div>
+            <LabBoundary>
+              <React.Suspense fallback={null}>
+                <AnimatedPadelPlayer
+                  modelUrl="/meshy_player.glb"
+                  racketId={equippedRacketId}
+                  action={activeAnim}
+                  triggerKey={triggerKey}
+                  speed={speed}
+                  showRacket={true}
+                  position={[0, -0.92, 0]}
+                  scale={1.12}
+                  onActionFinished={handleActionFinished}
+                />
+              </React.Suspense>
+            </LabBoundary>
 
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">
-                {ui("Wann spielen", "When to play", "Cuándo jugarlo")}
-              </span>
-              <p className="text-xs text-slate-200 leading-relaxed">
-                {tr(selectedGuide.when)}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                {ui("Technik und Treffpunkt", "Technique and contact", "Técnica e impacto")}
-              </span>
-              <p className="text-xs text-slate-200 leading-relaxed">
-                {tr(selectedGuide.technique)}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-purple-400">
-                {ui("Taktisches Ziel", "Tactical goal", "Objetivo táctico")}
-              </span>
-              <p className="text-xs text-slate-200 leading-relaxed">
-                {tr(selectedGuide.tactic)}
-              </p>
-            </div>
-
-            <div className="bg-red-950/20 border border-red-500/30 rounded-lg p-2.5 flex flex-col gap-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-red-400">
-                {ui("Typischer Fehler", "Common mistake", "Error común")}
-              </span>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                {tr(selectedGuide.mistake)}
-              </p>
-            </div>
-          </div>
+            <OrbitControls
+              enableZoom={true}
+              minDistance={2.1}
+              maxDistance={5.2}
+              enablePan={false}
+              autoRotate={autoRotate}
+              autoRotateSpeed={0.9}
+              minPolarAngle={Math.PI / 3.2}
+              maxPolarAngle={Math.PI / 1.85}
+            />
+          </Canvas>
         </div>
       </div>
 
-      {/* Schlag-Auswahl nach Kategorien */}
-      <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-800/80">
-        {categories.map((cat) => {
-          const items = SHOT_GUIDES.filter((g) => g.category === cat.id);
-          return (
-            <div key={cat.id} className="flex flex-col gap-1.5">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                {cat.title}
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                {items.map((item) => (
+      {/* 2. KOMPAKTE SCHLAG-AUSWAHL DIREKT UNTER DER ANIMATIONSBOX */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-slate-500 px-0.5">
+          <span>{ui("Schlag antippen zum Abspielen & Aufklappen", "Tap shot to play & expand", "Pulsa un golpe para ver y desplegar")}</span>
+          <div className="hidden sm:flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              {ui("Basis", "Basics", "Base")}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+              {ui("Grundlinie", "Baseline", "Fondo")}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+              {ui("Netz", "Net", "Red")}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
+          {SHOT_GUIDES.map((item) => {
+            const isOpen = expandedId === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleShotButtonClick(item.id)}
+                className={`py-1.5 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all flex items-center justify-between gap-1 ${
+                  isOpen
+                    ? "bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-[0_0_10px_rgba(6,182,212,0.35)]"
+                    : "bg-slate-900/90 border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${CATEGORY_DOT[item.category]}`} />
+                  <span className="truncate">{tr(item.name)}</span>
+                </span>
+                <span className={`text-[10px] leading-none shrink-0 ${isOpen ? "text-white" : "text-slate-500"}`}>
+                  {isOpen ? "-" : "+"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. AUFKLAPPBARE ERKLÄRUNG (NUR SICHTBAR WENN EIN SCHLAG AKTIV AUFGEKLAPPT IST) */}
+      <AnimatePresence initial={false}>
+        {expandedGuide && (
+          <motion.div
+            key={expandedGuide.id}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-[#030611] border border-cyan-500/30 rounded-xl p-3.5 sm:p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${CATEGORY_DOT[expandedGuide.category]}`} />
+                  <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                    {tr(expandedGuide.name)}
+                  </h4>
+                  <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
+                    {tr(expandedGuide.level)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {expandedGuide.id !== "idle" && (
+                    <button
+                      onClick={() => replayShot(expandedGuide.id)}
+                      className="px-2.5 py-1 rounded-md bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/40 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                    >
+                      {ui("Nochmal", "Replay", "Repetir")}
+                    </button>
+                  )}
                   <button
-                    key={item.id}
-                    onClick={() => playShot(item.id)}
-                    className={`py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
-                      selectedId === item.id
-                        ? "bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-[0_0_10px_rgba(6,182,212,0.35)]"
-                        : "bg-slate-900/90 border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white"
-                    }`}
+                    onClick={() => {
+                      clearLoopTimer();
+                      setExpandedId(null);
+                      setActiveAnim("idle");
+                    }}
+                    className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-400 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all"
                   >
-                    {tr(item.name)}
+                    {ui("Schließen", "Close", "Cerrar")}
                   </button>
-                ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">
+                    {ui("Wann spielen", "When to play", "Cuándo jugarlo")}
+                  </span>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {tr(expandedGuide.when)}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                    {ui("Technik und Treffpunkt", "Technique and contact", "Técnica e impacto")}
+                  </span>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {tr(expandedGuide.technique)}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-purple-400">
+                    {ui("Taktisches Ziel", "Tactical goal", "Objetivo táctico")}
+                  </span>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {tr(expandedGuide.tactic)}
+                  </p>
+                </div>
+
+                <div className="bg-red-950/20 border border-red-500/30 rounded-lg p-2.5 flex flex-col gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-red-400">
+                    {ui("Typischer Fehler", "Common mistake", "Error común")}
+                  </span>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    {tr(expandedGuide.mistake)}
+                  </p>
+                </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
