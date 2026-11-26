@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import * as THREE from 'three';
+import { preloadEquippedRacket } from "./RacketMesh";
 
 // --- Imports für Loadout-Shop, RPG-Upgrades, Match-Lock, Entitlements, Admin, 3D & i18n ---
 import {
@@ -395,11 +396,17 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const ownedPartners = useMemo(
     () => SHOP_PARTNERS.filter((p) => unlockedItems.includes(p.id) || p.price === 0),
     [unlockedItems]
+    
   );
+  
   const ownedRackets = useMemo(
     () => SHOP_RACKETS.filter((r) => unlockedItems.includes(r.id) || r.price === 0),
     [unlockedItems]
   );
+  useEffect(() => {
+  ownedRackets.forEach((r) => preloadEquippedRacket(r.id));
+}, [ownedRackets]);
+
   const ownedShots = useMemo(
     () => SHOP_SHOTS.filter((s) => unlockedItems.includes(s.id) || s.price === 0),
     [unlockedItems]

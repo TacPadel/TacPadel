@@ -18,6 +18,8 @@ import {
   calculateLoadoutStats,
 } from "../lib/loadout";
 import { useTranslation, formatPartnerPerk } from "../lib/i18n";
+import RacketPreview3D from "./RacketPreview3D";
+import { preloadAllShopRackets, preloadEquippedRacket } from "./RacketMesh";
 
 interface InGameShopModalProps {
   isOpen: boolean;
@@ -92,6 +94,13 @@ export default function InGameShopModal({
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const isMatchLocked = isOpen && isLoadoutLockedByActiveMatch(userId);
+
+  // Alle Schläger-GLBs erst vorladen, wenn der Schläger-Tab im Shop geöffnet wird
+  useEffect(() => {
+    if (isOpen && activeCategory === "racket") {
+      preloadAllShopRackets();
+    }
+  }, [isOpen, activeCategory]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -168,6 +177,16 @@ export default function InGameShopModal({
   const previewStats = useMemo(
     () => calculateLoadoutStats(previewPartner, previewRacket, previewShot, itemProgressMap),
     [previewPartner, previewRacket, previewShot, itemProgressMap]
+  );
+
+  const previewRacketItem = useMemo(
+    () => SHOP_RACKETS.find((r) => r.id === previewRacket) || SHOP_RACKETS[0],
+    [previewRacket]
+  );
+
+  const previewRacketDetails = useMemo(
+    () => getUpgradedItemDetails(previewRacketItem, itemProgressMap),
+    [previewRacketItem, itemProgressMap]
   );
 
   const isPreviewMode =
@@ -249,6 +268,7 @@ export default function InGameShopModal({
         setEquippedRacket(item.id);
         setPreviewRacket(item.id);
         localStorage.setItem("tacpadel_racket_id", item.id);
+        preloadEquippedRacket(item.id);
         if (userId) await supabase.from("user_stats").update({ equipped_racket: item.id }).eq("id", userId);
       } else {
         setEquippedShot(item.id);
@@ -313,6 +333,7 @@ export default function InGameShopModal({
         setEquippedRacket(item.id);
         setPreviewRacket(item.id);
         localStorage.setItem("tacpadel_racket_id", item.id);
+        preloadEquippedRacket(item.id);
       } else {
         setEquippedShot(item.id);
         setPreviewShot(item.id);
@@ -515,6 +536,43 @@ export default function InGameShopModal({
               </button>
             </div>
 
+            {/* 3D SCHLÄGER-VORSCHAU (NUR IM SCHLÄGER-TAB) */}
+            {activeCategory === "racket" && (
+              <div className="relative shrink-0 border-b border-slate-800/90 bg-[radial-gradient(ellipse_at_center,_rgba(6,182,212,0.18)_0%,_rgba(3,6,17,0.96)_72%)]">
+                <RacketPreview3D
+                  racketId={previewRacket}
+                  className="w-full h-36 sm:h-44"
+                  interactive
+                />
+
+                {/* Info-Overlay oben links */}
+                <div className="pointer-events-none absolute top-2 left-3 flex items-center gap-1.5">
+                  <span className="text-[10px] font-black text-white bg-slate-950/75 border border-slate-700/80 px-2 py-0.5 rounded-md backdrop-blur-sm">
+                    {previewRacketDetails.displayName}
+                  </span>
+                  <span className="text-[8px] font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-1.5 py-0.5 rounded-md">
+                    {previewRacketItem.badge}
+                  </span>
+                </div>
+
+                {/* Status / 3D-Hinweis unten rechts */}
+                <div className="pointer-events-none absolute bottom-2 right-3 flex items-center gap-1.5">
+                  {previewRacket === equippedRacket ? (
+                    <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-950/75 border border-emerald-500/40 px-2 py-0.5 rounded-md">
+                      ✓ {t("prof_equipped")}
+                    </span>
+                  ) : (
+                    <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-950/75 border border-amber-500/40 px-2 py-0.5 rounded-md">
+                      {t("prof_preview")}
+                    </span>
+                  )}
+                  <span className="text-[8px] font-bold text-slate-400 bg-slate-950/70 border border-slate-800 px-1.5 py-0.5 rounded-md">
+                    ↔ 3D
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* FEEDBACK BANNER */}
             {feedback && (
               <div
@@ -538,9 +596,13 @@ export default function InGameShopModal({
                 const canAfford = tacPoints >= item.price;
                 const scoreProgress =
                   item.reqScore > 0 ? Math.min(100, Math.round((currentScore / item.reqScore) * 100)) : 100;
-                
+
                 const details = getUpgradedItemDetails(item, itemProgressMap);
-                const xpPct = details.isMaxLevel ? 100 : details.reqXp > 0 ? Math.min(100, Math.round((details.xp / details.reqXp) * 100)) : 0;
+                const xpPct = details.isMaxLevel
+                  ? 100
+                  : details.reqXp > 0
+                    ? Math.min(100, Math.round((details.xp / details.reqXp) * 100))
+                    : 0;
                 const canAffordUpgrade = tacPoints >= details.upgradeCostTp;
 
                 const maxLevelLabel = t("rpg_max_level").includes("+")
@@ -596,22 +658,46 @@ export default function InGameShopModal({
                       {/* MODIFIER PILLS (EFFEKTIVE WERTE) */}
                       <div className="flex items-center gap-1 shrink-0 text-[9px] font-black flex-wrap justify-end">
                         {details.effectiveModifiers.smash !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.smash > 0 ? "bg-orange-950/60 text-orange-400" : "bg-red-950/40 text-red-400"}`}>
+                          <span
+                            className={`px-1.5 py-0.5 rounded ${
+                              details.effectiveModifiers.smash > 0
+                                ? "bg-orange-950/60 text-orange-400"
+                                : "bg-red-950/40 text-red-400"
+                            }`}
+                          >
                             PWR {details.effectiveModifiers.smash > 0 ? `+${details.effectiveModifiers.smash}` : details.effectiveModifiers.smash}
                           </span>
                         )}
                         {details.effectiveModifiers.control !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.control > 0 ? "bg-cyan-950/60 text-cyan-400" : "bg-red-950/40 text-red-400"}`}>
+                          <span
+                            className={`px-1.5 py-0.5 rounded ${
+                              details.effectiveModifiers.control > 0
+                                ? "bg-cyan-950/60 text-cyan-400"
+                                : "bg-red-950/40 text-red-400"
+                            }`}
+                          >
                             CTRL {details.effectiveModifiers.control > 0 ? `+${details.effectiveModifiers.control}` : details.effectiveModifiers.control}
                           </span>
                         )}
                         {details.effectiveModifiers.defense !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.defense > 0 ? "bg-emerald-950/60 text-emerald-400" : "bg-red-950/40 text-red-400"}`}>
+                          <span
+                            className={`px-1.5 py-0.5 rounded ${
+                              details.effectiveModifiers.defense > 0
+                                ? "bg-emerald-950/60 text-emerald-400"
+                                : "bg-red-950/40 text-red-400"
+                            }`}
+                          >
                             DEF {details.effectiveModifiers.defense > 0 ? `+${details.effectiveModifiers.defense}` : details.effectiveModifiers.defense}
                           </span>
                         )}
                         {details.effectiveModifiers.agility !== 0 && (
-                          <span className={`px-1.5 py-0.5 rounded ${details.effectiveModifiers.agility > 0 ? "bg-purple-950/60 text-purple-400" : "bg-red-950/40 text-red-400"}`}>
+                          <span
+                            className={`px-1.5 py-0.5 rounded ${
+                              details.effectiveModifiers.agility > 0
+                                ? "bg-purple-950/60 text-purple-400"
+                                : "bg-red-950/40 text-red-400"
+                            }`}
+                          >
                             AGI {details.effectiveModifiers.agility > 0 ? `+${details.effectiveModifiers.agility}` : details.effectiveModifiers.agility}
                           </span>
                         )}
@@ -626,16 +712,24 @@ export default function InGameShopModal({
                             {details.isMaxLevel
                               ? maxLevelLabel
                               : details.canUpgrade
-                              ? t("rpg_ready_upgrade")
-                              : `${t("rpg_xp_label")} (+${details.level} ➔ +${details.level + 1})`}
+                                ? t("rpg_ready_upgrade")
+                                : `${t("rpg_xp_label")} (+${details.level} ➔ +${details.level + 1})`}
                           </span>
                           {!details.isMaxLevel && (
-                            <span className="text-cyan-300">{details.xp} / {details.reqXp} {t("rpg_xp_pts")}</span>
+                            <span className="text-cyan-300">
+                              {details.xp} / {details.reqXp} {t("rpg_xp_pts")}
+                            </span>
                           )}
                         </div>
                         <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                           <div
-                            className={`h-full transition-all duration-500 ${details.isMaxLevel ? "bg-gradient-to-r from-amber-400 to-yellow-300" : details.canUpgrade ? "bg-gradient-to-r from-amber-500 to-emerald-400" : "bg-gradient-to-r from-cyan-600 to-purple-500"}`}
+                            className={`h-full transition-all duration-500 ${
+                              details.isMaxLevel
+                                ? "bg-gradient-to-r from-amber-400 to-yellow-300"
+                                : details.canUpgrade
+                                  ? "bg-gradient-to-r from-amber-500 to-emerald-400"
+                                  : "bg-gradient-to-r from-cyan-600 to-purple-500"
+                            }`}
                             style={{ width: `${xpPct}%` }}
                           />
                         </div>
@@ -652,7 +746,9 @@ export default function InGameShopModal({
                                 : "bg-slate-800 text-amber-400/70 border border-amber-500/30"
                             }`}
                           >
-                            <span>{t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP 🪙)</span>
+                            <span>
+                              {t("rpg_upgrade_btn")} +{details.level + 1} ({details.upgradeCostTp} TP 🪙)
+                            </span>
                           </button>
                         )}
                       </div>

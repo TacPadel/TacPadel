@@ -4,6 +4,12 @@ import { useGLTF } from "@react-three/drei";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as THREE from "three";
+import {
+  DEFAULT_RACKET_URL as LOADOUT_DEFAULT_RACKET_URL,
+  SHOP_RACKETS,
+  resolveRacketAsset,
+  type RacketTransform,
+} from "../lib/loadout";
 
 export type PlayerAction =
   | "a_pose"
@@ -26,25 +32,19 @@ type DegVec3 = [number, number, number];
 type BoneRotationMap = Record<string, DegVec3 | undefined>;
 type RacketLoadPromise = Promise<THREE.Group>;
 
-export const DEFAULT_RACKET_URL = "/racket_classic.glb";
+export const DEFAULT_RACKET_URL = LOADOUT_DEFAULT_RACKET_URL;
 
-// Zuordnung Shop-ID -> eigene 3D-Schlägerdatei in /public
-export const RACKET_MODEL_MAP: Record<string, string> = {
-  racket_starter: "/racket_classic.glb",
-  // racket_control: "/racket_control.glb",
-  // racket_power: "/racket_power.glb",
-  // racket_pro: "/racket_pro.glb",
-};
+// Zuordnung Shop-ID -> 3D-Schlägerdatei direkt aus loadout.ts (Single Source of Truth)
+export const RACKET_MODEL_MAP: Record<string, string> = Object.fromEntries(
+  SHOP_RACKETS.map((r) => [r.id, r.modelUrl])
+);
 
 export function resolveRacketModelUrl(
   racketId?: string | null,
   customUrl?: string
 ): string {
   if (customUrl) return customUrl;
-  if (racketId && RACKET_MODEL_MAP[racketId]) {
-    return RACKET_MODEL_MAP[racketId];
-  }
-  return DEFAULT_RACKET_URL;
+  return resolveRacketAsset(racketId).url;
 }
 
 // Hilfsfunktion zur direkten Zuordnung von GameLogic-Schlagnamen auf Animationen
@@ -90,6 +90,18 @@ function loadCachedRacketGlb(url: string): RacketLoadPromise {
 
   glbRacketCache.set(url, promise);
   return promise;
+}
+
+/** Wärmt den GLTFLoader-Cache für einen Schläger vor (sofortiger Wechsel im Spind) */
+export function preloadAnimatedRacket(racketId?: string | null): void {
+  const { url } = resolveRacketAsset(racketId);
+  loadCachedRacketGlb(url).catch(() => {});
+}
+
+export function preloadAllAnimatedRackets(): void {
+  SHOP_RACKETS.forEach((r) => {
+    loadCachedRacketGlb(r.modelUrl).catch(() => {});
+  });
 }
 
 interface BonePoseSpec {
@@ -1001,10 +1013,13 @@ export default function AnimatedPadelPlayer({
   const tmpQuatB = useMemo(() => new THREE.Quaternion(), []);
   const tmpTargetQuat = useMemo(() => new THREE.Quaternion(), []);
 
-  const resolvedRacketUrl = useMemo(
-    () => resolveRacketModelUrl(racketId, racketUrl),
-    [racketId, racketUrl]
-  );
+  const resolvedRacketAsset = useMemo(() => {
+    if (racketUrl) {
+      return { url: racketUrl, offset: undefined as RacketTransform | undefined };
+    }
+    const asset = resolveRacketAsset(racketId);
+    return { url: asset.url, offset: asset.offset };
+  }, [racketId, racketUrl]);
 
   // 1. Bind-Pose erfassen, Charakterraum-Quaternionen & Schläger-Mount an RightHand anlegen
   useEffect(() => {
@@ -1100,46 +1115,70 @@ export default function AnimatedPadelPlayer({
   // 2. Echten 3D-Schläger (.glb) asynchron & gecacht in den Griff-Mount laden
   useEffect(() => {
     const mount = racketMountRef.current;
-    if (!mount) return;
+    if (!mount) return undefined;
 
     let cancelled = false;
+    const { url, offset } = resolvedRacketAsset;
 
-    const attachSceneToMount = (loadedScene: THREE.Group) => {
+    const attachSceneToMount = (
+      loadedScene: THREE.Group,
+      applyOffset?: RacketTransform
+    ) => {
       if (cancelled || !racketMountRef.current) return;
       clearRacketMount(racketMountRef.current);
+
       const clone = loadedScene.clone(true);
-      clone.position.set(0, -0.032, 0);
-      clone.scale.setScalar(1);
+      const pos = applyOffset?.position;
+      const rot = applyOffset?.rotation;
+      const scl = applyOffset?.scale;
+
+      clone.position.set(
+        pos ? pos[0] : 0,
+        -0.032 + (pos ? pos[1] : 0),
+        pos ? pos[2] : 0
+      );
+
+      if (rot) {
+        clone.rotation.set(rot[0], rot[1], rot[2]);
+      }
+
+      if (typeof scl === "number") {
+        clone.scale.setScalar(scl);
+      } else if (scl) {
+        clone.scale.set(scl[0], scl[1], scl[2]);
+      } else {
+        clone.scale.setScalar(1);
+      }
+
       racketMountRef.current.add(clone);
     };
 
-    loadCachedRacketGlb(resolvedRacketUrl)
-      .then(attachSceneToMount)
+    const attachProceduralFallback = () => {
+      if (!cancelled && racketMountRef.current) {
+        clearRacketMount(racketMountRef.current);
+        const fb = buildFallbackRacketGroup();
+        fb.position.set(0, -0.032, 0);
+        racketMountRef.current.add(fb);
+      }
+    };
+
+    loadCachedRacketGlb(url)
+      .then((loaded) => attachSceneToMount(loaded, offset))
       .catch(() => {
-        if (resolvedRacketUrl !== DEFAULT_RACKET_URL) {
-          return loadCachedRacketGlb(DEFAULT_RACKET_URL)
-            .then(attachSceneToMount)
-            .catch(() => {
-              if (!cancelled && racketMountRef.current) {
-                clearRacketMount(racketMountRef.current);
-                const fb = buildFallbackRacketGroup();
-                fb.position.set(0, -0.032, 0);
-                racketMountRef.current.add(fb);
-              }
-            });
-        }
-        if (!cancelled && racketMountRef.current) {
-          clearRacketMount(racketMountRef.current);
-          const fb = buildFallbackRacketGroup();
-          fb.position.set(0, -0.032, 0);
-          racketMountRef.current.add(fb);
+        if (url !== DEFAULT_RACKET_URL) {
+          const fallbackOffset = resolveRacketAsset().offset;
+          loadCachedRacketGlb(DEFAULT_RACKET_URL)
+            .then((loaded) => attachSceneToMount(loaded, fallbackOffset))
+            .catch(attachProceduralFallback);
+        } else {
+          attachProceduralFallback();
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [resolvedRacketUrl, clonedScene]);
+  }, [resolvedRacketAsset, clonedScene]);
 
   useEffect(() => {
     if (racketMountRef.current) {

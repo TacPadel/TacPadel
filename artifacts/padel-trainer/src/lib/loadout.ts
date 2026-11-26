@@ -2,6 +2,14 @@ import { getAppLanguage } from "./i18n";
 
 export type SkillFocus = "classic" | "power" | "control" | "defense" | "agility";
 
+export type Vec3Tuple = readonly [number, number, number];
+
+export interface RacketTransform {
+  position?: Vec3Tuple;
+  rotation?: Vec3Tuple;
+  scale?: number | Vec3Tuple;
+}
+
 export interface ShopItem {
   id: string;
   name: string;
@@ -12,12 +20,20 @@ export interface ShopItem {
   badge: string;
   perk?: string;
   shotType?: string;
+  modelUrl?: string;
+  modelOffset?: RacketTransform;
   modifiers: {
     smash: number;
     control: number;
     defense: number;
     agility: number;
   };
+}
+
+export interface RacketShopItem<TId extends string = string> extends ShopItem {
+  id: TId;
+  modelUrl: string;
+  modelOffset?: RacketTransform;
 }
 
 // =========================================================
@@ -464,9 +480,12 @@ export const SHOP_PARTNERS: ShopItem[] = [
 ];
 
 // =========================================================
-// 2. SCHLÄGER / RACKETS (1x Klassik + 4x Skill-Fokus)
+// 2. SCHLÄGER / RACKETS (1x Klassik + 4x Skill-Fokus | SINGLE SOURCE OF TRUTH)
 // =========================================================
-export const SHOP_RACKETS: ShopItem[] = [
+/** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
+const RACKET_MODEL_BASE_PATH = "";
+
+const RACKET_DEFINITIONS = [
   {
     id: "racket_starter",
     name: "Classic Allround Frame",
@@ -474,6 +493,7 @@ export const SHOP_RACKETS: ShopItem[] = [
     tier: 0,
     price: 0,
     reqScore: 0,
+    modelUrl: `${RACKET_MODEL_BASE_PATH}/racket_classic.glb`,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Clásico" : l === "en" ? "Classic" : "Klassik";
@@ -487,6 +507,7 @@ export const SHOP_RACKETS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${RACKET_MODEL_BASE_PATH}/racket_eclipse.glb`,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Potencia" : "Power";
@@ -500,6 +521,7 @@ export const SHOP_RACKETS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${RACKET_MODEL_BASE_PATH}/racket_titan.glb`,
     badge: "Control",
     modifiers: { smash: -2, control: 2, defense: 0, agility: -1 },
   },
@@ -510,6 +532,7 @@ export const SHOP_RACKETS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${RACKET_MODEL_BASE_PATH}/racket_shield.glb`,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Defensa" : "Defense";
@@ -523,13 +546,52 @@ export const SHOP_RACKETS: ShopItem[] = [
     tier: 1,
     price: 400,
     reqScore: 1500,
+    modelUrl: `${RACKET_MODEL_BASE_PATH}/racket_aero.glb`,
     get badge() {
       const l = getAppLanguage();
       return l === "es" ? "Agilidad" : "Agility";
     },
     modifiers: { smash: 0, control: -1, defense: -2, agility: 2 },
   },
-];
+] as const satisfies readonly RacketShopItem[];
+
+export type RacketId = (typeof RACKET_DEFINITIONS)[number]["id"];
+
+export const SHOP_RACKETS: RacketShopItem<RacketId>[] = [...RACKET_DEFINITIONS];
+
+export const DEFAULT_RACKET: RacketShopItem<RacketId> = SHOP_RACKETS[0];
+export const DEFAULT_RACKET_ID: RacketId = DEFAULT_RACKET.id;
+export const DEFAULT_RACKET_URL: string = DEFAULT_RACKET.modelUrl;
+
+const RACKET_BY_ID = new Map<string, RacketShopItem<RacketId>>(
+  SHOP_RACKETS.map((racket) => [racket.id, racket])
+);
+
+export function resolveRacketItem(racketId?: string | null): RacketShopItem<RacketId> {
+  return (racketId ? RACKET_BY_ID.get(racketId) : undefined) ?? DEFAULT_RACKET;
+}
+
+export function resolveRacketAsset(racketId?: string | null): {
+  id: RacketId;
+  url: string;
+  offset?: RacketTransform;
+} {
+  const item = resolveRacketItem(racketId);
+  return {
+    id: item.id,
+    url: item.modelUrl,
+    offset: item.modelOffset,
+  };
+}
+
+export function getEquippedRacketId(respectMatchLock: boolean = true): RacketId {
+  const locked = respectMatchLock ? getActiveMatchLockedLoadout() : null;
+  let storedId: string | null = null;
+  try {
+    storedId = localStorage.getItem("tacpadel_racket_id");
+  } catch {}
+  return resolveRacketItem(locked?.racketId || storedId || DEFAULT_RACKET_ID).id;
+}
 
 // =========================================================
 // 3. SCHLÄGE / SHOTS (1x shot_classic + Volley, Bandeja, Block, Chiquita)
