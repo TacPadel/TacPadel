@@ -68,6 +68,32 @@ function getFrontPos3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
   return pos;
 }
 
+/** Ermittelt identisch zu GameScreen.tsx den zuständigen Gegner für die Landezone */
+function getChasingOpponent(
+  targetZone: string,
+  opp1Zone: string,
+  opp2Zone: string,
+  shotType?: string | null
+): "opp1" | "opp2" {
+  const sType = (shotType || "").toUpperCase();
+  const o1Row = parseInt(opp1Zone?.[1] || "2", 10);
+  const o2Row = parseInt(opp2Zone?.[1] || "2", 10);
+
+  if (sType === "AUFSCHLAG") {
+    if (o1Row === 1 && o2Row !== 1) return "opp1";
+    if (o2Row === 1 && o1Row !== 1) return "opp2";
+  }
+
+  const col = (targetZone?.[0] || "C").toUpperCase();
+  if (col === "A" || col === "B") return "opp1";
+  if (col === "D" || col === "E") return "opp2";
+
+  const targetRow = parseInt(targetZone?.[1] || "2", 10);
+  const dist1 = Math.abs(o1Row - targetRow);
+  const dist2 = Math.abs(o2Row - targetRow);
+  return dist2 < dist1 ? "opp2" : "opp1";
+}
+
 function getShotParameters(schlagTyp: string) {
   const sType = (schlagTyp || "").toUpperCase();
 
@@ -448,6 +474,7 @@ const Real3DPlayer = memo(function Real3DPlayer({
   baseRotationY = 0,
   shotAction,
   shotTriggerKey = 0,
+  moveDelaySec = 0,
   hidePlayerLabels,
 }: {
   position: THREE.Vector3;
@@ -463,6 +490,7 @@ const Real3DPlayer = memo(function Real3DPlayer({
   baseRotationY?: number;
   shotAction?: PlayerAction | null;
   shotTriggerKey?: number;
+  moveDelaySec?: number;
   hidePlayerLabels?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -470,14 +498,23 @@ const Real3DPlayer = memo(function Real3DPlayer({
   const targetPosRef = useRef(new THREE.Vector3(position.x, 0, position.z));
   const isMovingRef = useRef(false);
   const shotHoldTimerRef = useRef(0);
+  const moveDelayTimerRef = useRef(0);
   const activeShotRef = useRef<PlayerAction | null>(null);
 
   const [isMoving, setIsMoving] = useState(false);
   const [activeShot, setActiveShot] = useState<PlayerAction | null>(null);
 
   useEffect(() => {
+    const prev = targetPosRef.current;
+    const movedTarget = Math.hypot(position.x - prev.x, position.z - prev.z) > 0.05;
     targetPosRef.current.set(position.x, 0, position.z);
-  }, [position.x, position.z]);
+
+    if (movedTarget && moveDelaySec > 0 && shotHoldTimerRef.current <= 0) {
+      moveDelayTimerRef.current = moveDelaySec;
+    } else if (moveDelaySec <= 0) {
+      moveDelayTimerRef.current = 0;
+    }
+  }, [position.x, position.z, moveDelaySec]);
 
   useEffect(() => {
     if (groupRef.current) {
@@ -491,6 +528,7 @@ const Real3DPlayer = memo(function Real3DPlayer({
   useEffect(() => {
     if (shotTriggerKey > 0 && shotAction) {
       shotHoldTimerRef.current = SHOT_RUN_RELEASE_SEC;
+      moveDelayTimerRef.current = 0;
       activeShotRef.current = shotAction;
       setActiveShot(shotAction);
     } else if (!shotAction) {
@@ -523,6 +561,16 @@ const Real3DPlayer = memo(function Real3DPlayer({
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         modelYawRef.current.rotation.y += diff * Math.min(1, 14 * safeDelta);
+      }
+      return;
+    }
+
+    // Phase 1b: Kurze Reaktionszeit für verteidigende Gegner bis zum Treffpunkt des Spielers
+    if (moveDelayTimerRef.current > 0) {
+      moveDelayTimerRef.current = Math.max(0, moveDelayTimerRef.current - safeDelta);
+      if (isMovingRef.current) {
+        isMovingRef.current = false;
+        setIsMoving(false);
       }
       return;
     }
@@ -826,10 +874,75 @@ export default function TacticalData(
     }
   };
 
-  const youPos = useMemo(() => getZoneCenter3D("left", props.positions.you), [props.positions.you]);
-  const partnerPos = useMemo(() => getZoneCenter3D("left", props.positions.partner), [props.positions.partner]);
-  const opp1Pos = useMemo(() => getZoneCenter3D("right", props.positions.opp1), [props.positions.opp1]);
-  const opp2Pos = useMemo(() => getZoneCenter3D("right", props.positions.opp2), [props.positions.opp2]);
+  // --- 1. EIGENES TEAM: Sofortiges Loslaufen beim Klick während des Gegner-Balls ---
+  const shouldMoveToSelectedRun = Boolean(
+    props.isTimerActive || (props.isAiActive && props.hasSubmitted)
+  );
+
+  const activeYouZone =
+    shouldMoveToSelectedRun && props.selectedLaufZone
+      ? props.selectedLaufZone
+      : props.positions.you;
+
+  const activePartnerZone =
+    shouldMoveToSelectedRun && props.selectedPartnerZone
+      ? props.selectedPartnerZone
+      : props.positions.partner;
+
+  // --- 2. GEGNER: Laufen dem Ball entgegen, außer der Punkt ist direkt entschieden (Winner/Fehler) ---
+  const isPointDecided = Boolean(
+    props.turnResult === "perfect" ||
+    (props.turnResult && props.turnResult.startsWith("error"))
+  );
+
+  const hasExactOpponents =
+    props.positions.opp1.startsWith("EXACT_") ||
+    props.positions.opp2.startsWith("EXACT_");
+
+  const isPlayerShotInFlight = Boolean(
+    !hasExactOpponents &&
+    !props.isAiActive &&
+    props.hasSubmitted &&
+    props.selectedZone &&
+    !props.selectedZone.startsWith("EXACT_") &&
+    !isPointDecided
+  );
+
+  const isAiPreparingReturn = Boolean(
+    !hasExactOpponents &&
+    props.phase === "ai_prepare" &&
+    props.positions.ball.side === "right" &&
+    props.positions.ball.type !== "PREPARE_SERVE" &&
+    props.positions.ball.zone &&
+    !props.positions.ball.zone.startsWith("EXACT_") &&
+    !isPointDecided
+  );
+
+  const oppChaseZone = isPlayerShotInFlight
+    ? props.selectedZone!
+    : isAiPreparingReturn
+    ? props.positions.ball.zone
+    : null;
+
+  const chasingOpp = oppChaseZone
+    ? getChasingOpponent(
+        oppChaseZone,
+        props.positions.opp1,
+        props.positions.opp2,
+        props.positions.ball.type || props.previewShot
+      )
+    : null;
+
+  const activeOpp1Zone = chasingOpp === "opp1" && oppChaseZone ? oppChaseZone : props.positions.opp1;
+  const activeOpp2Zone = chasingOpp === "opp2" && oppChaseZone ? oppChaseZone : props.positions.opp2;
+
+  const opp1MoveDelay = isPlayerShotInFlight && chasingOpp === "opp1" ? SHOT_IMPACT_DELAY_SEC : 0;
+  const opp2MoveDelay = isPlayerShotInFlight && chasingOpp === "opp2" ? SHOT_IMPACT_DELAY_SEC : 0;
+
+  const youPos = useMemo(() => getZoneCenter3D("left", activeYouZone), [activeYouZone]);
+  const partnerPos = useMemo(() => getZoneCenter3D("left", activePartnerZone), [activePartnerZone]);
+  const opp1Pos = useMemo(() => getZoneCenter3D("right", activeOpp1Zone), [activeOpp1Zone]);
+  const opp2Pos = useMemo(() => getZoneCenter3D("right", activeOpp2Zone), [activeOpp2Zone]);
 
   return (
     <group name="TacticalData">
@@ -973,6 +1086,7 @@ export default function TacticalData(
         isHitter={props.hitterId === "opp1"}
         shotAction={shotTrigger.hitter === "opp1" ? shotTrigger.action : null}
         shotTriggerKey={shotTrigger.hitter === "opp1" ? shotTrigger.key : 0}
+        moveDelaySec={opp1MoveDelay}
         hidePlayerLabels={props.hidePlayerLabels}
       />
 
@@ -988,6 +1102,7 @@ export default function TacticalData(
         isHitter={props.hitterId === "opp2"}
         shotAction={shotTrigger.hitter === "opp2" ? shotTrigger.action : null}
         shotTriggerKey={shotTrigger.hitter === "opp2" ? shotTrigger.key : 0}
+        moveDelaySec={opp2MoveDelay}
         hidePlayerLabels={props.hidePlayerLabels}
       />
 
@@ -1029,7 +1144,7 @@ export default function TacticalData(
         const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
 
         let lineColor = "#a855f7";
-        if (!props.profiMode) {
+        if (!props.profiMode && !props.isTimerActive && !props.isAiActive) {
           const feedback = getRealtimeRunFeedback(props.selectedLaufZone);
           if (feedback !== null) {
             lineColor = feedback ? "#34d399" : "#ef4444";
@@ -1048,7 +1163,7 @@ export default function TacticalData(
         const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
 
         let lineColor = "#06b6d4";
-        if (!props.profiMode) {
+        if (!props.profiMode && !props.isTimerActive && !props.isAiActive) {
           const feedback = getRealtimeRunFeedback(props.selectedPartnerZone);
           if (feedback !== null) {
             lineColor = feedback ? "#34d399" : "#ef4444";
