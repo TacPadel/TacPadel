@@ -434,9 +434,9 @@ const AnimatedBall = memo(function AnimatedBall({
 
   return (
     <mesh ref={ballRef} position={[startPos.x, 1.5, startPos.z]}>
-      <sphereGeometry args={[0.15, 12, 12]} />
+      <sphereGeometry args={[0.11, 16, 16]} />
       <meshStandardMaterial color="#ccff00" emissive="#ccff00" emissiveIntensity={5} />
-      <pointLight color="#ccff00" intensity={1.5} distance={2.5} />
+      <pointLight color="#ccff00" intensity={1.4} distance={2.5} />
     </mesh>
   );
 });
