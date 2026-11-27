@@ -27,11 +27,13 @@ import {
 } from '../lib/entitlements';
 import { useTranslation, formatPartnerPerk } from '../lib/i18n';
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr } from "@react-three/drei";
+import { OrbitControls, Text, PerformanceMonitor, AdaptiveDpr, useGLTF } from "@react-three/drei";
 import PlayerShow from "./PlayerShow";
 import AnimatedPadelPlayer, { preloadAnimatedPartner } from "./AnimatedPadelPlayer";
 import AdminDashboard from "./AdminDashboard";
 import InGameShopModal from "./InGameShopModal";
+
+const SELF_PLAYER_MODEL_URL = "/meshy_playerI.glb";
 
 // =========================================================
 // HILFSFUNKTION: Schwache / Ältere Geräte beim Start erkennen
@@ -391,6 +393,11 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
     setShotId(nextShot);
   }, [user?.id]);
 
+  // Eigenes Spieler-Modell für den Spind vorladen
+  useEffect(() => {
+    useGLTF.preload(SELF_PLAYER_MODEL_URL, false, false);
+  }, []);
+
   // --- GEFILTERTE INVENTAR-LISTEN (Nur gekaufte/freigeschaltete Items!) ---
   const ownedPartners = useMemo(
     () => SHOP_PARTNERS.filter((p) => unlockedItems.includes(p.id) || p.price === 0),
@@ -432,10 +439,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
   const [showLockerRacket, setShowLockerRacket] = useState<boolean>(true);
   const [lockerModelError, setLockerModelError] = useState<string | null>(null);
   const controlsRef = useRef<any>(null);
-
-  useEffect(() => {
-    setLockerModelError(null);
-  }, [partnerId]);
 
   // --- Performance-Modus ---
   const [lowPerfMode, setLowPerfMode] = useState<boolean>(() => detectLowEndDevice());
@@ -1163,7 +1166,6 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                   </>
                 )}
                 <LockerModelBoundary
-                  key={partnerId}
                   fallback={
                     <React.Suspense fallback={null}>
                       <PlayerShow />
@@ -1173,7 +1175,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
                 >
                   <React.Suspense fallback={null}>
                     <AnimatedPadelPlayer
-                      partnerId={partnerId}
+                      modelUrl={SELF_PLAYER_MODEL_URL}
                       racketId={racketId}
                       action={lockerPose}
                       showRacket={showLockerRacket}
@@ -1239,7 +1241,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
           <div className="flex flex-col gap-2">
             {lockerModelError && (
               <div className="px-3 py-2 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-300 text-[10px] font-bold leading-snug">
-                Hinweis: Standard-Figur aktiv - <code className="text-white">{selectedPartnerObj.modelUrl}</code> konnte nicht geladen werden ({lockerModelError}).
+                Hinweis: Standard-Figur aktiv - <code className="text-white">{SELF_PLAYER_MODEL_URL}</code> konnte nicht geladen werden ({lockerModelError}).
               </div>
             )}
 
@@ -1269,7 +1271,7 @@ export default function ProfileTab({ user, setActiveTab }: { user: any, setActiv
 
               <div className="flex items-center gap-1.5">
                 <span className="hidden sm:inline text-[9px] font-bold text-slate-500 uppercase tracking-wider mr-1">
-                  {selectedPartnerObj.name} · {selectedRacketObj.name}
+                  {selectedRacketObj.name}
                 </span>
                 <button
                   onClick={() => setShowLockerRacket((v) => !v)}
