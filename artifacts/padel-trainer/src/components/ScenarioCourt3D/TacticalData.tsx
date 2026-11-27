@@ -29,6 +29,14 @@ export const OPP1_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp1.glb`;
 export const OPP2_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp2.glb`;
 
 const COURT_PLAYER_SCALE = 1.25;
+/** Laufgeschwindigkeit auf dem Court in m/s (gleichmäßiger Sprint statt schnellem Lerp-Rutschen) */
+const COURT_RUN_SPEED_MPS = 5.0;
+/** Treffpunkt-Verzögerung des Balls (Sekunden) passend zu SHOT_ANIMATION_SPEED = 2.0 */
+const SHOT_IMPACT_DELAY_SEC = 0.28;
+/** Kurzes Halten am Schlagpunkt bis kurz nach Treffpunkt, danach Loslaufen zur Zielzone */
+const SHOT_RUN_RELEASE_SEC = 0.34;
+const SHOT_ANIMATION_SPEED = 2.0;
+const WALK_ANIMATION_SPEED = 1.25;
 
 function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
   if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0, side === "left" ? 5 : -5);
@@ -165,10 +173,27 @@ function calculatePreviewTrajectory(startPos: THREE.Vector3, targetPos: THREE.Ve
 }
 
 const AnimatedBall = memo(function AnimatedBall({
-  startPos, targetPos, schlagTyp, isAnimating, isNetCrash, isWallDirectCrash, flightTimeMs, isCaughtInAir, isCinematicMode
+  startPos,
+  targetPos,
+  schlagTyp,
+  isAnimating,
+  isNetCrash,
+  isWallDirectCrash,
+  flightTimeMs,
+  isCaughtInAir,
+  isCinematicMode,
+  launchDelaySec = 0,
 }: {
-  startPos: THREE.Vector3, targetPos: THREE.Vector3 | null, schlagTyp: string,
-  isAnimating: boolean, isNetCrash?: boolean, isWallDirectCrash?: boolean, flightTimeMs?: number, isCaughtInAir?: boolean, isCinematicMode?: boolean
+  startPos: THREE.Vector3;
+  targetPos: THREE.Vector3 | null;
+  schlagTyp: string;
+  isAnimating: boolean;
+  isNetCrash?: boolean;
+  isWallDirectCrash?: boolean;
+  flightTimeMs?: number;
+  isCaughtInAir?: boolean;
+  isCinematicMode?: boolean;
+  launchDelaySec?: number;
 }) {
   const ballRef = useRef<THREE.Mesh>(null);
   const distanceRef = useRef(0);
@@ -177,7 +202,7 @@ const AnimatedBall = memo(function AnimatedBall({
   React.useEffect(() => {
     distanceRef.current = 0;
     delayTimer.current = 0;
-  }, [startPos.x, startPos.z]);
+  }, [startPos.x, startPos.z, targetPos?.x, targetPos?.z, isAnimating]);
 
   const { curves, lengths, totalLength, effectiveLength } = useMemo(() => {
     if (!targetPos) return { curves: [], lengths: [], totalLength: 0, effectiveLength: 0 };
@@ -322,17 +347,16 @@ const AnimatedBall = memo(function AnimatedBall({
     const safeDelta = Math.min(delta, 0.1);
 
     if (isAnimating && curves.length > 0 && effectiveLength > 0) {
-
-      if (isCinematicMode) {
-        if (delayTimer.current < 1.3) {
-          delayTimer.current += safeDelta;
-          ballRef.current.position.set(startPos.x, 1.5, startPos.z);
-          return;
-        }
+      const effectiveDelay = isCinematicMode ? 1.3 : launchDelaySec;
+      if (effectiveDelay > 0 && delayTimer.current < effectiveDelay) {
+        delayTimer.current += safeDelta;
+        ballRef.current.position.set(startPos.x, 1.5, startPos.z);
+        return;
       }
 
-      const baseTime = (flightTimeMs || 5000) / 1000;
-      const timeInSeconds = Math.max(baseTime, curves.length * 0.55);
+      const rawBaseTime = (flightTimeMs || 5000) / 1000;
+      const adjustedBaseTime = Math.max(0.8, rawBaseTime - (isCinematicMode ? 0 : launchDelaySec));
+      const timeInSeconds = Math.max(adjustedBaseTime, curves.length * 0.52);
       const baseSpeed = effectiveLength / timeInSeconds;
 
       let traveledForIndex = 0;
@@ -445,6 +469,8 @@ const Real3DPlayer = memo(function Real3DPlayer({
   const modelYawRef = useRef<THREE.Group>(null);
   const targetPosRef = useRef(new THREE.Vector3(position.x, 0, position.z));
   const isMovingRef = useRef(false);
+  const shotHoldTimerRef = useRef(0);
+  const activeShotRef = useRef<PlayerAction | null>(null);
 
   const [isMoving, setIsMoving] = useState(false);
   const [activeShot, setActiveShot] = useState<PlayerAction | null>(null);
@@ -464,8 +490,12 @@ const Real3DPlayer = memo(function Real3DPlayer({
 
   useEffect(() => {
     if (shotTriggerKey > 0 && shotAction) {
+      shotHoldTimerRef.current = SHOT_RUN_RELEASE_SEC;
+      activeShotRef.current = shotAction;
       setActiveShot(shotAction);
     } else if (!shotAction) {
+      shotHoldTimerRef.current = 0;
+      activeShotRef.current = null;
       setActiveShot(null);
     }
   }, [shotAction, shotTriggerKey]);
@@ -480,30 +510,61 @@ const Real3DPlayer = memo(function Real3DPlayer({
     const dz = target.z - group.position.z;
     const dist = Math.hypot(dx, dz);
 
-    const movingNow = dist > 0.08;
+    // Phase 1: Hitter bleibt bis kurz nach Treffpunkt am Schlagort stehen
+    if (shotHoldTimerRef.current > 0) {
+      shotHoldTimerRef.current = Math.max(0, shotHoldTimerRef.current - safeDelta);
+      if (isMovingRef.current) {
+        isMovingRef.current = false;
+        setIsMoving(false);
+      }
+
+      if (modelYawRef.current) {
+        let diff = baseRotationY - modelYawRef.current.rotation.y;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        modelYawRef.current.rotation.y += diff * Math.min(1, 14 * safeDelta);
+      }
+      return;
+    }
+
+    // Phase 2: Nach Treffpunkt sofort in die Lauf-Animation wechseln, falls eine neue Zielzone ansteht
+    if (dist > 0.12 && activeShotRef.current) {
+      activeShotRef.current = null;
+      setActiveShot(null);
+    }
+
+    const movingNow = dist > 0.04;
     if (movingNow !== isMovingRef.current) {
       isMovingRef.current = movingNow;
       setIsMoving(movingNow);
     }
 
-    if (dist > 0.005) {
-      group.position.lerp(target, Math.min(1, 6.0 * safeDelta));
+    if (movingNow) {
+      const step = COURT_RUN_SPEED_MPS * safeDelta;
+      if (dist <= step) {
+        group.position.set(target.x, 0, target.z);
+        isMovingRef.current = false;
+        setIsMoving(false);
+      } else {
+        group.position.x += (dx / dist) * step;
+        group.position.z += (dz / dist) * step;
+      }
     } else {
       group.position.set(target.x, 0, target.z);
     }
 
     if (modelYawRef.current) {
-      // Beim Schlagen immer zum Netz richten, beim Laufen sanft in Laufrichtung drehen
-      const desiredYaw = !activeShot && movingNow ? Math.atan2(dx, dz) : baseRotationY;
+      // Beim Laufen klar in Laufrichtung drehen, am Ziel wieder zum Netz ausrichten
+      const desiredYaw = !activeShotRef.current && movingNow ? Math.atan2(dx, dz) : baseRotationY;
       let diff = desiredYaw - modelYawRef.current.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      modelYawRef.current.rotation.y += diff * Math.min(1, 10 * safeDelta);
+      modelYawRef.current.rotation.y += diff * Math.min(1, 12 * safeDelta);
     }
   });
 
   const currentAction: PlayerAction = activeShot || (isMoving ? "walk" : "idle");
-  const actionSpeed = activeShot ? 1.35 : 1.15;
+  const actionSpeed = activeShot ? SHOT_ANIMATION_SPEED : WALK_ANIMATION_SPEED;
 
   const isInteractive = onClick && !disabled;
 
@@ -581,7 +642,10 @@ const Real3DPlayer = memo(function Real3DPlayer({
                 rotationY={0}
                 scale={COURT_PLAYER_SCALE}
                 showRacket
-                onActionFinished={() => setActiveShot(null)}
+                onActionFinished={() => {
+                  activeShotRef.current = null;
+                  setActiveShot(null);
+                }}
               />
             </Suspense>
           }
@@ -598,7 +662,10 @@ const Real3DPlayer = memo(function Real3DPlayer({
               rotationY={0}
               scale={COURT_PLAYER_SCALE}
               showRacket
-              onActionFinished={() => setActiveShot(null)}
+              onActionFinished={() => {
+                activeShotRef.current = null;
+                setActiveShot(null);
+              }}
             />
           </Suspense>
         </PlayerModelErrorBoundary>
@@ -948,6 +1015,7 @@ export default function TacticalData(
             flightTimeMs={props.timerDuration}
             isCaughtInAir={false}
             isCinematicMode={props.isCinematicMode}
+            launchDelaySec={SHOT_IMPACT_DELAY_SEC}
           />
         );
       })()}
