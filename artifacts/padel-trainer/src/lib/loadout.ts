@@ -30,6 +30,16 @@ export interface ShopItem {
   };
 }
 
+export interface PlayerSkinItem<TId extends string = string> {
+  id: TId;
+  name: string;
+  badge: string;
+  modelUrl: string;
+  accentColor: string;
+  hasWalkingClip: boolean;
+  isDemo?: boolean;
+}
+
 export interface PartnerShopItem<TId extends string = string> extends ShopItem {
   id: TId;
   modelUrl: string;
@@ -377,6 +387,98 @@ export function performItemUpgrade(
     cost,
     updatedProgressMap: progressMap,
   };
+}
+
+// =========================================================
+// 0. KLEIDERSCHRANK / SPIELER-SKINS (SINGLE SOURCE OF TRUTH)
+// =========================================================
+/** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
+const SKIN_MODEL_BASE_PATH = "";
+
+const SKIN_DEFINITIONS = [
+  {
+    id: "skin_default",
+    get name() {
+      const l = getAppLanguage();
+      return l === "es" ? "Estándar" : l === "en" ? "Default" : "Standard";
+    },
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Tu Avatar" : l === "en" ? "Your Avatar" : "Dein Skin";
+    },
+    modelUrl: `${SKIN_MODEL_BASE_PATH}/meshy_playerI.glb`,
+    accentColor: "#06b6d4",
+    hasWalkingClip: false,
+    isDemo: false,
+  },
+  {
+    id: "skin_leo",
+    name: "Leo Style",
+    get badge() {
+      const l = getAppLanguage();
+      return l === "es" ? "Ejemplo" : l === "en" ? "Sample" : "Beispiel";
+    },
+    modelUrl: `${SKIN_MODEL_BASE_PATH}/meshy_player.glb`,
+    accentColor: "#f59e0b",
+    hasWalkingClip: true,
+    isDemo: true,
+  },
+  // Neue Skins später einfach hier ergänzen, z. B.:
+  // {
+  //   id: "skin_neon_pro",
+  //   name: "Neon Pro",
+  //   badge: "Pro",
+  //   modelUrl: `${SKIN_MODEL_BASE_PATH}/meshy_skin_neon.glb`,
+  //   accentColor: "#a855f7",
+  //   hasWalkingClip: false,
+  // },
+] as const satisfies readonly PlayerSkinItem[];
+
+export type PlayerSkinId = (typeof SKIN_DEFINITIONS)[number]["id"];
+
+export const PLAYER_SKINS: PlayerSkinItem<PlayerSkinId>[] = [...SKIN_DEFINITIONS];
+
+export const DEFAULT_SKIN: PlayerSkinItem<PlayerSkinId> = PLAYER_SKINS[0];
+export const DEFAULT_SKIN_ID: PlayerSkinId = DEFAULT_SKIN.id;
+export const DEFAULT_SKIN_URL: string = DEFAULT_SKIN.modelUrl;
+
+const SKIN_BY_ID = new Map<string, PlayerSkinItem<PlayerSkinId>>(
+  PLAYER_SKINS.map((skin) => [skin.id, skin])
+);
+
+export function resolveSkinItem(skinId?: string | null): PlayerSkinItem<PlayerSkinId> {
+  return (skinId ? SKIN_BY_ID.get(skinId) : undefined) ?? DEFAULT_SKIN;
+}
+
+export function resolveSkinAsset(skinId?: string | null): {
+  id: PlayerSkinId;
+  url: string;
+  accentColor: string;
+  hasWalkingClip: boolean;
+} {
+  const item = resolveSkinItem(skinId);
+  return {
+    id: item.id,
+    url: item.modelUrl,
+    accentColor: item.accentColor,
+    hasWalkingClip: item.hasWalkingClip,
+  };
+}
+
+export function getEquippedSkinId(): PlayerSkinId {
+  let storedId: string | null = null;
+  try {
+    storedId = localStorage.getItem("tacpadel_player_skin_id");
+  } catch {}
+  return resolveSkinItem(storedId || DEFAULT_SKIN_ID).id;
+}
+
+export function saveEquippedSkinId(skinId: string): PlayerSkinId {
+  const validId = resolveSkinItem(skinId).id;
+  try {
+    localStorage.setItem("tacpadel_player_skin_id", validId);
+  } catch {}
+  return validId;
 }
 
 // =========================================================

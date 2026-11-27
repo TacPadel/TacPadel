@@ -6,10 +6,13 @@ import { Props } from "./ScenarioCourt3D";
 import { useTranslation } from "../../lib/i18n";
 import {
   DEFAULT_PARTNER_URL,
+  DEFAULT_SKIN_URL,
   getEquippedPartnerId,
   getEquippedRacketId,
+  getEquippedSkinId,
   resolvePartnerItem,
   resolveRacketItem,
+  resolveSkinAsset,
 } from "../../lib/loadout";
 import AnimatedPadelPlayer, {
   mapShotTypeToPlayerAction,
@@ -24,7 +27,7 @@ const NUMBERS = [1, 2, 3, 4, 5];
 /** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
 const MODEL_BASE_PATH = "";
 
-export const PLAYER_SELF_MODEL_URL = `${MODEL_BASE_PATH}/meshy_playerI.glb`;
+export const PLAYER_SELF_MODEL_URL = DEFAULT_SKIN_URL;
 export const OPP1_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp1.glb`;
 export const OPP2_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp2.glb`;
 
@@ -434,7 +437,7 @@ const AnimatedBall = memo(function AnimatedBall({
 
   return (
     <mesh ref={ballRef} position={[startPos.x, 1.5, startPos.z]}>
-      <sphereGeometry args={[0.11, 16, 16]} />
+      <sphereGeometry args={[0.09, 16, 16]} />
       <meshStandardMaterial color="#ccff00" emissive="#ccff00" emissiveIntensity={5} />
       <pointLight color="#ccff00" intensity={1.4} distance={2.5} />
     </mesh>
@@ -758,10 +761,16 @@ export default function TacticalData(
     partnerName?: string;
     partnerId?: string | null;
     racketId?: string | null;
+    skinId?: string | null;
   }
 ) {
   const currentUserName = props.playerName || props.userName || "DU";
   const { t } = useTranslation();
+
+  const equippedSkinAsset = useMemo(
+    () => resolveSkinAsset(props.skinId || getEquippedSkinId()),
+    [props.skinId]
+  );
 
   const equippedPartnerId = useMemo(
     () => resolvePartnerItem(props.partnerId || getEquippedPartnerId()).id,
@@ -782,10 +791,10 @@ export default function TacticalData(
     preloadAnimatedPartner(equippedPartnerId);
     preloadAnimatedRacket(equippedRacketId);
     preloadAnimatedRacket("racket_starter");
-    useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
+    useGLTF.preload(equippedSkinAsset.url, false, false);
     useGLTF.preload(OPP1_MODEL_URL, false, false);
     useGLTF.preload(OPP2_MODEL_URL, false, false);
-  }, [equippedPartnerId, equippedRacketId]);
+  }, [equippedPartnerId, equippedRacketId, equippedSkinAsset.url]);
 
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
@@ -1040,9 +1049,9 @@ export default function TacticalData(
         );
       })}
 
-      {/* Eigener Spieler ("Ich"): meshy_playerI.glb + ausgerüsteter Shop-Schläger */}
+      {/* Eigener Spieler ("Ich"): gewählter Kleiderschrank-Skin + ausgerüsteter Shop-Schläger */}
       <Real3DPlayer
-        modelUrl={PLAYER_SELF_MODEL_URL}
+        modelUrl={equippedSkinAsset.url}
         racketId={equippedRacketId}
         baseRotationY={Math.PI}
         position={youPos}
@@ -1348,7 +1357,7 @@ export default function TacticalData(
   );
 }
 
-useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
+useGLTF.preload(DEFAULT_SKIN_URL, false, false);
 useGLTF.preload(OPP1_MODEL_URL, false, false);
 useGLTF.preload(OPP2_MODEL_URL, false, false);
 useGLTF.preload(DEFAULT_PARTNER_URL, false, false);
