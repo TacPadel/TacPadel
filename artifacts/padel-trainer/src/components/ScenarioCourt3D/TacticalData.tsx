@@ -1,11 +1,22 @@
-import React, { useMemo, useRef, useEffect, memo } from "react";
+import React, { Suspense, useMemo, useRef, useEffect, useState, memo } from "react";
 import * as THREE from "three";
-import { Plane, Html, QuadraticBezierLine, Cylinder, Sphere, Ring, Edges, Text, useGLTF } from "@react-three/drei";
+import { Plane, Html, QuadraticBezierLine, Ring, Edges, Text, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { Props } from "./ScenarioCourt3D";
 import { useTranslation } from "../../lib/i18n";
-import { resolvePartnerAsset } from "../../lib/loadout";
-import { preloadAnimatedPartner } from "../AnimatedPadelPlayer";
+import {
+  DEFAULT_PARTNER_URL,
+  getEquippedPartnerId,
+  getEquippedRacketId,
+  resolvePartnerItem,
+  resolveRacketItem,
+} from "../../lib/loadout";
+import AnimatedPadelPlayer, {
+  mapShotTypeToPlayerAction,
+  preloadAnimatedPartner,
+  preloadAnimatedRacket,
+  type PlayerAction,
+} from "../AnimatedPadelPlayer";
 
 const LETTERS = ["A", "B", "C", "D", "E"];
 const NUMBERS = [1, 2, 3, 4, 5];
@@ -13,10 +24,11 @@ const NUMBERS = [1, 2, 3, 4, 5];
 /** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
 const MODEL_BASE_PATH = "";
 
-/** Eigener Spieler-Avatar ("Ich"); fällt auf das gewählte Partner-Modell zurück, falls meshy_playerI.glb noch nicht vorliegt */
 export const PLAYER_SELF_MODEL_URL = `${MODEL_BASE_PATH}/meshy_playerI.glb`;
 export const OPP1_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp1.glb`;
 export const OPP2_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp2.glb`;
+
+const COURT_PLAYER_SCALE = 1.25;
 
 function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
   if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0, side === "left" ? 5 : -5);
@@ -34,7 +46,7 @@ function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 
   let z = 0;
   if (side === "left") { z = 10 - (num * 2) + 1; }
   else { z = -10 + (num * 2) - 1; }
-  
+
   return new THREE.Vector3(x, 0.02, z);
 }
 
@@ -50,7 +62,7 @@ function getFrontPos3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
 
 function getShotParameters(schlagTyp: string) {
   const sType = (schlagTyp || "").toUpperCase();
-  
+
   if (sType.includes("LOB")) return { bogenHoehe: 9.0, powerMultiplier: 0.10, defaultColor: "#34d399" };
   if (sType.includes("CHIQUITA")) return { bogenHoehe: 3.0, powerMultiplier: 0.15, defaultColor: "#34d399" };
   if (sType.includes("SMASH")) return { bogenHoehe: 0.4, powerMultiplier: 1.0, defaultColor: "#ef4444" };
@@ -90,50 +102,50 @@ function calculatePreviewTrajectory(startPos: THREE.Vector3, targetPos: THREE.Ve
   let curZ = p1stBounce.z;
   let curY = 0.1;
   let lastPoint = p1stBounce.clone();
-  
+
   let safeGuard = 0;
 
   while (remainingDist > 0.05 && safeGuard < 3) {
     safeGuard++;
     let tX = Infinity, tZ = Infinity;
-    
+
     if (dx > 0.001) tX = (4.95 - curX) / dx;
     else if (dx < -0.001) tX = (-4.95 - curX) / dx;
-    
+
     if (dz > 0.001) tZ = (9.95 - curZ) / dz;
     else if (dz < -0.001) tZ = (-9.95 - curZ) / dz;
-    
+
     let tMin = Math.min(tX, tZ);
 
     if (tMin < remainingDist && tMin > 0.01) {
       curX += tMin * dx; curZ += tMin * dz;
       curY = Math.min(3.5, curY + tMin * (sType.includes("SMASH") ? 0.7 : 0.3));
-      
+
       let pWall = new THREE.Vector3(curX, curY, curZ);
-      
+
       let dist = lastPoint.distanceTo(pWall);
       let mid = new THREE.Vector3((lastPoint.x + pWall.x) / 2, Math.max(lastPoint.y, pWall.y) + Math.min(0.2, dist * 0.1), (lastPoint.z + pWall.z) / 2);
-      
+
       segments.push({ start: lastPoint.clone(), mid: mid.clone(), end: pWall.clone() });
-      
+
       lastPoint = pWall;
       remainingDist -= tMin;
 
       if (tMin === tX) { dx = -dx; curX = curX > 0 ? 4.9 : -4.9; }
       if (tMin === tZ) { dz = -dz; curZ = curZ > 0 ? 9.9 : -9.9; }
-      
+
       remainingDist *= 0.8;
     } else {
       curX += remainingDist * dx; curZ += remainingDist * dz; curY = 0.1;
       let pFloor = new THREE.Vector3(curX, curY, curZ);
-      
+
       let dist = lastPoint.distanceTo(pFloor);
       let arcMidY = (lastPoint.y + pFloor.y) / 2;
       arcMidY += (lastPoint.y < 0.2) ? Math.min(0.6, dist * 0.3) : Math.min(0.3, dist * 0.15);
-      
+
       let mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, arcMidY, (lastPoint.z + pFloor.z) / 2);
       segments.push({ start: lastPoint.clone(), mid: mid.clone(), end: pFloor.clone() });
-      
+
       lastPoint = pFloor;
       remainingDist = 0;
     }
@@ -143,7 +155,7 @@ function calculatePreviewTrajectory(startPos: THREE.Vector3, targetPos: THREE.Ve
     let fallbackX = Math.max(-4.95, Math.min(4.95, lastPoint.x + dx * 1.5));
     let fallbackZ = Math.max(-9.95, Math.min(9.95, lastPoint.z + dz * 1.5));
     let pFloor = new THREE.Vector3(fallbackX, 0.1, fallbackZ);
-    
+
     let dist = lastPoint.distanceTo(pFloor);
     let mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, lastPoint.y + Math.min(0.3, dist * 0.2), (lastPoint.z + pFloor.z) / 2);
     segments.push({ start: lastPoint, mid: mid, end: pFloor });
@@ -178,7 +190,7 @@ const AnimatedBall = memo(function AnimatedBall({
       const zDist = startPos.z - targetPos.z;
       const fraction = zDist !== 0 ? Math.abs(startPos.z) / Math.abs(zDist) : 0.5;
       const netX = startPos.x + (targetPos.x - startPos.x) * fraction;
-      
+
       const pStart = new THREE.Vector3(startPos.x, 1.5, startPos.z);
       const pNet = new THREE.Vector3(netX, 0.6, 0);
       const pFloor = new THREE.Vector3(netX, 0.1, startPos.z > 0 ? 0.8 : -0.8);
@@ -193,7 +205,7 @@ const AnimatedBall = memo(function AnimatedBall({
       const zDist = targetZ - startPos.z;
       const targetZDist = targetPos.z - startPos.z;
       const fraction = targetZDist !== 0 ? Math.abs(zDist / targetZDist) : 1;
-      
+
       let wallX = startPos.x + (targetPos.x - startPos.x) * fraction;
       wallX = Math.max(-5, Math.min(5, wallX));
 
@@ -211,7 +223,7 @@ const AnimatedBall = memo(function AnimatedBall({
       const pStart = new THREE.Vector3(startPos.x, 1.5, startPos.z);
       const finalTargetY = isCaughtInAir ? 1.2 : 0.1;
       const p1stBounce = new THREE.Vector3(targetPos.x, finalTargetY, targetPos.z);
-      
+
       const midY = Math.max(pStart.y, p1stBounce.y) + bogenHoehe;
       const mid1 = new THREE.Vector3((pStart.x + p1stBounce.x) / 2, midY, (pStart.z + p1stBounce.z) / 2);
       resultCurves.push(new THREE.QuadraticBezierCurve3(pStart, mid1, p1stBounce));
@@ -231,7 +243,7 @@ const AnimatedBall = memo(function AnimatedBall({
         let curZ = p1stBounce.z;
         let curY = 0.1;
         let lastPoint = p1stBounce.clone();
-        
+
         let safeGuard = 0;
 
         while (remainingDist > 0.05 && safeGuard < 3) {
@@ -241,39 +253,39 @@ const AnimatedBall = memo(function AnimatedBall({
           else if (dx < -0.001) tX = (-4.95 - curX) / dx;
           if (dz > 0.001) tZ = (9.95 - curZ) / dz;
           else if (dz < -0.001) tZ = (-9.95 - curZ) / dz;
-          
+
           let tMin = Math.min(tX, tZ);
 
           if (tMin < remainingDist && tMin > 0.01) {
             curX += tMin * dx; curZ += tMin * dz;
             curY = Math.min(3.5, curY + tMin * (sType.includes("SMASH") ? 0.7 : 0.3));
-            
+
             let pWall = new THREE.Vector3(curX, curY, curZ);
-            
+
             let dist = lastPoint.distanceTo(pWall);
             let mid = new THREE.Vector3((lastPoint.x + pWall.x) / 2, Math.max(lastPoint.y, pWall.y) + Math.min(0.2, dist * 0.1), (lastPoint.z + pWall.z) / 2);
-            
+
             resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pWall));
-            
+
             lastPoint = pWall;
             remainingDist -= tMin;
 
             if (tMin === tX) { dx = -dx; curX = curX > 0 ? 4.9 : -4.9; }
             if (tMin === tZ) { dz = -dz; curZ = curZ > 0 ? 9.9 : -9.9; }
-            
+
             remainingDist *= 0.8;
           } else {
             curX += remainingDist * dx; curZ += remainingDist * dz; curY = 0.1;
             let pFloor = new THREE.Vector3(curX, curY, curZ);
-            
+
             let dist = lastPoint.distanceTo(pFloor);
             let arcMidY = (lastPoint.y + pFloor.y) / 2;
             arcMidY += (lastPoint.y < 0.2) ? Math.min(0.6, dist * 0.3) : Math.min(0.3, dist * 0.15);
-            
+
             let mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, arcMidY, (lastPoint.z + pFloor.z) / 2);
-            
+
             resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pFloor));
-            
+
             lastPoint = pFloor;
             remainingDist = 0;
           }
@@ -283,7 +295,7 @@ const AnimatedBall = memo(function AnimatedBall({
           let fallbackX = Math.max(-4.95, Math.min(4.95, lastPoint.x + dx * 1.5));
           let fallbackZ = Math.max(-9.95, Math.min(9.95, lastPoint.z + dz * 1.5));
           let pFloor = new THREE.Vector3(fallbackX, 0.1, fallbackZ);
-          
+
           let dist = lastPoint.distanceTo(pFloor);
           let mid = new THREE.Vector3((lastPoint.x + pFloor.x) / 2, lastPoint.y + Math.min(0.3, dist * 0.2), (lastPoint.z + pFloor.z) / 2);
           resultCurves.push(new THREE.QuadraticBezierCurve3(lastPoint, mid, pFloor));
@@ -299,7 +311,7 @@ const AnimatedBall = memo(function AnimatedBall({
       effectiveLen += l / friction[Math.min(idx, 3)];
       return l;
     });
-    
+
     const tLen = lens.reduce((sum, val) => sum + val, 0);
 
     return { curves: resultCurves, lengths: lens, totalLength: tLen, effectiveLength: effectiveLen };
@@ -310,7 +322,7 @@ const AnimatedBall = memo(function AnimatedBall({
     const safeDelta = Math.min(delta, 0.1);
 
     if (isAnimating && curves.length > 0 && effectiveLength > 0) {
-      
+
       if (isCinematicMode) {
         if (delayTimer.current < 1.3) {
           delayTimer.current += safeDelta;
@@ -345,7 +357,7 @@ const AnimatedBall = memo(function AnimatedBall({
 
       distanceRef.current += currentSpeed * safeDelta;
       let currentDist = distanceRef.current;
-      
+
       if (currentDist >= totalLength) {
         currentDist = totalLength;
       }
@@ -356,7 +368,7 @@ const AnimatedBall = memo(function AnimatedBall({
         if (currentDist <= traveledForPos + curveLen || i === curves.length - 1) {
           let t = curveLen === 0 ? 1 : (currentDist - traveledForPos) / curveLen;
           t = Math.max(0, Math.min(1, t));
-          
+
           const position = curves[i].getPointAt(t);
           ballRef.current.position.copy(position);
           break;
@@ -379,50 +391,139 @@ const AnimatedBall = memo(function AnimatedBall({
   );
 });
 
+class PlayerModelErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 const Real3DPlayer = memo(function Real3DPlayer({
-  position, type, label, isGlowing, isHitter, onClick, disabled, modelUrl, fallbackModelUrl, rotation, hidePlayerLabels
+  position,
+  type,
+  label,
+  isGlowing,
+  isHitter,
+  onClick,
+  disabled,
+  modelUrl,
+  partnerId,
+  racketId = "racket_starter",
+  baseRotationY = 0,
+  shotAction,
+  shotTriggerKey = 0,
+  hidePlayerLabels,
 }: {
-  position: THREE.Vector3, type: string, label: string,
-  isGlowing?: boolean, isHitter?: boolean, onClick?: () => void, disabled?: boolean,
-  modelUrl: string, fallbackModelUrl?: string, rotation?: [number, number, number], hidePlayerLabels?: boolean
+  position: THREE.Vector3;
+  type: string;
+  label: string;
+  isGlowing?: boolean;
+  isHitter?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+  modelUrl?: string;
+  partnerId?: string | null;
+  racketId?: string | null;
+  baseRotationY?: number;
+  shotAction?: PlayerAction | null;
+  shotTriggerKey?: number;
+  hidePlayerLabels?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  
-  const primaryGltf = useGLTF(modelUrl, false, false);
-  const fallbackGltf = useGLTF(fallbackModelUrl || modelUrl, false, false);
-  const activeScene = primaryGltf?.scene || fallbackGltf?.scene;
-  const clonedScene = useMemo(() => (activeScene ? activeScene.clone() : null), [activeScene]);
+  const modelYawRef = useRef<THREE.Group>(null);
+  const targetPosRef = useRef(new THREE.Vector3(position.x, 0, position.z));
+  const isMovingRef = useRef(false);
+
+  const [isMoving, setIsMoving] = useState(false);
+  const [activeShot, setActiveShot] = useState<PlayerAction | null>(null);
 
   useEffect(() => {
-    if (groupRef.current) groupRef.current.position.set(position.x, 0, position.z);
+    targetPosRef.current.set(position.x, 0, position.z);
+  }, [position.x, position.z]);
+
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(position.x, 0, position.z);
+    }
+    if (modelYawRef.current) {
+      modelYawRef.current.rotation.y = baseRotationY;
+    }
   }, []);
 
+  useEffect(() => {
+    if (shotTriggerKey > 0 && shotAction) {
+      setActiveShot(shotAction);
+    } else if (!shotAction) {
+      setActiveShot(null);
+    }
+  }, [shotAction, shotTriggerKey]);
+
   useFrame((_, delta) => {
-    if (groupRef.current) {
-      const safeDelta = Math.min(delta, 0.1);
-      const targetPos = new THREE.Vector3(position.x, 0, position.z);
-      groupRef.current.position.lerp(targetPos, 6.0 * safeDelta);
+    const group = groupRef.current;
+    if (!group) return;
+
+    const safeDelta = Math.min(delta, 0.1);
+    const target = targetPosRef.current;
+    const dx = target.x - group.position.x;
+    const dz = target.z - group.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    const movingNow = dist > 0.08;
+    if (movingNow !== isMovingRef.current) {
+      isMovingRef.current = movingNow;
+      setIsMoving(movingNow);
+    }
+
+    if (dist > 0.005) {
+      group.position.lerp(target, Math.min(1, 6.0 * safeDelta));
+    } else {
+      group.position.set(target.x, 0, target.z);
+    }
+
+    if (modelYawRef.current) {
+      // Beim Schlagen immer zum Netz richten, beim Laufen sanft in Laufrichtung drehen
+      const desiredYaw = !activeShot && movingNow ? Math.atan2(dx, dz) : baseRotationY;
+      let diff = desiredYaw - modelYawRef.current.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      modelYawRef.current.rotation.y += diff * Math.min(1, 10 * safeDelta);
     }
   });
+
+  const currentAction: PlayerAction = activeShot || (isMoving ? "walk" : "idle");
+  const actionSpeed = activeShot ? 1.35 : 1.15;
 
   const isInteractive = onClick && !disabled;
 
   let baseColor = "#ef4444";
   if (type === "DU") baseColor = "#a855f7";
   if (type === "PTNER") baseColor = "#06b6d4";
-  
+
   const auraColor = useMemo(() => new THREE.Color(baseColor), [baseColor]);
 
+  const modelKey = modelUrl || partnerId || "default";
+
   return (
-    <group 
-      ref={groupRef} 
+    <group
+      ref={groupRef}
       onClick={(e) => {
         if (isInteractive) { e.stopPropagation(); onClick(); }
       }}
       onPointerOver={(e) => { if (isInteractive) { e.stopPropagation(); document.body.style.cursor = 'pointer'; } }}
       onPointerOut={(e) => { if (isInteractive) { e.stopPropagation(); document.body.style.cursor = 'default'; } }}
     >
-      
       <Ring args={[0.45, 0.5, 24]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <meshBasicMaterial color={baseColor} side={THREE.DoubleSide} transparent opacity={isGlowing ? 1 : 0.15} />
       </Ring>
@@ -460,14 +561,48 @@ const Real3DPlayer = memo(function Real3DPlayer({
               `}
             />
           </mesh>
-          
+
           <pointLight color={baseColor} intensity={2.0} distance={2.0} position={[0, 1.0, 0.5]} />
         </group>
       )}
 
-      {clonedScene && (
-        <primitive object={clonedScene} scale={1.4} rotation={rotation || [0, 0, 0]} />
-      )}
+      <group ref={modelYawRef}>
+        <PlayerModelErrorBoundary
+          key={modelKey}
+          fallback={
+            <Suspense fallback={null}>
+              <AnimatedPadelPlayer
+                modelUrl={DEFAULT_PARTNER_URL}
+                racketId={racketId}
+                action={currentAction}
+                triggerKey={shotTriggerKey}
+                speed={actionSpeed}
+                position={[0, 0, 0]}
+                rotationY={0}
+                scale={COURT_PLAYER_SCALE}
+                showRacket
+                onActionFinished={() => setActiveShot(null)}
+              />
+            </Suspense>
+          }
+        >
+          <Suspense fallback={null}>
+            <AnimatedPadelPlayer
+              modelUrl={modelUrl}
+              partnerId={partnerId}
+              racketId={racketId}
+              action={currentAction}
+              triggerKey={shotTriggerKey}
+              speed={actionSpeed}
+              position={[0, 0, 0]}
+              rotationY={0}
+              scale={COURT_PLAYER_SCALE}
+              showRacket
+              onActionFinished={() => setActiveShot(null)}
+            />
+          </Suspense>
+        </PlayerModelErrorBoundary>
+      </group>
 
       <mesh position={[0, 1.6, 0]}>
         <cylinderGeometry args={[0.45, 0.45, 3.2, 8]} />
@@ -487,7 +622,7 @@ const Real3DPlayer = memo(function Real3DPlayer({
           </div>
         </Html>
       )}
-      
+
       {!hidePlayerLabels && isHitter && !disabled && (
         <Html position={[0, 3.15, 0]} center style={{ pointerEvents: 'none' }}>
           <div className="bg-orange-500 text-white font-black rounded-full w-4 h-4 flex items-center justify-center text-[9px] animate-bounce border border-white shadow-[0_0_10px_rgba(255,165,0,0.8)]">
@@ -499,34 +634,73 @@ const Real3DPlayer = memo(function Real3DPlayer({
   );
 });
 
-export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; partnerId?: string | null; }) {
-  
+export default function TacticalData(
+  props: Props & {
+    isCinematicMode?: boolean;
+    hidePlayerLabels?: boolean;
+    playerName?: string;
+    userName?: string;
+    partnerName?: string;
+    partnerId?: string | null;
+    racketId?: string | null;
+  }
+) {
   const currentUserName = props.playerName || props.userName || "DU";
   const { t } = useTranslation();
 
-  const equippedPartnerId = useMemo(() => {
-    if (props.partnerId) return props.partnerId;
-    try {
-      return localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
-    } catch {
-      return "partner_rookie";
-    }
-  }, [props.partnerId]);
+  const equippedPartnerId = useMemo(
+    () => resolvePartnerItem(props.partnerId || getEquippedPartnerId()).id,
+    [props.partnerId]
+  );
 
-  const partnerAsset = useMemo(
-    () => resolvePartnerAsset(equippedPartnerId),
+  const equippedRacketId = useMemo(
+    () => resolveRacketItem(props.racketId || getEquippedRacketId()).id,
+    [props.racketId]
+  );
+
+  const partnerItem = useMemo(
+    () => resolvePartnerItem(equippedPartnerId),
     [equippedPartnerId]
   );
 
   useEffect(() => {
     preloadAnimatedPartner(equippedPartnerId);
+    preloadAnimatedRacket(equippedRacketId);
+    preloadAnimatedRacket("racket_starter");
     useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
     useGLTF.preload(OPP1_MODEL_URL, false, false);
     useGLTF.preload(OPP2_MODEL_URL, false, false);
-  }, [equippedPartnerId]);
+  }, [equippedPartnerId, equippedRacketId]);
 
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
+
+  // Schlag-Animation beim Übergang hasSubmitted: false -> true für den aktiven Hitter auslösen
+  const prevSubmittedRef = useRef<boolean>(props.hasSubmitted);
+  const [shotTrigger, setShotTrigger] = useState<{
+    hitter: "you" | "partner" | "opp1" | "opp2" | null;
+    action: PlayerAction | null;
+    key: number;
+  }>({ hitter: null, action: null, key: 0 });
+
+  useEffect(() => {
+    const wasSubmitted = prevSubmittedRef.current;
+    prevSubmittedRef.current = props.hasSubmitted;
+
+    if (!wasSubmitted && props.hasSubmitted) {
+      const rawShot = props.positions.ball.type || props.previewShot || "DRIVE";
+      const mappedAction = mapShotTypeToPlayerAction(rawShot);
+      setShotTrigger((prev) => ({
+        hitter: props.hitterId,
+        action: mappedAction,
+        key: prev.key + 1,
+      }));
+    } else if (!props.hasSubmitted) {
+      setShotTrigger((prev) =>
+        prev.action ? { ...prev, hitter: null, action: null } : prev
+      );
+    }
+  }, [props.hasSubmitted, props.hitterId, props.positions.ball.type, props.previewShot]);
 
   const runOriginsRef = useRef({ you: props.positions.you, partner: props.positions.partner });
   useEffect(() => {
@@ -537,45 +711,45 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
 
   const getRealtimeRunFeedback = (runZone: string) => {
     const validFromProps = props.acceptableLaufZones || [];
-    
+
     if (validFromProps.length > 0) {
       return validFromProps.includes(runZone);
     }
-    
+
     const shot = (props.previewShot || props.positions.ball.type || "").toUpperCase();
     if (!shot || !runZone) return null;
-    
+
     const runRow = parseInt(runZone[1]);
 
     const o1Row = parseInt(props.positions.opp1[1]);
     const o2Row = parseInt(props.positions.opp2[1]);
-    const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
+    const oppsAtNet = o1Row >= 3 || o2Row >= 3;
 
     if (["LOB", "CHIQUITA", "AUFSCHLAG", "SMASH", "VOLLEY", "BANDEJA", "VIBORA", "BLOCK"].includes(shot)) {
-        return runRow >= 3;
+      return runRow >= 3;
     }
-    
+
     if (shot === "BAJADA") {
-        if (oppsAtNet) {
-            return runRow <= 2; 
-        } else {
-            return runRow >= 3; 
-        }
-    }
-    
-    if (["DRIVE"].includes(shot)) {
+      if (oppsAtNet) {
         return runRow <= 2;
+      } else {
+        return runRow >= 3;
+      }
     }
-    
+
+    if (["DRIVE"].includes(shot)) {
+      return runRow <= 2;
+    }
+
     return false;
   };
 
   const getPlayerDisplayLabel = (playerId: string) => {
     switch (playerId) {
       case "you":
-        return currentUserName; 
+        return currentUserName;
       case "partner":
-        return props.partnerName ? props.partnerName : partnerAsset.id === "partner_rookie" ? "PARTNER" : resolvePartnerAsset(equippedPartnerId).id.toUpperCase();
+        return props.partnerName ? props.partnerName : partnerItem.name;
       case "opp1":
         return props.activeAiProfile?.p1 ? props.activeAiProfile.p1 : "KI 1";
       case "opp2":
@@ -584,6 +758,11 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         return playerId.toUpperCase();
     }
   };
+
+  const youPos = useMemo(() => getZoneCenter3D("left", props.positions.you), [props.positions.you]);
+  const partnerPos = useMemo(() => getZoneCenter3D("left", props.positions.partner), [props.positions.partner]);
+  const opp1Pos = useMemo(() => getZoneCenter3D("right", props.positions.opp1), [props.positions.opp1]);
+  const opp2Pos = useMemo(() => getZoneCenter3D("right", props.positions.opp2), [props.positions.opp2]);
 
   return (
     <group name="TacticalData">
@@ -596,10 +775,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
 
       {allZoneIds.map((zoneId) => {
         const posLeft = getZoneCenter3D("left", zoneId);
-        
+
         const isSelectedYou = !isLocked && props.selectedLaufZone === zoneId;
         const isSelectedPartner = !isLocked && props.selectedPartnerZone === zoneId;
-        
+
         const isSelectedLeftAfterSubmit = isLocked && (props.selectedLaufZone === zoneId || props.selectedPartnerZone === zoneId);
         const isPerfectLeft = props.profiMode && isLocked && props.perfectLaufZone === zoneId;
         const isAcceptableLeft = props.profiMode && isLocked && (props.acceptableLaufZones || []).includes(zoneId);
@@ -611,9 +790,9 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
           if (isSelectedPartner) { colorLeft = "#06b6d4"; emissiveLeft = 2; opLeft = 0.25; }
           if (isSelectedYou && isSelectedPartner) colorLeft = props.activeChar === "you" ? "#a855f7" : "#06b6d4";
         } else if (props.profiMode) {
-          if (isPerfectLeft) { colorLeft = "#34d399"; emissiveLeft = 3; opLeft = 0.3; } 
-          else if (isAcceptableLeft) { colorLeft = "#f97316"; emissiveLeft = 2; opLeft = 0.3; } 
-          else if (isWrongLeft) { colorLeft = "#ef4444"; emissiveLeft = 3; opLeft = 0.3; } 
+          if (isPerfectLeft) { colorLeft = "#34d399"; emissiveLeft = 3; opLeft = 0.3; }
+          else if (isAcceptableLeft) { colorLeft = "#f97316"; emissiveLeft = 2; opLeft = 0.3; }
+          else if (isWrongLeft) { colorLeft = "#ef4444"; emissiveLeft = 3; opLeft = 0.3; }
         }
 
         const posRight = getZoneCenter3D("right", zoneId);
@@ -623,35 +802,35 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         const isWrongRight = !props.isAiActive && isLocked && isSelectedRight && !isBestRight && !isAcceptableRight;
 
         let colorRight = "transparent"; let emissiveRight = 0; let opRight = 0;
-        if (!isLocked && isSelectedRight) { colorRight = "#34d399"; emissiveRight = 2; opRight = 0.2; } 
+        if (!isLocked && isSelectedRight) { colorRight = "#34d399"; emissiveRight = 2; opRight = 0.2; }
         else if (isLocked) {
           if (isBestRight) { colorRight = "#34d399"; emissiveRight = 3; opRight = 0.3; }
           else if (isAcceptableRight) { colorRight = "#f97316"; emissiveRight = 2; opRight = 0.3; }
           else if (isWrongRight) { colorRight = "#ef4444"; emissiveRight = 3; opRight = 0.3; }
         }
 
-        const defaultEdgeColor = "#6dcefc"; 
+        const defaultEdgeColor = "#6dcefc";
 
         return (
           <React.Fragment key={`zones-${zoneId}`}>
             <group position={[posLeft.x, posLeft.y, posLeft.z]}>
               <Plane args={[1.95, 1.95]} rotation={[-Math.PI / 2, 0, 0]}
-                 onClick={(e) => { e.stopPropagation(); if (!isLocked && props.onLaufZoneClick) props.onLaufZoneClick(zoneId); }}
-                >
-                <meshStandardMaterial 
-                  color={colorLeft} 
-                  emissive={colorLeft} 
-                  emissiveIntensity={emissiveLeft} 
-                  transparent 
-                  opacity={opLeft > 0 ? opLeft : 0.0} 
+                onClick={(e) => { e.stopPropagation(); if (!isLocked && props.onLaufZoneClick) props.onLaufZoneClick(zoneId); }}
+              >
+                <meshStandardMaterial
+                  color={colorLeft}
+                  emissive={colorLeft}
+                  emissiveIntensity={emissiveLeft}
+                  transparent
+                  opacity={opLeft > 0 ? opLeft : 0.0}
                   depthWrite={false}
                 />
-                
-                <Edges 
-                  linewidth={opLeft > 0 ? 2 : 1} 
-                  color={opLeft > 0 ? new THREE.Color(colorLeft).multiplyScalar(2) : defaultEdgeColor} 
-                  transparent 
-                  opacity={opLeft > 0 ? 1 : 0.2} 
+
+                <Edges
+                  linewidth={opLeft > 0 ? 2 : 1}
+                  color={opLeft > 0 ? new THREE.Color(colorLeft).multiplyScalar(2) : defaultEdgeColor}
+                  transparent
+                  opacity={opLeft > 0 ? 1 : 0.2}
                 />
               </Plane>
             </group>
@@ -660,20 +839,20 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
               <Plane args={[1.95, 1.95]} rotation={[-Math.PI / 2, 0, 0]}
                 onClick={(e) => { e.stopPropagation(); if (props.level !== "Schlag" && !props.hasSubmitted && props.activeChar === props.hitterId) props.onZoneClick(zoneId); }}
               >
-                <meshStandardMaterial 
-                  color={colorRight} 
-                  emissive={colorRight} 
-                  emissiveIntensity={emissiveRight} 
-                  transparent 
+                <meshStandardMaterial
+                  color={colorRight}
+                  emissive={colorRight}
+                  emissiveIntensity={emissiveRight}
+                  transparent
                   opacity={opRight > 0 ? opRight : 0.0}
                   depthWrite={false}
                 />
-                
-                <Edges 
-                  linewidth={opRight > 0 ? 2 : 1} 
+
+                <Edges
+                  linewidth={opRight > 0 ? 2 : 1}
                   color={opRight > 0 ? new THREE.Color(colorRight).multiplyScalar(2) : defaultEdgeColor}
-                  transparent 
-                  opacity={opRight > 0 ? 1 : 0.2} 
+                  transparent
+                  opacity={opRight > 0 ? 1 : 0.2}
                 />
               </Plane>
             </group>
@@ -681,77 +860,88 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         );
       })}
 
-      {/* Eigener Spieler ("Ich"): meshy_playerI.glb mit Fallback auf gewählten Partner-Avatar */}
-      <Real3DPlayer 
+      {/* Eigener Spieler ("Ich"): meshy_playerI.glb + ausgerüsteter Shop-Schläger */}
+      <Real3DPlayer
         modelUrl={PLAYER_SELF_MODEL_URL}
-        fallbackModelUrl={partnerAsset.url}
-        rotation={[0, Math.PI, 0]} 
-        position={getZoneCenter3D("left", props.positions.you)} 
-        type="DU" 
-        label={getPlayerDisplayLabel("you")} 
-        isGlowing={props.activeChar === "you"} 
+        racketId={equippedRacketId}
+        baseRotationY={Math.PI}
+        position={youPos}
+        type="DU"
+        label={getPlayerDisplayLabel("you")}
+        isGlowing={props.activeChar === "you"}
         isHitter={props.hitterId === "you"}
+        shotAction={shotTrigger.hitter === "you" ? shotTrigger.action : null}
+        shotTriggerKey={shotTrigger.hitter === "you" ? shotTrigger.key : 0}
         onClick={() => props.onPlayerClick && props.onPlayerClick("you")}
         disabled={isLocked}
-        hidePlayerLabels={props.hidePlayerLabels} 
+        hidePlayerLabels={props.hidePlayerLabels}
       />
-      
+
       {/* KI-Partner: dynamisch aus loadout.ts (Leo / Diego / Sergio / Mateo / Lucas) */}
-      <Real3DPlayer 
-        modelUrl={partnerAsset.url}
-        rotation={[0, Math.PI, 0]} 
-        position={getZoneCenter3D("left", props.positions.partner)} 
-        type="PTNER" 
+      <Real3DPlayer
+        partnerId={equippedPartnerId}
+        racketId="racket_starter"
+        baseRotationY={Math.PI}
+        position={partnerPos}
+        type="PTNER"
         label={getPlayerDisplayLabel("partner")}
         isGlowing={props.activeChar === "partner"}
         isHitter={props.hitterId === "partner"}
+        shotAction={shotTrigger.hitter === "partner" ? shotTrigger.action : null}
+        shotTriggerKey={shotTrigger.hitter === "partner" ? shotTrigger.key : 0}
         onClick={() => props.onPlayerClick && props.onPlayerClick("partner")}
         disabled={isLocked}
-        hidePlayerLabels={props.hidePlayerLabels} 
+        hidePlayerLabels={props.hidePlayerLabels}
       />
-      
+
       {/* Gegner 1: meshy_opp1.glb */}
-      <Real3DPlayer 
+      <Real3DPlayer
         modelUrl={OPP1_MODEL_URL}
-        rotation={[0, 0, 0]} 
-        position={getZoneCenter3D("right", props.positions.opp1)} 
-        type="GEG1" 
+        racketId="racket_starter"
+        baseRotationY={0}
+        position={opp1Pos}
+        type="GEG1"
         label={getPlayerDisplayLabel("opp1")}
-        isGlowing={props.activeChar === "opp1"} 
-        isHitter={props.hitterId === "opp1"} 
-        hidePlayerLabels={props.hidePlayerLabels} 
+        isGlowing={props.activeChar === "opp1"}
+        isHitter={props.hitterId === "opp1"}
+        shotAction={shotTrigger.hitter === "opp1" ? shotTrigger.action : null}
+        shotTriggerKey={shotTrigger.hitter === "opp1" ? shotTrigger.key : 0}
+        hidePlayerLabels={props.hidePlayerLabels}
       />
-      
+
       {/* Gegner 2: meshy_opp2.glb */}
-      <Real3DPlayer 
+      <Real3DPlayer
         modelUrl={OPP2_MODEL_URL}
-        rotation={[0, 0, 0]} 
-        position={getZoneCenter3D("right", props.positions.opp2)} 
-        type="GEG2" 
-        label={getPlayerDisplayLabel("opp2")} 
-        isGlowing={props.activeChar === "opp2"} 
-        isHitter={props.hitterId === "opp2"} 
-        hidePlayerLabels={props.hidePlayerLabels} 
+        racketId="racket_starter"
+        baseRotationY={0}
+        position={opp2Pos}
+        type="GEG2"
+        label={getPlayerDisplayLabel("opp2")}
+        isGlowing={props.activeChar === "opp2"}
+        isHitter={props.hitterId === "opp2"}
+        shotAction={shotTrigger.hitter === "opp2" ? shotTrigger.action : null}
+        shotTriggerKey={shotTrigger.hitter === "opp2" ? shotTrigger.key : 0}
+        hidePlayerLabels={props.hidePlayerLabels}
       />
 
       {(() => {
         const startSide = props.positions.ball.side || "left";
-        const targetSide = startSide === "left" ? "right" : "left"; 
-        
+        const targetSide = startSide === "left" ? "right" : "left";
+
         const ballPos = getFrontPos3D(startSide, props.positions.ball.zone);
         let ballTargetPos = null;
         let isAnimating = false;
-        
+
         if (props.hasSubmitted && props.selectedZone) {
           ballTargetPos = getZoneCenter3D(targetSide, props.selectedZone);
           isAnimating = true;
         }
 
         return (
-          <AnimatedBall 
-            startPos={ballPos} 
-            targetPos={ballTargetPos} 
-            schlagTyp={props.positions.ball.type || "Schlag"} 
+          <AnimatedBall
+            startPos={ballPos}
+            targetPos={ballTargetPos}
+            schlagTyp={props.positions.ball.type || "Schlag"}
             isAnimating={isAnimating}
             isNetCrash={props.turnResult === "error_net"}
             isWallDirectCrash={props.turnResult === "error_wall_direct"}
@@ -763,48 +953,48 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
       })()}
 
       {props.selectedLaufZone && (() => {
-         const origin = isLocked ? runOriginsRef.current.you : props.positions.you;
-         if (origin === props.selectedLaufZone) return null;
-         
-         const fromPos = getZoneCenter3D("left", origin);
-         const targetPos = getZoneCenter3D("left", props.selectedLaufZone);
-         const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
-         
-         let lineColor = "#a855f7"; 
-         if (!props.profiMode) {
-           const feedback = getRealtimeRunFeedback(props.selectedLaufZone);
-           if (feedback !== null) {
-             lineColor = feedback ? "#34d399" : "#ef4444"; 
-           }
-         }
-         
-         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
+        const origin = isLocked ? runOriginsRef.current.you : props.positions.you;
+        if (origin === props.selectedLaufZone) return null;
+
+        const fromPos = getZoneCenter3D("left", origin);
+        const targetPos = getZoneCenter3D("left", props.selectedLaufZone);
+        const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
+
+        let lineColor = "#a855f7";
+        if (!props.profiMode) {
+          const feedback = getRealtimeRunFeedback(props.selectedLaufZone);
+          if (feedback !== null) {
+            lineColor = feedback ? "#34d399" : "#ef4444";
+          }
+        }
+
+        return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
       })()}
 
       {props.selectedPartnerZone && (() => {
-         const origin = isLocked ? runOriginsRef.current.partner : props.positions.partner;
-         if (origin === props.selectedPartnerZone) return null;
+        const origin = isLocked ? runOriginsRef.current.partner : props.positions.partner;
+        if (origin === props.selectedPartnerZone) return null;
 
-         const fromPos = getZoneCenter3D("left", origin);
-         const targetPos = getZoneCenter3D("left", props.selectedPartnerZone);
-         const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
-         
-         let lineColor = "#06b6d4"; 
-         if (!props.profiMode) {
-           const feedback = getRealtimeRunFeedback(props.selectedPartnerZone);
-           if (feedback !== null) {
-             lineColor = feedback ? "#34d399" : "#ef4444"; 
-           }
-         }
-         
-         return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
+        const fromPos = getZoneCenter3D("left", origin);
+        const targetPos = getZoneCenter3D("left", props.selectedPartnerZone);
+        const midPoint = new THREE.Vector3((fromPos.x + targetPos.x) / 2, 0.1, (fromPos.z + targetPos.z) / 2);
+
+        let lineColor = "#06b6d4";
+        if (!props.profiMode) {
+          const feedback = getRealtimeRunFeedback(props.selectedPartnerZone);
+          if (feedback !== null) {
+            lineColor = feedback ? "#34d399" : "#ef4444";
+          }
+        }
+
+        return <QuadraticBezierLine start={[fromPos.x, 0.2, fromPos.z]} end={[targetPos.x, 0.2, targetPos.z]} mid={[midPoint.x, 0.1, midPoint.z]} color={lineColor} lineWidth={4} dashed dashScale={5} />;
       })()}
 
       {(() => {
-        const targetZoneId = (isLocked && props.bestZones && props.bestZones.length > 0) 
-            ? props.bestZones[0] 
-            : props.selectedZone;
-            
+        const targetZoneId = (isLocked && props.bestZones && props.bestZones.length > 0)
+          ? props.bestZones[0]
+          : props.selectedZone;
+
         if (!targetZoneId) return null;
 
         const startSide = props.positions.ball.side || "left";
@@ -815,18 +1005,17 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         const targetPos = getZoneCenter3D(targetSide, targetZoneId);
 
         const sType = props.previewShot || props.positions.ball.type || "Drive";
-        const { bogenHoehe, defaultColor } = getShotParameters(sType);
-        
+        const { defaultColor } = getShotParameters(sType);
+
         let lineColor = defaultColor;
 
         if (props.profiMode) {
-          lineColor = "rgba(255, 255, 255, 0.6)"; 
+          lineColor = "rgba(255, 255, 255, 0.6)";
         } else {
-          
-          const hitFromZoneId = isLocked 
+          const hitFromZoneId = isLocked
             ? (props.positions.ball.zone || props.positions[props.hitterId] || props.positions.you)
             : (props.positions[props.hitterId] || props.positions.you);
-          
+
           const hRow = parseInt(hitFromZoneId[1]);
           const tCol = targetZoneId[0];
           const tRow = parseInt(targetZoneId[1]);
@@ -834,117 +1023,117 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
 
           const o1Row = parseInt(props.positions.opp1[1]);
           const o2Row = parseInt(props.positions.opp2[1]);
-          const oppsAtNet = o1Row >= 3 || o2Row >= 3; 
+          const oppsAtNet = o1Row >= 3 || o2Row >= 3;
 
           if (["VOLLEY", "BLOCK", "SMASH"].includes(upperSType) && hRow <= 2) {
-            lineColor = "#ef4444"; 
-          } 
+            lineColor = "#ef4444";
+          }
           else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow <= 1) {
-            lineColor = "#ef4444"; 
+            lineColor = "#ef4444";
           }
           else if (["BANDEJA", "VIBORA"].includes(upperSType) && hRow >= 4) {
-            lineColor = "#ef4444"; 
+            lineColor = "#ef4444";
           }
           else if (upperSType === "BAJADA" && hRow >= 3) {
-            lineColor = "#ef4444"; 
+            lineColor = "#ef4444";
           }
           else if (upperSType === "DRIVE" && hRow >= 4) {
-            lineColor = "#ef4444"; 
+            lineColor = "#ef4444";
           }
           else {
-            switch(upperSType) {
+            switch (upperSType) {
               case "AUFSCHLAG": {
-                const isCross = (["A", "B"].includes(hitFromZoneId[0]) && ["C", "D", "E"].includes(tCol)) || 
-                                (["D", "E"].includes(hitFromZoneId[0]) && ["A", "B", "C"].includes(tCol));
+                const isCross = (["A", "B"].includes(hitFromZoneId[0]) && ["C", "D", "E"].includes(tCol)) ||
+                  (["D", "E"].includes(hitFromZoneId[0]) && ["A", "B", "C"].includes(tCol));
                 if (!isCross || (tRow !== 2 && tRow !== 3)) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else if (tRow === 2 || ["A", "C", "E"].includes(tCol)) {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
               }
-                
+
               case "DRIVE":
                 if (tRow >= 4 && oppsAtNet) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
-                
+
               case "VOLLEY":
                 if (tRow >= 4) {
-                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
 
               case "BLOCK":
                 if (tRow <= 1) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
-                
+
               case "LOB":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316";
                 }
                 break;
-                
+
               case "CHIQUITA":
                 if (tRow <= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else if (hRow >= 4) {
-                  lineColor = oppsAtNet ? "#ef4444" : "#34d399"; 
+                  lineColor = oppsAtNet ? "#ef4444" : "#34d399";
                 } else if (oppsAtNet) {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 } else {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316";
                 }
                 break;
-                
+
               case "BAJADA":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else if (oppsAtNet) {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
-                
+
               case "BANDEJA":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
-                
+
               case "VIBORA":
                 if (tRow >= 3) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else if (tCol === "C") {
-                  lineColor = "#f97316"; 
+                  lineColor = "#f97316";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
-                
+
               case "SMASH":
                 if (tRow >= 4) {
-                  lineColor = "#ef4444"; 
+                  lineColor = "#ef4444";
                 } else {
-                  lineColor = "#34d399"; 
+                  lineColor = "#34d399";
                 }
                 break;
             }
@@ -952,21 +1141,21 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         }
 
         const segments = calculatePreviewTrajectory(startPos, targetPos, sType);
-        
+
         return (
           <group key={`preview-${startPos.x}-${targetPos.x}-${sType}-${lineColor}`}>
             {segments.map((seg, idx) => (
-              <QuadraticBezierLine 
+              <QuadraticBezierLine
                 key={`seg-${idx}`}
-                start={[seg.start.x, seg.start.y, seg.start.z]} 
-                end={[seg.end.x, seg.end.y, seg.end.z]} 
-                mid={[seg.mid.x, seg.mid.y, seg.mid.z]} 
-                color={lineColor} 
-                lineWidth={props.previewShot ? (idx === 0 ? 4 : 2) : 2} 
-                dashed 
-                dashScale={props.previewShot ? 15 : 5} 
+                start={[seg.start.x, seg.start.y, seg.start.z]}
+                end={[seg.end.x, seg.end.y, seg.end.z]}
+                mid={[seg.mid.x, seg.mid.y, seg.mid.z]}
+                color={lineColor}
+                lineWidth={props.previewShot ? (idx === 0 ? 4 : 2) : 2}
+                dashed
+                dashScale={props.previewShot ? 15 : 5}
                 transparent={true}
-                opacity={idx === 0 ? 1 : 0.4} 
+                opacity={idx === 0 ? 1 : 0.4}
               />
             ))}
           </group>
@@ -979,4 +1168,4 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
 useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
 useGLTF.preload(OPP1_MODEL_URL, false, false);
 useGLTF.preload(OPP2_MODEL_URL, false, false);
-useGLTF.preload("/meshy_player.glb", false, false);
+useGLTF.preload(DEFAULT_PARTNER_URL, false, false);

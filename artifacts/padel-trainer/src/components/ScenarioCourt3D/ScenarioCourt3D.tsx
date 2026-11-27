@@ -9,7 +9,14 @@ import Effects from "./Effects";
 import CourtFloor from "./CourtFloor";
 import TacticalData from "./TacticalData";
 import { AiProfile, AI_PROFILES } from "../../engine/AiProfiles";
-import { SHOP_PARTNERS } from "../../lib/loadout";
+import {
+  SHOP_PARTNERS,
+  getActiveMatchLockedLoadout,
+  getEquippedPartnerId,
+  getEquippedRacketId,
+  resolvePartnerItem,
+  resolveRacketItem,
+} from "../../lib/loadout";
 import { useTranslation } from "../../lib/i18n";
 
 // =========================================================
@@ -106,7 +113,7 @@ const isEcoModeEnabled = (): boolean => {
 
 // Löst eine Partner-ID (Shop oder altes KI-Profil) sauber in den Anzeigenamen auf
 const resolvePartnerNameFromId = (rawId?: string | null): string => {
-  const pId = rawId || localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+  const pId = rawId || getEquippedPartnerId();
   const shopPartner = SHOP_PARTNERS.find((p) => p.id === pId);
   if (shopPartner) {
     return shopPartner.name.split(" (")[0];
@@ -396,6 +403,9 @@ export interface Props {
   arenaModel?: string;
   showZoneLabels?: boolean;
   showCourtMarkings?: boolean;
+
+  partnerId?: string | null;
+  racketId?: string | null;
 }
 
 export default function ScenarioCourt3D(props: Props) {
@@ -403,7 +413,15 @@ export default function ScenarioCourt3D(props: Props) {
 
   const [introFinished, setIntroFinished] = useState(false);
   const [playerName, setPlayerName] = useState(() => t("guest_name"));
-  const [partnerName, setPartnerName] = useState(() => resolvePartnerNameFromId());
+  const [equippedPartnerId, setEquippedPartnerId] = useState<string>(() =>
+    resolvePartnerItem(props.partnerId || getEquippedPartnerId()).id
+  );
+  const [equippedRacketId, setEquippedRacketId] = useState<string>(() =>
+    resolveRacketItem(props.racketId || getEquippedRacketId()).id
+  );
+  const [partnerName, setPartnerName] = useState(() =>
+    resolvePartnerNameFromId(props.partnerId || getEquippedPartnerId())
+  );
   const [blackout, setBlackout] = useState(false);
   const [ecoMode, setEcoMode] = useState<boolean>(() => isEcoModeEnabled());
 
@@ -417,8 +435,28 @@ export default function ScenarioCourt3D(props: Props) {
   }, [props.playIntro]);
 
   useEffect(() => {
+    if (props.partnerId) {
+      const resolvedId = resolvePartnerItem(props.partnerId).id;
+      setEquippedPartnerId(resolvedId);
+      setPartnerName(resolvePartnerNameFromId(resolvedId));
+    }
+  }, [props.partnerId]);
+
+  useEffect(() => {
+    if (props.racketId) {
+      setEquippedRacketId(resolveRacketItem(props.racketId).id);
+    }
+  }, [props.racketId]);
+
+  useEffect(() => {
     const fetchUserData = async () => {
-      setPartnerName(resolvePartnerNameFromId());
+      const locked = getActiveMatchLockedLoadout();
+      const initialPartnerId = resolvePartnerItem(props.partnerId || getEquippedPartnerId()).id;
+      const initialRacketId = resolveRacketItem(props.racketId || getEquippedRacketId()).id;
+
+      setEquippedPartnerId(initialPartnerId);
+      setEquippedRacketId(initialRacketId);
+      setPartnerName(resolvePartnerNameFromId(initialPartnerId));
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -427,12 +465,17 @@ export default function ScenarioCourt3D(props: Props) {
           return;
         }
 
-        let name = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || t("guest_name");
-        let resolvedPartnerName = resolvePartnerNameFromId();
+        let name =
+          user?.user_metadata?.display_name ||
+          user?.user_metadata?.full_name ||
+          user?.email?.split('@')[0] ||
+          t("guest_name");
+        let resolvedPartnerId = initialPartnerId;
+        let resolvedRacketId = initialRacketId;
 
         const { data: profileData } = await supabase
           .from('user_stats')
-          .select('display_name, partner_id')
+          .select('display_name, partner_id, equipped_racket')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -440,19 +483,24 @@ export default function ScenarioCourt3D(props: Props) {
           if (profileData.display_name) {
             name = profileData.display_name;
           }
-          if (profileData.partner_id) {
-            resolvedPartnerName = resolvePartnerNameFromId(profileData.partner_id);
+          if (!locked && !props.partnerId && profileData.partner_id) {
+            resolvedPartnerId = resolvePartnerItem(profileData.partner_id).id;
+          }
+          if (!locked && !props.racketId && profileData.equipped_racket) {
+            resolvedRacketId = resolveRacketItem(profileData.equipped_racket).id;
           }
         }
 
         setPlayerName(name);
-        setPartnerName(resolvedPartnerName);
+        setEquippedPartnerId(resolvedPartnerId);
+        setEquippedRacketId(resolvedRacketId);
+        setPartnerName(resolvePartnerNameFromId(resolvedPartnerId));
       } catch (error) {
         console.error("Fehler beim Laden der Profildaten:", error);
       }
     };
     fetchUserData();
-  }, [t]);
+  }, [t, props.partnerId, props.racketId]);
 
   return (
     <div className="relative w-full h-full bg-[#060913] overflow-hidden select-none">
@@ -550,7 +598,7 @@ export default function ScenarioCourt3D(props: Props) {
               arenaModel={props.arenaModel}
             />
 
-            {/* 🟢 FELDKENNZEICHNUNGEN (A1-E5): Nur im Rookie-Modus (< 2000 TacScore) sichtbar */}
+            {/* FELDKENNZEICHNUNGEN (A1-E5): Nur im Rookie-Modus (< 2000 TacScore) sichtbar */}
             {(props.showZoneLabels || props.showCourtMarkings) && introFinished && !props.gameOver && (
               <StaticCourtMarkings />
             )}
@@ -559,6 +607,8 @@ export default function ScenarioCourt3D(props: Props) {
               {...props}
               playerName={playerName}
               partnerName={partnerName}
+              partnerId={equippedPartnerId}
+              racketId={equippedRacketId}
             />
           </Suspense>
         </Canvas>
