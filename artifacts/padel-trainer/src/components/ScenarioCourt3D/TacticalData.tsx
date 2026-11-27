@@ -4,10 +4,19 @@ import { Plane, Html, QuadraticBezierLine, Cylinder, Sphere, Ring, Edges, Text, 
 import { useFrame } from "@react-three/fiber";
 import { Props } from "./ScenarioCourt3D";
 import { useTranslation } from "../../lib/i18n";
+import { resolvePartnerAsset } from "../../lib/loadout";
+import { preloadAnimatedPartner } from "../AnimatedPadelPlayer";
 
 const LETTERS = ["A", "B", "C", "D", "E"];
 const NUMBERS = [1, 2, 3, 4, 5];
 
+/** Falls die GLBs in public/models/ liegen, hier "/models" eintragen */
+const MODEL_BASE_PATH = "";
+
+/** Eigener Spieler-Avatar ("Ich"); fällt auf das gewählte Partner-Modell zurück, falls meshy_playerI.glb noch nicht vorliegt */
+export const PLAYER_SELF_MODEL_URL = `${MODEL_BASE_PATH}/meshy_playerI.glb`;
+export const OPP1_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp1.glb`;
+export const OPP2_MODEL_URL = `${MODEL_BASE_PATH}/meshy_opp2.glb`;
 
 function getZoneCenter3D(side: "left" | "right", zoneId: string): THREE.Vector3 {
   if (!zoneId || zoneId.length < 2) return new THREE.Vector3(0, 0, side === "left" ? 5 : -5);
@@ -371,16 +380,18 @@ const AnimatedBall = memo(function AnimatedBall({
 });
 
 const Real3DPlayer = memo(function Real3DPlayer({
-  position, type, label, isGlowing, isHitter, onClick, disabled, modelUrl, rotation, hidePlayerLabels
+  position, type, label, isGlowing, isHitter, onClick, disabled, modelUrl, fallbackModelUrl, rotation, hidePlayerLabels
 }: {
   position: THREE.Vector3, type: string, label: string,
   isGlowing?: boolean, isHitter?: boolean, onClick?: () => void, disabled?: boolean,
-  modelUrl: string, rotation?: [number, number, number], hidePlayerLabels?: boolean
+  modelUrl: string, fallbackModelUrl?: string, rotation?: [number, number, number], hidePlayerLabels?: boolean
 }) {
   const groupRef = useRef<THREE.Group>(null);
   
-  const { scene } = useGLTF(modelUrl);
-  const clonedScene = useMemo(() => scene.clone(), [scene, modelUrl]);
+  const primaryGltf = useGLTF(modelUrl, false, false);
+  const fallbackGltf = useGLTF(fallbackModelUrl || modelUrl, false, false);
+  const activeScene = primaryGltf?.scene || fallbackGltf?.scene;
+  const clonedScene = useMemo(() => (activeScene ? activeScene.clone() : null), [activeScene]);
 
   useEffect(() => {
     if (groupRef.current) groupRef.current.position.set(position.x, 0, position.z);
@@ -454,7 +465,9 @@ const Real3DPlayer = memo(function Real3DPlayer({
         </group>
       )}
 
-      <primitive object={clonedScene} scale={1.4} rotation={rotation || [0, 0, 0]} />
+      {clonedScene && (
+        <primitive object={clonedScene} scale={1.4} rotation={rotation || [0, 0, 0]} />
+      )}
 
       <mesh position={[0, 1.6, 0]}>
         <cylinderGeometry args={[0.45, 0.45, 3.2, 8]} />
@@ -486,10 +499,31 @@ const Real3DPlayer = memo(function Real3DPlayer({
   );
 });
 
-export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; }) {
+export default function TacticalData(props: Props & { isCinematicMode?: boolean; hidePlayerLabels?: boolean; playerName?: string; userName?: string; partnerName?: string; partnerId?: string | null; }) {
   
   const currentUserName = props.playerName || props.userName || "DU";
   const { t } = useTranslation();
+
+  const equippedPartnerId = useMemo(() => {
+    if (props.partnerId) return props.partnerId;
+    try {
+      return localStorage.getItem("tacpadel_partner_id") || "partner_rookie";
+    } catch {
+      return "partner_rookie";
+    }
+  }, [props.partnerId]);
+
+  const partnerAsset = useMemo(
+    () => resolvePartnerAsset(equippedPartnerId),
+    [equippedPartnerId]
+  );
+
+  useEffect(() => {
+    preloadAnimatedPartner(equippedPartnerId);
+    useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
+    useGLTF.preload(OPP1_MODEL_URL, false, false);
+    useGLTF.preload(OPP2_MODEL_URL, false, false);
+  }, [equippedPartnerId]);
 
   const allZoneIds = useMemo(() => LETTERS.flatMap((l) => NUMBERS.map((n) => `${l}${n}`)), []);
   const isLocked = props.hasSubmitted && !props.isTimerActive;
@@ -541,7 +575,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
       case "you":
         return currentUserName; 
       case "partner":
-        return props.partnerName ? props.partnerName : "PARTNER";
+        return props.partnerName ? props.partnerName : partnerAsset.id === "partner_rookie" ? "PARTNER" : resolvePartnerAsset(equippedPartnerId).id.toUpperCase();
       case "opp1":
         return props.activeAiProfile?.p1 ? props.activeAiProfile.p1 : "KI 1";
       case "opp2":
@@ -647,8 +681,10 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         );
       })}
 
+      {/* Eigener Spieler ("Ich"): meshy_playerI.glb mit Fallback auf gewählten Partner-Avatar */}
       <Real3DPlayer 
-        modelUrl="/Player1.glb"
+        modelUrl={PLAYER_SELF_MODEL_URL}
+        fallbackModelUrl={partnerAsset.url}
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.you)} 
         type="DU" 
@@ -660,8 +696,9 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         hidePlayerLabels={props.hidePlayerLabels} 
       />
       
+      {/* KI-Partner: dynamisch aus loadout.ts (Leo / Diego / Sergio / Mateo / Lucas) */}
       <Real3DPlayer 
-        modelUrl="/Player2.glb"
+        modelUrl={partnerAsset.url}
         rotation={[0, Math.PI, 0]} 
         position={getZoneCenter3D("left", props.positions.partner)} 
         type="PTNER" 
@@ -673,8 +710,9 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         hidePlayerLabels={props.hidePlayerLabels} 
       />
       
+      {/* Gegner 1: meshy_opp1.glb */}
       <Real3DPlayer 
-        modelUrl="/Player3.glb"
+        modelUrl={OPP1_MODEL_URL}
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp1)} 
         type="GEG1" 
@@ -684,8 +722,9 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
         hidePlayerLabels={props.hidePlayerLabels} 
       />
       
+      {/* Gegner 2: meshy_opp2.glb */}
       <Real3DPlayer 
-        modelUrl="/Player4.glb"
+        modelUrl={OPP2_MODEL_URL}
         rotation={[0, 0, 0]} 
         position={getZoneCenter3D("right", props.positions.opp2)} 
         type="GEG2" 
@@ -937,7 +976,7 @@ export default function TacticalData(props: Props & { isCinematicMode?: boolean;
   );
 }
 
-useGLTF.preload("/Player1.glb");
-useGLTF.preload("/Player2.glb");
-useGLTF.preload("/Player3.glb");
-useGLTF.preload("/Player4.glb");
+useGLTF.preload(PLAYER_SELF_MODEL_URL, false, false);
+useGLTF.preload(OPP1_MODEL_URL, false, false);
+useGLTF.preload(OPP2_MODEL_URL, false, false);
+useGLTF.preload("/meshy_player.glb", false, false);
